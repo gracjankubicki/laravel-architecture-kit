@@ -37,7 +37,10 @@ class InstallCommandTest extends TestCase
         $this->assertStringContainsString('### Actions', $guideline);
         $this->assertStringContainsString('Write flow:', $guideline);
         $this->assertStringContainsString('php artisan architecture-kit:guard --changed --strict', $guideline);
-        $this->assertStringContainsString('Before building custom infrastructure, search for existing Laravel features', $guideline);
+        $this->assertStringContainsString('## Package-First Architecture Rule', $guideline);
+        $this->assertStringContainsString('AI agents MUST NOT implement custom infrastructure before checking existing options.', $guideline);
+        $this->assertStringContainsString('Search for maintained Laravel ecosystem packages.', $guideline);
+        $this->assertStringContainsString('When custom code is chosen, state the reason in the handoff or implementation notes.', $guideline);
         $this->assertStringContainsString('Architecture folder purity:', $guideline);
         $this->assertStringContainsString('Architecture folders MUST stay type-pure.', $guideline);
         $this->assertStringContainsString('`app/Actions/**` contains Actions only.', $guideline);

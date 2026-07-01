@@ -130,7 +130,7 @@ That guideline only points agents to the generated project-specific file:
 
 The detailed architecture rules and skills are generated into the consuming project after `architecture-kit:install`.
 
-Generated Architecture Kit guidance also tells agents to search for existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party packages before writing custom infrastructure. Custom code should be introduced only when an existing package does not fit the project constraints or cannot safely provide the required behavior.
+Generated Architecture Kit guidance includes a Package-First Architecture Rule. AI agents must search existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party PHP packages before writing custom infrastructure. Custom code is allowed only when no suitable maintained package fits the project constraints or can safely provide the required behavior.
 
 ## Laravel MCP Integration
 

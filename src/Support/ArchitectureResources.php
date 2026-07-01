@@ -27,6 +27,7 @@ final class ArchitectureResources
         $body = implode("\n\n", [
             '## Architecture Kit',
             $this->globalRules(),
+            $this->packageFirstRule(),
             $this->enabledArchitectures($enabled),
             $this->composition($enabled),
             $this->architectureRules($enabled),
@@ -166,8 +167,6 @@ Before changing application architecture:
 - Follow existing project structure when it is more specific than the default paths below.
 - Keep framework adapters thin and keep business decisions in the architecture boundary selected for that behavior.
 - Load the listed Architecture Kit skill before implementing or refactoring code for that architecture.
-- Before building custom infrastructure, search for existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party packages.
-- Implement custom code only when no suitable package exists, the package does not fit project constraints, or the required behavior cannot be safely provided by a package.
 - Before finishing a code change, run `php artisan architecture-kit:guard --changed --strict`.
 - In CI or after committing, run `php artisan architecture-kit:guard --changed --base=origin/main --strict`.
 - You MUST fix all Architecture Kit guard errors before final response.
@@ -185,6 +184,26 @@ Architecture folder purity:
 - `app/Http/Resources/**` contains API Resources and Resource Collections only.
 - `app/Exceptions/**` contains Exceptions only.
 - If the project uses domain-first structure, keep the same purity under the domain folder, for example `app/Documents/Actions`, `app/Documents/Data`, `app/Documents/Enums`, and `app/Documents/Exceptions`.
+MARKDOWN;
+    }
+
+    private function packageFirstRule(): string
+    {
+        return <<<'MARKDOWN'
+## Package-First Architecture Rule
+
+AI agents MUST NOT implement custom infrastructure before checking existing options.
+
+Before writing new infrastructure, integrations, parsers, validators, clients, workflow engines, importers, exporters, or reusable technical abstractions:
+
+1. Search for an existing Laravel feature that already solves the problem.
+2. Search for maintained Laravel ecosystem packages.
+3. Search for maintained third-party PHP packages.
+4. Prefer the existing feature or package when it fits the project constraints.
+5. Implement custom code only when no suitable package exists, the package is not maintained, it does not fit the project constraints, or it cannot safely provide the required behavior.
+6. When custom code is chosen, state the reason in the handoff or implementation notes.
+
+This rule does not replace the enabled architecture rules. Any package integration or custom implementation must still follow the enabled Architecture Kit patterns.
 MARKDOWN;
     }
 
