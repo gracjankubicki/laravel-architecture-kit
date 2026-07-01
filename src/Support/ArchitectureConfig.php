@@ -57,6 +57,23 @@ final class ArchitectureConfig
      */
     public function render(array $enabled): string
     {
+        if ($this->files->exists($this->path)) {
+            $contents = $this->files->get($this->path);
+            $updated = $this->replaceEnabledBlock($contents, $enabled);
+
+            if ($updated !== null) {
+                return $updated;
+            }
+        }
+
+        return $this->renderFresh($enabled);
+    }
+
+    /**
+     * @param  array<int, Architecture>  $enabled
+     */
+    private function renderFresh(array $enabled): string
+    {
         $lines = [
             '<?php',
             '',
@@ -73,6 +90,50 @@ final class ArchitectureConfig
         $lines[] = '    ],';
         $lines[] = '];';
         $lines[] = '';
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param  array<int, Architecture>  $enabled
+     */
+    private function replaceEnabledBlock(string $contents, array $enabled): ?string
+    {
+        $matched = preg_match(
+            '/^(?<indent>\s*)[\'"]enabled[\'"]\s*=>\s*\[\R.*?^\k<indent>\],/ms',
+            $contents,
+            $match,
+            PREG_OFFSET_CAPTURE,
+        );
+
+        if ($matched !== 1) {
+            return null;
+        }
+
+        $replacement = $this->renderEnabledBlock($enabled, $match['indent'][0]);
+
+        return substr_replace(
+            $contents,
+            $replacement,
+            $match[0][1],
+            strlen($match[0][0]),
+        );
+    }
+
+    /**
+     * @param  array<int, Architecture>  $enabled
+     */
+    private function renderEnabledBlock(array $enabled, string $indent): string
+    {
+        $lines = [
+            $indent."'enabled' => [",
+        ];
+
+        foreach ($this->order($enabled) as $architecture) {
+            $lines[] = $indent.'    Architecture::'.$architecture->name.',';
+        }
+
+        $lines[] = $indent.'],';
 
         return implode("\n", $lines);
     }

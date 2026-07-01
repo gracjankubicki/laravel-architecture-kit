@@ -112,6 +112,83 @@ class InstallCommandTest extends TestCase
         $this->assertStringContainsString('"claude_code"', $files->get($this->tempPath.'/.architecture-kit/install.json'));
     }
 
+    public function test_it_preserves_project_specific_agent_runtime_config(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', <<<'PHP'
+<?php
+
+use Taqie\ArchitectureKit\Architecture;
+
+$repoRoot = env('ARCHITECTURE_KIT_HOST_REPO_ROOT', '/Users/taqie/code/harvey');
+$backendRoot = $repoRoot.'/backend';
+$composeFile = $repoRoot.'/docker-compose.yml';
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'agents' => [
+        'mcp' => [
+            'command' => 'docker',
+            'args' => [
+                'compose',
+                '-f',
+                $composeFile,
+                'run',
+                '--rm',
+                'api',
+                'php',
+                'artisan',
+                'architecture-kit:mcp',
+            ],
+            'cwd' => '/workspace',
+        ],
+        'hooks' => [
+            'guard_command' => [
+                'docker',
+                'compose',
+                '-f',
+                $composeFile,
+                'run',
+                '--rm',
+                'api',
+                'php',
+                'artisan',
+                'architecture-kit:guard',
+                '--changed',
+                '--strict',
+                '--json',
+            ],
+            'commands' => [
+                'codex' => 'sh "'.$backendRoot.'/.architecture-kit/hooks/guard.sh" codex',
+            ],
+        ],
+    ],
+];
+PHP);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions', 'api-resources'], Architecture::promptOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $config = $files->get($this->tempPath.'/config/architectures.php');
+
+        $this->assertStringContainsString('Architecture::Actions', $config);
+        $this->assertStringContainsString('Architecture::ApiResources', $config);
+        $this->assertStringContainsString("\$repoRoot = env('ARCHITECTURE_KIT_HOST_REPO_ROOT', '/Users/taqie/code/harvey');", $config);
+        $this->assertStringContainsString("\$backendRoot = \$repoRoot.'/backend';", $config);
+        $this->assertStringContainsString("\$composeFile = \$repoRoot.'/docker-compose.yml';", $config);
+        $this->assertStringContainsString("'agents' => [", $config);
+        $this->assertStringContainsString("'command' => 'docker'", $config);
+        $this->assertStringContainsString('$composeFile', $config);
+        $this->assertStringContainsString('$backendRoot', $config);
+        $this->assertStringContainsString("'architecture-kit:guard'", $config);
+    }
+
     public function test_it_blocks_unmanaged_generated_targets_before_writing_config(): void
     {
         $files = new Filesystem();
