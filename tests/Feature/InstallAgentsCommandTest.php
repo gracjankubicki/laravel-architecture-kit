@@ -70,6 +70,36 @@ class InstallAgentsCommandTest extends TestCase
         $this->assertStringContainsString('vendor/bin/phpunit', $files->get($this->tempPath.'/.codex/hooks.json'));
     }
 
+    public function test_it_uses_configured_mcp_and_hook_commands(): void
+    {
+        config()->set('architectures.agents.mcp', [
+            'command' => 'docker',
+            'args' => ['compose', 'exec', '-T', 'api', 'php', 'artisan', 'architecture-kit:mcp'],
+            'cwd' => '/repo',
+        ]);
+        config()->set('architectures.agents.hooks', [
+            'guard_command' => ['docker', 'compose', 'run', '--rm', 'api', 'artisan', 'architecture-kit:guard'],
+            'commands' => [
+                'codex' => 'sh "/repo/backend/.architecture-kit/hooks/guard.sh" codex',
+                'claude' => '/repo/backend/.architecture-kit/hooks/guard.sh claude',
+            ],
+        ]);
+
+        $this->artisan('architecture-kit:install-agents --codex --claude --mcp --hooks')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $files = new Filesystem();
+
+        $this->assertStringContainsString('command = "docker"', $files->get($this->tempPath.'/.codex/config.toml'));
+        $this->assertStringContainsString('cwd = "/repo"', $files->get($this->tempPath.'/.codex/config.toml'));
+        $this->assertStringContainsString('"command": "docker"', $files->get($this->tempPath.'/.mcp.json'));
+        $this->assertStringContainsString('"cwd": "/repo"', $files->get($this->tempPath.'/.mcp.json'));
+        $this->assertStringContainsString("'docker' 'compose' 'run' '--rm' 'api' 'artisan' 'architecture-kit:guard'", $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh'));
+        $this->assertStringContainsString('sh \\"/repo/backend/.architecture-kit/hooks/guard.sh\\" codex', $files->get($this->tempPath.'/.codex/hooks.json'));
+        $this->assertStringContainsString('/repo/backend/.architecture-kit/hooks/guard.sh claude', $files->get($this->tempPath.'/.claude/settings.json'));
+    }
+
     public function test_it_blocks_invalid_agent_config_before_writing(): void
     {
         $files = new Filesystem();

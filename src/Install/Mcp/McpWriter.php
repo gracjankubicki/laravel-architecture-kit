@@ -73,7 +73,13 @@ final readonly class McpWriter
     private function render(Agent&SupportsMcp $agent): ?string
     {
         $path = $this->absolute($agent->mcpConfigPath());
-        $config = $agent->mcpServerConfig('php', ['artisan', 'architecture-kit:mcp']);
+        $config = $agent->mcpServerConfig($this->command(), $this->args());
+
+        $cwd = config('architectures.agents.mcp.cwd');
+
+        if (is_string($cwd) && $cwd !== '') {
+            $config['cwd'] = $cwd;
+        }
 
         if (str_ends_with($path, '.toml')) {
             return (new TomlConfigWriter($this->files, $path, $agent->mcpConfigKey()))->render(self::SERVER_KEY, $config);
@@ -85,5 +91,28 @@ final readonly class McpWriter
     private function absolute(string $path): string
     {
         return $this->basePath.'/'.$path;
+    }
+
+    private function command(): string
+    {
+        $command = config('architectures.agents.mcp.command');
+
+        return is_string($command) && $command !== '' ? $command : 'php';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function args(): array
+    {
+        $args = config('architectures.agents.mcp.args');
+
+        if (! is_array($args)) {
+            return ['artisan', 'architecture-kit:mcp'];
+        }
+
+        $strings = array_values(array_filter($args, is_string(...)));
+
+        return $strings === [] ? ['artisan', 'architecture-kit:mcp'] : $strings;
     }
 }
