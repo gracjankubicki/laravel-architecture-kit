@@ -167,6 +167,7 @@ Before changing application architecture:
 - Keep framework adapters thin and keep business decisions in the architecture boundary selected for that behavior.
 - Load the listed Architecture Kit skill before implementing or refactoring code for that architecture.
 - Before finishing a code change, run `php artisan architecture-kit:audit --changed --strict`.
+- In CI or after committing, run `php artisan architecture-kit:audit --changed --base=origin/main --strict`.
 - You MUST fix all Architecture Kit audit errors before final response.
 - Do not claim the work is done while the audit reports errors.
 

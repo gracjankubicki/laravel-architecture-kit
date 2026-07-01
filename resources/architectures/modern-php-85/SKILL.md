@@ -35,6 +35,8 @@ This architecture is a runtime contract. It may only be enabled when `composer.j
 - Prefer `match` over `switch` for value mapping and branching.
 - Use named arguments when argument order is not obvious, especially multiple values with the same scalar type.
 - Use `#[\Override]` for methods/properties that implement or override parent contracts when supported by the runtime.
+- Use `#[\Override]` only when the parent class or implemented interface really declares the member. Do not change inheritance just to make the attribute valid.
+- Do not put `#[\Override]` on Laravel FormRequest `authorize()` or `rules()` unless the actual parent class declares those methods.
 - Use `#[\NoDiscard]` when ignoring a return value would be a bug.
 - Prefer clone-with for immutable `with*()` methods when it keeps validation correct.
 - Use the pipe operator `|>` very carefully and only for readable pure transformations.
@@ -202,6 +204,21 @@ final class InvoiceResource extends JsonResource
     }
 }
 ```
+
+Do not do this:
+
+```php
+abstract class ArchitectureFormRequest extends EmailVerificationRequest
+{
+    #[\Override]
+    public function rules(): array
+    {
+        return [];
+    }
+}
+```
+
+That changes the Laravel inheritance model to satisfy an attribute. Prefer a normal `FormRequest` base and omit `#[\Override]` for convention methods the framework resolves dynamically.
 
 Use `#[\NoDiscard]` when ignoring the result would likely be a bug:
 

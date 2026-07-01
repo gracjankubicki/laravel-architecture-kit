@@ -15,6 +15,8 @@ Rules:
 - Accept a Data Object, Value Objects, or explicit typed arguments for filters.
 - A Query Object may compose Custom Eloquent Builder methods.
 - A Query Object may decide eager loading, sorting, filtering, and pagination for one read use case.
+- Move repeated read helpers and non-trivial private controller queries into Query Objects.
+- If several controllers/resources need the same filtered read model, create one named Query Object instead of copying a private method.
 - Put filter/result payloads in Data Object folders and reusable model query vocabulary in Builder folders.
 
 Good example:

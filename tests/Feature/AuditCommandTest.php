@@ -18,6 +18,7 @@ class AuditCommandTest extends TestCase
             Architecture::ThinControllers,
             Architecture::FormRequests,
             Architecture::Actions,
+            Architecture::QueryObjects,
             Architecture::DataObjects,
             Architecture::Enums,
             Architecture::ApiResources,
@@ -36,6 +37,14 @@ final class DocumentController
     public function update($request, $document)
     {
         $document->update($request->validated());
+    }
+
+    private function pseudonymizationMap($document)
+    {
+        return PseudonymizationMap::query()
+            ->where('document_id', $document->id)
+            ->whereIn('placeholder', ['[PERSON_1]'])
+            ->get();
     }
 }
 PHP);
@@ -66,6 +75,23 @@ final class StoreDocumentRequest extends FormRequest
 }
 PHP);
 
+        $this->writeFile('app/Actions/Documents/ReceiveChunkedDocumentUpload.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Documents;
+
+use Illuminate\Http\Request;
+
+final class ReceiveChunkedDocumentUpload
+{
+    public function handle(Request $request): void
+    {
+    }
+}
+PHP);
+
         $this->writeFile('app/Actions/Documents/DownloadOriginalDocumentResult.php', <<<'PHP'
 <?php
 
@@ -75,6 +101,62 @@ namespace App\Actions\Documents;
 
 final readonly class DownloadOriginalDocumentResult
 {
+}
+PHP);
+
+        $this->writeFile('app/Queries/Documents/SearchDocuments.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Queries\Documents;
+
+use App\Models\Document;
+use Illuminate\Http\Request;
+
+final class SearchDocuments
+{
+    public function handle(Request $request): void
+    {
+        Document::query()->update(['status' => 'archived']);
+    }
+}
+PHP);
+
+        $this->writeFile('app/Http/Requests/ArchitectureFormRequest.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
+
+abstract class ArchitectureFormRequest extends EmailVerificationRequest
+{
+}
+PHP);
+
+        $this->writeFile('app/Http/Resources/DocumentResource.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+final class DocumentResource extends JsonResource
+{
+    #[\Override]
+    public function toArray(Request $request): array
+    {
+        return [
+            'status' => $this->status,
+            'document_type' => $this->document_type,
+        ];
+    }
 }
 PHP);
 
@@ -94,6 +176,7 @@ PHP);
             Architecture::ThinControllers,
             Architecture::FormRequests,
             Architecture::Actions,
+            Architecture::QueryObjects,
             Architecture::DataObjects,
             Architecture::Enums,
             Architecture::ApiResources,
@@ -109,12 +192,32 @@ PHP);
                 && str_contains($finding->message, 'mutates a model directly')
         ));
         $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'actions'
+                && str_contains($finding->message, 'HTTP request or response')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'query-objects'
+                && str_contains($finding->message, 'HTTP request or response')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'query-objects'
+                && str_contains($finding->message, 'private read/query logic')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
             fn ($finding): bool => $finding->rule === 'form-request'
                 && str_contains($finding->message, 'toData')
         ));
         $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'form-request'
+                && str_contains($finding->message, 'EmailVerificationRequest')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
             fn ($finding): bool => $finding->rule === 'enums'
                 && str_contains($finding->message, 'Rule::enum')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'enums'
+                && str_contains($finding->message, 'value + label')
         ));
         $this->assertTrue(collect($result->findings)->contains(
             fn ($finding): bool => $finding->rule === 'unenabled-pattern'
@@ -124,6 +227,8 @@ PHP);
         $this->artisan('architecture-kit:audit')
             ->expectsOutputToContain('error folder-purity')
             ->expectsOutputToContain('error thin-controller')
+            ->expectsOutputToContain('error actions')
+            ->expectsOutputToContain('error query-objects')
             ->expectsOutputToContain('error form-request')
             ->expectsOutputToContain('warn  enums')
             ->expectsOutputToContain('warn  unenabled-pattern')
@@ -269,6 +374,82 @@ PHP);
             ->assertExitCode(1);
     }
 
+    public function test_modern_php_does_not_require_override_on_form_request_convention_methods(): void
+    {
+        $this->writeConfig([
+            Architecture::FormRequests,
+            Architecture::ModernPhp85,
+        ]);
+
+        $this->writeFile('app/Http/Requests/Documents/StoreDocumentRequest.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Documents;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+final class StoreDocumentRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'document_type' => ['required', 'string'],
+        ];
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit --strict')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->assertExitCode(0);
+    }
+
+    public function test_changed_audit_with_base_ref_includes_committed_diff(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->git('init -b main');
+        $this->git('config user.email architecture-kit@example.test');
+        $this->git('config user.name "Architecture Kit"');
+        $this->git('add config/architectures.php');
+        $this->git('commit -m base');
+        $this->git('checkout -b feature');
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document)
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $this->git('add app/Http/Controllers/DocumentController.php');
+        $this->git('commit -m feature');
+
+        $this->artisan('architecture-kit:audit --changed --base=main')
+            ->expectsOutputToContain('Scope: changed application files since main')
+            ->expectsOutputToContain('error thin-controller')
+            ->assertExitCode(1);
+    }
+
     /**
      * @param  array<int, Architecture>  $enabled
      */
@@ -283,5 +464,15 @@ PHP);
         $absolute = $this->tempPath.'/'.$path;
         $files->ensureDirectoryExists(dirname($absolute));
         $files->put($absolute, $contents);
+    }
+
+    private function git(string $arguments): void
+    {
+        $output = [];
+        $exitCode = 0;
+
+        exec('git -C '.escapeshellarg($this->tempPath).' '.$arguments.' 2>&1', $output, $exitCode);
+
+        $this->assertSame(0, $exitCode, implode("\n", $output));
     }
 }

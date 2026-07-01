@@ -21,6 +21,7 @@ Rules:
 - Use `string`/`varchar` columns for enum values by default. Native database enums or check constraints are only appropriate when the project already uses that convention.
 - Use `Rule::enum(MyEnum::class)` in FormRequests.
 - Human-facing API Resources MUST expose enums as explicit `value` + `label` objects.
+- Do not return raw enum-like `status`, `state`, `type`, or `category` strings from human-facing API Resources when an enum exists or should exist.
 - Machine-facing APIs, queues, events, and webhooks should serialize stable enum `value` strings.
 - `label()` should use Laravel translations for API/UI values.
 - Optional `options()` helpers may expose `value` + `label` lists for form choices and API metadata.

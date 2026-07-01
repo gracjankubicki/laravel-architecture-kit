@@ -14,6 +14,7 @@ class AuditCommand extends Command
 {
     protected $signature = 'architecture-kit:audit
         {--changed : Audit only changed and untracked application files when git is available}
+        {--base= : Git base ref for changed-file audit, for example origin/main}
         {--strict : Treat warnings as failures}';
 
     protected $description = 'Audit application code against enabled Architecture Kit rules.';
@@ -34,6 +35,7 @@ class AuditCommand extends Command
         $result = $audit->run(
             enabled: $enabled,
             changedOnly: (bool) $this->option('changed'),
+            baseRef: $this->option('base') !== null ? (string) $this->option('base') : null,
         );
 
         $this->info('Architecture Kit Application Audit');

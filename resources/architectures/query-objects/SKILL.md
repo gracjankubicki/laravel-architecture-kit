@@ -21,5 +21,7 @@ Use this skill when implementing search, list, dashboard, report, or other named
 - Query Objects do not mutate data.
 - Query Objects do not authorize HTTP requests.
 - Query Objects can own eager loading and pagination for their read use case.
+- Query Objects are the right place for repeated private controller read helpers and non-trivial filtered reads.
+- If the same query logic is copied across controllers/resources/payload helpers, extract it to one named Query Object.
 - Query folders MUST contain Query Objects only.
 - Do not put filter Data Objects, Result objects, Builders, Resources, Actions, or Enums under `app/Queries/**`.

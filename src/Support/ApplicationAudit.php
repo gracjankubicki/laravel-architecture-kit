@@ -19,9 +19,9 @@ final class ApplicationAudit
     /**
      * @param  array<int, Architecture>  $enabled
      */
-    public function run(array $enabled, bool $changedOnly): ApplicationAuditResult
+    public function run(array $enabled, bool $changedOnly, ?string $baseRef = null): ApplicationAuditResult
     {
-        [$scope, $paths] = $this->applicationFiles($changedOnly);
+        [$scope, $paths] = $this->applicationFiles($changedOnly, $baseRef);
         $findings = [];
 
         foreach ($paths as $path) {
@@ -31,6 +31,8 @@ final class ApplicationAudit
                 $findings,
                 ...$this->folderPurityFindings($path, $contents),
                 ...$this->controllerFindings($enabled, $path, $contents),
+                ...$this->actionFindings($enabled, $path, $contents),
+                ...$this->queryObjectFindings($enabled, $path, $contents),
                 ...$this->formRequestFindings($enabled, $path, $contents),
                 ...$this->enumFindings($enabled, $path, $contents),
                 ...$this->apiResourceFindings($enabled, $path, $contents),
@@ -53,13 +55,17 @@ final class ApplicationAudit
     /**
      * @return array{0: string, 1: array<int, string>}
      */
-    private function applicationFiles(bool $changedOnly): array
+    private function applicationFiles(bool $changedOnly, ?string $baseRef): array
     {
         if ($changedOnly) {
-            $changed = $this->changedApplicationFiles();
+            $changed = $this->changedApplicationFiles($baseRef);
 
             if ($changed !== null) {
-                return ['changed application files', $changed];
+                $scope = $baseRef === null
+                    ? 'changed application files'
+                    : 'changed application files since '.$baseRef;
+
+                return [$scope, $changed];
             }
         }
 
@@ -81,7 +87,7 @@ final class ApplicationAudit
     /**
      * @return array<int, string>|null
      */
-    private function changedApplicationFiles(): ?array
+    private function changedApplicationFiles(?string $baseRef): ?array
     {
         exec('git -C '.escapeshellarg($this->basePath).' rev-parse --show-toplevel', $rootOutput, $rootExitCode);
 
@@ -97,10 +103,21 @@ final class ApplicationAudit
 
         $prefix = $prefixOutput[0] ?? '';
 
-        $commands = [
-            'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB HEAD -- app',
-            'git -C '.escapeshellarg($this->basePath).' ls-files --others --exclude-standard -- app',
-        ];
+        $commands = [];
+
+        if ($baseRef !== null && $baseRef !== '') {
+            $mergeBase = $this->mergeBase($baseRef);
+
+            if ($mergeBase === null) {
+                return null;
+            }
+
+            $commands[] = 'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB '.escapeshellarg($mergeBase).'...HEAD -- app';
+        } else {
+            $commands[] = 'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB HEAD -- app';
+        }
+
+        $commands[] = 'git -C '.escapeshellarg($this->basePath).' ls-files --others --exclude-standard -- app';
 
         $paths = [];
 
@@ -127,6 +144,20 @@ final class ApplicationAudit
         ksort($paths);
 
         return array_values($paths);
+    }
+
+    private function mergeBase(string $baseRef): ?string
+    {
+        $command = 'git -C '.escapeshellarg($this->basePath).' merge-base '.escapeshellarg($baseRef).' HEAD';
+        $output = [];
+        $exitCode = 0;
+        exec($command, $output, $exitCode);
+
+        if ($exitCode !== 0 || ($output[0] ?? '') === '') {
+            return null;
+        }
+
+        return $output[0];
     }
 
     /**
@@ -190,22 +221,112 @@ final class ApplicationAudit
      * @param  array<int, Architecture>  $enabled
      * @return array<int, AuditFinding>
      */
-    private function formRequestFindings(array $enabled, string $path, string $contents): array
+    private function actionFindings(array $enabled, string $path, string $contents): array
     {
-        if (! str_contains($contents, 'extends FormRequest')) {
+        if (! in_array(Architecture::Actions, $enabled, true) || ! str_starts_with($path, 'app/Actions/')) {
             return [];
         }
 
+        return $this->patternFindings('error', 'actions', $path, $contents, [
+            '/use\s+Illuminate\\\\Http\\\\(?:Request|JsonResponse|RedirectResponse|Response);/' => 'Actions must not depend on HTTP request or response classes. Map HTTP input/output in the adapter layer.',
+            '/use\s+Illuminate\\\\Foundation\\\\Http\\\\FormRequest;/' => 'Actions must not depend on FormRequest classes. Pass a Data Object, Value Object, or explicit typed arguments.',
+            '/use\s+Symfony\\\\Component\\\\HttpFoundation\\\\(?:Response|StreamedResponse|RedirectResponse);/' => 'Actions must not return Symfony HTTP responses. Return domain/application results and let the controller format HTTP.',
+            '/function\s+handle\s*\([^)]*\b(?:Request|FormRequest|JsonResponse|RedirectResponse|StreamedResponse|Response)\b/' => 'Action handle() must not accept or return HTTP request/response types.',
+            '/function\s+handle\s*\([^)]*\)\s*:\s*[^;{]*(?:JsonResponse|RedirectResponse|StreamedResponse|Response)\b/' => 'Action handle() must not return HTTP response types.',
+        ]);
+    }
+
+    /**
+     * @param  array<int, Architecture>  $enabled
+     * @return array<int, AuditFinding>
+     */
+    private function queryObjectFindings(array $enabled, string $path, string $contents): array
+    {
+        if (! in_array(Architecture::QueryObjects, $enabled, true)) {
+            return [];
+        }
+
+        if (str_starts_with($path, 'app/Queries/')) {
+            return $this->patternFindings('error', 'query-objects', $path, $contents, [
+                '/use\s+Illuminate\\\\Http\\\\(?:Request|JsonResponse|RedirectResponse|Response);/' => 'Query Objects must not depend on HTTP request or response classes. Map filters in FormRequest/Data first.',
+                '/use\s+Illuminate\\\\Foundation\\\\Http\\\\FormRequest;/' => 'Query Objects must not depend on FormRequest classes. Pass a Data Object, Value Object, or explicit typed arguments.',
+                '/function\s+handle\s*\([^)]*\b(?:Request|FormRequest|JsonResponse|RedirectResponse|StreamedResponse|Response)\b/' => 'Query Object handle() must not accept HTTP request/response types.',
+                '/function\s+handle\s*\([^)]*\)\s*:\s*[^;{]*(?:JsonResponse|RedirectResponse|StreamedResponse|Response)\b/' => 'Query Object handle() must not return HTTP response types.',
+                '/->update\s*\(/' => 'Query Objects must not mutate data.',
+                '/->delete\s*\(/' => 'Query Objects must not mutate data.',
+                '/::create\s*\(/' => 'Query Objects must not mutate data.',
+                '/::dispatch\s*\(/' => 'Query Objects must not dispatch work.',
+                '/DB::transaction\s*\(/' => 'Query Objects must not own write transactions.',
+            ]);
+        }
+
+        if (! str_starts_with($path, 'app/Http/Controllers/')) {
+            return [];
+        }
+
+        if (preg_match('/private\s+(?:static\s+)?function\s+\w+\s*\([^)]*\)[^{]*\{(?:(?!\n    \}).)*::query\s*\((?:(?!\n    \}).)*->where(?:In)?\s*\(/s', $contents, $match, PREG_OFFSET_CAPTURE)) {
+            return [
+                $this->finding(
+                    'warn',
+                    'query-objects',
+                    $path,
+                    $this->line($contents, $match[0][1]),
+                    'Controller owns non-trivial private read/query logic; move named read behavior to a Query Object.',
+                ),
+            ];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<int, Architecture>  $enabled
+     * @return array<int, AuditFinding>
+     */
+    private function formRequestFindings(array $enabled, string $path, string $contents): array
+    {
         $findings = [];
+
+        if (
+            str_starts_with($path, 'app/Http/Requests/')
+            && str_contains($contents, 'EmailVerificationRequest')
+        ) {
+            $findings[] = $this->finding(
+                'error',
+                'form-request',
+                $path,
+                $this->lineForNeedle($contents, 'EmailVerificationRequest'),
+                'Do not extend EmailVerificationRequest as a generic FormRequest base class. Extend FormRequest or a real project FormRequest base.',
+            );
+        }
+
+        if (! preg_match('/extends\s+[\w\\\\]*FormRequest\b/', $contents)) {
+            return $findings;
+        }
 
         if (preg_match('/function\s+data\s*\(/', $contents, $match, PREG_OFFSET_CAPTURE)) {
             $findings[] = $this->finding('error', 'form-request', $path, $this->line($contents, $match[0][1]), 'Do not define data() on FormRequests; use toData().');
         }
 
+        foreach (['authorize', 'rules'] as $method) {
+            if (
+                preg_match('/public\s+function\s+'.$method.'\s*\(/', $contents, $match, PREG_OFFSET_CAPTURE)
+                && $this->hasAttributeBefore($contents, $match[0][1], '#[\\Override]')
+            ) {
+                $findings[] = $this->finding(
+                    'error',
+                    'form-request',
+                    $path,
+                    $this->line($contents, $match[0][1]),
+                    "Do not add #[\\Override] to FormRequest {$method}(); Laravel resolves it by convention and the parent does not declare that method.",
+                );
+            }
+        }
+
         if (
             in_array(Architecture::DataObjects, $enabled, true)
             && ! preg_match('/function\s+toData\s*\(/', $contents)
-            && preg_match('/function\s+rules\s*\(/', $contents, $match, PREG_OFFSET_CAPTURE)
+            && preg_match('/function\s+(?:rules|architectureRules)\s*\(/', $contents, $match, PREG_OFFSET_CAPTURE)
         ) {
             $findings[] = $this->finding('error', 'form-request', $path, $this->line($contents, $match[0][1]), 'Data Objects are enabled; FormRequest should expose toData().');
         }
@@ -223,10 +344,37 @@ final class ApplicationAudit
             return [];
         }
 
-        return $this->patternFindings('warn', 'enums', $path, $contents, [
+        $findings = $this->patternFindings('warn', 'enums', $path, $contents, [
             '/Rule::in\s*\([^)]*::[A-Z0-9_]*TYPES\b/' => 'Finite request values should use backed enums and Rule::enum().',
             '/Rule::in\s*\([^)]*::[A-Z0-9_]*STATUSES\b/' => 'Finite request statuses should use backed enums and Rule::enum().',
         ]);
+
+        if (str_starts_with($path, 'app/Models/')) {
+            array_push(
+                $findings,
+                ...$this->patternFindings('warn', 'enums', $path, $contents, [
+                    '/public\s+const\s+[A-Z0-9_]*TYPES\s*=/' => 'Finite model type sets should be backed enums with Eloquent casts.',
+                    '/public\s+const\s+[A-Z0-9_]*STATUSES\s*=/' => 'Finite model status sets should be backed enums with Eloquent casts.',
+                    '/public\s+const\s+STATUS_[A-Z0-9_]*\s*=/' => 'Finite model statuses should be backed enums with Eloquent casts.',
+                ]),
+            );
+        }
+
+        if (
+            in_array(Architecture::ApiResources, $enabled, true)
+            && str_starts_with($path, 'app/Http/Resources/')
+            && preg_match("/'[^']*(?:status|type)'\\s*=>\\s*(?:\\\$this|\\\$[A-Za-z_][A-Za-z0-9_]*)(?:->|\\?->)[A-Za-z_][A-Za-z0-9_]*(?:status|type)\\b(?!\\s*(?:->|\\?->)value)/", $contents, $match, PREG_OFFSET_CAPTURE)
+        ) {
+            $findings[] = $this->finding(
+                'warn',
+                'enums',
+                $path,
+                $this->line($contents, $match[0][1]),
+                'Human-facing API Resources should expose enum-like status/type fields as value + label objects.',
+            );
+        }
+
+        return $findings;
     }
 
     /**
@@ -263,7 +411,7 @@ final class ApplicationAudit
             $findings[] = $this->finding('warn', 'modern-php-85', $path, 1, 'Changed PHP files should declare strict_types=1 when Modern PHP 8.5 is enabled.');
         }
 
-        foreach (['toArray', 'authorize', 'rules'] as $method) {
+        foreach ($this->overrideCandidateMethods($contents) as $method) {
             if (
                 preg_match('/public\s+function\s+'.$method.'\s*\(/', $contents, $match, PREG_OFFSET_CAPTURE)
                 && ! $this->hasAttributeBefore($contents, $match[0][1], '#[\\Override]')
@@ -357,6 +505,29 @@ final class ApplicationAudit
         }
 
         return $previous === $attribute;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function overrideCandidateMethods(string $contents): array
+    {
+        if (preg_match('/extends\s+[\w\\\\]*(JsonResource|ResourceCollection)\b/', $contents)) {
+            return ['toArray'];
+        }
+
+        return [];
+    }
+
+    private function lineForNeedle(string $contents, string $needle): int
+    {
+        $offset = strpos($contents, $needle);
+
+        if ($offset === false) {
+            return 1;
+        }
+
+        return $this->line($contents, $offset);
     }
 
     private function line(string $contents, int $offset): int

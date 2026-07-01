@@ -23,6 +23,9 @@ Use this skill when implementing or refactoring write/application use cases.
 - Do not create repositories merely to hide Eloquent.
 - Do not split one use case into artificial micro-Actions.
 - Orchestrator Actions are allowed only when the class names a larger workflow.
+- Do not inject or accept `Request`, `FormRequest`, `JsonResponse`, `Response`, `RedirectResponse`, or `StreamedResponse`.
+- Do not return HTTP responses from Actions. Return a model, Data/Result object, enum, scalar, or domain/application result.
+- Map uploaded/request data in the controller/FormRequest layer before calling the Action.
 - Action folders MUST contain Actions only.
 - Do not put Data Objects, Result objects, Enums, Exceptions, API Resources, or Value Objects under `app/Actions/**`.
 - Put supporting classes in the matching architecture folder, for example `app/Data/Documents`, `app/Enums/Documents`, or `app/Exceptions/Documents`.
@@ -58,3 +61,31 @@ app/
   Actions/Documents/DocumentStatus.php
   Actions/Documents/DocumentApprovalFailed.php
 ```
+
+## Adapter Boundary
+
+Bad:
+
+```php
+final class ReceiveChunkedDocumentUpload
+{
+    public function handle(Request $request): JsonResponse
+    {
+        // HTTP input and HTTP output leaked into the Action.
+    }
+}
+```
+
+Good:
+
+```php
+final class ReceiveChunkedDocumentUpload
+{
+    public function handle(StoreChunkedDocumentData $data): ChunkedDocumentUploadResult
+    {
+        // Application workflow only.
+    }
+}
+```
+
+The controller owns `Request` access and converts the result into JSON.

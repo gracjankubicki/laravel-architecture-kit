@@ -19,6 +19,7 @@ Rules:
 - Use named arguments for unclear calls, especially multiple booleans, strings, integers, or optional parameters.
 - Use PHP enums for finite sets when the Enums architecture is enabled.
 - Use `#[\Override]` for methods/properties that override or implement a parent contract when supported by the runtime.
+- Do not add `#[\Override]` to Laravel convention methods that are not declared by the parent class. For example, do not force it onto FormRequest `authorize()` or `rules()` by extending an unrelated Laravel request class.
 - Use `#[\NoDiscard]` when ignoring a return value would likely be a bug.
 - Use clone-with for immutable `with*()` methods when it preserves validation and improves clarity.
 - Use the pipe operator `|>` only for readable pure data transformations. Do not replace Laravel query builder, collection, or pipeline idioms with it.

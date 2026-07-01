@@ -34,6 +34,7 @@ Enums are a contract. A backed enum value can be stored in the database, returne
 - `null` is only for a true missing value. Use an explicit enum case for real domain states.
 - Use Laravel translations in `label()` when values are displayed in API/UI.
 - Use static `options()` only when the enum is used as form choices or API metadata.
+- Human-facing API Resources must not expose raw enum-like `status`, `state`, `type`, or `category` strings when an enum exists or should exist.
 - Use `fromLegacyValue()` only for small, stable legacy mappings. Contextual imports need a mapper or Action.
 - Simple transition rules may live on the enum; permissions, events, notifications, and side effects must live outside it.
 - Config modes may use enums when options are closed and controlled by code. Parse config with `Enum::from()` and fail fast.
@@ -165,6 +166,15 @@ final class InvoiceResource extends JsonResource
         ];
     }
 }
+```
+
+Bad:
+
+```php
+[
+    'status' => $this->status,
+    'document_type' => $this->document_type,
+]
 ```
 
 Machine-facing APIs, webhooks, events, and queues should use the stable value only:
