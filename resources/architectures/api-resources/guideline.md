@@ -4,6 +4,7 @@ API Resources define JSON response shape for Laravel APIs.
 Default placement:
 - `app/Http/Resources`
 - Follow existing project structure if it is more specific.
+- Keep Resource folders type-pure. Only API Resources and Resource Collections belong under `app/Http/Resources/**`.
 
 Rules:
 - Use Laravel `JsonResource` and `ResourceCollection`.
@@ -13,6 +14,7 @@ Rules:
 - Use `whenLoaded`, `whenCounted`, and `whenAggregated`.
 - Do not put business decisions or side effects in Resources.
 - Format Value Objects into JSON-friendly shapes.
+- Do not place Data Objects, Actions, Query Objects, Enums, or Exceptions in Resource folders.
 
 Good example:
 

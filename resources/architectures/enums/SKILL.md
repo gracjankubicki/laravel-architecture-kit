@@ -37,6 +37,8 @@ Enums are a contract. A backed enum value can be stored in the database, returne
 - Use `fromLegacyValue()` only for small, stable legacy mappings. Contextual imports need a mapper or Action.
 - Simple transition rules may live on the enum; permissions, events, notifications, and side effects must live outside it.
 - Config modes may use enums when options are closed and controlled by code. Parse config with `Enum::from()` and fail fast.
+- Enum folders MUST contain Enums only.
+- Do not put Enums under `app/Actions/**`, `app/Data/**`, or `app/Queries/**`.
 
 ## Placement
 

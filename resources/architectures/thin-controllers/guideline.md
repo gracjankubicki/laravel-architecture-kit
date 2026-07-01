@@ -8,7 +8,7 @@ Default placement:
 Rules:
 - A controller method should call at most one Action by default.
 - Use typed Form Requests when the Form Requests architecture is enabled.
-- Pass `$request->data()` to Actions or Query Objects when Data Objects are enabled.
+- Pass `$request->toData()` to Actions or Query Objects when Data Objects are enabled.
 - Keep response decisions in the controller: resource, redirect, status code, or JSON wrapper.
 - Do not put business rules, transactions, persistence orchestration, external API workflows, or domain loops in controllers.
 - If a controller needs several write operations, create one larger Action that names the workflow.
@@ -21,7 +21,7 @@ final class InvoiceController
 {
     public function store(StoreInvoiceRequest $request, CreateInvoice $createInvoice): InvoiceResource
     {
-        $invoice = $createInvoice->handle($request->data());
+        $invoice = $createInvoice->handle($request->toData());
 
         return InvoiceResource::make($invoice);
     }

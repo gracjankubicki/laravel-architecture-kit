@@ -20,3 +20,5 @@ Use this skill when repeated model-specific query methods should live on a custo
 - Builders do not mutate domain state.
 - Builders do not know about requests or responses.
 - Builders should not become report or endpoint classes.
+- Builder folders MUST contain custom Eloquent Builders only.
+- Do not put Query Objects, Data Objects, Actions, API Resources, or Enums under `app/Models/Builders/**`.

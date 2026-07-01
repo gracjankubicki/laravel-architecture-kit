@@ -5,6 +5,7 @@ Default placement:
 - `app/ValueObjects`
 - `app/Domain/.../ValueObjects` in modular projects
 - Follow existing project structure if it is more specific.
+- Keep Value Object folders type-pure. Do not place Actions, Data Objects, Enums, Resources, Queries, or Exceptions in Value Object folders.
 
 Rules:
 - Use `final readonly class`.
@@ -15,6 +16,7 @@ Rules:
 - Methods must return new objects instead of mutating current state.
 - Do not extend Eloquent Model.
 - Persist Value Objects through casts, accessors/mutators, or explicit mapping.
+- Do not hide Value Objects inside Action or Data Object folders.
 
 Good example:
 

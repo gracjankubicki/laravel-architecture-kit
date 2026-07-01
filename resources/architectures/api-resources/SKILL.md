@@ -21,3 +21,5 @@ Use this skill when implementing JSON response presentation.
 - Resources do not lazy load.
 - Resources do not mutate state.
 - Resources format output only.
+- Resource folders MUST contain API Resources and Resource Collections only.
+- Do not put Data Objects, Actions, Query Objects, Enums, Exceptions, or Value Objects under `app/Http/Resources/**`.

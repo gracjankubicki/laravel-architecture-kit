@@ -22,3 +22,5 @@ Use this skill when a domain concept needs type safety, invariants, and value se
 - No `ValueObject` suffix.
 - No Eloquent inheritance.
 - Value Objects protect the domain even when request validation exists.
+- Value Object folders MUST contain Value Objects only.
+- Do not put Value Objects under `app/Actions/**`, `app/Data/**`, or `app/Enums/**`.

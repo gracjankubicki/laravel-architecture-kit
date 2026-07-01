@@ -4,6 +4,7 @@ Query Objects represent named read use cases.
 Default placement:
 - `app/Queries`
 - Follow existing project structure if it is more specific.
+- Keep Query folders type-pure. Do not place Data Objects, Result objects, Builders, Resources, Actions, or Enums under `app/Queries/**`.
 
 Rules:
 - Use `final class`.
@@ -14,6 +15,7 @@ Rules:
 - Accept a Data Object, Value Objects, or explicit typed arguments for filters.
 - A Query Object may compose Custom Eloquent Builder methods.
 - A Query Object may decide eager loading, sorting, filtering, and pagination for one read use case.
+- Put filter/result payloads in Data Object folders and reusable model query vocabulary in Builder folders.
 
 Good example:
 

@@ -5,6 +5,7 @@ Default placement:
 - Place enums near the domain or model that owns the concept, for example `App\Invoices\Enums\InvoiceStatus`.
 - Use `App\Enums` only for truly shared cross-domain enums or simple applications without domain folders.
 - Follow existing project structure if it is more specific.
+- Keep Enum folders type-pure. Do not place Actions, Data Objects, Exceptions, Resources, Queries, or Value Objects in Enum folders.
 
 Rules:
 - Use PHP enums for finite sets instead of string constants or magic strings.
@@ -25,6 +26,7 @@ Rules:
 - Optional `options()` helpers may expose `value` + `label` lists for form choices and API metadata.
 - Nullable enum columns should use `null` only for a true missing/unknown value. Real domain states must be explicit cases.
 - Public enum methods that define API/UI/domain contracts should have focused tests.
+- Do not hide Enums inside Action or Data Object folders.
 
 Good example:
 

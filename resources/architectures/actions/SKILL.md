@@ -23,3 +23,38 @@ Use this skill when implementing or refactoring write/application use cases.
 - Do not create repositories merely to hide Eloquent.
 - Do not split one use case into artificial micro-Actions.
 - Orchestrator Actions are allowed only when the class names a larger workflow.
+- Action folders MUST contain Actions only.
+- Do not put Data Objects, Result objects, Enums, Exceptions, API Resources, or Value Objects under `app/Actions/**`.
+- Put supporting classes in the matching architecture folder, for example `app/Data/Documents`, `app/Enums/Documents`, or `app/Exceptions/Documents`.
+
+## Folder Purity
+
+Use pattern-first placement when the project uses pattern-first folders:
+
+```text
+app/
+  Actions/Documents/ApproveDocument.php
+  Data/Documents/ApproveDocumentData.php
+  Enums/Documents/DocumentStatus.php
+  Exceptions/Documents/DocumentApprovalFailed.php
+```
+
+Use domain-first placement when the project already does that:
+
+```text
+app/
+  Documents/Actions/ApproveDocument.php
+  Documents/Data/ApproveDocumentData.php
+  Documents/Enums/DocumentStatus.php
+  Documents/Exceptions/DocumentApprovalFailed.php
+```
+
+Do not mix them like this:
+
+```text
+app/
+  Actions/Documents/ApproveDocument.php
+  Actions/Documents/ApproveDocumentData.php
+  Actions/Documents/DocumentStatus.php
+  Actions/Documents/DocumentApprovalFailed.php
+```

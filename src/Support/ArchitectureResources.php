@@ -166,6 +166,19 @@ Before changing application architecture:
 - Follow existing project structure when it is more specific than the default paths below.
 - Keep framework adapters thin and keep business decisions in the architecture boundary selected for that behavior.
 - Load the listed Architecture Kit skill before implementing or refactoring code for that architecture.
+
+Architecture folder purity:
+
+- Architecture folders MUST stay type-pure.
+- Do not place supporting classes inside another architecture folder.
+- `app/Actions/**` contains Actions only.
+- `app/Data/**` contains Data Objects, DTOs, and Result objects only.
+- `app/ValueObjects/**` contains Value Objects only.
+- `app/Enums/**` contains Enums only.
+- `app/Queries/**` contains Query Objects only.
+- `app/Http/Resources/**` contains API Resources and Resource Collections only.
+- `app/Exceptions/**` contains Exceptions only.
+- If the project uses domain-first structure, keep the same purity under the domain folder, for example `app/Documents/Actions`, `app/Documents/Data`, `app/Documents/Enums`, and `app/Documents/Exceptions`.
 MARKDOWN;
     }
 

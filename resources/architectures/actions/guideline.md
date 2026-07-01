@@ -4,6 +4,7 @@ Actions represent named write/application use cases.
 Default placement:
 - `app/Actions`
 - Follow existing project structure if it is more specific.
+- Keep Action folders type-pure. Do not place Data Objects, Result objects, Enums, Exceptions, Resources, or Value Objects under `app/Actions/**`.
 
 Rules:
 - Use `final class`.
@@ -15,6 +16,7 @@ Rules:
 - Put transaction boundaries in the Action when the use case needs atomicity.
 - Keep framework-specific request and response concerns outside the Action.
 - Action-to-Action calls are exceptional and should only represent explicit orchestration of multiple full use cases.
+- Put supporting classes in their matching architecture folders, for example `app/Data`, `app/Enums`, `app/Exceptions`, or their domain-first equivalents.
 
 Good names:
 - `CreateInvoice`

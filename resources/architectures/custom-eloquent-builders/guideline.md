@@ -4,6 +4,7 @@ Custom Eloquent Builders provide reusable model-specific query vocabulary.
 Default placement:
 - `app/Models/Builders`
 - Follow existing project structure if it is more specific.
+- Keep Builder folders type-pure. Only custom Eloquent Builder classes belong in Builder folders.
 
 Rules:
 - Use `final class`.
@@ -13,6 +14,7 @@ Rules:
 - Terminal methods may return results, but use them carefully.
 - Do not include request, response, endpoint orchestration, authorization, or mutations.
 - Query Objects may compose builder methods for endpoint-specific reads.
+- Do not place Query Objects, Data Objects, Actions, Resources, or Enums in Builder folders.
 
 Good example:
 

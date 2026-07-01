@@ -21,3 +21,22 @@ Use this skill when typed payloads should cross application boundaries.
 - No Eloquent inheritance.
 - No business workflow.
 - Prefer Value Objects for domain values when enabled.
+- Data folders MUST contain Data Objects, DTOs, and Result objects only.
+- Do not put Data Objects or Result objects under `app/Actions/**` or `app/Queries/**`.
+- Result objects returned by Actions or Query Objects belong in the Data folder unless the project already has a stricter convention.
+
+## Folder Purity
+
+Pattern-first:
+
+```text
+app/Data/Documents/DownloadOriginalDocumentResult.php
+app/Data/Documents/StartDocumentPseudonymizationData.php
+```
+
+Domain-first:
+
+```text
+app/Documents/Data/DownloadOriginalDocumentResult.php
+app/Documents/Data/StartDocumentPseudonymizationData.php
+```
