@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit;
 
 use Illuminate\Support\ServiceProvider;
+use Taqie\ArchitectureKit\Commands\AuditCommand;
 use Taqie\ArchitectureKit\Commands\DoctorCommand;
 use Taqie\ArchitectureKit\Commands\InstallCommand;
 
@@ -26,6 +27,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
         ], 'architectures-config');
 
         $this->commands([
+            AuditCommand::class,
             DoctorCommand::class,
             InstallCommand::class,
         ]);

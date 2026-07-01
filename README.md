@@ -31,11 +31,14 @@ Boost then syncs the generated `.ai` resources into agent files such as `AGENTS.
 ```bash
 php artisan architecture-kit:install
 php artisan architecture-kit:doctor
+php artisan architecture-kit:audit --changed --strict
 ```
 
 `architecture-kit:install` is idempotent. Re-run it to change the selected architectures or regenerate outdated `.ai` resources.
 
 `architecture-kit:doctor` is read-only. It reports missing, outdated, stale, or blocked generated resources and exits with a non-zero code when the Architecture Kit resources are not current.
+
+`architecture-kit:audit` is read-only. It scans application code against the enabled architecture rules. Use `--changed --strict` before finishing AI-generated code so warnings and errors block the final handoff.
 
 ## Architectures
 
