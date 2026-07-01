@@ -145,11 +145,15 @@ final readonly class HookWriter
         ];
 
         $hooks['Stop'] = $stopGroups;
-        $decoded['hooks'] = $hooks;
-        $decoded['_architectureKit'] = [
-            'generated' => true,
-            'marker' => self::MARKER,
-        ];
+        unset($decoded['_architectureKit']);
+
+        if ($agent->hookMode() === 'codex') {
+            $decoded = [
+                'hooks' => $hooks,
+            ];
+        } else {
+            $decoded['hooks'] = $hooks;
+        }
 
         return (json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}')."\n";
     }

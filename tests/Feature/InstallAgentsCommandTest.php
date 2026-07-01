@@ -33,7 +33,9 @@ class InstallAgentsCommandTest extends TestCase
         $this->assertStringContainsString('args = ["artisan", "architecture-kit:mcp"]', $codexMcp);
         $this->assertStringContainsString('"architecture-kit:mcp"', $claudeMcp);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $codexHooks);
+        $this->assertStringNotContainsString('_architectureKit', $codexHooks);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh claude', $claudeHooks);
+        $this->assertStringNotContainsString('_architectureKit', $claudeHooks);
         $this->assertStringContainsString('"codex"', $state);
         $this->assertStringContainsString('"claude_code"', $state);
         $this->assertSame('755', substr(sprintf('%o', fileperms($this->tempPath.'/.architecture-kit/hooks/guard.sh')), -3));
