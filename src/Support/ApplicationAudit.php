@@ -39,6 +39,7 @@ final class ApplicationAudit
                 ...$this->apiResourceFindings($enabled, $path, $contents),
                 ...$this->modernPhpFindings($enabled, $path, $contents),
                 ...$this->serviceLocatorFindings($path, $contents),
+                ...$this->hiddenDependencyFactoryFindings($path, $contents),
                 ...$this->unenabledPatternFindings($enabled, $path),
             );
         }
@@ -405,6 +406,26 @@ final class ApplicationAudit
 
         return $this->patternFindings('warn', 'service-locator', $path, $contents, [
             '/\bapp\s*\(\s*[A-Za-z0-9_\\\\]+::class\s*\)/' => 'Avoid service locator app(...) in controllers, resources, and payload helpers; prefer explicit dependencies or move behavior behind an enabled architecture boundary.',
+        ]);
+    }
+
+    /**
+     * @return array<int, AuditFinding>
+     */
+    private function hiddenDependencyFactoryFindings(string $path, string $contents): array
+    {
+        if (
+            ! str_starts_with($path, 'app/Http/Controllers/')
+            && ! str_starts_with($path, 'app/Actions/')
+            && ! str_starts_with($path, 'app/Queries/')
+            && ! str_starts_with($path, 'app/Http/Resources/')
+            && ! str_contains($path, 'Payload')
+        ) {
+            return [];
+        }
+
+        return $this->patternFindings('warn', 'testability', $path, $contents, [
+            '/private\s+static\s+function\s+\w+\s*\([^)]*\)\s*:\s*[A-Za-z0-9_\\\\]+\s*\{[^{}]*return\s+new\s+(?!self\b|static\b|parent\b)[A-Za-z0-9_\\\\]+\s*\(/s' => 'Do not replace app(...) with a private static factory that creates a collaborator; inject the dependency or move creation behind an enabled architecture boundary so the code stays testable.',
         ]);
     }
 

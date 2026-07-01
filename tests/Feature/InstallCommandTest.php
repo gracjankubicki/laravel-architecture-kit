@@ -41,6 +41,9 @@ class InstallCommandTest extends TestCase
         $this->assertStringContainsString('AI agents MUST NOT implement custom infrastructure before checking existing options.', $guideline);
         $this->assertStringContainsString('Search for maintained Laravel ecosystem packages.', $guideline);
         $this->assertStringContainsString('When custom code is chosen, state the reason in the handoff or implementation notes.', $guideline);
+        $this->assertStringContainsString('## Testability Architecture Rule', $guideline);
+        $this->assertStringContainsString('Do not replace `app(SomeClass::class)` with private static factory helpers that return `new SomeClass()`.', $guideline);
+        $this->assertStringContainsString('Code should be easy to test by passing test doubles', $guideline);
         $this->assertStringContainsString('Architecture folder purity:', $guideline);
         $this->assertStringContainsString('Architecture folders MUST stay type-pure.', $guideline);
         $this->assertStringContainsString('`app/Actions/**` contains Actions only.', $guideline);

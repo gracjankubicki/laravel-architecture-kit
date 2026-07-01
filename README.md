@@ -132,6 +132,8 @@ The detailed architecture rules and skills are generated into the consuming proj
 
 Generated Architecture Kit guidance includes a Package-First Architecture Rule. AI agents must search existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party PHP packages before writing custom infrastructure. Custom code is allowed only when no suitable maintained package fits the project constraints or can safely provide the required behavior.
 
+Generated guidance also includes a Testability Architecture Rule. AI agents must keep dependencies explicit and must not replace `app(SomeClass::class)` with private static factories that call `new SomeClass()`. Use constructor or method injection, or move behavior behind an enabled architecture boundary.
+
 ## Laravel MCP Integration
 
 Architecture Kit requires `laravel/mcp` and registers a local MCP server named:

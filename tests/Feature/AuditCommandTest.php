@@ -452,6 +452,49 @@ PHP);
             ->assertExitCode(1);
     }
 
+    public function test_it_warns_for_hidden_private_static_dependency_factories(): void
+    {
+        $this->writeConfig([
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Actions/Documents/StartDocumentPseudonymization.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Documents;
+
+final class StartDocumentPseudonymization
+{
+    public function handle(): void
+    {
+        self::documentTemplate()->handle();
+    }
+
+    private static function documentTemplate(): ResolveWorkingCaseDocumentTemplate
+    {
+        return new ResolveWorkingCaseDocumentTemplate();
+    }
+}
+PHP);
+
+        $result = (new ApplicationAudit(new Filesystem(), $this->tempPath))->run([Architecture::Actions], changedOnly: false);
+
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'testability'
+                && str_contains($finding->message, 'private static factory')
+        ));
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('warn  testability')
+            ->assertExitCode(0);
+
+        $this->artisan('architecture-kit:audit --strict')
+            ->expectsOutputToContain('warn  testability')
+            ->assertExitCode(1);
+    }
+
     public function test_modern_php_does_not_require_override_on_form_request_convention_methods(): void
     {
         $this->writeConfig([

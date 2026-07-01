@@ -28,6 +28,7 @@ final class ArchitectureResources
             '## Architecture Kit',
             $this->globalRules(),
             $this->packageFirstRule(),
+            $this->testabilityRule(),
             $this->enabledArchitectures($enabled),
             $this->composition($enabled),
             $this->architectureRules($enabled),
@@ -184,6 +185,39 @@ Architecture folder purity:
 - `app/Http/Resources/**` contains API Resources and Resource Collections only.
 - `app/Exceptions/**` contains Exceptions only.
 - If the project uses domain-first structure, keep the same purity under the domain folder, for example `app/Documents/Actions`, `app/Documents/Data`, `app/Documents/Enums`, and `app/Documents/Exceptions`.
+MARKDOWN;
+    }
+
+    private function testabilityRule(): string
+    {
+        return <<<'MARKDOWN'
+## Testability Architecture Rule
+
+Architecture Kit code MUST keep dependencies explicit and testable.
+
+- Do not replace `app(SomeClass::class)` with private static factory helpers that return `new SomeClass()`.
+- Do not hide collaborators behind `private static function collaborator(): Collaborator`.
+- Prefer constructor injection, method injection, or an enabled architecture boundary such as an Action or Query Object.
+- If object creation is real domain construction, keep it local and obvious. If it is a service/collaborator dependency, inject it.
+- Code should be easy to test by passing test doubles or focused inputs without reaching into the service container or hidden factories.
+
+Bad replacement:
+
+```php
+private static function documentTemplate(): ResolveWorkingCaseDocumentTemplate
+{
+    return new ResolveWorkingCaseDocumentTemplate();
+}
+```
+
+Better:
+
+```php
+public function __construct(
+    private ResolveWorkingCaseDocumentTemplate $documentTemplate,
+) {
+}
+```
 MARKDOWN;
     }
 
