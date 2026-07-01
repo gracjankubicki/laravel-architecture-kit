@@ -147,6 +147,91 @@ PHP);
             ->assertExitCode(1);
     }
 
+    public function test_it_fails_when_laravel_ai_is_called_directly_from_controller(): void
+    {
+        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'laravel/ai' => '^0.8',
+            ],
+        ], JSON_PRETTY_PRINT));
+
+        $this->writeCurrentResources([Architecture::LaravelAi]);
+
+        $this->writeFile('app/Http/Controllers/DocumentSummaryController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Ai\Agents\DocumentSummaryAgent;
+
+final class DocumentSummaryController
+{
+    public function show(): array
+    {
+        return DocumentSummaryAgent::make()
+            ->prompt('Summarize the document.')
+            ->toArray();
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('"severity": "error"', $output);
+        $this->assertStringContainsString('"rule": "laravel-ai"', $output);
+        $this->assertStringContainsString('Controllers, FormRequests, API Resources, and Models must not call Laravel AI Agents directly', $output);
+    }
+
+    public function test_it_fails_on_generic_laravel_ai_gateway_and_anonymous_tool(): void
+    {
+        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'laravel/ai' => '^0.8',
+            ],
+        ], JSON_PRETTY_PRINT));
+
+        $this->writeCurrentResources([Architecture::LaravelAi]);
+
+        $this->writeFile('app/Ai/Gateways/GenericAiGateway.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ai\Gateways;
+
+use Laravel\Ai\Contracts\Tool;
+
+final class GenericAiGateway
+{
+    public function runAgent(string $agent, string $input): array
+    {
+        $tool = new class implements Tool {
+        };
+
+        return (new StructuredGatewayAgent($agent))
+            ->prompt($input, provider: 'openrouter', model: 'openai/gpt-4.1')
+            ->toArray();
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--strict' => true, '--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('"severity": "error"', $output);
+        $this->assertStringContainsString('"severity": "warn"', $output);
+        $this->assertStringContainsString('"rule": "laravel-ai"', $output);
+        $this->assertStringContainsString('Generic runAgent(string $agent, string $input): array gateways are diagnostic-only', $output);
+        $this->assertStringContainsString('Production Laravel AI Tools must be dedicated classes', $output);
+        $this->assertStringContainsString('StructuredGatewayAgent is diagnostic-only', $output);
+        $this->assertStringContainsString('Avoid raw provider/model strings', $output);
+    }
+
     /**
      * @param  array<int, Architecture>  $enabled
      */

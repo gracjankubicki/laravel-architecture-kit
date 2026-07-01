@@ -112,6 +112,32 @@ class DoctorCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_it_fails_when_laravel_ai_is_enabled_without_laravel_ai_requirement(): void
+    {
+        $this->writeCurrentResources([Architecture::LaravelAi]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  composer.json')
+            ->expectsOutputToContain('Laravel AI is enabled but composer.json does not require laravel/ai.')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_warns_when_laravel_ai_is_installed_but_architecture_is_disabled(): void
+    {
+        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'laravel/ai' => '^0.8',
+            ],
+        ], JSON_PRETTY_PRINT));
+
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('warning  composer.json')
+            ->expectsOutputToContain('laravel/ai is installed but Architecture::LaravelAi is not enabled.')
+            ->assertExitCode(0);
+    }
+
     public function test_every_architecture_has_source_resources(): void
     {
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath);

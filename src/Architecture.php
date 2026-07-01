@@ -16,6 +16,7 @@ enum Architecture: string
     case Enums = 'enums';
     case ApiResources = 'api-resources';
     case ModernPhp85 = 'modern-php-85';
+    case LaravelAi = 'laravel-ai';
 
     /**
      * @return array<int, self>
@@ -47,6 +48,7 @@ enum Architecture: string
             self::Enums,
             self::ApiResources,
             self::ModernPhp85,
+            self::LaravelAi,
         ];
     }
 
@@ -77,6 +79,7 @@ enum Architecture: string
             self::Enums => 'Enums',
             self::ApiResources => 'API Resources',
             self::ModernPhp85 => 'Modern PHP 8.5',
+            self::LaravelAi => 'Laravel AI',
         };
     }
 

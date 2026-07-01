@@ -15,6 +15,7 @@ use Taqie\ArchitectureKit\Install\InstallResult;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
+use Taqie\ArchitectureKit\Support\LaravelAiRequirement;
 use Taqie\ArchitectureKit\Support\PhpRequirement;
 
 use function Laravel\Prompts\confirm;
@@ -33,6 +34,14 @@ class InstallCommand extends Command
 
         try {
             $current = $config->readOrDefault();
+
+            if (
+                ! $files->exists(config_path('architectures.php'))
+                && LaravelAiRequirement::projectRequiresLaravelAi($files, base_path())
+                && ! in_array(Architecture::LaravelAi, $current, true)
+            ) {
+                $current[] = Architecture::LaravelAi;
+            }
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 
@@ -75,6 +84,16 @@ class InstallCommand extends Command
         ) {
             $this->error('Modern PHP 8.5 is enabled, but composer.json does not require PHP 8.5 or newer.');
             $this->line('Update composer.json require.php to a PHP 8.5+ constraint, then run php artisan architecture-kit:install again.');
+
+            return self::FAILURE;
+        }
+
+        if (
+            in_array(Architecture::LaravelAi, $enabled, true)
+            && ! LaravelAiRequirement::projectRequiresLaravelAi($files, base_path())
+        ) {
+            $this->error('Laravel AI is enabled, but composer.json does not require laravel/ai.');
+            $this->line('Install laravel/ai or disable Architecture::LaravelAi, then run php artisan architecture-kit:install again.');
 
             return self::FAILURE;
         }

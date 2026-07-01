@@ -334,6 +334,49 @@ PHP);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-modern-php-85/SKILL.md');
     }
 
+    public function test_it_blocks_laravel_ai_without_laravel_ai_requirement(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::LaravelAi]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['laravel-ai'], Architecture::promptOptions())
+            ->expectsOutputToContain('Laravel AI is enabled, but composer.json does not require laravel/ai.')
+            ->assertExitCode(1);
+
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
+    }
+
+    public function test_it_generates_laravel_ai_resources_when_project_requires_laravel_ai(): void
+    {
+        $files = new Filesystem();
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'laravel/ai' => '^0.8',
+            ],
+        ], JSON_PRETTY_PRINT));
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::LaravelAi]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['laravel-ai'], Architecture::promptOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
+
+        $this->assertStringContainsString('### Laravel AI', $guideline);
+        $this->assertStringContainsString('Action or Job', $guideline);
+        $this->assertStringContainsString('Controllers, FormRequests, API Resources, and Models must not call Laravel AI directly.', $guideline);
+        $this->assertStringContainsString('name: architecture-kit-laravel-ai', $skill);
+        $this->assertStringContainsString('Generic `runAgent(string $agent, string $input): array` gateways are diagnostic-only', $skill);
+        $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
+    }
+
     /**
      * @param  array<int, Architecture>  $architectures
      */

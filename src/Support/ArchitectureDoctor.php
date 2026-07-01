@@ -56,6 +56,32 @@ final readonly class ArchitectureDoctor
             );
         }
 
+        $projectRequiresLaravelAi = LaravelAiRequirement::projectRequiresLaravelAi($this->files, $this->basePath);
+
+        if (
+            in_array(Architecture::LaravelAi, $enabled, true)
+            && ! $projectRequiresLaravelAi
+        ) {
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'config',
+                status: 'blocked',
+                path: 'composer.json',
+                message: 'Laravel AI is enabled but composer.json does not require laravel/ai.',
+            );
+        }
+
+        if (
+            ! in_array(Architecture::LaravelAi, $enabled, true)
+            && $projectRequiresLaravelAi
+        ) {
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'config',
+                status: 'warning',
+                path: 'composer.json',
+                message: 'laravel/ai is installed but Architecture::LaravelAi is not enabled.',
+            );
+        }
+
         $expected = [
             'guideline' => $this->resources->guideline($enabled),
         ];

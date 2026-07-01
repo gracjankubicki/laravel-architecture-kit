@@ -38,6 +38,7 @@ final class ApplicationAudit
                 ...$this->enumFindings($enabled, $path, $contents),
                 ...$this->apiResourceFindings($enabled, $path, $contents),
                 ...$this->modernPhpFindings($enabled, $path, $contents),
+                ...$this->laravelAiFindings($enabled, $path, $contents),
                 ...$this->serviceLocatorFindings($path, $contents),
                 ...$this->hiddenDependencyFactoryFindings($path, $contents),
                 ...$this->unenabledPatternFindings($enabled, $path),
@@ -479,6 +480,104 @@ final class ApplicationAudit
      * @param  array<int, Architecture>  $enabled
      * @return array<int, AuditFinding>
      */
+    private function laravelAiFindings(array $enabled, string $path, string $contents): array
+    {
+        if (! in_array(Architecture::LaravelAi, $enabled, true)) {
+            return [];
+        }
+
+        $findings = [];
+
+        if (
+            $this->isLaravelAiForbiddenAdapterPath($path)
+            && preg_match('/\b[A-Za-z_][A-Za-z0-9_]*Agent::make\s*\(\)\s*->prompt\s*\(/s', $contents, $match, PREG_OFFSET_CAPTURE)
+        ) {
+            $findings[] = $this->finding(
+                'error',
+                'laravel-ai',
+                $path,
+                $this->line($contents, $match[0][1]),
+                'Controllers, FormRequests, API Resources, and Models must not call Laravel AI Agents directly; use an AI Gateway, Action, or Job.',
+            );
+        }
+
+        if (
+            $this->isLaravelAiForbiddenAdapterPath($path)
+            && str_contains($contents, 'Laravel\\Ai\\')
+            && preg_match('/(?:->|::)prompt\s*\(/', $contents, $match, PREG_OFFSET_CAPTURE)
+        ) {
+            $findings[] = $this->finding(
+                'error',
+                'laravel-ai',
+                $path,
+                $this->line($contents, $match[0][1]),
+                'Controllers, FormRequests, API Resources, and Models must not call Laravel AI directly; use an AI Gateway, Action, or Job.',
+            );
+        }
+
+        if (
+            ! $this->isLaravelAiBoundaryPath($path)
+            && preg_match('/\b(?:Embeddings|Image|Audio|Transcription|Reranking|Files|Stores)::(?:for|of|fromBase64|fromPath|fromStorage|fromUpload|get|create|delete)\s*\(/', $contents, $match, PREG_OFFSET_CAPTURE)
+        ) {
+            $findings[] = $this->finding(
+                'error',
+                'laravel-ai',
+                $path,
+                $this->line($contents, $match[0][1]),
+                'Laravel AI media, embedding, reranking, file, and store calls must stay behind the AI boundary.',
+            );
+        }
+
+        if (preg_match('/new\s+class\s+implements\s+(?:[A-Za-z0-9_\\\\]+\\\\)?Tool\b/', $contents, $match, PREG_OFFSET_CAPTURE)) {
+            $findings[] = $this->finding(
+                'error',
+                'laravel-ai',
+                $path,
+                $this->line($contents, $match[0][1]),
+                'Production Laravel AI Tools must be dedicated classes, not anonymous classes.',
+            );
+        }
+
+        if (preg_match('/function\s+runAgent\s*\(\s*string\s+\$agent\s*,\s*string\s+\$input\s*\)\s*:\s*array/s', $contents, $match, PREG_OFFSET_CAPTURE)) {
+            $findings[] = $this->finding(
+                'error',
+                'laravel-ai',
+                $path,
+                $this->line($contents, $match[0][1]),
+                'Generic runAgent(string $agent, string $input): array gateways are diagnostic-only; production gateways need domain-named typed methods.',
+            );
+        }
+
+        if (
+            ! $this->isLaravelAiDiagnosticPath($path)
+            && preg_match('/new\s+StructuredGatewayAgent\s*\(/', $contents, $match, PREG_OFFSET_CAPTURE)
+        ) {
+            $findings[] = $this->finding(
+                'error',
+                'laravel-ai',
+                $path,
+                $this->line($contents, $match[0][1]),
+                'StructuredGatewayAgent is diagnostic-only; production workflows need dedicated Agent classes.',
+            );
+        }
+
+        if (preg_match('/(?:->|::)prompt\s*\((?:(?!;).)*\b(?:provider|model):\s*[\'"][^\'"]+[\'"]/s', $contents, $match, PREG_OFFSET_CAPTURE)) {
+            $findings[] = $this->finding(
+                'warn',
+                'laravel-ai',
+                $path,
+                $this->line($contents, $match[0][1]),
+                'Avoid raw provider/model strings in production Laravel AI prompt calls; use workflow config, typed config accessors, or provider option objects.',
+            );
+        }
+
+        return $findings;
+    }
+
+    /**
+     * @param  array<int, Architecture>  $enabled
+     * @return array<int, AuditFinding>
+     */
     private function unenabledPatternFindings(array $enabled, string $path): array
     {
         $findings = [];
@@ -606,6 +705,32 @@ final class ApplicationAudit
         }
 
         return false;
+    }
+
+    private function isLaravelAiForbiddenAdapterPath(string $path): bool
+    {
+        return str_starts_with($path, 'app/Http/Controllers/')
+            || str_starts_with($path, 'app/Http/Requests/')
+            || str_starts_with($path, 'app/Http/Resources/')
+            || str_starts_with($path, 'app/Models/');
+    }
+
+    private function isLaravelAiBoundaryPath(string $path): bool
+    {
+        if ($this->isLaravelAiForbiddenAdapterPath($path)) {
+            return false;
+        }
+
+        return str_starts_with($path, 'app/Ai/')
+            || str_contains($path, '/Ai/');
+    }
+
+    private function isLaravelAiDiagnosticPath(string $path): bool
+    {
+        return str_contains($path, '/Diagnostics/')
+            || str_contains($path, '/Diagnostic/')
+            || str_contains($path, '/Dev/')
+            || str_contains($path, '/Debug/');
     }
 
     private function modelCastsAttributeToEnum(string $contents, string $attribute, string $enum): bool
