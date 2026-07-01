@@ -166,10 +166,12 @@ Before changing application architecture:
 - Follow existing project structure when it is more specific than the default paths below.
 - Keep framework adapters thin and keep business decisions in the architecture boundary selected for that behavior.
 - Load the listed Architecture Kit skill before implementing or refactoring code for that architecture.
-- Before finishing a code change, run `php artisan architecture-kit:audit --changed --strict`.
-- In CI or after committing, run `php artisan architecture-kit:audit --changed --base=origin/main --strict`.
-- You MUST fix all Architecture Kit audit errors before final response.
-- Do not claim the work is done while the audit reports errors.
+- Before building custom infrastructure, search for existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party packages.
+- Implement custom code only when no suitable package exists, the package does not fit project constraints, or the required behavior cannot be safely provided by a package.
+- Before finishing a code change, run `php artisan architecture-kit:guard --changed --strict`.
+- In CI or after committing, run `php artisan architecture-kit:guard --changed --base=origin/main --strict`.
+- You MUST fix all Architecture Kit guard errors before final response.
+- Do not claim the work is done while the guard reports errors.
 
 Architecture folder purity:
 

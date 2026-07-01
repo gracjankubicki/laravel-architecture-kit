@@ -18,6 +18,7 @@ Rules:
 - Good enum methods include `label()`, `options()`, `isFinal()`, `transitionTargets()`, or small stable `fromLegacyValue()` mappings.
 - Do not put workflow, persistence, service calls, or authorization logic in enums.
 - Use Laravel enum casts on Eloquent models when enum values are stored in columns.
+- If a model attribute such as `status`, `state`, `type`, or `category` has a matching enum class, add an Eloquent cast unless the value is intentionally legacy/open-ended.
 - Use `string`/`varchar` columns for enum values by default. Native database enums or check constraints are only appropriate when the project already uses that convention.
 - Use `Rule::enum(MyEnum::class)` in FormRequests.
 - Human-facing API Resources MUST expose enums as explicit `value` + `label` objects.

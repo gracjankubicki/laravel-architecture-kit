@@ -13,6 +13,7 @@ Rules:
 - Do not trigger lazy loading.
 - Use `whenLoaded`, `whenCounted`, and `whenAggregated`.
 - Do not put business decisions or side effects in Resources.
+- Avoid service locator calls such as `app(SomeClass::class)` in Resources; pass loaded data or resolved collaborators from the adapter/query layer.
 - Format Value Objects into JSON-friendly shapes.
 - Do not place Data Objects, Actions, Query Objects, Enums, or Exceptions in Resource folders.
 

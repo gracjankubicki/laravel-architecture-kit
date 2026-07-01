@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Support;
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Str;
 use SplFileInfo;
 use Taqie\ArchitectureKit\Architecture;
 
@@ -37,6 +38,7 @@ final class ApplicationAudit
                 ...$this->enumFindings($enabled, $path, $contents),
                 ...$this->apiResourceFindings($enabled, $path, $contents),
                 ...$this->modernPhpFindings($enabled, $path, $contents),
+                ...$this->serviceLocatorFindings($path, $contents),
                 ...$this->unenabledPatternFindings($enabled, $path),
             );
         }
@@ -214,7 +216,17 @@ final class ApplicationAudit
             '/::create\s*\(/' => 'Controller creates a model directly; move the write use case to an Action.',
         ];
 
-        return $this->patternFindings('error', 'thin-controller', $path, $contents, $patterns);
+        $findings = $this->patternFindings('error', 'thin-controller', $path, $contents, $patterns);
+
+        array_push(
+            $findings,
+            ...$this->patternFindings('warn', 'thin-controller', $path, $contents, [
+                '/use\s+App\\\\Services\\\\/' => 'Controller depends on an App\\Services class while Actions are enabled; prefer routing write use cases through an Action.',
+                '/\b[A-Za-z_][A-Za-z0-9_]*Service\s+\$[A-Za-z_][A-Za-z0-9_]*/' => 'Controller injects a Service while Actions are enabled; prefer routing write use cases through an Action.',
+            ]),
+        );
+
+        return $findings;
     }
 
     /**
@@ -357,6 +369,7 @@ final class ApplicationAudit
                     '/public\s+const\s+[A-Z0-9_]*STATUSES\s*=/' => 'Finite model status sets should be backed enums with Eloquent casts.',
                     '/public\s+const\s+STATUS_[A-Z0-9_]*\s*=/' => 'Finite model statuses should be backed enums with Eloquent casts.',
                 ]),
+                ...$this->missingEnumCastFindings($path, $contents),
             );
         }
 
@@ -375,6 +388,24 @@ final class ApplicationAudit
         }
 
         return $findings;
+    }
+
+    /**
+     * @return array<int, AuditFinding>
+     */
+    private function serviceLocatorFindings(string $path, string $contents): array
+    {
+        if (
+            ! str_starts_with($path, 'app/Http/Controllers/')
+            && ! str_starts_with($path, 'app/Http/Resources/')
+            && ! str_contains($path, 'Payload')
+        ) {
+            return [];
+        }
+
+        return $this->patternFindings('warn', 'service-locator', $path, $contents, [
+            '/\bapp\s*\(\s*[A-Za-z0-9_\\\\]+::class\s*\)/' => 'Avoid service locator app(...) in controllers, resources, and payload helpers; prefer explicit dependencies or move behavior behind an enabled architecture boundary.',
+        ]);
     }
 
     /**
@@ -464,6 +495,101 @@ final class ApplicationAudit
     private function finding(string $severity, string $rule, string $path, int $line, string $message): AuditFinding
     {
         return new AuditFinding($severity, $rule, $path, $line, $message);
+    }
+
+    /**
+     * @return array<int, AuditFinding>
+     */
+    private function missingEnumCastFindings(string $path, string $contents): array
+    {
+        $class = $this->className($contents);
+
+        if ($class === null) {
+            return [];
+        }
+
+        $attributes = $this->enumLikeModelAttributes($contents);
+        $findings = [];
+
+        foreach ($attributes as $attribute) {
+            $enum = $this->matchingEnumClass($class, $attribute);
+
+            if ($enum === null || $this->modelCastsAttributeToEnum($contents, $attribute, $enum)) {
+                continue;
+            }
+
+            $findings[] = $this->finding(
+                'warn',
+                'enums',
+                $path,
+                $this->lineForNeedle($contents, "'{$attribute}'"),
+                "Model attribute '{$attribute}' looks enum-like and {$enum} exists; add an Eloquent enum cast when the column stores that enum.",
+            );
+        }
+
+        return $findings;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function enumLikeModelAttributes(string $contents): array
+    {
+        if (! preg_match('/protected\s+\$fillable\s*=\s*\[(.*?)\];/s', $contents, $match)) {
+            return [];
+        }
+
+        preg_match_all('/[\'"]([a-zA-Z_][a-zA-Z0-9_]*)[\'"]/', $match[1], $attributes);
+
+        $enumLike = array_filter(
+            $attributes[1] ?? [],
+            fn (string $attribute): bool => preg_match('/(^|_)(status|state|type|category)$/', $attribute) === 1,
+        );
+
+        return array_values(array_unique($enumLike));
+    }
+
+    private function matchingEnumClass(string $modelClass, string $attribute): ?string
+    {
+        $suffix = Str::studly((string) Str::afterLast($attribute, '_'));
+        $candidates = array_values(array_unique([
+            $modelClass.$suffix,
+            Str::studly($attribute),
+        ]));
+
+        foreach ($candidates as $candidate) {
+            if ($this->enumClassExists($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function enumClassExists(string $class): bool
+    {
+        if (! $this->files->isDirectory($this->basePath.'/app')) {
+            return false;
+        }
+
+        foreach ($this->files->allFiles($this->basePath.'/app') as $file) {
+            if ($file->getExtension() !== 'php' || $file->getBasename('.php') !== $class) {
+                continue;
+            }
+
+            $path = $this->relative($file->getPathname());
+
+            if (str_contains($path, '/Enums/') || str_starts_with($path, 'app/Enums/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function modelCastsAttributeToEnum(string $contents, string $attribute, string $enum): bool
+    {
+        return preg_match('/[\'"]'.preg_quote($attribute, '/').'[\'"]\s*=>\s*(?:[A-Za-z0-9_\\\\]+\\\\)?'.preg_quote($enum, '/').'::class/', $contents) === 1;
     }
 
     private function className(string $contents): ?string

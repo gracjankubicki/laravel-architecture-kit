@@ -8,6 +8,10 @@ use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Install\AgentInstaller;
+use Taqie\ArchitectureKit\Install\Agents\Agent;
+use Taqie\ArchitectureKit\Install\AgentsDetector;
+use Taqie\ArchitectureKit\Install\InstallResult;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
@@ -93,18 +97,39 @@ class InstallCommand extends Command
             return self::FAILURE;
         }
 
-        $changes = array_merge($plan['create'], $plan['update'], $plan['remove']);
+        $agentInstall = $this->agentInstall($files);
+        $agentPlan = $agentInstall === null
+            ? $this->emptyAgentPlan()
+            : $agentInstall['installer']->plan($agentInstall['agents'], $agentInstall['mcp'], $agentInstall['hooks']);
+
+        if ($this->blockedAgentPaths($agentPlan) !== []) {
+            $this->error('Architecture Kit cannot continue because unmanaged files block generated targets.');
+            $this->newLine();
+
+            foreach ($this->blockedAgentPaths($agentPlan) as $path) {
+                $this->line("  blocked  {$this->relative($path)}");
+            }
+
+            $this->newLine();
+            $this->line('Move or remove the blocking files, then run php artisan architecture-kit:install again.');
+
+            return self::FAILURE;
+        }
+
+        $changes = array_merge(
+            $plan['create'],
+            $plan['update'],
+            $plan['remove'],
+            $this->agentChangePaths($agentPlan),
+        );
 
         if ($changes === []) {
             $this->info('No file changes needed.');
         } else {
             $this->line('Planned changes:');
 
-            foreach (['create', 'update', 'remove'] as $status) {
-                foreach ($plan[$status] as $path) {
-                    $this->line(sprintf('  %-7s %s', $status, $this->relative($path)));
-                }
-            }
+            $this->showResourcePlan($plan);
+            $this->showAgentPlan($agentPlan);
 
             if (! confirm('Continue?', default: true)) {
                 $this->info('No changes were made.');
@@ -114,6 +139,10 @@ class InstallCommand extends Command
 
             $this->writeFiles($files, $expected);
             $this->removeStaleSkills($files, $removals);
+
+            if ($agentInstall !== null) {
+                $agentInstall['installer']->write($agentInstall['agents'], $agentInstall['mcp'], $agentInstall['hooks']);
+            }
 
             $this->info('Architecture Kit resources generated.');
         }
@@ -133,6 +162,8 @@ class InstallCommand extends Command
         $this->newLine();
         $this->line('Next:');
         $this->line('  php artisan architecture-kit:doctor');
+        $this->line('  php artisan architecture-kit:install-agents');
+        $this->line('  php artisan architecture-kit:guard --changed --strict');
         $this->line('  php artisan boost:update --discover');
 
         return self::SUCCESS;
@@ -253,7 +284,137 @@ class InstallCommand extends Command
 
     private function relative(string $path): string
     {
-        return str_replace(base_path().'/', '', $path);
+        return str_starts_with($path, base_path().'/')
+            ? str_replace(base_path().'/', '', $path)
+            : $path;
     }
 
+    /**
+     * @return array{installer: AgentInstaller, agents: array<int, Agent>, mcp: bool, hooks: bool}|null
+     */
+    private function agentInstall(Filesystem $files): ?array
+    {
+        if (! confirm('Install Architecture Kit MCP and hooks for AI agents now?', default: true)) {
+            return null;
+        }
+
+        $detector = new AgentsDetector($files, base_path());
+        $agentNames = $this->agentNames($detector);
+        $features = $this->agentFeatures();
+
+        return [
+            'installer' => new AgentInstaller($files, base_path()),
+            'agents' => $detector->resolve($agentNames),
+            'mcp' => $features['mcp'],
+            'hooks' => $features['hooks'],
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function agentNames(AgentsDetector $detector): array
+    {
+        $detected = $detector->detectedAgentNames();
+        $default = $detected === [] ? ['codex', 'claude_code'] : $detected;
+
+        return multiselect(
+            label: 'Which AI agents should Architecture Kit configure?',
+            options: collect($detector->agents())
+                ->mapWithKeys(fn (Agent $agent, string $name): array => [$name => $agent->displayName()])
+                ->all(),
+            default: $default,
+            required: 'Select at least one agent.',
+        );
+    }
+
+    /**
+     * @return array{mcp: bool, hooks: bool}
+     */
+    private function agentFeatures(): array
+    {
+        $features = multiselect(
+            label: 'Which agent integrations should Architecture Kit install?',
+            options: [
+                'mcp' => 'MCP server config',
+                'hooks' => 'Guard hooks',
+            ],
+            default: ['mcp', 'hooks'],
+            required: 'Select at least one integration.',
+        );
+
+        return [
+            'mcp' => in_array('mcp', $features, true),
+            'hooks' => in_array('hooks', $features, true),
+        ];
+    }
+
+    /**
+     * @return array{mcp: InstallResult, hooks: InstallResult, state: InstallResult}
+     */
+    private function emptyAgentPlan(): array
+    {
+        $empty = new InstallResult();
+
+        return [
+            'mcp' => $empty,
+            'hooks' => $empty,
+            'state' => $empty,
+        ];
+    }
+
+    /**
+     * @param  array{mcp: InstallResult, hooks: InstallResult, state: InstallResult}  $plan
+     * @return array<int, string>
+     */
+    private function blockedAgentPaths(array $plan): array
+    {
+        return array_values(array_unique(array_merge(
+            $plan['mcp']->blocked,
+            $plan['hooks']->blocked,
+            $plan['state']->blocked,
+        )));
+    }
+
+    /**
+     * @param  array{mcp: InstallResult, hooks: InstallResult, state: InstallResult}  $plan
+     * @return array<int, string>
+     */
+    private function agentChangePaths(array $plan): array
+    {
+        return array_values(array_unique(array_merge(
+            $plan['mcp']->creates,
+            $plan['mcp']->updates,
+            $plan['hooks']->creates,
+            $plan['hooks']->updates,
+            $plan['state']->creates,
+            $plan['state']->updates,
+        )));
+    }
+
+    /**
+     * @param  array{create: array<int, string>, update: array<int, string>, remove: array<int, string>, blocked: array<int, string>}  $plan
+     */
+    private function showResourcePlan(array $plan): void
+    {
+        foreach (['create', 'update', 'remove'] as $status) {
+            foreach ($plan[$status] as $path) {
+                $this->line(sprintf('  %-7s resources %s', $status, $this->relative($path)));
+            }
+        }
+    }
+
+    /**
+     * @param  array{mcp: InstallResult, hooks: InstallResult, state: InstallResult}  $plan
+     */
+    private function showAgentPlan(array $plan): void
+    {
+        foreach ($plan as $area => $result) {
+            foreach (['creates' => 'create', 'updates' => 'update'] as $property => $status) {
+                foreach ($result->{$property} as $path) {
+                    $this->line(sprintf('  %-7s %-9s %s', $status, $area, $path));
+                }
+            }
+        }
+    }
 }

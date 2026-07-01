@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Tests;
 
 use Illuminate\Filesystem\Filesystem;
+use Laravel\Mcp\Server\McpServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Taqie\ArchitectureKit\ArchitectureKitServiceProvider;
 
@@ -37,6 +38,7 @@ abstract class TestCase extends Orchestra
     protected function getPackageProviders($app): array
     {
         return [
+            McpServiceProvider::class,
             ArchitectureKitServiceProvider::class,
         ];
     }

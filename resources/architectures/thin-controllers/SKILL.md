@@ -23,4 +23,6 @@ Use this skill when adding or refactoring Laravel controllers.
 - Do not open database transactions in controllers.
 - Do not call external APIs from controllers.
 - Do not create several models with conditional business decisions in controllers.
+- When Actions are enabled, do not inject `App\Services` into controllers for write use cases. Create a named Action and inject that instead.
+- Avoid `app(SomeClass::class)` in controllers. Prefer constructor/method injection, or move behavior to an Action or Query Object.
 - Response formatting belongs in API Resources when that architecture is enabled.

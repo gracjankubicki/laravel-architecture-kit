@@ -6,12 +6,11 @@ namespace Taqie\ArchitectureKit\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Throwable;
 use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
+use Taqie\ArchitectureKit\Support\ArchitectureDoctor;
+use Taqie\ArchitectureKit\Support\ArchitectureDoctorCheck;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
-use Taqie\ArchitectureKit\Support\GeneratedFile;
-use Taqie\ArchitectureKit\Support\PhpRequirement;
 
 class DoctorCommand extends Command
 {
@@ -23,69 +22,51 @@ class DoctorCommand extends Command
     {
         $config = new ArchitectureConfig(config_path('architectures.php'), $files);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files);
-        $failed = false;
+        $result = (new ArchitectureDoctor($config, $resources, $files, base_path(), $this->getApplication()))->run();
 
         $this->info('Laravel Architecture Kit');
         $this->newLine();
 
-        try {
-            $enabled = $config->read();
-            $resources->assertSourcesExist($enabled);
-            $this->line('Config:');
-            $this->line('  current  config/architectures.php');
-            $this->line('  enabled  '.implode(', ', array_map(fn (Architecture $architecture): string => $architecture->value, $enabled)));
+        $this->line('Config:');
 
-            if (
-                in_array(Architecture::ModernPhp85, $enabled, true)
-                && ! PhpRequirement::projectRequiresPhp85($files, base_path())
-            ) {
-                $failed = true;
-                $this->line('  blocked  composer.json');
-                $this->line('  reason   Modern PHP 8.5 is enabled but composer.json does not require PHP 8.5 or newer.');
+        foreach ($this->checksFor($result->checks, 'config') as $check) {
+            $this->line(sprintf('  %-8s %s', $check->status, $check->path));
+
+            if ($check->message !== null) {
+                $this->line('  reason   '.$check->message);
             }
-        } catch (Throwable $exception) {
-            $this->line('Config:');
-            $this->line('  blocked  config/architectures.php');
-            $this->line('  reason   '.$exception->getMessage());
+        }
 
-            return self::FAILURE;
+        if ($result->enabled !== []) {
+            $this->line('  enabled  '.implode(', ', array_map(fn (Architecture $architecture): string => $architecture->value, $result->enabled)));
         }
 
         $this->newLine();
         $this->line('Generated resources:');
 
-        $expected = [
-            'guideline' => $resources->guideline($enabled),
-        ];
-
-        foreach ($resources->skills($enabled) as $key => $skill) {
-            $expected['skill:'.$key] = $skill;
+        foreach ($this->checksFor($result->checks, 'generated') as $check) {
+            $this->line(sprintf('  %-8s %s', $check->status, $check->path));
         }
 
-        foreach ($expected as $file) {
-            $status = $this->status($files, $resources, $file);
-            $failed = $failed || $status !== 'current';
-            $this->line(sprintf('  %-8s %s', $status, $this->relative($file->path)));
-        }
+        $agentChecks = $this->checksFor($result->checks, 'agents');
 
-        $expectedSkillNames = array_map(
-            fn (Architecture $architecture): string => $architecture->skillName(),
-            $enabled,
-        );
+        if ($agentChecks !== []) {
+            $this->newLine();
+            $this->line('Agents:');
 
-        foreach ($resources->existingGeneratedSkillPaths() as $name => $path) {
-            if (in_array($name, $expectedSkillNames, true)) {
-                continue;
+            foreach ($agentChecks as $check) {
+                $this->line(sprintf('  %-8s %s', $check->status, $check->path));
+
+                if ($check->message !== null) {
+                    $this->line('  reason   '.$check->message);
+                }
             }
-
-            $failed = true;
-            $this->line(sprintf('  %-8s %s', 'stale', $this->relative(dirname($path))));
         }
 
         $this->newLine();
         $this->line('Laravel Boost:');
 
-        if ($this->getApplication()?->has('boost:update') === true) {
+        if ($result->boostInstalled) {
             $this->line('  installed yes');
             $this->line('  sync      php artisan boost:update --discover');
         } else {
@@ -93,7 +74,7 @@ class DoctorCommand extends Command
             $this->line('  warning   Install laravel/boost and run php artisan boost:install or boost:update --discover to sync agent files.');
         }
 
-        if ($failed) {
+        if (! $result->ok()) {
             $this->newLine();
             $this->line('Run php artisan architecture-kit:install to regenerate Architecture Kit resources.');
 
@@ -103,25 +84,15 @@ class DoctorCommand extends Command
         return self::SUCCESS;
     }
 
-    private function status(Filesystem $files, ArchitectureResources $resources, GeneratedFile $file): string
+    /**
+     * @param  array<int, ArchitectureDoctorCheck>  $checks
+     * @return array<int, ArchitectureDoctorCheck>
+     */
+    private function checksFor(array $checks, string $area): array
     {
-        if (! $files->exists($file->path)) {
-            return 'missing';
-        }
-
-        if ($files->get($file->path) === $file->contents) {
-            return 'current';
-        }
-
-        if (! $resources->isGenerated($file->path)) {
-            return 'blocked';
-        }
-
-        return 'outdated';
-    }
-
-    private function relative(string $path): string
-    {
-        return str_replace(base_path().'/', '', $path);
+        return array_values(array_filter(
+            $checks,
+            fn (ArchitectureDoctorCheck $check): bool => $check->area === $area,
+        ));
     }
 }

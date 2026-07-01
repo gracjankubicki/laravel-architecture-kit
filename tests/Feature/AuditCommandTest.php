@@ -32,11 +32,18 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Services\DocumentIntake\DocumentIntakeService;
+
 final class DocumentController
 {
+    public function __construct(private DocumentIntakeService $intake)
+    {
+    }
+
     public function update($request, $document)
     {
         $document->update($request->validated());
+        app(ResolveDocumentPseudonymizationMap::class);
     }
 
     private function pseudonymizationMap($document)
@@ -46,6 +53,64 @@ final class DocumentController
             ->whereIn('placeholder', ['[PERSON_1]'])
             ->get();
     }
+}
+PHP);
+
+        $this->writeFile('app/Models/Document.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+final class Document extends Model
+{
+    public const STATUS_UPLOADED = 'uploaded';
+
+    public const TYPES = [
+        'opponent_letter',
+    ];
+
+    protected $fillable = [
+        'document_type',
+        'status',
+        'title',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'title' => 'string',
+        ];
+    }
+}
+PHP);
+
+        $this->writeFile('app/Enums/Documents/DocumentStatus.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Enums\Documents;
+
+enum DocumentStatus: string
+{
+    case Uploaded = 'uploaded';
+}
+PHP);
+
+        $this->writeFile('app/Enums/Documents/DocumentType.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Enums\Documents;
+
+enum DocumentType: string
+{
+    case OpponentLetter = 'opponent_letter';
 }
 PHP);
 
@@ -192,6 +257,10 @@ PHP);
                 && str_contains($finding->message, 'mutates a model directly')
         ));
         $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'thin-controller'
+                && str_contains($finding->message, 'App\\Services')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
             fn ($finding): bool => $finding->rule === 'actions'
                 && str_contains($finding->message, 'HTTP request or response')
         ));
@@ -220,6 +289,14 @@ PHP);
                 && str_contains($finding->message, 'value + label')
         ));
         $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'enums'
+                && str_contains($finding->message, "Model attribute 'status'")
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'service-locator'
+                && str_contains($finding->message, 'app(...)')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
             fn ($finding): bool => $finding->rule === 'unenabled-pattern'
                 && str_contains($finding->message, 'Http Responses')
         ));
@@ -231,6 +308,7 @@ PHP);
             ->expectsOutputToContain('error query-objects')
             ->expectsOutputToContain('error form-request')
             ->expectsOutputToContain('warn  enums')
+            ->expectsOutputToContain('warn  service-locator')
             ->expectsOutputToContain('warn  unenabled-pattern')
             ->expectsOutputToContain('Summary:')
             ->assertExitCode(1);

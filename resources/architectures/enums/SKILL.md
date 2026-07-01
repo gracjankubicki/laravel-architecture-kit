@@ -27,6 +27,7 @@ Enums are a contract. A backed enum value can be stored in the database, returne
 - New backed values MUST be `snake_case`.
 - Backed values are breaking contracts. Changing one requires a data/API/queue rollout decision.
 - Prefer `string`/`varchar` database columns plus PHP backed enums and Eloquent casts.
+- If a model stores enum-like attributes such as `status`, `state`, `type`, or `category`, and a matching enum class exists, cast the attribute on the model.
 - Do not introduce native database enums or check constraints unless the project already uses them.
 - Do not put workflows or service calls in enums.
 - Do not use enums for open-ended user-defined values.
@@ -86,6 +87,17 @@ final class Invoice extends Model
 ```
 
 Do not scatter `InvoiceStatus::from($invoice->status)` through services and resources when Eloquent can return the enum directly.
+
+If the model has both a `status` attribute and an `InvoiceStatus` enum, missing casts are a smell:
+
+```php
+protected function casts(): array
+{
+    return [
+        'status' => InvoiceStatus::class,
+    ];
+}
+```
 
 ## FormRequest Validation
 

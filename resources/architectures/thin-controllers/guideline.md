@@ -12,6 +12,8 @@ Rules:
 - Keep response decisions in the controller: resource, redirect, status code, or JSON wrapper.
 - Do not put business rules, transactions, persistence orchestration, external API workflows, or domain loops in controllers.
 - If a controller needs several write operations, create one larger Action that names the workflow.
+- When Actions are enabled, do not route write use cases through `App\Services` from controllers; wrap the use case in an Action.
+- Avoid service locator calls such as `app(SomeClass::class)` in controllers; use explicit dependencies or move behavior behind an enabled architecture boundary.
 - Simple read-only `index` or `show` endpoints may use Eloquent queries and API Resources directly when no read use case logic exists.
 
 Good example:
