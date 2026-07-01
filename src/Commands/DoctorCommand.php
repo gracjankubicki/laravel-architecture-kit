@@ -11,6 +11,7 @@ use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
+use Taqie\ArchitectureKit\Support\PhpRequirement;
 
 class DoctorCommand extends Command
 {
@@ -33,6 +34,15 @@ class DoctorCommand extends Command
             $this->line('Config:');
             $this->line('  current  config/architectures.php');
             $this->line('  enabled  '.implode(', ', array_map(fn (Architecture $architecture): string => $architecture->value, $enabled)));
+
+            if (
+                in_array(Architecture::ModernPhp85, $enabled, true)
+                && ! PhpRequirement::projectRequiresPhp85($files, base_path())
+            ) {
+                $failed = true;
+                $this->line('  blocked  composer.json');
+                $this->line('  reason   Modern PHP 8.5 is enabled but composer.json does not require PHP 8.5 or newer.');
+            }
         } catch (Throwable $exception) {
             $this->line('Config:');
             $this->line('  blocked  config/architectures.php');

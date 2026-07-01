@@ -87,6 +87,31 @@ class DoctorCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_it_fails_when_modern_php_85_is_enabled_without_php_85_requirement(): void
+    {
+        $this->writeCurrentResources([Architecture::ModernPhp85]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  composer.json')
+            ->expectsOutputToContain('Modern PHP 8.5 is enabled but composer.json does not require PHP 8.5 or newer.')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_passes_for_modern_php_85_when_project_requires_php_85(): void
+    {
+        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'php' => '^8.5',
+            ],
+        ], JSON_PRETTY_PRINT));
+
+        $this->writeCurrentResources([Architecture::ModernPhp85]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('current  config/architectures.php')
+            ->assertExitCode(0);
+    }
+
     public function test_every_architecture_has_source_resources(): void
     {
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath);

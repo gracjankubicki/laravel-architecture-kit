@@ -11,6 +11,7 @@ use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
+use Taqie\ArchitectureKit\Support\PhpRequirement;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -66,15 +67,12 @@ class InstallCommand extends Command
 
         if (
             in_array(Architecture::ModernPhp85, $enabled, true)
-            && ! $this->projectRequiresPhp85($files)
+            && ! PhpRequirement::projectRequiresPhp85($files, base_path())
         ) {
-            $this->warn('Modern PHP 8.5 was selected, but composer.json does not require PHP 8.5.');
+            $this->error('Modern PHP 8.5 is enabled, but composer.json does not require PHP 8.5 or newer.');
+            $this->line('Update composer.json require.php to a PHP 8.5+ constraint, then run php artisan architecture-kit:install again.');
 
-            if (! confirm('Continue with Modern PHP 8.5 guidance anyway?', default: false)) {
-                $this->info('No changes were made.');
-
-                return self::SUCCESS;
-            }
+            return self::FAILURE;
         }
 
         $expected = $this->expectedFiles($config, $resources, $enabled);
@@ -258,22 +256,4 @@ class InstallCommand extends Command
         return str_replace(base_path().'/', '', $path);
     }
 
-    private function projectRequiresPhp85(Filesystem $files): bool
-    {
-        $path = base_path('composer.json');
-
-        if (! $files->exists($path)) {
-            return false;
-        }
-
-        $composer = json_decode($files->get($path), true);
-
-        if (! is_array($composer)) {
-            return false;
-        }
-
-        $php = $composer['require']['php'] ?? null;
-
-        return is_string($php) && str_contains($php, '8.5');
-    }
 }

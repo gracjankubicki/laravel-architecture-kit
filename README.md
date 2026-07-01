@@ -52,6 +52,11 @@ The MVP architecture catalog includes:
 - API Resources
 - Modern PHP 8.5
 
+`Modern PHP 8.5` is a strict runtime contract. If it is enabled, the consuming
+project must require PHP 8.5 or newer in `composer.json`; otherwise
+`architecture-kit:install` and `architecture-kit:doctor` report the configuration
+as invalid.
+
 The project source of truth is `config/architectures.php`:
 
 ```php

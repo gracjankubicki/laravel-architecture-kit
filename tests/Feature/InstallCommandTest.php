@@ -127,12 +127,16 @@ class InstallCommandTest extends TestCase
             ->assertExitCode(0);
 
         $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-enums/SKILL.md');
 
         $this->assertStringContainsString('### Enums', $guideline);
+        $this->assertStringContainsString('Human-facing API Resources MUST expose enums as explicit `value` + `label` objects.', $guideline);
+        $this->assertStringContainsString('Rule::enum(InvoiceStatus::class)', $skill);
+        $this->assertStringContainsString("'value' => \$this->status->value", $skill);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-enums/SKILL.md');
     }
 
-    public function test_it_warns_when_modern_php_85_is_selected_without_php_85_requirement(): void
+    public function test_it_blocks_modern_php_85_without_php_85_requirement(): void
     {
         $files = new Filesystem();
         $files->ensureDirectoryExists($this->tempPath.'/config');
@@ -140,14 +144,35 @@ class InstallCommandTest extends TestCase
 
         $this->artisan('architecture-kit:install')
             ->expectsChoice('Which architecture patterns does this project use?', ['modern-php-85'], Architecture::promptOptions())
-            ->expectsOutputToContain('Modern PHP 8.5 was selected, but composer.json does not require PHP 8.5.')
-            ->expectsConfirmation('Continue with Modern PHP 8.5 guidance anyway?', 'yes')
+            ->expectsOutputToContain('Modern PHP 8.5 is enabled, but composer.json does not require PHP 8.5 or newer.')
+            ->assertExitCode(1);
+
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-modern-php-85/SKILL.md');
+    }
+
+    public function test_it_generates_modern_php_85_resources_when_project_requires_php_85(): void
+    {
+        $files = new Filesystem();
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'php' => '^8.5',
+            ],
+        ], JSON_PRETTY_PRINT));
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::ModernPhp85]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['modern-php-85'], Architecture::promptOptions())
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
         $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-modern-php-85/SKILL.md');
 
         $this->assertStringContainsString('### Modern PHP 8.5', $guideline);
+        $this->assertStringContainsString('do not write legacy-compatible PHP style "just in case"', $skill);
+        $this->assertStringContainsString('Use the pipe operator `|>` very carefully', $skill);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-modern-php-85/SKILL.md');
     }
 
