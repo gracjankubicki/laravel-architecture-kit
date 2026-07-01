@@ -107,7 +107,7 @@ final class ArchitectureConfig
         );
 
         if ($matched !== 1) {
-            return null;
+            return $this->replaceEnabledBlockUsingTokens($contents, $enabled);
         }
 
         $replacement = $this->renderEnabledBlock($enabled, $match['indent'][0]);
@@ -118,6 +118,263 @@ final class ArchitectureConfig
             $match[0][1],
             strlen($match[0][0]),
         );
+    }
+
+    /**
+     * @param  array<int, Architecture>  $enabled
+     */
+    private function replaceEnabledBlockUsingTokens(string $contents, array $enabled): ?string
+    {
+        $range = $this->enabledBlockRange($contents);
+
+        if ($range === null) {
+            return null;
+        }
+
+        $replacement = $this->renderEnabledBlock($enabled, $range['indent']);
+
+        if ($range['prefix_newline']) {
+            $replacement = "\n".$replacement;
+        }
+
+        if ($range['suffix_newline']) {
+            $replacement .= "\n".$range['suffix_indent'];
+        }
+
+        return substr_replace(
+            $contents,
+            $replacement,
+            $range['start'],
+            $range['end'] - $range['start'],
+        );
+    }
+
+    /**
+     * @return array{start: int, end: int, indent: string, prefix_newline: bool, suffix_newline: bool, suffix_indent: string}|null
+     */
+    private function enabledBlockRange(string $contents): ?array
+    {
+        $tokens = $this->tokensWithOffsets($contents);
+        $arrayDepth = 0;
+        $waitingForReturnArray = false;
+        $returnArrayDepth = null;
+
+        foreach ($tokens as $index => $token) {
+            $text = $token['text'];
+
+            if ($token['id'] === T_RETURN) {
+                $waitingForReturnArray = true;
+                continue;
+            }
+
+            if ($waitingForReturnArray && ! $this->isIgnorableToken($token)) {
+                $waitingForReturnArray = $text === '[';
+            }
+
+            if (
+                $returnArrayDepth !== null
+                && $arrayDepth === $returnArrayDepth
+                && $this->isEnabledKeyToken($token)
+                && $this->nextSignificantTokenText($tokens, $index) === '=>'
+            ) {
+                $valueIndex = $this->nextSignificantTokenIndex(
+                    $tokens,
+                    $this->nextSignificantTokenIndex($tokens, $index) ?? $index,
+                );
+
+                if ($valueIndex === null || $tokens[$valueIndex]['text'] !== '[') {
+                    continue;
+                }
+
+                $valueEnd = $this->matchingShortArrayEnd($tokens, $valueIndex);
+
+                if ($valueEnd === null) {
+                    return null;
+                }
+
+                return $this->rangeFromOffsets($contents, $token['offset'], $valueEnd);
+            }
+
+            if ($text === '[') {
+                $arrayDepth++;
+
+                if ($waitingForReturnArray) {
+                    $returnArrayDepth = $arrayDepth;
+                    $waitingForReturnArray = false;
+                }
+
+                continue;
+            }
+
+            if ($text === ']') {
+                $arrayDepth--;
+
+                if ($returnArrayDepth !== null && $arrayDepth < $returnArrayDepth) {
+                    $returnArrayDepth = null;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, array{id: int|null, text: string, offset: int}>
+     */
+    private function tokensWithOffsets(string $contents): array
+    {
+        $tokens = [];
+        $offset = 0;
+
+        foreach (token_get_all($contents) as $token) {
+            $text = is_array($token) ? $token[1] : $token;
+            $tokens[] = [
+                'id' => is_array($token) ? $token[0] : null,
+                'text' => $text,
+                'offset' => $offset,
+            ];
+            $offset += strlen($text);
+        }
+
+        return $tokens;
+    }
+
+    /**
+     * @param  array{id: int|null, text: string, offset: int}  $token
+     */
+    private function isIgnorableToken(array $token): bool
+    {
+        return in_array($token['id'], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true);
+    }
+
+    /**
+     * @param  array{id: int|null, text: string, offset: int}  $token
+     */
+    private function isEnabledKeyToken(array $token): bool
+    {
+        if ($token['id'] !== T_CONSTANT_ENCAPSED_STRING) {
+            return false;
+        }
+
+        $text = $token['text'];
+        $quote = $text[0] ?? '';
+
+        if ($quote !== "'" && $quote !== '"') {
+            return false;
+        }
+
+        return stripcslashes(substr($text, 1, -1)) === 'enabled';
+    }
+
+    /**
+     * @param  array<int, array{id: int|null, text: string, offset: int}>  $tokens
+     */
+    private function nextSignificantTokenText(array $tokens, int $index): ?string
+    {
+        $next = $this->nextSignificantTokenIndex($tokens, $index);
+
+        return $next === null ? null : $tokens[$next]['text'];
+    }
+
+    /**
+     * @param  array<int, array{id: int|null, text: string, offset: int}>  $tokens
+     */
+    private function nextSignificantTokenIndex(array $tokens, int $index): ?int
+    {
+        for ($next = $index + 1; $next < count($tokens); $next++) {
+            if (! $this->isIgnorableToken($tokens[$next])) {
+                return $next;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array{id: int|null, text: string, offset: int}>  $tokens
+     */
+    private function matchingShortArrayEnd(array $tokens, int $startIndex): ?int
+    {
+        $depth = 0;
+
+        for ($index = $startIndex; $index < count($tokens); $index++) {
+            if ($tokens[$index]['text'] === '[') {
+                $depth++;
+                continue;
+            }
+
+            if ($tokens[$index]['text'] !== ']') {
+                continue;
+            }
+
+            $depth--;
+
+            if ($depth === 0) {
+                return $tokens[$index]['offset'] + strlen($tokens[$index]['text']);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{start: int, end: int, indent: string, prefix_newline: bool, suffix_newline: bool, suffix_indent: string}
+     */
+    private function rangeFromOffsets(string $contents, int $start, int $valueEnd): array
+    {
+        $indent = $this->indentForOffset($contents, $start);
+        $prefixNewline = $this->needsPrefixNewline($contents, $start);
+        $end = $this->consumeTrailingComma($contents, $valueEnd);
+        $next = $contents[$end] ?? '';
+        $suffixNewline = $next !== '' && $next !== "\n" && $next !== "\r";
+
+        return [
+            'start' => $start,
+            'end' => $end,
+            'indent' => $indent,
+            'prefix_newline' => $prefixNewline,
+            'suffix_newline' => $suffixNewline,
+            'suffix_indent' => $next === ']' ? '' : $indent,
+        ];
+    }
+
+    private function indentForOffset(string $contents, int $offset): string
+    {
+        $lineStart = strrpos(substr($contents, 0, $offset), "\n");
+        $lineStart = $lineStart === false ? 0 : $lineStart + 1;
+        $before = substr($contents, $lineStart, $offset - $lineStart);
+
+        return trim($before) === '' ? $before : '    ';
+    }
+
+    private function needsPrefixNewline(string $contents, int $offset): bool
+    {
+        $lineStart = strrpos(substr($contents, 0, $offset), "\n");
+        $lineStart = $lineStart === false ? 0 : $lineStart + 1;
+
+        return trim(substr($contents, $lineStart, $offset - $lineStart)) !== '';
+    }
+
+    private function consumeTrailingComma(string $contents, int $offset): int
+    {
+        $cursor = $this->consumeInlineWhitespace($contents, $offset);
+
+        if (($contents[$cursor] ?? '') !== ',') {
+            return $offset;
+        }
+
+        return $this->consumeInlineWhitespace($contents, $cursor + 1);
+    }
+
+    private function consumeInlineWhitespace(string $contents, int $offset): int
+    {
+        $cursor = $offset;
+
+        while (($contents[$cursor] ?? '') === ' ' || ($contents[$cursor] ?? '') === "\t") {
+            $cursor++;
+        }
+
+        return $cursor;
     }
 
     /**

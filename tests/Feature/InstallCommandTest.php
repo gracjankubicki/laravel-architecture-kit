@@ -189,6 +189,31 @@ PHP);
         $this->assertStringContainsString("'architecture-kit:guard'", $config);
     }
 
+    public function test_it_preserves_project_specific_config_when_enabled_block_is_compact(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', <<<'PHP'
+<?php
+
+use Taqie\ArchitectureKit\Architecture;
+
+return ["enabled" => [Architecture::Actions], "agents" => ["mcp" => ["command" => "docker"]]];
+PHP);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions', 'api-resources'], Architecture::promptOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $config = $files->get($this->tempPath.'/config/architectures.php');
+
+        $this->assertStringContainsString('Architecture::Actions', $config);
+        $this->assertStringContainsString('Architecture::ApiResources', $config);
+        $this->assertStringContainsString('"agents" => ["mcp" => ["command" => "docker"]]', $config);
+    }
+
     public function test_it_blocks_unmanaged_generated_targets_before_writing_config(): void
     {
         $files = new Filesystem();

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Commands;
 
 use Illuminate\Console\Command;
+
 class InstallHooksCommand extends Command
 {
     protected $signature = 'architecture-kit:install-hooks
