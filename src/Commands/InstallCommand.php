@@ -17,6 +17,7 @@ use Taqie\ArchitectureKit\Support\ArchitectureResources;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
 use Taqie\ArchitectureKit\Support\LaravelAiRequirement;
 use Taqie\ArchitectureKit\Support\PhpRequirement;
+use Taqie\ArchitectureKit\Support\SaloonRequirement;
 use Taqie\ArchitectureKit\Support\ServicesRequirement;
 
 use function Laravel\Prompts\confirm;
@@ -88,6 +89,32 @@ class InstallCommand extends Command
         }
 
         if (
+            in_array(Architecture::EloquentLifecycle, $enabled, true)
+            && ! in_array(Architecture::Actions, $enabled, true)
+        ) {
+            $this->warn('Eloquent Lifecycle was selected without Actions. Flow-specific behavior should still live in an explicit application/use-case boundary.');
+
+            if (! confirm('Continue with Eloquent Lifecycle without Actions?', default: true)) {
+                $this->info('No changes were made.');
+
+                return self::SUCCESS;
+            }
+        }
+
+        if (
+            in_array(Architecture::Saloon, $enabled, true)
+            && ! in_array(Architecture::Actions, $enabled, true)
+        ) {
+            $this->warn('Saloon was selected without Actions. Integration calls should still live in an explicit application/use-case boundary such as an Action or queued Job.');
+
+            if (! confirm('Continue with Saloon without Actions?', default: true)) {
+                $this->info('No changes were made.');
+
+                return self::SUCCESS;
+            }
+        }
+
+        if (
             in_array(Architecture::ModernPhp85, $enabled, true)
             && ! PhpRequirement::projectRequiresPhp85($files, base_path())
         ) {
@@ -95,6 +122,22 @@ class InstallCommand extends Command
             $this->line('Update composer.json require.php to a PHP 8.5+ constraint, then run php artisan architecture-kit:install again.');
 
             return self::FAILURE;
+        }
+
+        if (in_array(Architecture::Saloon, $enabled, true)) {
+            $violations = SaloonRequirement::violations($files, base_path());
+
+            if ($violations !== []) {
+                $this->error('Saloon is enabled, but composer.json does not satisfy Architecture::Saloon requirements.');
+
+                foreach ($violations as $violation) {
+                    $this->line('  - '.$violation);
+                }
+
+                $this->line('Install saloonphp/saloon ^4.0, saloonphp/laravel-plugin, and saloonphp/rate-limit-plugin, then run php artisan architecture-kit:install again.');
+
+                return self::FAILURE;
+            }
         }
 
         if (

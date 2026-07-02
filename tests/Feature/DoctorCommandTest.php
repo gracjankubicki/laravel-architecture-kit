@@ -138,6 +138,51 @@ class DoctorCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_it_fails_when_saloon_is_enabled_without_required_packages(): void
+    {
+        $this->writeCurrentResources([Architecture::Saloon]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  composer.json')
+            ->expectsOutputToContain('composer.json is missing or invalid.')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_fails_when_saloon_v3_is_allowed(): void
+    {
+        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'saloonphp/saloon' => '^3.0',
+                'saloonphp/laravel-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^4.0',
+            ],
+        ], JSON_PRETTY_PRINT));
+
+        $this->writeCurrentResources([Architecture::Saloon]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  composer.json')
+            ->expectsOutputToContain('saloonphp/saloon must require ^4.0 and must not allow Saloon 3')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_passes_for_saloon_when_required_packages_are_installed(): void
+    {
+        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'saloonphp/saloon' => '^4.0',
+                'saloonphp/laravel-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^4.0',
+            ],
+        ], JSON_PRETTY_PRINT));
+
+        $this->writeCurrentResources([Architecture::Saloon]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('current  config/architectures.php')
+            ->assertExitCode(0);
+    }
+
     public function test_it_warns_when_services_exist_but_services_architecture_is_disabled(): void
     {
         $files = new Filesystem();

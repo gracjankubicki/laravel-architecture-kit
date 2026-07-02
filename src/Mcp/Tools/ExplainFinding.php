@@ -46,6 +46,8 @@ class ExplainFinding extends Tool
             'api-resource' => 'API Resources format already-loaded response data. They must not query, lazy load, or make business decisions.',
             'folder-purity' => 'Architecture folders must stay type-pure; do not put supporting classes inside another architecture folder.',
             'modern-php-85' => 'Use the project PHP 8.5 contract for strict typing and modern language features when they improve readability.',
+            'saloon' => 'Outbound HTTP integrations must use Saloon Connectors, Requests, DTOs, resilience defaults, and Action/Job boundaries.',
+            'raw-http' => 'Raw outbound HTTP clients are forbidden when Saloon is enabled. Create a Saloon integration under app/Http/Integrations/**.',
             'service-locator' => 'Avoid app(...) service locator calls in adapters and payload helpers. Prefer explicit dependencies or enabled architecture boundaries.',
             default => 'Read the generated Architecture Kit guideline and the relevant enabled architecture skill before changing this code.',
         };

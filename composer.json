@@ -18,7 +18,8 @@
         "illuminate/filesystem": "^11.45.3|^12.41.1|^13.0",
         "illuminate/support": "^11.45.3|^12.41.1|^13.0",
         "laravel/mcp": "^0.8.2",
-        "laravel/prompts": "^0.3|^1.0"
+        "laravel/prompts": "^0.3|^1.0",
+        "nikic/php-parser": "^5"
     },
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0|^11.0",

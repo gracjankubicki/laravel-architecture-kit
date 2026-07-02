@@ -271,6 +271,45 @@ PHP);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-thin-controllers/SKILL.md');
     }
 
+    public function test_it_warns_when_eloquent_lifecycle_is_selected_without_actions(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::EloquentLifecycle]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['eloquent-lifecycle'], Architecture::promptOptions())
+            ->expectsOutputToContain('Eloquent Lifecycle was selected without Actions.')
+            ->expectsConfirmation('Continue with Eloquent Lifecycle without Actions?', 'yes')
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-eloquent-lifecycle/SKILL.md');
+    }
+
+    public function test_it_generates_eloquent_lifecycle_resources(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Actions, Architecture::EloquentLifecycle]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions', 'eloquent-lifecycle'], Architecture::promptOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-eloquent-lifecycle/SKILL.md');
+
+        $this->assertStringContainsString('### Eloquent Lifecycle', $guideline);
+        $this->assertStringContainsString('Before-save observers (`creating`, `saving`, `updating`, `deleting`, `restoring`) are lifecycle adapters only.', $guideline);
+        $this->assertStringContainsString('name: architecture-kit-eloquent-lifecycle', $skill);
+        $this->assertStringContainsString('Must this behavior run on every save from every origin', $skill);
+        $this->assertStringContainsString('Do not put `ShouldHandleEventsAfterCommit` on the whole observer', $skill);
+    }
+
     public function test_it_generates_enum_architecture_resources(): void
     {
         $files = new Filesystem();
@@ -375,6 +414,93 @@ PHP);
         $this->assertStringContainsString('name: architecture-kit-laravel-ai', $skill);
         $this->assertStringContainsString('Generic `runAgent(string $agent, string $input): array` gateways are diagnostic-only', $skill);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
+    }
+
+    public function test_it_blocks_saloon_without_required_packages(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
+            ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsOutputToContain('Saloon is enabled, but composer.json does not satisfy Architecture::Saloon requirements.')
+            ->expectsOutputToContain('composer.json is missing or invalid.')
+            ->assertExitCode(1);
+
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
+    }
+
+    public function test_it_blocks_saloon_v3_requirement(): void
+    {
+        $files = new Filesystem();
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'saloonphp/saloon' => '^3.0',
+                'saloonphp/laravel-plugin' => '^3.0',
+                'saloonphp/rate-limit-plugin' => '^3.0',
+            ],
+        ], JSON_PRETTY_PRINT));
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
+            ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsOutputToContain('saloonphp/saloon must require ^4.0 and must not allow Saloon 3')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_generates_saloon_resources_when_required_packages_are_installed(): void
+    {
+        $files = new Filesystem();
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'saloonphp/saloon' => '^4.0',
+                'saloonphp/laravel-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^4.0',
+            ],
+        ], JSON_PRETTY_PRINT));
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Actions, Architecture::Saloon]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions', 'saloon'], Architecture::promptOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
+
+        $this->assertStringContainsString('### Saloon', $guideline);
+        $this->assertStringContainsString('Every third-party or internal outbound HTTP integration goes through Saloon.', $guideline);
+        $this->assertStringContainsString('name: architecture-kit-saloon', $skill);
+        $this->assertStringContainsString('MockClient', $skill);
+        $this->assertStringContainsString('HasRateLimits', $skill);
+    }
+
+    public function test_it_warns_when_saloon_is_selected_without_actions(): void
+    {
+        $files = new Filesystem();
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'saloonphp/saloon' => '^4.0',
+                'saloonphp/laravel-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^4.0',
+            ],
+        ], JSON_PRETTY_PRINT));
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
+            ->expectsOutputToContain('Saloon was selected without Actions.')
+            ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
     }
 
     public function test_it_generates_services_architecture_resources(): void

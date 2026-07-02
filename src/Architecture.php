@@ -16,6 +16,8 @@ enum Architecture: string
     case ValueObjects = 'value-objects';
     case Enums = 'enums';
     case ApiResources = 'api-resources';
+    case EloquentLifecycle = 'eloquent-lifecycle';
+    case Saloon = 'saloon';
     case ModernPhp85 = 'modern-php-85';
     case LaravelAi = 'laravel-ai';
 
@@ -49,6 +51,8 @@ enum Architecture: string
             self::ValueObjects,
             self::Enums,
             self::ApiResources,
+            self::EloquentLifecycle,
+            self::Saloon,
             self::ModernPhp85,
             self::LaravelAi,
         ];
@@ -81,6 +85,8 @@ enum Architecture: string
             self::ValueObjects => 'Value Objects',
             self::Enums => 'Enums',
             self::ApiResources => 'API Resources',
+            self::EloquentLifecycle => 'Eloquent Lifecycle',
+            self::Saloon => 'Saloon',
             self::ModernPhp85 => 'Modern PHP 8.5',
             self::LaravelAi => 'Laravel AI',
         };

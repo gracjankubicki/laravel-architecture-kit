@@ -70,6 +70,17 @@ final readonly class ArchitectureDoctor
             );
         }
 
+        if (in_array(Architecture::Saloon, $enabled, true)) {
+            foreach (SaloonRequirement::violations($this->files, $this->basePath) as $violation) {
+                $checks[] = new ArchitectureDoctorCheck(
+                    area: 'config',
+                    status: 'blocked',
+                    path: 'composer.json',
+                    message: $violation,
+                );
+            }
+        }
+
         if (
             ! in_array(Architecture::LaravelAi, $enabled, true)
             && $projectRequiresLaravelAi
