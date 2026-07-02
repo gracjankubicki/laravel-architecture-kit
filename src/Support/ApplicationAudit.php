@@ -30,8 +30,9 @@ final class ApplicationAudit
 
             array_push(
                 $findings,
-                ...$this->folderPurityFindings($path, $contents),
+                ...$this->folderPurityFindings($enabled, $path, $contents),
                 ...$this->controllerFindings($enabled, $path, $contents),
+                ...$this->serviceFindings($enabled, $path, $contents),
                 ...$this->actionFindings($enabled, $path, $contents),
                 ...$this->queryObjectFindings($enabled, $path, $contents),
                 ...$this->formRequestFindings($enabled, $path, $contents),
@@ -165,15 +166,24 @@ final class ApplicationAudit
     }
 
     /**
+     * @param  array<int, Architecture>  $enabled
      * @return array<int, AuditFinding>
      */
-    private function folderPurityFindings(string $path, string $contents): array
+    private function folderPurityFindings(array $enabled, string $path, string $contents): array
     {
         $class = $this->className($contents) ?? basename($path, '.php');
         $findings = [];
 
         if (str_starts_with($path, 'app/Actions/') && ! $this->looksLikeAction($class, $contents)) {
             $findings[] = $this->finding('error', 'folder-purity', $path, 1, 'app/Actions/** must contain Actions only.');
+        }
+
+        if (
+            in_array(Architecture::Services, $enabled, true)
+            && str_starts_with($path, 'app/Services/')
+            && ! $this->looksLikeService($class, $contents)
+        ) {
+            $findings[] = $this->finding('error', 'folder-purity', $path, 1, 'app/Services/** must contain Services only.');
         }
 
         if (str_starts_with($path, 'app/Data/') && ! $this->looksLikeDataObject($class, $contents)) {
@@ -195,6 +205,41 @@ final class ApplicationAudit
         if (str_starts_with($path, 'app/Queries/') && ! $this->looksLikeQueryObject($class, $contents)) {
             $findings[] = $this->finding('error', 'folder-purity', $path, 1, 'app/Queries/** must contain Query Objects only.');
         }
+
+        return $findings;
+    }
+
+    /**
+     * @param  array<int, Architecture>  $enabled
+     * @return array<int, AuditFinding>
+     */
+    private function serviceFindings(array $enabled, string $path, string $contents): array
+    {
+        if (! in_array(Architecture::Services, $enabled, true) || ! str_starts_with($path, 'app/Services/')) {
+            return [];
+        }
+
+        $findings = [];
+        $class = $this->className($contents) ?? basename($path, '.php');
+
+        if (! str_ends_with($class, 'Service')) {
+            $findings[] = $this->finding('error', 'services', $path, 1, 'Service classes under app/Services/** must use the Service suffix.');
+        }
+
+        array_push(
+            $findings,
+            ...$this->patternFindings('error', 'services', $path, $contents, [
+                '/use\s+Illuminate\\\\Http\\\\(?:Request|JsonResponse|RedirectResponse|Response);/' => 'Services must not depend on HTTP request or response classes. Map HTTP input/output in the adapter layer.',
+                '/use\s+Illuminate\\\\Foundation\\\\Http\\\\FormRequest;/' => 'Services must not depend on FormRequest classes. Pass a Data Object, Value Object, model, or explicit typed arguments.',
+                '/use\s+Symfony\\\\Component\\\\HttpFoundation\\\\(?:Response|StreamedResponse|RedirectResponse);/' => 'Services must not return Symfony HTTP responses. Return domain/application results and let the controller format HTTP.',
+                '/function\s+\w+\s*\([^)]*\b(?:Request|FormRequest|JsonResponse|RedirectResponse|StreamedResponse|Response)\b/' => 'Service methods must not accept HTTP request/response types.',
+                '/function\s+\w+\s*\([^)]*\)\s*:\s*[^;{]*(?:JsonResponse|RedirectResponse|StreamedResponse|Response)\b/' => 'Service methods must not return HTTP response types.',
+                '/public\s+static\s+function\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/' => 'Services must not expose public static application behavior; use constructor-injected Services or a more specific pure type.',
+            ]),
+            ...$this->patternFindings('warn', 'service-locator', $path, $contents, [
+                '/\bapp\s*\(\s*[A-Za-z0-9_\\\\]+::class\s*\)/' => 'Avoid service locator app(...) inside Services; inject collaborators explicitly so the Service stays testable.',
+            ]),
+        );
 
         return $findings;
     }
@@ -417,6 +462,7 @@ final class ApplicationAudit
     {
         if (
             ! str_starts_with($path, 'app/Http/Controllers/')
+            && ! str_starts_with($path, 'app/Services/')
             && ! str_starts_with($path, 'app/Actions/')
             && ! str_starts_with($path, 'app/Queries/')
             && ! str_starts_with($path, 'app/Http/Resources/')
@@ -587,7 +633,8 @@ final class ApplicationAudit
         }
 
         if (
-            str_starts_with($path, 'app/Services/')
+            ! in_array(Architecture::Services, $enabled, true)
+            && str_starts_with($path, 'app/Services/')
         ) {
             $findings[] = $this->finding('warn', 'unenabled-pattern', $path, 1, 'Services are not enabled; prefer an enabled architecture boundary.');
         }
@@ -752,6 +799,13 @@ final class ApplicationAudit
         return ! preg_match('/(Data|Dto|DTO|Result|Resource|Request|Exception|Failure|Status)$/', $class)
             && ! str_contains($contents, "\nenum ")
             && preg_match('/public\s+function\s+handle\s*\(/', $contents) === 1;
+    }
+
+    private function looksLikeService(string $class, string $contents): bool
+    {
+        return str_ends_with($class, 'Service')
+            && ! preg_match('/(Data|Dto|DTO|Result|Resource|Request|Exception|Failure|Status|Action)$/', $class)
+            && ! str_contains($contents, "\nenum ");
     }
 
     private function looksLikeDataObject(string $class, string $contents): bool

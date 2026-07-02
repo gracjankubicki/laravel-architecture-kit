@@ -9,6 +9,7 @@ enum Architecture: string
     case ThinControllers = 'thin-controllers';
     case FormRequests = 'form-requests';
     case Actions = 'actions';
+    case Services = 'services';
     case QueryObjects = 'query-objects';
     case CustomEloquentBuilders = 'custom-eloquent-builders';
     case DataObjects = 'data-objects';
@@ -41,6 +42,7 @@ enum Architecture: string
             self::ThinControllers,
             self::FormRequests,
             self::Actions,
+            self::Services,
             self::QueryObjects,
             self::CustomEloquentBuilders,
             self::DataObjects,
@@ -72,6 +74,7 @@ enum Architecture: string
             self::ThinControllers => 'Thin Controllers',
             self::FormRequests => 'Form Requests',
             self::Actions => 'Actions',
+            self::Services => 'Services',
             self::QueryObjects => 'Query Objects',
             self::CustomEloquentBuilders => 'Custom Eloquent Builders',
             self::DataObjects => 'Data Objects',

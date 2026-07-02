@@ -82,6 +82,18 @@ final readonly class ArchitectureDoctor
             );
         }
 
+        if (
+            ! in_array(Architecture::Services, $enabled, true)
+            && ServicesRequirement::projectHasServices($this->files, $this->basePath)
+        ) {
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'config',
+                status: 'warning',
+                path: 'app/Services',
+                message: 'app/Services exists but Architecture::Services is not enabled. Enable Services or migrate those classes to enabled architecture patterns.',
+            );
+        }
+
         $expected = [
             'guideline' => $this->resources->guideline($enabled),
         ];

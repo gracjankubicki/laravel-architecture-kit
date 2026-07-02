@@ -17,6 +17,7 @@ use Taqie\ArchitectureKit\Support\ArchitectureResources;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
 use Taqie\ArchitectureKit\Support\LaravelAiRequirement;
 use Taqie\ArchitectureKit\Support\PhpRequirement;
+use Taqie\ArchitectureKit\Support\ServicesRequirement;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -41,6 +42,14 @@ class InstallCommand extends Command
                 && ! in_array(Architecture::LaravelAi, $current, true)
             ) {
                 $current[] = Architecture::LaravelAi;
+            }
+
+            if (
+                ! $files->exists(config_path('architectures.php'))
+                && ServicesRequirement::projectHasServices($files, base_path())
+                && ! in_array(Architecture::Services, $current, true)
+            ) {
+                $current[] = Architecture::Services;
             }
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());

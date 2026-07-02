@@ -232,6 +232,143 @@ PHP);
         $this->assertStringContainsString('Avoid raw provider/model strings', $output);
     }
 
+    public function test_it_warns_about_services_when_services_architecture_is_disabled(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $this->writeFile('app/Services/Documents/DocumentPseudonymizationService.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Documents;
+
+final readonly class DocumentPseudonymizationService
+{
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('"severity": "warn"', $output);
+        $this->assertStringContainsString('"rule": "unenabled-pattern"', $output);
+        $this->assertStringContainsString('Services are not enabled; prefer an enabled architecture boundary.', $output);
+    }
+
+    public function test_it_allows_valid_services_when_services_architecture_is_enabled(): void
+    {
+        $this->writeCurrentResources([Architecture::Services]);
+
+        $this->writeFile('app/Services/Documents/DocumentPseudonymizationService.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Documents;
+
+final readonly class DocumentPseudonymizationService
+{
+    public function start(Document $document): DocumentPseudonymizationResult
+    {
+        return new DocumentPseudonymizationResult($document);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:guard')
+            ->expectsOutputToContain('Architecture guard passed.')
+            ->assertExitCode(0);
+    }
+
+    public function test_it_fails_on_service_folder_purity_suffix_http_and_static_violations(): void
+    {
+        $this->writeCurrentResources([Architecture::Services]);
+
+        $this->writeFile('app/Services/Documents/DocumentPseudonymizationData.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Documents;
+
+final readonly class DocumentPseudonymizationData
+{
+}
+PHP);
+
+        $this->writeFile('app/Services/Documents/DocumentPseudonymizationService.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Documents;
+
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+final readonly class DocumentPseudonymizationService
+{
+    public static function normalize(string $value): string
+    {
+        return trim($value);
+    }
+
+    public function approve(Request $request): JsonResponse
+    {
+        return new JsonResponse();
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('"severity": "error"', $output);
+        $this->assertStringContainsString('"rule": "folder-purity"', $output);
+        $this->assertStringContainsString('"rule": "services"', $output);
+        $this->assertStringContainsString('app/Services/** must contain Services only.', $output);
+        $this->assertStringContainsString('Service classes under app/Services/** must use the Service suffix.', $output);
+        $this->assertStringContainsString('Services must not depend on HTTP request or response classes.', $output);
+        $this->assertStringContainsString('Services must not expose public static application behavior', $output);
+    }
+
+    public function test_it_warns_on_hidden_service_dependencies(): void
+    {
+        $this->writeCurrentResources([Architecture::Services]);
+
+        $this->writeFile('app/Services/Documents/DocumentPseudonymizationService.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Documents;
+
+final class DocumentPseudonymizationService
+{
+    public function resolve(Document $document): DocumentPseudonymizationMap
+    {
+        return app(PseudonymizationMapResolver::class)->resolve($document);
+    }
+
+    private static function maps(): PseudonymizationMapResolver
+    {
+        return new PseudonymizationMapResolver();
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('"warnings": 2', $output);
+        $this->assertStringContainsString('"rule": "service-locator"', $output);
+        $this->assertStringContainsString('"rule": "testability"', $output);
+    }
+
     /**
      * @param  array<int, Architecture>  $enabled
      */

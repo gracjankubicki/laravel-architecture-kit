@@ -377,6 +377,63 @@ PHP);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
     }
 
+    public function test_it_generates_services_architecture_resources(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Services]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['services'], Architecture::promptOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-services/SKILL.md');
+
+        $this->assertStringContainsString('### Services', $guideline);
+        $this->assertStringContainsString('Services are allowed only when `Architecture::Services` is enabled.', $guideline);
+        $this->assertStringContainsString('name: architecture-kit-services', $skill);
+        $this->assertStringContainsString('When `Actions` and `Services` are both enabled, new named write use cases should default to Actions.', $skill);
+        $this->assertStringContainsString('final readonly class DocumentPseudonymizationService', $skill);
+        $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-services/SKILL.md');
+    }
+
+    public function test_it_preselects_services_on_first_install_when_project_already_has_services(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/app/Services/Documents');
+        $files->put($this->tempPath.'/app/Services/Documents/DocumentPseudonymizationService.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Documents;
+
+final readonly class DocumentPseudonymizationService
+{
+}
+PHP);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', [
+                'thin-controllers',
+                'form-requests',
+                'actions',
+                'data-objects',
+                'api-resources',
+                'services',
+            ], Architecture::promptOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $config = $files->get($this->tempPath.'/config/architectures.php');
+
+        $this->assertStringContainsString('Architecture::Services', $config);
+    }
+
     /**
      * @param  array<int, Architecture>  $architectures
      */

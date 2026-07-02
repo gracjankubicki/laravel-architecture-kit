@@ -138,6 +138,30 @@ class DoctorCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_it_warns_when_services_exist_but_services_architecture_is_disabled(): void
+    {
+        $files = new Filesystem();
+        $files->ensureDirectoryExists($this->tempPath.'/app/Services/Documents');
+        $files->put($this->tempPath.'/app/Services/Documents/DocumentPseudonymizationService.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Documents;
+
+final readonly class DocumentPseudonymizationService
+{
+}
+PHP);
+
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('warning  app/Services')
+            ->expectsOutputToContain('app/Services exists but Architecture::Services is not enabled.')
+            ->assertExitCode(0);
+    }
+
     public function test_every_architecture_has_source_resources(): void
     {
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath);
