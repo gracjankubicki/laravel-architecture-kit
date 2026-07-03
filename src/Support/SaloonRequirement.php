@@ -21,6 +21,15 @@ use Throwable;
 
 final readonly class SaloonRequirement
 {
+    /**
+     * @var array<string, string>
+     */
+    public const REQUIRED_PACKAGES = [
+        'saloonphp/saloon' => '^4.0',
+        'saloonphp/laravel-plugin' => '^4.0',
+        'saloonphp/rate-limit-plugin' => '^4.0',
+    ];
+
     public function __construct(
         private Filesystem $files,
         private string $basePath,
@@ -76,6 +85,28 @@ final readonly class SaloonRequirement
     public static function projectRequiresSaloon(Filesystem $files, string $basePath): bool
     {
         return self::packageConstraint(self::composer($files, $basePath), 'saloonphp/saloon') !== null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function missingInstallPackages(Filesystem $files, string $basePath): array
+    {
+        $composer = self::composer($files, $basePath);
+
+        if ($composer === null) {
+            return [];
+        }
+
+        $packages = [];
+
+        foreach (self::REQUIRED_PACKAGES as $package => $constraint) {
+            if (self::packageConstraint($composer, $package) === null) {
+                $packages[] = $package.':'.$constraint;
+            }
+        }
+
+        return $packages;
     }
 
     /**

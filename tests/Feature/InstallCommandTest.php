@@ -10,6 +10,8 @@ use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
 use Taqie\ArchitectureKit\Support\ArchitectureDoctor;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
+use Taqie\ArchitectureKit\Support\ComposerPackageInstaller;
+use Taqie\ArchitectureKit\Support\ComposerRequireResult;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
@@ -531,7 +533,7 @@ MARKDOWN);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
     }
 
-    public function test_it_blocks_saloon_without_required_packages(): void
+    public function test_it_blocks_saloon_without_composer_json(): void
     {
         $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
@@ -542,6 +544,66 @@ MARKDOWN);
             ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
             ->expectsOutputToContain('Saloon is enabled, but composer.json does not satisfy Architecture::Saloon requirements.')
             ->expectsOutputToContain('composer.json is missing or invalid.')
+            ->assertExitCode(1);
+
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
+    }
+
+    public function test_it_installs_missing_saloon_packages_when_saloon_is_selected(): void
+    {
+        $files = new Filesystem;
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'php' => '^8.2',
+            ],
+        ], JSON_PRETTY_PRINT));
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
+
+        $composer = new FakeComposerPackageInstaller;
+        $this->app->instance(ComposerPackageInstaller::class, $composer);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
+            ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsOutputToContain('Saloon is enabled, but required Saloon packages are missing.')
+            ->expectsOutputToContain('composer require saloonphp/saloon:^4.0 saloonphp/laravel-plugin:^4.0 saloonphp/rate-limit-plugin:^4.0')
+            ->expectsOutputToContain('Required Saloon packages installed.')
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $this->assertSame([[
+            'packages' => [
+                'saloonphp/saloon:^4.0',
+                'saloonphp/laravel-plugin:^4.0',
+                'saloonphp/rate-limit-plugin:^4.0',
+            ],
+            'workingDirectory' => $this->tempPath,
+        ]], $composer->calls);
+        $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
+    }
+
+    public function test_it_fails_when_composer_cannot_install_missing_saloon_packages(): void
+    {
+        $files = new Filesystem;
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'php' => '^8.2',
+            ],
+        ], JSON_PRETTY_PRINT));
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
+
+        $composer = new FakeComposerPackageInstaller(successful: false, output: 'dependency conflict');
+        $this->app->instance(ComposerPackageInstaller::class, $composer);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
+            ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsOutputToContain('Composer could not install required Saloon packages.')
+            ->expectsOutputToContain('dependency conflict')
             ->assertExitCode(1);
 
         $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
@@ -825,5 +887,61 @@ PHP);
             $files->ensureDirectoryExists(dirname($file->path));
             $files->put($file->path, $file->contents);
         }
+    }
+}
+
+class FakeComposerPackageInstaller extends ComposerPackageInstaller
+{
+    /**
+     * @var array<int, array{packages: array<int, string>, workingDirectory: string}>
+     */
+    public array $calls = [];
+
+    public function __construct(
+        private readonly bool $successful = true,
+        private readonly string $output = '',
+    ) {}
+
+    /**
+     * @param  array<int, string>  $packages
+     */
+    public function requirePackages(array $packages, string $workingDirectory): ComposerRequireResult
+    {
+        $this->calls[] = [
+            'packages' => $packages,
+            'workingDirectory' => $workingDirectory,
+        ];
+
+        if ($this->successful) {
+            $this->writeComposerRequirements($packages, $workingDirectory);
+        }
+
+        return new ComposerRequireResult(
+            successful: $this->successful,
+            exitCode: $this->successful ? 0 : 2,
+            output: $this->output,
+        );
+    }
+
+    /**
+     * @param  array<int, string>  $packages
+     */
+    private function writeComposerRequirements(array $packages, string $workingDirectory): void
+    {
+        $path = $workingDirectory.'/composer.json';
+        $composer = json_decode((string) file_get_contents($path), true);
+
+        if (! is_array($composer)) {
+            return;
+        }
+
+        $composer['require'] ??= [];
+
+        foreach ($packages as $package) {
+            [$name, $constraint] = explode(':', $package, 2);
+            $composer['require'][$name] = $constraint;
+        }
+
+        file_put_contents($path, json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
     }
 }

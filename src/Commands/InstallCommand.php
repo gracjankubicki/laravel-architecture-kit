@@ -13,6 +13,7 @@ use Taqie\ArchitectureKit\Install\AgentsDetector;
 use Taqie\ArchitectureKit\Install\InstallResult;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
+use Taqie\ArchitectureKit\Support\ComposerPackageInstaller;
 use Taqie\ArchitectureKit\Support\ComposeServices;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
 use Taqie\ArchitectureKit\Support\LaravelAiRequirement;
@@ -32,7 +33,7 @@ class InstallCommand extends Command
 
     protected $description = 'Configure Architecture Kit and generate Laravel Boost AI resources.';
 
-    public function handle(Filesystem $files): int
+    public function handle(Filesystem $files, ComposerPackageInstaller $composer): int
     {
         $config = new ArchitectureConfig(config_path('architectures.php'), $files);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files);
@@ -139,17 +140,7 @@ class InstallCommand extends Command
         }
 
         if (in_array(Architecture::Saloon, $enabled, true)) {
-            $violations = SaloonRequirement::violations($files, base_path());
-
-            if ($violations !== []) {
-                $this->error('Saloon is enabled, but composer.json does not satisfy Architecture::Saloon requirements.');
-
-                foreach ($violations as $violation) {
-                    $this->line('  - '.$violation);
-                }
-
-                $this->line('Install saloonphp/saloon ^4.0, saloonphp/laravel-plugin, and saloonphp/rate-limit-plugin, then run php artisan architecture-kit:install again.');
-
+            if (! $this->ensureSaloonPackages($files, $composer)) {
                 return self::FAILURE;
             }
         }
@@ -253,6 +244,66 @@ class InstallCommand extends Command
         $this->line('  php artisan boost:update --discover');
 
         return self::SUCCESS;
+    }
+
+    private function ensureSaloonPackages(Filesystem $files, ComposerPackageInstaller $composer): bool
+    {
+        $violations = SaloonRequirement::violations($files, base_path());
+
+        if ($violations === []) {
+            return true;
+        }
+
+        $packages = SaloonRequirement::missingInstallPackages($files, base_path());
+
+        if ($packages === []) {
+            $this->showSaloonRequirementFailure($violations);
+
+            return false;
+        }
+
+        $this->warn('Saloon is enabled, but required Saloon packages are missing.');
+        $this->line('Architecture Kit will run:');
+        $this->line('  composer require '.implode(' ', $packages).' --no-interaction --no-progress');
+
+        $result = $composer->requirePackages($packages, base_path());
+
+        if (! $result->successful) {
+            $this->error('Composer could not install required Saloon packages.');
+            $this->line('Exit code: '.$result->exitCode);
+
+            if ($result->output !== '') {
+                $this->line($result->output);
+            }
+
+            return false;
+        }
+
+        $remainingViolations = SaloonRequirement::violations($files, base_path());
+
+        if ($remainingViolations !== []) {
+            $this->showSaloonRequirementFailure($remainingViolations);
+
+            return false;
+        }
+
+        $this->info('Required Saloon packages installed.');
+
+        return true;
+    }
+
+    /**
+     * @param  array<int, string>  $violations
+     */
+    private function showSaloonRequirementFailure(array $violations): void
+    {
+        $this->error('Saloon is enabled, but composer.json does not satisfy Architecture::Saloon requirements.');
+
+        foreach ($violations as $violation) {
+            $this->line('  - '.$violation);
+        }
+
+        $this->line('Install saloonphp/saloon ^4.0, saloonphp/laravel-plugin, and saloonphp/rate-limit-plugin, then run php artisan architecture-kit:install again.');
     }
 
     /**
