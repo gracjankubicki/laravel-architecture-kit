@@ -12,6 +12,7 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Taqie\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
+use Taqie\ArchitectureKit\Support\FindingCodeRegistry;
 
 #[Name('explain-finding')]
 #[Description('Explain an Architecture Kit audit rule and point to relevant generated guidance.')]
@@ -22,6 +23,28 @@ class ExplainFinding extends Tool
 
     public function handle(Request $request): ResponseFactory
     {
+        $code = strtoupper((string) $request->get('code', ''));
+
+        if ($code !== '') {
+            $explanation = (new FindingCodeRegistry)->explain($code);
+
+            return Response::structured($explanation === null
+                ? [
+                    'v' => 1,
+                    'ok' => false,
+                    'cmd' => 'explain',
+                    'code' => $code,
+                    'm' => 'E_UNKNOWN_FINDING_CODE',
+                    'next' => ['rerun:audit --agent', 'use_known_finding_code'],
+                ]
+                : [
+                    'v' => 1,
+                    'ok' => true,
+                    'cmd' => 'explain',
+                    ...$explanation,
+                ]);
+        }
+
         $rule = (string) $request->get('rule', '');
 
         return Response::structured([

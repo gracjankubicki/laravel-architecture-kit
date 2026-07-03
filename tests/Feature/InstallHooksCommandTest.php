@@ -15,7 +15,7 @@ class InstallHooksCommandTest extends TestCase
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
-        $files = new Filesystem();
+        $files = new Filesystem;
 
         $guard = $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh');
         $codex = $files->get($this->tempPath.'/.codex/hooks.json');
@@ -45,7 +45,7 @@ class InstallHooksCommandTest extends TestCase
 
     public function test_it_blocks_unmanaged_hook_config(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/.codex');
         $files->put($this->tempPath.'/.codex/hooks.json', '{not json');
 
@@ -58,7 +58,7 @@ class InstallHooksCommandTest extends TestCase
 
     public function test_it_merges_existing_hook_config(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/.codex');
         $files->put($this->tempPath.'/.codex/hooks.json', json_encode([
             'hooks' => [
@@ -87,7 +87,7 @@ class InstallHooksCommandTest extends TestCase
 
     public function test_it_repairs_old_generated_codex_metadata_field(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/.codex');
         $files->put($this->tempPath.'/.codex/hooks.json', json_encode([
             'hooks' => [

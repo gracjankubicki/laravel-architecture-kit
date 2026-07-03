@@ -10,8 +10,7 @@ final readonly class ArchitectureGuardResult
         public ArchitectureDoctorResult $doctor,
         public ?ApplicationAuditResult $audit,
         public bool $strict,
-    ) {
-    }
+    ) {}
 
     public function ok(): bool
     {
@@ -45,6 +44,10 @@ final readonly class ArchitectureGuardResult
                     'scope' => null,
                     'errors' => 0,
                     'warnings' => 0,
+                    'suppressed' => [
+                        'inline' => 0,
+                        'baseline' => 0,
+                    ],
                     'findings' => [],
                     'skipped' => true,
                 ]
@@ -53,6 +56,10 @@ final readonly class ArchitectureGuardResult
                     'scope' => $this->audit->scope,
                     'errors' => $this->audit->errors(),
                     'warnings' => $this->audit->warnings(),
+                    'suppressed' => [
+                        'inline' => $this->audit->suppressedInline,
+                        'baseline' => $this->audit->suppressedBaseline,
+                    ],
                     'findings' => array_map(
                         fn (AuditFinding $finding): array => [
                             'severity' => $finding->severity,
@@ -60,6 +67,7 @@ final readonly class ArchitectureGuardResult
                             'path' => $finding->path,
                             'line' => $finding->line,
                             'message' => $finding->message,
+                            ...($finding->occurrence !== null ? ['occurrence' => $finding->occurrence] : []),
                         ],
                         $this->audit->findings,
                     ),

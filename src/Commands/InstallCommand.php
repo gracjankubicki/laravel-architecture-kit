@@ -6,7 +6,6 @@ namespace Taqie\ArchitectureKit\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Throwable;
 use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\Install\AgentInstaller;
 use Taqie\ArchitectureKit\Install\Agents\Agent;
@@ -19,6 +18,7 @@ use Taqie\ArchitectureKit\Support\LaravelAiRequirement;
 use Taqie\ArchitectureKit\Support\PhpRequirement;
 use Taqie\ArchitectureKit\Support\SaloonRequirement;
 use Taqie\ArchitectureKit\Support\ServicesRequirement;
+use Throwable;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -58,10 +58,12 @@ class InstallCommand extends Command
             return self::FAILURE;
         }
 
+        $options = array_merge(Architecture::promptOptions(), $this->customPromptOptions($files));
+
         $selected = multiselect(
             label: 'Which architecture patterns does this project use?',
-            options: Architecture::promptOptions(),
-            default: array_map(fn (Architecture $architecture): string => $architecture->value, $current),
+            options: $options,
+            default: array_map(fn (Architecture|string $architecture): string => $architecture instanceof Architecture ? $architecture->value : $architecture, $current),
             required: 'Select at least one architecture pattern.',
             hint: 'Use space to select patterns, then press enter.',
         );
@@ -241,7 +243,7 @@ class InstallCommand extends Command
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      * @return array<string, GeneratedFile>
      */
     private function expectedFiles(ArchitectureConfig $config, ArchitectureResources $resources, array $enabled): array
@@ -262,13 +264,15 @@ class InstallCommand extends Command
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      * @return array<string, string>
      */
     private function staleSkills(ArchitectureResources $resources, array $enabled): array
     {
         $expectedNames = array_map(
-            fn (Architecture $architecture): string => $architecture->skillName(),
+            fn (Architecture|string $architecture): string => $architecture instanceof Architecture
+                ? $architecture->skillName()
+                : 'architecture-kit-'.$architecture,
             $enabled,
         );
 
@@ -361,6 +365,34 @@ class InstallCommand extends Command
     }
 
     /**
+     * @return array<string, string>
+     */
+    private function customPromptOptions(Filesystem $files): array
+    {
+        $basePath = base_path('.architecture-kit/architectures');
+
+        if (! $files->isDirectory($basePath)) {
+            return [];
+        }
+
+        $options = [];
+
+        foreach ($files->directories($basePath) as $directory) {
+            $slug = basename($directory);
+
+            if (! preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug)) {
+                continue;
+            }
+
+            $options[$slug] = str($slug)->replace('-', ' ')->title()->append(' (custom)')->toString();
+        }
+
+        ksort($options);
+
+        return $options;
+    }
+
+    /**
      * @return array{installer: AgentInstaller, agents: array<int, Agent>, mcp: bool, hooks: bool}|null
      */
     private function agentInstall(Filesystem $files): ?array
@@ -425,7 +457,7 @@ class InstallCommand extends Command
      */
     private function emptyAgentPlan(): array
     {
-        $empty = new InstallResult();
+        $empty = new InstallResult;
 
         return [
             'mcp' => $empty,

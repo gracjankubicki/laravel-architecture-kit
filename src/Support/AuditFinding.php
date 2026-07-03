@@ -12,8 +12,8 @@ final readonly class AuditFinding
         public string $path,
         public int $line,
         public string $message,
-    ) {
-    }
+        public ?int $occurrence = null,
+    ) {}
 
     public function severityRank(): int
     {

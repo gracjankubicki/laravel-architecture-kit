@@ -16,8 +16,7 @@ final readonly class HookWriter
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<int, Agent&SupportsHooks>  $agents
@@ -217,10 +216,10 @@ final readonly class HookWriter
         }
 
         if ($agent->hookMode() === 'claude') {
-            return (new ClaudeHookWriter())->command();
+            return (new ClaudeHookWriter)->command();
         }
 
-        return (new CodexHookWriter())->command();
+        return (new CodexHookWriter)->command();
     }
 
     private function guardScript(): string

@@ -10,6 +10,5 @@ final readonly class GeneratedFile
         public string $path,
         public string $contents,
         public bool $removable = false,
-    ) {
-    }
+    ) {}
 }

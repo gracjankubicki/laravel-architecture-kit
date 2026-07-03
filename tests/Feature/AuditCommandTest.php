@@ -5,13 +5,230 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Tests\Feature;
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Artisan;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\AuditRule;
+use Taqie\ArchitectureKit\Audit\FileContext;
 use Taqie\ArchitectureKit\Support\ApplicationAudit;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
+use Taqie\ArchitectureKit\Support\AuditFinding;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
 class AuditCommandTest extends TestCase
 {
+    public function test_agent_output_is_minified_and_uses_finding_codes_by_default(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true]);
+        $output = trim(Artisan::output());
+        $payload = json_decode($output, true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertIsArray($payload);
+        $this->assertStringNotContainsString("\n", $output);
+        $this->assertSame(1, $payload['v']);
+        $this->assertFalse($payload['ok']);
+        $this->assertSame('audit', $payload['cmd']);
+        $this->assertSame(1, $payload['err']);
+        $this->assertSame('thin-controller', $payload['find'][0]['r']);
+        $this->assertSame('err', $payload['find'][0]['s']);
+        $this->assertSame('E_THIN_CONTROLLER_MODEL_WRITE', $payload['find'][0]['m']);
+        $this->assertArrayNotHasKey('msg', $payload['find'][0]);
+        $this->assertStringNotContainsString('Controller mutates a model directly', $output);
+    }
+
+    public function test_agent_full_output_includes_full_messages(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--full' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame('Controller mutates a model directly; move the write use case to an Action.', $payload['find'][0]['msg']);
+    }
+
+    public function test_agent_output_can_hide_findings_with_zero_limit(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--limit' => 0]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertTrue($payload['trunc']);
+        $this->assertSame(1, $payload['total']);
+        $this->assertSame(0, $payload['shown']);
+        $this->assertArrayNotHasKey('find', $payload);
+    }
+
+    public function test_agent_output_can_limit_findings_and_report_truncation(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $document->update(['name' => 'changed']);
+        $document->delete();
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--limit' => 1]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertTrue($payload['trunc']);
+        $this->assertSame(2, $payload['total']);
+        $this->assertSame(1, $payload['shown']);
+        $this->assertCount(1, $payload['find']);
+    }
+
+    public function test_agent_output_reports_command_errors_as_json(): void
+    {
+        $this->writeRawConfig(<<<'PHP'
+<?php
+
+use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        MissingFixtureAuditRule::class,
+    ],
+];
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertFalse($payload['ok']);
+        $this->assertSame('audit', $payload['cmd']);
+        $this->assertSame('E_COMMAND_FAILED', $payload['m']);
+    }
+
+    public function test_agent_schema_option_outputs_json_schema(): void
+    {
+        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--schema' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertSame('https://json-schema.org/draft/2020-12/schema', $payload['$schema']);
+        $this->assertSame('Architecture Kit audit agent output', $payload['title']);
+        $this->assertSame('audit', $payload['properties']['cmd']['const']);
+    }
+
+    public function test_agent_output_is_shorter_than_human_text_output_for_same_fixture(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $this->validate([], []);
+        $document->update(['name' => 'changed']);
+        $document->delete();
+        DB::transaction(fn () => null);
+        Document::create(['name' => 'new']);
+        ProcessDocument::dispatch($document);
+    }
+}
+PHP);
+
+        Artisan::call('architecture-kit:audit');
+        $textOutput = Artisan::output();
+
+        Artisan::call('architecture-kit:audit', ['--agent' => true]);
+        $agentOutput = Artisan::output();
+
+        $this->assertLessThan(strlen($textOutput), strlen($agentOutput));
+    }
+
     public function test_it_reports_architecture_violations(): void
     {
         $this->writeConfig([
@@ -237,7 +454,7 @@ final class DocumentActionResponse
 }
 PHP);
 
-        $result = (new ApplicationAudit(new Filesystem(), $this->tempPath))->run([
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([
             Architecture::ThinControllers,
             Architecture::FormRequests,
             Architecture::Actions,
@@ -479,7 +696,7 @@ final class StartDocumentPseudonymization
 }
 PHP);
 
-        $result = (new ApplicationAudit(new Filesystem(), $this->tempPath))->run([Architecture::Actions], changedOnly: false);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::Actions], changedOnly: false);
 
         $this->assertTrue(collect($result->findings)->contains(
             fn ($finding): bool => $finding->rule === 'testability'
@@ -571,17 +788,301 @@ PHP);
             ->assertExitCode(1);
     }
 
+    public function test_inline_ignore_suppresses_specific_finding(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        // @architecture-kit-ignore thin-controller -- legacy endpoint accepted during migration
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
+            ->assertExitCode(0);
+    }
+
+    public function test_invalid_inline_ignore_does_not_suppress_original_finding(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        // @architecture-kit-ignore unknown-rule -- typo
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit --strict')
+            ->expectsOutputToContain('error thin-controller')
+            ->expectsOutputToContain('warn  invalid-suppression')
+            ->assertExitCode(1);
+    }
+
+    public function test_update_baseline_suppresses_existing_findings_and_keeps_new_findings_visible(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit --update-baseline')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
+            ->assertExitCode(0);
+
+        $this->assertFileExists($this->tempPath.'/.architecture-kit/baseline.json');
+
+        $this->writeFile('app/Http/Controllers/OtherController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class OtherController
+{
+    public function destroy($document): void
+    {
+        $document->delete();
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('error thin-controller')
+            ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
+            ->assertExitCode(1);
+    }
+
+    public function test_audit_excludes_skip_matching_paths(): void
+    {
+        $this->writeRawConfig(<<<'PHP'
+<?php
+
+use Taqie\ArchitectureKit\Architecture;
+
+return [
+    'enabled' => [
+        Architecture::ThinControllers,
+        Architecture::Actions,
+    ],
+    'audit' => [
+        'exclude' => ['app/Legacy/*'],
+    ],
+];
+PHP);
+
+        $this->writeFile('app/Legacy/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Legacy;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->assertExitCode(0);
+    }
+
+    public function test_unparseable_php_file_is_reported_without_crashing_audit(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+        $this->writeFile('app/Actions/Broken.php', '<?php final class Broken {');
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('warn  unparseable-file')
+            ->assertExitCode(0);
+    }
+
+    public function test_custom_audit_rule_reports_findings_and_can_be_suppressed(): void
+    {
+        $this->writeRawConfig(<<<PHP
+<?php
+
+use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Tests\Feature\FixtureAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        FixtureAuditRule::class,
+    ],
+];
+PHP);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('error fixture-audit-rule')
+            ->assertExitCode(1);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+// @architecture-kit-ignore-file fixture-audit-rule -- accepted project exception
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
+            ->assertExitCode(0);
+    }
+
+    public function test_invalid_baseline_json_fails_audit(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit');
+        $files->put($this->tempPath.'/.architecture-kit/baseline.json', '{broken');
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('.architecture-kit/baseline.json is invalid or uses an unsupported version.')
+            ->assertExitCode(1);
+    }
+
+    public function test_missing_custom_audit_rule_fails_with_clear_message(): void
+    {
+        $this->writeRawConfig(<<<'PHP'
+<?php
+
+use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        MissingFixtureAuditRule::class,
+    ],
+];
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('Architecture Kit audit rule [Taqie\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule] does not exist.')
+            ->assertExitCode(1);
+    }
+
+    public function test_custom_audit_rule_must_implement_audit_rule(): void
+    {
+        $this->writeRawConfig(<<<'PHP'
+<?php
+
+use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Tests\Feature\FixtureNotAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        FixtureNotAuditRule::class,
+    ],
+];
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('Architecture Kit audit rule [Taqie\ArchitectureKit\Tests\Feature\FixtureNotAuditRule] must implement Taqie\ArchitectureKit\Audit\AuditRule.')
+            ->assertExitCode(1);
+    }
+
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function writeConfig(array $enabled): void
     {
         (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write($enabled);
     }
 
+    private function writeRawConfig(string $contents): void
+    {
+        $this->writeFile('config/architectures.php', $contents);
+    }
+
     private function writeFile(string $path, string $contents): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $absolute = $this->tempPath.'/'.$path;
         $files->ensureDirectoryExists(dirname($absolute));
         $files->put($absolute, $contents);
@@ -597,3 +1098,20 @@ PHP);
         $this->assertSame(0, $exitCode, implode("\n", $output));
     }
 }
+
+final class FixtureAuditRule implements AuditRule
+{
+    public function supports(string $path, array $enabled): bool
+    {
+        return str_ends_with($path, 'ForbiddenWorkflow.php');
+    }
+
+    public function check(FileContext $file): array
+    {
+        return [
+            new AuditFinding('error', 'fixture-audit-rule', $file->path, 8, 'Fixture custom rule failed.'),
+        ];
+    }
+}
+
+final class FixtureNotAuditRule {}

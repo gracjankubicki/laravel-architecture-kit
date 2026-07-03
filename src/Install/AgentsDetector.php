@@ -14,8 +14,7 @@ final readonly class AgentsDetector
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, Agent>

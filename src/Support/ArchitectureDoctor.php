@@ -6,8 +6,10 @@ namespace Taqie\ArchitectureKit\Support;
 
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Application as ConsoleApplication;
-use Throwable;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\RuleRegistry;
+use Taqie\ArchitectureKit\Audit\Suppression\Baseline;
+use Throwable;
 
 final readonly class ArchitectureDoctor
 {
@@ -17,8 +19,7 @@ final readonly class ArchitectureDoctor
         private Filesystem $files,
         private string $basePath,
         private ?ConsoleApplication $console = null,
-    ) {
-    }
+    ) {}
 
     public function run(): ArchitectureDoctorResult
     {
@@ -105,6 +106,14 @@ final readonly class ArchitectureDoctor
             );
         }
 
+        foreach ($this->customRuleChecks() as $check) {
+            $checks[] = $check;
+        }
+
+        foreach ($this->baselineChecks($enabled) as $check) {
+            $checks[] = $check;
+        }
+
         $expected = [
             'guideline' => $this->resources->guideline($enabled),
         ];
@@ -122,7 +131,9 @@ final readonly class ArchitectureDoctor
         }
 
         $expectedSkillNames = array_map(
-            fn (Architecture $architecture): string => $architecture->skillName(),
+            fn (Architecture|string $architecture): string => $architecture instanceof Architecture
+                ? $architecture->skillName()
+                : 'architecture-kit-'.$architecture,
             $enabled,
         );
 
@@ -170,6 +181,77 @@ final readonly class ArchitectureDoctor
     private function boostInstalled(): bool
     {
         return $this->console?->has('boost:update') === true;
+    }
+
+    /**
+     * @return array<int, ArchitectureDoctorCheck>
+     */
+    private function customRuleChecks(): array
+    {
+        try {
+            (new RuleRegistry($this->config->customRules()))->customRules();
+
+            return [];
+        } catch (Throwable $exception) {
+            return [
+                new ArchitectureDoctorCheck(
+                    area: 'config',
+                    status: 'blocked',
+                    path: 'config/architectures.php',
+                    message: $exception->getMessage(),
+                ),
+            ];
+        }
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<int, ArchitectureDoctorCheck>
+     */
+    private function baselineChecks(array $enabled): array
+    {
+        if (! $this->files->exists($this->basePath.'/.architecture-kit/baseline.json')) {
+            return [];
+        }
+
+        try {
+            $audit = (new ApplicationAudit($this->files, $this->basePath))->run(
+                enabled: $enabled,
+                changedOnly: false,
+                exclude: $this->config->auditExcludes(),
+                customRules: $this->config->customRules(),
+                useBaseline: false,
+            );
+            $orphaned = (new Baseline($this->files, $this->basePath))->orphanedCount($audit->findings);
+        } catch (Throwable $exception) {
+            return [
+                new ArchitectureDoctorCheck(
+                    area: 'baseline',
+                    status: 'blocked',
+                    path: '.architecture-kit/baseline.json',
+                    message: $exception->getMessage(),
+                ),
+            ];
+        }
+
+        if ($orphaned === 0) {
+            return [
+                new ArchitectureDoctorCheck(
+                    area: 'baseline',
+                    status: 'current',
+                    path: '.architecture-kit/baseline.json',
+                ),
+            ];
+        }
+
+        return [
+            new ArchitectureDoctorCheck(
+                area: 'baseline',
+                status: 'warning',
+                path: '.architecture-kit/baseline.json',
+                message: "{$orphaned} baseline entr".($orphaned === 1 ? 'y is' : 'ies are').' orphaned. Run php artisan architecture-kit:audit --update-baseline.',
+            ),
+        ];
     }
 
     private function relative(string $path): string

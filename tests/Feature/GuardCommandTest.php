@@ -13,6 +13,68 @@ use Taqie\ArchitectureKit\Tests\TestCase;
 
 class GuardCommandTest extends TestCase
 {
+    public function test_guard_agent_output_reports_audit_findings_without_changing_json_contract(): void
+    {
+        $this->writeCurrentResources([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame('guard', $payload['cmd']);
+        $this->assertSame('ok', $payload['doctor']);
+        $this->assertSame('fail', $payload['audit']);
+        $this->assertSame('E_THIN_CONTROLLER_MODEL_WRITE', $payload['find'][0]['m']);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true, '--strict' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('"doctor"', $output);
+        $this->assertStringContainsString('"audit"', $output);
+        $this->assertStringContainsString('"message": "Controller mutates a model directly; move the write use case to an Action."', $output);
+    }
+
+    public function test_guard_agent_output_marks_audit_as_skipped_when_doctor_blocks(): void
+    {
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+return [
+    'enabled' => [
+        'billing-workflows',
+    ],
+];
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame('fail', $payload['doctor']);
+        $this->assertSame('skip', $payload['audit']);
+        $this->assertSame(['run:architecture-kit:install', 'rerun:guard --agent'], $payload['next']);
+    }
+
     public function test_it_passes_with_current_resources_and_no_audit_findings(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
@@ -24,6 +86,55 @@ class GuardCommandTest extends TestCase
         $this->assertStringContainsString('"ok": true', $output);
         $this->assertStringContainsString('"doctor"', $output);
         $this->assertStringContainsString('"audit"', $output);
+    }
+
+    public function test_guard_json_includes_suppressed_counts(): void
+    {
+        $this->writeCurrentResources([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        // @architecture-kit-ignore thin-controller -- legacy endpoint accepted during migration
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('"suppressed"', $output);
+        $this->assertStringContainsString('"inline": 1', $output);
+        $this->assertStringContainsString('"baseline": 0', $output);
+    }
+
+    public function test_guard_json_fails_when_baseline_json_is_invalid(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit');
+        $files->put($this->tempPath.'/.architecture-kit/baseline.json', '{broken');
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('"ok": false', $output);
+        $this->assertStringContainsString('.architecture-kit/baseline.json is invalid or uses an unsupported version.', $output);
     }
 
     public function test_it_fails_when_doctor_state_is_not_current(): void
@@ -360,7 +471,7 @@ PHP);
 
     public function test_modern_php_architecture_uses_real_declare_and_override_attributes(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'php' => '^8.5',
             ],
@@ -869,7 +980,7 @@ PHP);
 
     public function test_it_fails_when_laravel_ai_is_called_directly_from_controller(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'laravel/ai' => '^0.8',
             ],
@@ -908,7 +1019,7 @@ PHP);
 
     public function test_it_fails_on_generic_laravel_ai_gateway_and_anonymous_tool(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'laravel/ai' => '^0.8',
             ],
@@ -954,7 +1065,7 @@ PHP);
 
     public function test_laravel_ai_architecture_ignores_forbidden_tokens_in_comments_and_strings(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'laravel/ai' => '^0.8',
             ],
@@ -2077,7 +2188,7 @@ PHP);
      */
     private function writeCurrentResources(array $enabled): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
 
@@ -2096,7 +2207,7 @@ PHP);
 
     private function writeFile(string $path, string $contents): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $absolute = $this->tempPath.'/'.$path;
         $files->ensureDirectoryExists(dirname($absolute));
         $files->put($absolute, $contents);
@@ -2104,7 +2215,7 @@ PHP);
 
     private function writeSaloonComposer(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'saloonphp/saloon' => '^4.0',
                 'saloonphp/laravel-plugin' => '^4.0',

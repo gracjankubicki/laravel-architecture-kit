@@ -15,8 +15,7 @@ final readonly class InstallResult
         public array $creates = [],
         public array $updates = [],
         public array $blocked = [],
-    ) {
-    }
+    ) {}
 
     public function ok(): bool
     {

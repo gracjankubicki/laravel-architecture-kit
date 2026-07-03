@@ -8,6 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use Laravel\Mcp\Facades\Mcp;
 use Taqie\ArchitectureKit\Commands\AuditCommand;
 use Taqie\ArchitectureKit\Commands\DoctorCommand;
+use Taqie\ArchitectureKit\Commands\ExplainCommand;
 use Taqie\ArchitectureKit\Commands\GuardCommand;
 use Taqie\ArchitectureKit\Commands\InstallAgentsCommand;
 use Taqie\ArchitectureKit\Commands\InstallCommand;
@@ -35,6 +36,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
         $this->commands([
             AuditCommand::class,
             DoctorCommand::class,
+            ExplainCommand::class,
             GuardCommand::class,
             InstallAgentsCommand::class,
             InstallCommand::class,

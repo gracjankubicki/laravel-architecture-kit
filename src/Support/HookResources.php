@@ -12,9 +12,8 @@ final readonly class HookResources
 
     public function __construct(
         private string $projectPath,
-        private Filesystem $files = new Filesystem(),
-    ) {
-    }
+        private Filesystem $files = new Filesystem,
+    ) {}
 
     /**
      * @param  array<int, string>  $agents

@@ -7,6 +7,7 @@ namespace Taqie\ArchitectureKit\Support;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\EnabledArchitecture;
 
 final class ArchitectureResources
 {
@@ -15,12 +16,11 @@ final class ArchitectureResources
     public function __construct(
         private readonly string $packagePath,
         private readonly string $projectPath,
-        private readonly Filesystem $files = new Filesystem(),
-    ) {
-    }
+        private readonly Filesystem $files = new Filesystem,
+    ) {}
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     public function guideline(array $enabled): GeneratedFile
     {
@@ -43,7 +43,7 @@ final class ArchitectureResources
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      * @return array<string, GeneratedFile>
      */
     public function skills(array $enabled): array
@@ -51,10 +51,12 @@ final class ArchitectureResources
         $skills = [];
 
         foreach ($this->ordered($enabled) as $architecture) {
-            $contents = $this->files->get($this->skillSource($architecture));
+            $contents = $this->files->exists($this->skillSource($architecture))
+                ? $this->files->get($this->skillSource($architecture))
+                : $this->defaultSkill($architecture);
             $this->assertSkillName($architecture, $contents);
 
-            $skills[$architecture->value] = new GeneratedFile(
+            $skills[$architecture->slug()] = new GeneratedFile(
                 path: $this->projectPath.'/.ai/skills/'.$architecture->skillName().'/SKILL.md',
                 contents: $this->withSkillMarker($contents),
             );
@@ -64,37 +66,51 @@ final class ArchitectureResources
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
-     * @return array<int, Architecture>
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<int, EnabledArchitecture>
      */
     public function ordered(array $enabled): array
     {
-        return array_values(array_filter(
-            Architecture::guidelineOrder(),
-            fn (Architecture $architecture): bool => in_array($architecture, $enabled, true),
+        $builtIn = array_values(array_filter(
+            array_map(
+                fn (Architecture $architecture): EnabledArchitecture => new EnabledArchitecture($architecture, $this->projectPath),
+                Architecture::guidelineOrder(),
+            ),
+            fn (EnabledArchitecture $architecture): bool => in_array($architecture->value, $enabled, true),
         ));
+
+        $custom = array_map(
+            fn (string $slug): EnabledArchitecture => new EnabledArchitecture($slug, $this->projectPath),
+            array_values(array_filter($enabled, 'is_string')),
+        );
+
+        usort($custom, fn (EnabledArchitecture $left, EnabledArchitecture $right): int => $left->slug() <=> $right->slug());
+
+        return array_merge($builtIn, $custom);
     }
 
-    public function guidelineSource(Architecture $architecture): string
+    public function guidelineSource(EnabledArchitecture|Architecture|string $architecture): string
     {
-        return $this->packagePath.'/resources/architectures/'.$architecture->value.'/guideline.md';
+        return $this->enabledArchitecture($architecture)->guidelineSource($this->packagePath);
     }
 
-    public function skillSource(Architecture $architecture): string
+    public function skillSource(EnabledArchitecture|Architecture|string $architecture): string
     {
-        return $this->packagePath.'/resources/architectures/'.$architecture->value.'/SKILL.md';
+        return $this->enabledArchitecture($architecture)->skillSource($this->packagePath);
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     public function assertSourcesExist(array $enabled): void
     {
-        foreach ($enabled as $architecture) {
-            foreach ([$this->guidelineSource($architecture), $this->skillSource($architecture)] as $path) {
-                if (! $this->files->exists($path)) {
-                    throw new RuntimeException("Missing Architecture Kit source resource: {$path}");
-                }
+        foreach ($this->ordered($enabled) as $architecture) {
+            if (! $this->files->exists($this->guidelineSource($architecture))) {
+                throw new RuntimeException("Missing Architecture Kit source resource: {$this->guidelineSource($architecture)}");
+            }
+
+            if ($architecture->value instanceof Architecture && ! $this->files->exists($this->skillSource($architecture))) {
+                throw new RuntimeException("Missing Architecture Kit source resource: {$this->skillSource($architecture)}");
             }
         }
     }
@@ -136,7 +152,7 @@ final class ArchitectureResources
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function architectureRules(array $enabled): string
     {
@@ -242,7 +258,7 @@ MARKDOWN;
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function enabledArchitectures(array $enabled): string
     {
@@ -256,12 +272,12 @@ MARKDOWN;
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function composition(array $enabled): string
     {
         $enabledValues = array_map(
-            fn (Architecture $architecture): string => $architecture->value,
+            fn (Architecture|string $architecture): string => $architecture instanceof Architecture ? $architecture->value : $architecture,
             $enabled,
         );
 
@@ -332,10 +348,32 @@ MARKDOWN;
         return substr($contents, 0, $frontmatterEnd)."\n\n{$marker}\n\n".ltrim(substr($contents, $frontmatterEnd))."\n";
     }
 
-    private function assertSkillName(Architecture $architecture, string $contents): void
+    private function assertSkillName(EnabledArchitecture $architecture, string $contents): void
     {
         if (! str_contains($contents, 'name: '.$architecture->skillName())) {
-            throw new RuntimeException("Skill for [{$architecture->value}] must be named [{$architecture->skillName()}].");
+            throw new RuntimeException("Skill for [{$architecture->slug()}] must be named [{$architecture->skillName()}].");
         }
+    }
+
+    private function defaultSkill(EnabledArchitecture $architecture): string
+    {
+        return implode("\n", [
+            '---',
+            'name: '.$architecture->skillName(),
+            'description: Follow the '.$architecture->label().' project architecture rules generated by Architecture Kit.',
+            '---',
+            '',
+            '# '.$architecture->label(),
+            '',
+            trim($this->files->get($this->guidelineSource($architecture))),
+            '',
+        ]);
+    }
+
+    private function enabledArchitecture(EnabledArchitecture|Architecture|string $architecture): EnabledArchitecture
+    {
+        return $architecture instanceof EnabledArchitecture
+            ? $architecture
+            : new EnabledArchitecture($architecture, $this->projectPath);
     }
 }

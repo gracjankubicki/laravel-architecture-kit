@@ -14,8 +14,7 @@ final readonly class ArchitectureGuard
         private string $packagePath,
         private string $basePath,
         private ?ConsoleApplication $console = null,
-    ) {
-    }
+    ) {}
 
     public function run(bool $changedOnly, ?string $baseRef, bool $strict): ArchitectureGuardResult
     {
@@ -24,11 +23,13 @@ final readonly class ArchitectureGuard
         $doctor = (new ArchitectureDoctor($config, $resources, $this->files, $this->basePath, $this->console))->run();
         $audit = null;
 
-        if ($doctor->configOk()) {
+        if ($this->auditCanRun($doctor)) {
             $audit = (new ApplicationAudit($this->files, $this->basePath))->run(
                 enabled: $doctor->enabled,
                 changedOnly: $changedOnly,
                 baseRef: $baseRef,
+                exclude: $config->auditExcludes(),
+                customRules: $config->customRules(),
             );
         }
 
@@ -37,5 +38,20 @@ final readonly class ArchitectureGuard
             audit: $audit,
             strict: $strict,
         );
+    }
+
+    private function auditCanRun(ArchitectureDoctorResult $doctor): bool
+    {
+        if (! $doctor->configOk()) {
+            return false;
+        }
+
+        foreach ($doctor->checks as $check) {
+            if ($check->area === 'baseline' && $check->failed()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

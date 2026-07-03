@@ -33,7 +33,7 @@ final class PhpRequirement
     public static function constraintRequiresPhp85(string $constraint): bool
     {
         try {
-            $parser = new VersionParser();
+            $parser = new VersionParser;
 
             return Intervals::isSubsetOf(
                 $parser->parseConstraints($constraint),

@@ -9,15 +9,14 @@ use Taqie\ArchitectureKit\Architecture;
 final readonly class ArchitectureDoctorResult
 {
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      * @param  array<int, ArchitectureDoctorCheck>  $checks
      */
     public function __construct(
         public array $enabled,
         public array $checks,
         public bool $boostInstalled,
-    ) {
-    }
+    ) {}
 
     public function ok(): bool
     {
@@ -54,7 +53,7 @@ final readonly class ArchitectureDoctorResult
         return [
             'ok' => $this->ok(),
             'enabled' => array_map(
-                fn (Architecture $architecture): string => $architecture->value,
+                fn ($architecture): string => $architecture instanceof Architecture ? $architecture->value : $architecture,
                 $this->enabled,
             ),
             'checks' => array_map(

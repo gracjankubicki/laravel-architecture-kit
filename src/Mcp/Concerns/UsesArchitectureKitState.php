@@ -38,7 +38,7 @@ trait UsesArchitectureKitState
     }
 
     /**
-     * @return array<int, Architecture>
+     * @return array<int, Architecture|string>
      */
     protected function enabled(): array
     {
@@ -62,6 +62,8 @@ trait UsesArchitectureKitState
             enabled: $this->enabled(),
             changedOnly: $changedOnly,
             baseRef: $baseRef,
+            exclude: $this->config()->auditExcludes(),
+            customRules: $this->config()->customRules(),
         );
     }
 
@@ -80,15 +82,12 @@ trait UsesArchitectureKitState
      */
     protected function architectureSummaries(): array
     {
-        return array_map(
-            fn (Architecture $architecture): array => [
-                'value' => $architecture->value,
-                'label' => $architecture->label(),
-                'skill' => $architecture->skillName(),
-                'source' => $architecture->sourcePath(),
-            ],
-            $this->enabled(),
-        );
+        return array_map(fn ($architecture): array => [
+            'value' => $architecture->slug(),
+            'label' => $architecture->label(),
+            'skill' => $architecture->skillName(),
+            'source' => $architecture->sourcePath(),
+        ], $this->resources()->ordered($this->enabled()));
     }
 
     protected function guideline(): string

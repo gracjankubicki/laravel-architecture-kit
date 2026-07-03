@@ -19,7 +19,7 @@ final class PhpAst
     public static function parse(string $contents): ?array
     {
         try {
-            return (new ParserFactory())->createForHostVersion()->parse($contents);
+            return (new ParserFactory)->createForHostVersion()->parse($contents);
         } catch (Error) {
             return null;
         }
@@ -30,7 +30,7 @@ final class PhpAst
      */
     public static function traverse(array $nodes, NodeVisitor $visitor): void
     {
-        $traverser = new NodeTraverser();
+        $traverser = new NodeTraverser;
         $traverser->addVisitor($visitor);
         $traverser->traverse($nodes);
     }
@@ -53,8 +53,7 @@ final class PhpAst
             public function __construct(
                 private $predicate,
                 private object $state,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): ?int
             {

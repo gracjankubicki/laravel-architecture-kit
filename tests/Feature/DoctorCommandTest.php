@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Tests\Feature;
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Artisan;
 use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
@@ -12,6 +13,40 @@ use Taqie\ArchitectureKit\Tests\TestCase;
 
 class DoctorCommandTest extends TestCase
 {
+    public function test_doctor_agent_output_reports_compact_checks_and_issues(): void
+    {
+        $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php');
+        $config->write([Architecture::Actions]);
+
+        $exitCode = Artisan::call('architecture-kit:doctor', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame('doctor', $payload['cmd']);
+        $this->assertSame(['actions'], $payload['enabled']);
+        $this->assertSame('fail', $payload['checks']['generated']);
+        $this->assertSame('generated', $payload['issues'][0]['a']);
+        $this->assertSame('err', $payload['issues'][0]['s']);
+        $this->assertArrayNotHasKey('msg', $payload['issues'][0]);
+    }
+
+    public function test_doctor_agent_full_output_includes_issue_messages(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit');
+        $files->put($this->tempPath.'/.architecture-kit/baseline.json', '{broken');
+
+        $exitCode = Artisan::call('architecture-kit:doctor', ['--agent' => true, '--full' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame('fail', $payload['checks']['baseline']);
+        $this->assertSame('E_BASELINE_INVALID', $payload['issues'][0]['m']);
+        $this->assertSame('.architecture-kit/baseline.json is invalid or uses an unsupported version.', $payload['issues'][0]['msg']);
+    }
+
     public function test_it_passes_when_generated_resources_are_current(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
@@ -34,7 +69,7 @@ class DoctorCommandTest extends TestCase
 
     public function test_it_fails_when_generated_skill_is_missing(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
 
@@ -53,7 +88,7 @@ class DoctorCommandTest extends TestCase
     {
         $this->writeCurrentResources([Architecture::Actions]);
 
-        (new Filesystem())->append($this->tempPath.'/.ai/skills/architecture-kit-actions/SKILL.md', "\nmanual edit\n");
+        (new Filesystem)->append($this->tempPath.'/.ai/skills/architecture-kit-actions/SKILL.md', "\nmanual edit\n");
 
         $this->artisan('architecture-kit:doctor')
             ->expectsOutputToContain('outdated .ai/skills/architecture-kit-actions/SKILL.md')
@@ -64,7 +99,7 @@ class DoctorCommandTest extends TestCase
     {
         $this->writeCurrentResources([Architecture::Actions]);
 
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/.ai/skills/architecture-kit-value-objects');
         $files->put(
             $this->tempPath.'/.ai/skills/architecture-kit-value-objects/SKILL.md',
@@ -76,14 +111,16 @@ class DoctorCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
-    public function test_it_fails_when_config_uses_raw_strings(): void
+    public function test_it_accepts_builtin_architecture_raw_strings(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', "<?php\n\nreturn ['enabled' => ['actions']];\n");
 
         $this->artisan('architecture-kit:doctor')
-            ->expectsOutputToContain('blocked  config/architectures.php')
+            ->expectsOutputToContain('current  config/architectures.php')
+            ->expectsOutputToContain('enabled  actions')
+            ->expectsOutputToContain('missing  .ai/guidelines/architecture-kit.md')
             ->assertExitCode(1);
     }
 
@@ -99,7 +136,7 @@ class DoctorCommandTest extends TestCase
 
     public function test_it_passes_for_modern_php_85_when_project_requires_php_85(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'php' => '^8.5',
             ],
@@ -124,7 +161,7 @@ class DoctorCommandTest extends TestCase
 
     public function test_it_warns_when_laravel_ai_is_installed_but_architecture_is_disabled(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'laravel/ai' => '^0.8',
             ],
@@ -150,7 +187,7 @@ class DoctorCommandTest extends TestCase
 
     public function test_it_fails_when_saloon_v3_is_allowed(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'saloonphp/saloon' => '^3.0',
                 'saloonphp/laravel-plugin' => '^4.0',
@@ -168,7 +205,7 @@ class DoctorCommandTest extends TestCase
 
     public function test_it_passes_for_saloon_when_required_packages_are_installed(): void
     {
-        (new Filesystem())->put($this->tempPath.'/composer.json', json_encode([
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'saloonphp/saloon' => '^4.0',
                 'saloonphp/laravel-plugin' => '^4.0',
@@ -185,7 +222,7 @@ class DoctorCommandTest extends TestCase
 
     public function test_it_warns_when_services_exist_but_services_architecture_is_disabled(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/app/Services/Documents');
         $files->put($this->tempPath.'/app/Services/Documents/DocumentPseudonymizationService.php', <<<'PHP'
 <?php
@@ -207,6 +244,94 @@ PHP);
             ->assertExitCode(0);
     }
 
+    public function test_it_reports_orphaned_baseline_entries_and_update_baseline_removes_them(): void
+    {
+        $this->writeCurrentResources([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit --update-baseline')
+            ->assertExitCode(0);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update(): void
+    {
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('Baseline:')
+            ->expectsOutputToContain('warning  .architecture-kit/baseline.json')
+            ->expectsOutputToContain('1 baseline entry is orphaned')
+            ->assertExitCode(0);
+
+        $this->artisan('architecture-kit:audit --update-baseline')
+            ->assertExitCode(0);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('current  .architecture-kit/baseline.json')
+            ->assertExitCode(0);
+    }
+
+    public function test_it_blocks_when_baseline_json_is_invalid(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit');
+        $files->put($this->tempPath.'/.architecture-kit/baseline.json', '{broken');
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('Baseline:')
+            ->expectsOutputToContain('blocked  .architecture-kit/baseline.json')
+            ->expectsOutputToContain('.architecture-kit/baseline.json is invalid or uses an unsupported version.')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_blocks_custom_project_architecture_without_guideline_source(): void
+    {
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+return [
+    'enabled' => [
+        'billing-workflows',
+    ],
+];
+PHP);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  config/architectures.php')
+            ->expectsOutputToContain('Missing Architecture Kit source resource: '.$this->tempPath.'/.architecture-kit/architectures/billing-workflows/guideline.md')
+            ->assertExitCode(1);
+    }
+
     public function test_every_architecture_has_source_resources(): void
     {
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath);
@@ -222,7 +347,7 @@ PHP);
      */
     private function writeCurrentResources(array $enabled): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
 
@@ -237,5 +362,13 @@ PHP);
             $files->ensureDirectoryExists(dirname($file->path));
             $files->put($file->path, $file->contents);
         }
+    }
+
+    private function writeFile(string $path, string $contents): void
+    {
+        $files = new Filesystem;
+        $absolute = $this->tempPath.'/'.$path;
+        $files->ensureDirectoryExists(dirname($absolute));
+        $files->put($absolute, $contents);
     }
 }

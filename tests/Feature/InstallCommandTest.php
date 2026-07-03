@@ -24,7 +24,7 @@ class InstallCommandTest extends TestCase
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
-        $files = new Filesystem();
+        $files = new Filesystem;
 
         $config = $files->get($this->tempPath.'/config/architectures.php');
         $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
@@ -61,7 +61,7 @@ class InstallCommandTest extends TestCase
 
     public function test_it_removes_stale_generated_skills(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Actions]));
         $files->ensureDirectoryExists($this->tempPath.'/.ai/skills/architecture-kit-value-objects');
@@ -102,7 +102,7 @@ class InstallCommandTest extends TestCase
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
-        $files = new Filesystem();
+        $files = new Filesystem;
 
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-actions/SKILL.md');
         $this->assertStringContainsString('[mcp_servers.architecture-kit]', $files->get($this->tempPath.'/.codex/config.toml'));
@@ -114,7 +114,7 @@ class InstallCommandTest extends TestCase
 
     public function test_it_preserves_project_specific_agent_runtime_config(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', <<<'PHP'
 <?php
@@ -191,7 +191,7 @@ PHP);
 
     public function test_it_preserves_project_specific_config_when_enabled_block_is_compact(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', <<<'PHP'
 <?php
@@ -214,9 +214,53 @@ PHP);
         $this->assertStringContainsString('"agents" => ["mcp" => ["command" => "docker"]]', $config);
     }
 
+    public function test_it_generates_resources_for_custom_project_architecture(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/billing-workflows');
+        $files->put($this->tempPath.'/.architecture-kit/architectures/billing-workflows/guideline.md', <<<'MARKDOWN'
+Billing workflows must keep invoice state transitions inside project-owned use cases.
+MARKDOWN);
+
+        $options = array_merge(Architecture::promptOptions(), [
+            'billing-workflows' => 'Billing Workflows (custom)',
+        ]);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions', 'billing-workflows'], $options)
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $config = $files->get($this->tempPath.'/config/architectures.php');
+        $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-billing-workflows/SKILL.md');
+
+        $this->assertStringContainsString('Architecture::Actions', $config);
+        $this->assertStringContainsString("'billing-workflows'", $config);
+        $this->assertStringContainsString('### Billing Workflows', $guideline);
+        $this->assertStringContainsString('Billing workflows must keep invoice state transitions inside project-owned use cases.', $guideline);
+        $this->assertStringContainsString('name: architecture-kit-billing-workflows', $skill);
+    }
+
+    public function test_it_blocks_custom_project_architecture_without_guideline_source(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/billing-workflows');
+
+        $options = array_merge(Architecture::promptOptions(), [
+            'billing-workflows' => 'Billing Workflows (custom)',
+        ]);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['billing-workflows'], $options)
+            ->expectsOutputToContain('Missing Architecture Kit source resource: '.$this->tempPath.'/.architecture-kit/architectures/billing-workflows/guideline.md')
+            ->assertExitCode(1);
+    }
+
     public function test_it_blocks_unmanaged_generated_targets_before_writing_config(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Actions]));
         $files->ensureDirectoryExists($this->tempPath.'/.ai/guidelines');
@@ -233,7 +277,7 @@ PHP);
 
     public function test_it_blocks_unmanaged_generated_skill_targets_before_writing_config(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Actions]));
         $files->ensureDirectoryExists($this->tempPath.'/.ai/skills/architecture-kit-actions');
@@ -256,7 +300,7 @@ PHP);
 
     public function test_it_warns_when_thin_controllers_are_selected_without_actions(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::ThinControllers]));
 
@@ -273,7 +317,7 @@ PHP);
 
     public function test_it_warns_when_eloquent_lifecycle_is_selected_without_actions(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::EloquentLifecycle]));
 
@@ -290,7 +334,7 @@ PHP);
 
     public function test_it_generates_eloquent_lifecycle_resources(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Actions, Architecture::EloquentLifecycle]));
 
@@ -312,7 +356,7 @@ PHP);
 
     public function test_it_generates_enum_architecture_resources(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Enums]));
 
@@ -334,7 +378,7 @@ PHP);
 
     public function test_it_blocks_modern_php_85_without_php_85_requirement(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::ModernPhp85]));
 
@@ -349,7 +393,7 @@ PHP);
 
     public function test_it_generates_modern_php_85_resources_when_project_requires_php_85(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'php' => '^8.5',
@@ -375,7 +419,7 @@ PHP);
 
     public function test_it_blocks_laravel_ai_without_laravel_ai_requirement(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::LaravelAi]));
 
@@ -390,7 +434,7 @@ PHP);
 
     public function test_it_generates_laravel_ai_resources_when_project_requires_laravel_ai(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'laravel/ai' => '^0.8',
@@ -418,7 +462,7 @@ PHP);
 
     public function test_it_blocks_saloon_without_required_packages(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
 
@@ -434,7 +478,7 @@ PHP);
 
     public function test_it_blocks_saloon_v3_requirement(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'saloonphp/saloon' => '^3.0',
@@ -454,7 +498,7 @@ PHP);
 
     public function test_it_generates_saloon_resources_when_required_packages_are_installed(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'saloonphp/saloon' => '^4.0',
@@ -483,7 +527,7 @@ PHP);
 
     public function test_it_warns_when_saloon_is_selected_without_actions(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'saloonphp/saloon' => '^4.0',
@@ -505,7 +549,7 @@ PHP);
 
     public function test_it_generates_services_architecture_resources(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/config');
         $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Services]));
 
@@ -528,7 +572,7 @@ PHP);
 
     public function test_it_preselects_services_on_first_install_when_project_already_has_services(): void
     {
-        $files = new Filesystem();
+        $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/app/Services/Documents');
         $files->put($this->tempPath.'/app/Services/Documents/DocumentPseudonymizationService.php', <<<'PHP'
 <?php

@@ -12,8 +12,7 @@ final readonly class TomlConfigWriter
         private Filesystem $files,
         private string $path,
         private string $configKey,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<string, mixed>  $serverConfig

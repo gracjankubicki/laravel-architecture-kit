@@ -12,8 +12,7 @@ abstract class Agent
     public function __construct(
         protected readonly Filesystem $files,
         protected readonly string $basePath,
-    ) {
-    }
+    ) {}
 
     abstract public function name(): string;
 

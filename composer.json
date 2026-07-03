@@ -14,15 +14,16 @@
     "require": {
         "php": "^8.2",
         "composer/semver": "^3.4",
-        "illuminate/console": "^11.45.3|^12.41.1|^13.0",
-        "illuminate/filesystem": "^11.45.3|^12.41.1|^13.0",
-        "illuminate/support": "^11.45.3|^12.41.1|^13.0",
+        "illuminate/console": "^12.41.1|^13.0",
+        "illuminate/filesystem": "^12.41.1|^13.0",
+        "illuminate/support": "^12.41.1|^13.0",
         "laravel/mcp": "^0.8.2",
         "laravel/prompts": "^0.3|^1.0",
         "nikic/php-parser": "^5"
     },
     "require-dev": {
-        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "laravel/pint": "^1.25",
+        "orchestra/testbench": "^10.0|^11.0",
         "phpunit/phpunit": "^11.5|^12.0"
     },
     "autoload": {
@@ -36,6 +37,7 @@
         }
     },
     "scripts": {
+        "lint": "pint --test",
         "test": "vendor/bin/phpunit",
         "test:filter": "vendor/bin/phpunit --filter"
     },

@@ -12,12 +12,11 @@ final class ArchitectureConfig
 {
     public function __construct(
         private readonly string $path,
-        private readonly Filesystem $files = new Filesystem(),
-    ) {
-    }
+        private readonly Filesystem $files = new Filesystem,
+    ) {}
 
     /**
-     * @return array<int, Architecture>
+     * @return array<int, Architecture|string>
      */
     public function readOrDefault(): array
     {
@@ -35,7 +34,7 @@ final class ArchitectureConfig
     }
 
     /**
-     * @return array<int, Architecture>
+     * @return array<int, Architecture|string>
      */
     public function read(): array
     {
@@ -53,7 +52,55 @@ final class ArchitectureConfig
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @return array<int, string>
+     */
+    public function auditExcludes(): array
+    {
+        $config = $this->config();
+        $exclude = $config['audit']['exclude'] ?? [];
+
+        if (! is_array($exclude)) {
+            throw new InvalidArgumentException('config/architectures.php audit.exclude must be an array.');
+        }
+
+        return array_values(array_filter($exclude, 'is_string'));
+    }
+
+    /**
+     * @return array<int, class-string>
+     */
+    public function customRules(): array
+    {
+        $config = $this->config();
+        $rules = $config['rules'] ?? [];
+
+        if (! is_array($rules)) {
+            throw new InvalidArgumentException('config/architectures.php rules must be an array.');
+        }
+
+        return array_values(array_filter($rules, 'is_string'));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function config(): array
+    {
+        if (! $this->files->exists($this->path)) {
+            return [];
+        }
+
+        $config = require $this->path;
+
+        if (! is_array($config)) {
+            throw new InvalidArgumentException('config/architectures.php must return an array.');
+        }
+
+        return $config;
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
      */
     public function render(array $enabled): string
     {
@@ -70,7 +117,7 @@ final class ArchitectureConfig
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function renderFresh(array $enabled): string
     {
@@ -84,7 +131,7 @@ final class ArchitectureConfig
         ];
 
         foreach ($this->order($enabled) as $architecture) {
-            $lines[] = '        Architecture::'.$architecture->name.',';
+            $lines[] = '        '.$this->renderArchitectureEntry($architecture).',';
         }
 
         $lines[] = '    ],';
@@ -95,7 +142,7 @@ final class ArchitectureConfig
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function replaceEnabledBlock(string $contents, array $enabled): ?string
     {
@@ -121,7 +168,7 @@ final class ArchitectureConfig
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function replaceEnabledBlockUsingTokens(string $contents, array $enabled): ?string
     {
@@ -164,6 +211,7 @@ final class ArchitectureConfig
 
             if ($token['id'] === T_RETURN) {
                 $waitingForReturnArray = true;
+
                 continue;
             }
 
@@ -300,6 +348,7 @@ final class ArchitectureConfig
         for ($index = $startIndex; $index < count($tokens); $index++) {
             if ($tokens[$index]['text'] === '[') {
                 $depth++;
+
                 continue;
             }
 
@@ -378,7 +427,7 @@ final class ArchitectureConfig
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function renderEnabledBlock(array $enabled, string $indent): string
     {
@@ -387,7 +436,7 @@ final class ArchitectureConfig
         ];
 
         foreach ($this->order($enabled) as $architecture) {
-            $lines[] = $indent.'    Architecture::'.$architecture->name.',';
+            $lines[] = $indent.'    '.$this->renderArchitectureEntry($architecture).',';
         }
 
         $lines[] = $indent.'],';
@@ -396,7 +445,7 @@ final class ArchitectureConfig
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     public function write(array $enabled): void
     {
@@ -406,7 +455,7 @@ final class ArchitectureConfig
 
     /**
      * @param  array<int, mixed>  $values
-     * @return array<int, Architecture>
+     * @return array<int, Architecture|string>
      */
     public function normalize(array $values): array
     {
@@ -415,16 +464,16 @@ final class ArchitectureConfig
 
     /**
      * @param  array<int, mixed>  $values
-     * @return array<int, Architecture>
+     * @return array<int, Architecture|string>
      */
     private function normalizeConfig(array $values): array
     {
-        return $this->normalizeValues($values, allowStrings: false);
+        return $this->normalizeValues($values, allowStrings: true);
     }
 
     /**
      * @param  array<int, mixed>  $values
-     * @return array<int, Architecture>
+     * @return array<int, Architecture|string>
      */
     private function normalizeValues(array $values, bool $allowStrings): array
     {
@@ -433,11 +482,12 @@ final class ArchitectureConfig
         foreach ($values as $value) {
             $architecture = match (true) {
                 $value instanceof Architecture => $value,
-                $allowStrings && is_string($value) => Architecture::from($value),
+                is_string($value) => Architecture::tryFrom($value) ?? $this->customSlug($value, $allowStrings),
                 default => throw new InvalidArgumentException('Architecture entries must be Architecture enum cases.'),
             };
 
-            $architectures[$architecture->value] = $architecture;
+            $key = $architecture instanceof Architecture ? $architecture->value : $architecture;
+            $architectures[$key] = $architecture;
         }
 
         if ($architectures === []) {
@@ -448,14 +498,39 @@ final class ArchitectureConfig
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
-     * @return array<int, Architecture>
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<int, Architecture|string>
      */
     private function order(array $enabled): array
     {
-        return array_values(array_filter(
+        $ordered = array_values(array_filter(
             Architecture::guidelineOrder(),
             fn (Architecture $architecture): bool => in_array($architecture, $enabled, true),
         ));
+
+        $custom = array_values(array_filter($enabled, 'is_string'));
+        sort($custom);
+
+        return array_merge($ordered, $custom);
+    }
+
+    private function renderArchitectureEntry(Architecture|string $architecture): string
+    {
+        return $architecture instanceof Architecture
+            ? 'Architecture::'.$architecture->name
+            : var_export($architecture, true);
+    }
+
+    private function customSlug(string $value, bool $allowStrings): string
+    {
+        if (! $allowStrings) {
+            throw new InvalidArgumentException('Architecture entries must be Architecture enum cases or custom architecture slugs.');
+        }
+
+        if (! preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $value)) {
+            throw new InvalidArgumentException("Custom architecture slug [{$value}] must be kebab-case.");
+        }
+
+        return $value;
     }
 }

@@ -48,6 +48,11 @@ php artisan architecture-kit:guard --changed --strict
 php artisan architecture-kit:guard --changed --base=origin/main --strict
 php artisan architecture-kit:audit --changed --strict
 php artisan architecture-kit:audit --changed --base=origin/main --strict
+php artisan architecture-kit:audit --update-baseline
+php artisan architecture-kit:audit --agent
+php artisan architecture-kit:guard --agent
+php artisan architecture-kit:doctor --agent
+php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE --agent
 ```
 
 `architecture-kit:install` is idempotent. Re-run it to change the selected architectures or regenerate outdated `.ai` resources.
@@ -58,7 +63,37 @@ php artisan architecture-kit:audit --changed --base=origin/main --strict
 
 `architecture-kit:audit` is read-only. It scans application code against the enabled architecture rules. Use `--changed --strict` before finishing AI-generated code so warnings and errors block the final handoff. In CI or after committing, pass `--base=origin/main` or another base ref to audit the committed diff.
 
+Use `architecture-kit:audit --update-baseline` when adopting Architecture Kit in a legacy project. It writes the current findings to `.architecture-kit/baseline.json`; future audits suppress only the matching existing findings and still report new violations. Use `--no-baseline` to ignore the baseline for one run.
+
 `architecture-kit:guard` is read-only. It runs `doctor`-equivalent generated-resource checks and the application audit as one deterministic gate. Use `--json` for hooks and MCP tools.
+
+### Agent Output
+
+Human-facing command output stays descriptive. Existing `--json` output stays compatible for hooks and integrations. AI agents can use `--agent` for compact, single-line JSON:
+
+```bash
+php artisan architecture-kit:audit --agent --limit=20
+```
+
+Example:
+
+```json
+{"v":1,"ok":false,"cmd":"audit","scope":"changed","err":1,"warn":0,"sup":{"inline":0,"baseline":0},"trunc":false,"find":[{"r":"thin-controller","s":"err","p":"app/Http/Controllers/InvoiceController.php","l":27,"m":"E_THIN_CONTROLLER_MODEL_WRITE","n":1}],"next":["fix_findings","rerun:audit --agent"]}
+```
+
+By default, `--agent` returns finding codes instead of full messages to reduce token usage. Use `--full` when the agent needs full text, or ask for one code:
+
+```bash
+php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE --agent
+```
+
+`--limit=0` returns only the summary. When findings or doctor issues are truncated, the payload contains `trunc`, `total`, and `shown`.
+
+Agents can inspect the contract without running the audit:
+
+```bash
+php artisan architecture-kit:audit --agent --schema
+```
 
 `architecture-kit:install-hooks` is a compatibility shortcut for installing only hook integration through the same merge-aware agent installer:
 
@@ -114,6 +149,55 @@ return [
 ];
 ```
 
+Optional audit configuration lives in the same file:
+
+```php
+return [
+    'enabled' => [
+        Architecture::Actions,
+        'billing-workflows',
+    ],
+    'audit' => [
+        'exclude' => ['app/Legacy/*'],
+    ],
+    'rules' => [
+        App\Architecture\Rules\NoForbiddenBillingState::class,
+    ],
+];
+```
+
+### Suppression
+
+Inline suppression is for reviewed false positives only. Always name the rule and include a reason:
+
+```php
+// @architecture-kit-ignore thin-controller -- legacy endpoint accepted in PR #123
+$invoice->update($payload);
+```
+
+File-level suppression is also rule-specific:
+
+```php
+// @architecture-kit-ignore-file query-objects -- generated legacy query object
+```
+
+Unknown suppression rules are reported as `invalid-suppression` warnings and do not hide the original finding.
+
+### Custom Architectures
+
+Project-owned architectures live under:
+
+```text
+.architecture-kit/architectures/{slug}/guideline.md
+.architecture-kit/architectures/{slug}/SKILL.md
+```
+
+`guideline.md` is required. `SKILL.md` is optional; when it is missing, Architecture Kit generates a skill from the guideline. Custom architecture slugs must be kebab-case and can be enabled as strings in `config/architectures.php`.
+
+### Custom Audit Rules
+
+Custom rules are PHP classes registered in `config/architectures.php` under `rules`. Each rule must implement `Taqie\ArchitectureKit\Audit\AuditRule`. Custom rule findings participate in inline suppression, baseline suppression, `audit`, `guard`, hooks, and MCP output.
+
 ## Laravel Boost Integration
 
 This package ships a small package-level Boost guideline at:
@@ -167,4 +251,5 @@ The MCP server exposes read-only tools for enabled architectures, generated rule
 ```bash
 composer install
 composer test
+composer lint
 ```

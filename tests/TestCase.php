@@ -18,15 +18,15 @@ abstract class TestCase extends Orchestra
         parent::setUp();
 
         $this->tempPath = sys_get_temp_dir().'/architecture-kit-'.uniqid('', true);
-        (new Filesystem())->ensureDirectoryExists($this->tempPath);
+        (new Filesystem)->ensureDirectoryExists($this->tempPath);
         $this->app->setBasePath($this->tempPath);
-        (new Filesystem())->ensureDirectoryExists($this->tempPath.'/config');
+        (new Filesystem)->ensureDirectoryExists($this->tempPath.'/config');
     }
 
     protected function tearDown(): void
     {
         if (isset($this->tempPath)) {
-            (new Filesystem())->deleteDirectory($this->tempPath);
+            (new Filesystem)->deleteDirectory($this->tempPath);
         }
 
         parent::tearDown();

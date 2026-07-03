@@ -48,8 +48,7 @@ final readonly class EloquentLifecycleRequirement
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<int, AuditFinding>
@@ -169,8 +168,7 @@ final readonly class EloquentLifecycleRequirement
                 private object $state,
                 private EloquentLifecycleRequirement $requirement,
                 private Stmt\ClassMethod $method,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -330,8 +328,7 @@ final readonly class EloquentLifecycleRequirement
                 private string $path,
                 private object $state,
                 private EloquentLifecycleRequirement $requirement,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -438,8 +435,7 @@ final readonly class EloquentLifecycleRequirement
                 private string $path,
                 private object $state,
                 private EloquentLifecycleRequirement $requirement,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -640,8 +636,7 @@ final readonly class EloquentLifecycleRequirement
                 private string $path,
                 private object $state,
                 private EloquentLifecycleRequirement $requirement,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -661,8 +656,7 @@ final readonly class EloquentLifecycleRequirement
                         private string $path,
                         private object $state,
                         private EloquentLifecycleRequirement $requirement,
-                    ) {
-                    }
+                    ) {}
 
                     public function enterNode(Node $node): null
                     {
@@ -809,9 +803,7 @@ final readonly class EloquentLifecycleRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
@@ -891,8 +883,7 @@ final readonly class EloquentLifecycleRequirement
             public function __construct(
                 private array $ignored,
                 private object $state,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -1075,9 +1066,7 @@ final readonly class EloquentLifecycleRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
@@ -1124,9 +1113,7 @@ final readonly class EloquentLifecycleRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
@@ -1179,9 +1166,7 @@ final readonly class EloquentLifecycleRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {

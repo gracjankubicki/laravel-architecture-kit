@@ -22,8 +22,7 @@ final readonly class AgentConfigDoctor
         private Filesystem $files,
         private string $basePath,
         private ?ConsoleApplication $console = null,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<int, ArchitectureDoctorCheck>

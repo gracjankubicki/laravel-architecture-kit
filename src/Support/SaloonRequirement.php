@@ -24,8 +24,7 @@ final readonly class SaloonRequirement
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<int, AuditFinding>
@@ -154,8 +153,7 @@ final readonly class SaloonRequirement
                 private string $path,
                 private object $state,
                 private SaloonRequirement $requirement,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -271,8 +269,7 @@ final readonly class SaloonRequirement
                 private string $path,
                 private object $state,
                 private SaloonRequirement $requirement,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -456,9 +453,7 @@ final readonly class SaloonRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
@@ -517,9 +512,7 @@ final readonly class SaloonRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
@@ -596,18 +589,16 @@ final readonly class SaloonRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Node\Stmt\UseUse && $this->isIntegrationDtoName($node->name)) {
+                if ($node instanceof Stmt\UseUse && $this->isIntegrationDtoName($node->name)) {
                     $this->state->lines[] = $node->getStartLine();
                 }
 
                 if (
-                    ($node instanceof Node\Param || $node instanceof Node\Stmt\Function_ || $node instanceof Node\Stmt\ClassMethod)
+                    ($node instanceof Node\Param || $node instanceof Stmt\Function_ || $node instanceof Stmt\ClassMethod)
                     && PhpAst::contains($node, fn (Node $child): bool => $child instanceof Name && $this->isIntegrationDtoName($child))
                 ) {
                     $this->state->lines[] = $node->getStartLine();
@@ -658,9 +649,7 @@ final readonly class SaloonRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
@@ -676,9 +665,7 @@ final readonly class SaloonRequirement
 
                 PhpAst::traverse([$callback], new class($this->state) extends NodeVisitorAbstract
                 {
-                    public function __construct(private object $state)
-                    {
-                    }
+                    public function __construct(private object $state) {}
 
                     public function enterNode(Node $node): null
                     {
@@ -699,7 +686,7 @@ final readonly class SaloonRequirement
 
             private function isDbTransactionCall(Node $node): bool
             {
-                return $node instanceof Node\Expr\StaticCall
+                return $node instanceof StaticCall
                     && $node->class instanceof Name
                     && $node->class->toString() === 'DB'
                     && $node->name instanceof Node\Identifier
@@ -890,9 +877,7 @@ final readonly class SaloonRequirement
 
         PhpAst::traverse([$classMethod], new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
@@ -927,8 +912,7 @@ final readonly class SaloonRequirement
                 private string $path,
                 private object $state,
                 private SaloonRequirement $requirement,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -975,9 +959,7 @@ final readonly class SaloonRequirement
 
         PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state)
-            {
-            }
+            public function __construct(private object $state) {}
 
             public function enterNode(Node $node): null
             {
@@ -1023,8 +1005,7 @@ final readonly class SaloonRequirement
                 private string $path,
                 private object $state,
                 private SaloonRequirement $requirement,
-            ) {
-            }
+            ) {}
 
             public function enterNode(Node $node): null
             {

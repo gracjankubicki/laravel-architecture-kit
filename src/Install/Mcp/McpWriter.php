@@ -16,8 +16,7 @@ final readonly class McpWriter
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<int, Agent&SupportsMcp>  $agents

@@ -12,8 +12,9 @@ final readonly class ApplicationAuditResult
     public function __construct(
         public string $scope,
         public array $findings,
-    ) {
-    }
+        public int $suppressedInline = 0,
+        public int $suppressedBaseline = 0,
+    ) {}
 
     public function errors(): int
     {

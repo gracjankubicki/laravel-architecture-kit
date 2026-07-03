@@ -16,8 +16,7 @@ final readonly class AgentInstaller
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<int, Agent>  $agents
@@ -25,7 +24,7 @@ final readonly class AgentInstaller
      */
     public function plan(array $agents, bool $mcp, bool $hooks): array
     {
-        $empty = new InstallResult();
+        $empty = new InstallResult;
 
         return [
             'mcp' => $mcp ? (new McpWriter($this->files, $this->basePath))->plan($this->mcpAgents($agents)) : $empty,
@@ -95,6 +94,6 @@ final readonly class AgentInstaller
             return new InstallResult(updates: [$state->relativePath()]);
         }
 
-        return new InstallResult();
+        return new InstallResult;
     }
 }

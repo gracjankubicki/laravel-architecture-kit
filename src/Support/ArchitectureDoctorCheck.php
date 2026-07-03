@@ -11,8 +11,7 @@ final readonly class ArchitectureDoctorCheck
         public string $status,
         public string $path,
         public ?string $message = null,
-    ) {
-    }
+    ) {}
 
     public function failed(): bool
     {

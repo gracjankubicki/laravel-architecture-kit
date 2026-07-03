@@ -11,8 +11,7 @@ final readonly class InstallState
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<int, string>  $agents
