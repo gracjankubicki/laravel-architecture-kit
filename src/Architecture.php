@@ -20,6 +20,7 @@ enum Architecture: string
     case Saloon = 'saloon';
     case ModernPhp85 = 'modern-php-85';
     case LaravelAi = 'laravel-ai';
+    case LaravelBestPractices = 'laravel-best-practices';
 
     /**
      * @return array<int, self>
@@ -32,6 +33,7 @@ enum Architecture: string
             self::Actions,
             self::DataObjects,
             self::ApiResources,
+            self::LaravelBestPractices,
         ];
     }
 
@@ -55,6 +57,7 @@ enum Architecture: string
             self::Saloon,
             self::ModernPhp85,
             self::LaravelAi,
+            self::LaravelBestPractices,
         ];
     }
 
@@ -89,6 +92,7 @@ enum Architecture: string
             self::Saloon => 'Saloon',
             self::ModernPhp85 => 'Modern PHP 8.5',
             self::LaravelAi => 'Laravel AI',
+            self::LaravelBestPractices => 'Laravel Best Practices',
         };
     }
 

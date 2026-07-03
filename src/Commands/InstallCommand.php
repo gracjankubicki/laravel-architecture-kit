@@ -121,6 +121,14 @@ class InstallCommand extends Command
         }
 
         if (
+            in_array(Architecture::LaravelBestPractices, $enabled, true)
+            && $files->isDirectory(base_path('.ai/skills/laravel-best-practices'))
+        ) {
+            $this->warn('Generic laravel-best-practices skill is present. Architecture Kit will generate architecture-kit-laravel-best-practices, which supersedes the generic skill.');
+            $this->line('Remove or disable .ai/skills/laravel-best-practices if your agent loads both skills.');
+        }
+
+        if (
             in_array(Architecture::ModernPhp85, $enabled, true)
             && ! PhpRequirement::projectRequiresPhp85($files, base_path())
         ) {

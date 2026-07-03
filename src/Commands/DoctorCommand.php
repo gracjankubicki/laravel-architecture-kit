@@ -131,6 +131,14 @@ class DoctorCommand extends Command
             $this->line('  warning   Install laravel/boost and run php artisan boost:install or boost:update --discover to sync agent files.');
         }
 
+        foreach ($this->checksFor($result->checks, 'boost') as $check) {
+            $this->line(sprintf('  %-8s %s', $check->status, $check->path));
+
+            if ($check->message !== null) {
+                $this->line('  reason   '.$check->message);
+            }
+        }
+
         if (! $result->ok()) {
             $this->newLine();
             $this->line('Run php artisan architecture-kit:install to regenerate Architecture Kit resources.');

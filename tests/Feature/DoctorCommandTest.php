@@ -244,6 +244,34 @@ PHP);
             ->assertExitCode(0);
     }
 
+    public function test_it_warns_when_generic_laravel_best_practices_skill_is_present(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.ai/skills/laravel-best-practices');
+        $files->put($this->tempPath.'/.ai/skills/laravel-best-practices/SKILL.md', "---\nname: laravel-best-practices\n---\n");
+
+        $this->writeCurrentResources([Architecture::LaravelBestPractices]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('Laravel Boost:')
+            ->expectsOutputToContain('warning  .ai/skills/laravel-best-practices')
+            ->expectsOutputToContain('Generic Laravel Boost laravel-best-practices skill is present.')
+            ->assertExitCode(0);
+    }
+
+    public function test_it_does_not_warn_about_generic_laravel_best_practices_skill_when_architecture_is_disabled(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.ai/skills/laravel-best-practices');
+        $files->put($this->tempPath.'/.ai/skills/laravel-best-practices/SKILL.md', "---\nname: laravel-best-practices\n---\n");
+
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->doesntExpectOutputToContain('Generic Laravel Boost laravel-best-practices skill is present.')
+            ->assertExitCode(0);
+    }
+
     public function test_it_warns_when_docker_runtime_has_no_compose_file(): void
     {
         $this->writeCurrentResources([Architecture::Actions], [

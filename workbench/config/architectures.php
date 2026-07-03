@@ -9,6 +9,7 @@ return [
         Architecture::Actions,
         Architecture::DataObjects,
         Architecture::ApiResources,
+        Architecture::LaravelBestPractices,
     ],
     'runtime' => [
         'driver' => 'local',

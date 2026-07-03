@@ -111,6 +111,10 @@ final readonly class ArchitectureDoctor
             $checks[] = $check;
         }
 
+        foreach ($this->boostSkillChecks($enabled) as $check) {
+            $checks[] = $check;
+        }
+
         foreach ($this->customRuleChecks() as $check) {
             $checks[] = $check;
         }
@@ -186,6 +190,29 @@ final readonly class ArchitectureDoctor
     private function boostInstalled(): bool
     {
         return $this->console?->has('boost:update') === true;
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<int, ArchitectureDoctorCheck>
+     */
+    private function boostSkillChecks(array $enabled): array
+    {
+        if (
+            ! in_array(Architecture::LaravelBestPractices, $enabled, true)
+            || ! $this->files->isDirectory($this->basePath.'/.ai/skills/laravel-best-practices')
+        ) {
+            return [];
+        }
+
+        return [
+            new ArchitectureDoctorCheck(
+                area: 'boost',
+                status: 'warning',
+                path: '.ai/skills/laravel-best-practices',
+                message: 'Generic Laravel Boost laravel-best-practices skill is present. Disable or remove it so architecture-kit-laravel-best-practices is the authoritative Laravel baseline.',
+            ),
+        ];
     }
 
     /**

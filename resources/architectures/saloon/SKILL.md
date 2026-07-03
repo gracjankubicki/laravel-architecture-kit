@@ -17,9 +17,6 @@ This architecture requires:
 
 Do not implement a custom HTTP client, custom retry layer, custom fixture layer, or ad hoc integration wrapper before using Saloon.
 
-PL:
-Ta architektura wymusza Saloon. Nie pisz własnego klienta HTTP ani własnego systemu mocków.
-
 ## Workflow
 
 1. Create one Connector per external service under `app/Http/Integrations/<Service>/`.
@@ -90,9 +87,6 @@ Rules:
 - Use `HasRateLimits`.
 - Define retries, backoff, and timeouts.
 
-PL:
-Connector jest granicą techniczną integracji: URL, auth, headers, retry, rate limit i błędy.
-
 ## Request Shape
 
 Good:
@@ -141,9 +135,6 @@ Rules:
 - Input is typed through the constructor.
 - Response mapping lives in `createDtoFromResponse()`.
 
-PL:
-Request reprezentuje jeden endpoint. Sufiks `Request` jest tu poprawny, bo to idiom Saloon.
-
 ## DTO Boundary
 
 Integration DTOs live under:
@@ -181,9 +172,6 @@ final readonly class InvoiceCreatedData
 
 Integration DTOs must not leak into controllers, API Resources, or models. Actions/Jobs map them to domain/application results.
 
-PL:
-DTO integracji żyją przy integracji i umierają na granicy Action/Joba.
-
 ## Application Boundary
 
 Controllers, FormRequests, API Resources, and Models must not:
@@ -220,9 +208,6 @@ final readonly class IssueExternalInvoice
 
 Jobs may call connectors directly when the job is the async use case. Extract an Action only when a second caller needs the same workflow.
 
-PL:
-Action albo Job są miejscem wołania integracji. Kontroler nie zna Saloon.
-
 ## Raw HTTP Is Forbidden
 
 When Saloon is enabled, all outbound HTTP goes through Saloon:
@@ -234,9 +219,6 @@ When Saloon is enabled, all outbound HTTP goes through Saloon:
 
 This includes internal services such as localhost endpoints, monitoring, and own microservices.
 
-PL:
-Zakaz surowego HTTP jest totalny. Wewnętrzne serwisy też idą przez Saloon.
-
 ## Failure Handling
 
 Use `AlwaysThrowOnErrors` on connectors.
@@ -244,9 +226,6 @@ Use `AlwaysThrowOnErrors` on connectors.
 Catch Saloon exceptions at the Action/Job boundary and map them to named domain exceptions. Saloon exceptions must not reach controllers.
 
 If an API returns HTTP 200 with an error payload, override `hasRequestFailed()`.
-
-PL:
-Błędy Saloon mapujemy na wyjątki domenowe na granicy Action/Joba.
 
 ## Resilience
 
@@ -259,9 +238,6 @@ Every connector defines:
 
 Prefer queued Jobs for external calls. Never call external APIs inside an open database transaction.
 
-PL:
-Retry, timeouty i rate limit są częścią architektury integracji, nie dodatkiem.
-
 ## Testing
 
 Use:
@@ -273,9 +249,6 @@ Use:
 
 Test application handling of success, failure, and malformed responses. Do not test whether the provider API works.
 
-PL:
-Testy nie biją w prawdziwe API.
-
 ## Security
 
 - `resolveEndpoint()` returns relative paths only.
@@ -283,6 +256,3 @@ Testy nie biją w prawdziwe API.
 - Never `serialize()` or `unserialize()` authenticators for storage.
 - Store `accessToken`, `refreshToken`, and `expiresAt` explicitly.
 - Fixture names are static literals without path segments from variables.
-
-PL:
-Reguły bezpieczeństwa wynikają z lekcji Saloon v4: endpoint względny, bez serializacji authenticatorów, bez dynamicznych ścieżek fixture'ów.

@@ -15,9 +15,6 @@ Before using Eloquent lifecycle, ask:
 
 If no, it is flow-specific behavior. Dispatch a named event from the owning Action or use-case boundary. Do not hide it in `created`, `updated`, or `saved`.
 
-PL:
-Zanim użyjesz lifecycle Eloquent, zapytaj: czy to zachowanie ma zajść przy każdym zapisie z każdego źródła? Jeśli nie, to jest zachowanie konkretnego przepływu i powinno wyjść jawnie z Action albo warstwy use case.
-
 ## Responsibility Map
 
 | Need | Use | Do not use |
@@ -43,9 +40,6 @@ Eloquent models describe persistence shape:
 - ORM configuration.
 
 Do not put business workflows, side effects, integrations, HTTP concerns, or multi-step orchestration inside models.
-
-PL:
-Model opisuje kształt persistencji, a nie workflow biznesowy.
 
 ## Mutators And Casts
 
@@ -80,9 +74,6 @@ final class LeadCar extends Model
     }
 }
 ```
-
-PL:
-Jeśli zmieniasz jedno pole w sposób deterministyczny, użyj mutatora albo castu. Observer nie jest setterem.
 
 ## Before-Save Lifecycle
 
@@ -154,9 +145,6 @@ final class InvoiceObserver
 }
 ```
 
-PL:
-Observer przed zapisem może przygotować bieżący model albo przekazać go do jednego handlera. Nie może sterować procesem ani robić side effectów.
-
 ## Lifecycle Handlers
 
 Lifecycle handlers live in:
@@ -197,9 +185,6 @@ final class NormalizeLeadCarBeforeUpdate
 
 Do not put Data Objects, Result objects, Enums, Exceptions, Resources, Requests, or Eloquent Models under `app/Lifecycle/**`.
 
-PL:
-Kilka reguł przed zapisem koordynuje jeden lifecycle handler. Observer nie powinien mieć listy handlerów.
-
 ## Dirty Checks
 
 Use before persistence:
@@ -213,9 +198,6 @@ Use after persistence:
 - `getChanges()`
 
 Do not mix these mental models in one lifecycle rule.
-
-PL:
-`isDirty()` / `getDirty()` są przed zapisem. `wasChanged()` / `getChanges()` są po zapisie.
 
 ## After-Save Lifecycle
 
@@ -270,9 +252,6 @@ final readonly class LeadCarUpdatedData
 
 Each independent reaction lives in its own listener.
 
-PL:
-Po zapisie observer może wyemitować jeden nazwany event. Różne reakcje mają osobne listenery.
-
 ## Async And After Commit
 
 After-save lifecycle is async-friendly by default.
@@ -297,9 +276,6 @@ Use after-commit at the dispatch/listener/job level:
 - `DB::afterCommit(...)`
 - `->afterCommit()` where the framework supports it
 
-PL:
-Side effecty po zapisie uruchamiaj po commicie. Nie opóźniaj całego observera, jeśli ma metody `*ing`.
-
 ## Registration
 
 Register observers with `#[ObservedBy(...)]` on the model.
@@ -319,17 +295,11 @@ Avoid hidden provider registration:
 Invoice::observe(InvoiceObserver::class);
 ```
 
-PL:
-Observer ma być widoczny z pliku modelu.
-
 ## Quiet Saves
 
 Frequent `saveQuietly()`, `updateQuietly()`, `deleteQuietly()`, or `withoutEvents()` calls are a smell.
 
 They usually mean observers carry behavior callers need to opt out of. Move that behavior to an explicit Action or named event.
-
-PL:
-Częste wyciszanie eventów oznacza, że observer prawdopodobnie robi za dużo.
 
 ## Mass Operations
 
@@ -342,6 +312,3 @@ Do not rely on observers for critical behavior when the model can be changed thr
 - relationship mass updates
 
 Use database constraints or explicit Actions for critical invariants and cascades.
-
-PL:
-Mass update/delete nie odpala eventów modelu, więc krytyczne reguły nie mogą zależeć tylko od observera.
