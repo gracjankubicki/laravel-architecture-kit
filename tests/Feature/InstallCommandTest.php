@@ -199,6 +199,38 @@ YAML);
         $this->assertStringContainsString('architecture-kit: runtime unavailable', $guard);
     }
 
+    public function test_it_selects_docker_service_from_compose_override_files(): void
+    {
+        $files = new Filesystem;
+        $files->put($this->tempPath.'/compose.yaml', <<<'YAML'
+name: architecture-kit
+services:
+  redis:
+    image: redis
+YAML);
+        $files->put($this->tempPath.'/docker-compose.override.yml', <<<'YAML'
+services:
+  api:
+    build: .
+YAML);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'docker', $this->runtimeOptions())
+            ->expectsChoice('Which Docker Compose service runs PHP?', 'api', [
+                'api' => 'api',
+                'redis' => 'redis',
+            ])
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $config = $files->get($this->tempPath.'/config/architectures.php');
+
+        $this->assertStringContainsString("'driver' => 'docker'", $config);
+        $this->assertStringContainsString("'service' => 'api'", $config);
+    }
+
     public function test_install_removes_legacy_agent_runtime_config(): void
     {
         $files = new Filesystem;

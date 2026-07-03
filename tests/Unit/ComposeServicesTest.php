@@ -41,6 +41,26 @@ YAML);
         $this->assertSame(['app', 'queue'], (new ComposeServices($files, $this->tempPath))->services());
     }
 
+    public function test_it_reads_services_from_compose_override_files(): void
+    {
+        $files = new Filesystem;
+        $files->put($this->tempPath.'/compose.yaml', <<<'YAML'
+name: architecture-kit
+services:
+  redis:
+    image: redis
+YAML);
+        $files->put($this->tempPath.'/docker-compose.override.yml', <<<'YAML'
+services:
+  api:
+    build: .
+  queue:
+    build: .
+YAML);
+
+        $this->assertSame(['api', 'queue', 'redis'], (new ComposeServices($files, $this->tempPath))->services());
+    }
+
     public function test_it_returns_null_when_compose_is_missing_or_invalid(): void
     {
         $files = new Filesystem;

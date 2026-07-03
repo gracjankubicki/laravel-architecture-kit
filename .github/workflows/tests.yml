@@ -16,7 +16,7 @@ jobs:
         laravel: ['12.*', '13.*']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: shivammathur/setup-php@v2
         with:

@@ -30,7 +30,7 @@ final readonly class ComposeServices
 
     public function composePath(): ?string
     {
-        foreach (['compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml'] as $filename) {
+        foreach ($this->primaryComposeFilenames() as $filename) {
             $path = $this->basePath.'/'.$filename;
 
             if ($this->files->exists($path)) {
@@ -46,23 +46,33 @@ final readonly class ComposeServices
      */
     public function services(): ?array
     {
-        $path = $this->composePath();
+        $paths = $this->composePaths();
 
-        if ($path === null) {
+        if ($paths === []) {
             return null;
         }
 
-        try {
-            $compose = Yaml::parse($this->files->get($path));
-        } catch (ParseException) {
-            return null;
+        $services = [];
+
+        foreach ($paths as $path) {
+            try {
+                $compose = Yaml::parse($this->files->get($path));
+            } catch (ParseException) {
+                return null;
+            }
+
+            if (! is_array($compose) || ! isset($compose['services']) || ! is_array($compose['services'])) {
+                continue;
+            }
+
+            foreach (array_keys($compose['services']) as $service) {
+                if (is_string($service)) {
+                    $services[] = $service;
+                }
+            }
         }
 
-        if (! is_array($compose) || ! isset($compose['services']) || ! is_array($compose['services'])) {
-            return null;
-        }
-
-        $services = array_values(array_filter(array_keys($compose['services']), is_string(...)));
+        $services = array_values(array_unique($services));
         sort($services);
 
         return $services === [] ? null : $services;
@@ -87,5 +97,39 @@ final readonly class ComposeServices
         }
 
         return 'laravel.test';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function composePaths(): array
+    {
+        $paths = [];
+
+        foreach ([...$this->primaryComposeFilenames(), ...$this->overrideComposeFilenames()] as $filename) {
+            $path = $this->basePath.'/'.$filename;
+
+            if ($this->files->exists($path)) {
+                $paths[] = $path;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function primaryComposeFilenames(): array
+    {
+        return ['compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function overrideComposeFilenames(): array
+    {
+        return ['compose.override.yaml', 'compose.override.yml', 'docker-compose.override.yml', 'docker-compose.override.yaml'];
     }
 }
