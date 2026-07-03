@@ -17,7 +17,10 @@ final readonly class JsonConfigWriter
     /**
      * @param  array<string, mixed>  $serverConfig
      */
-    public function render(string $serverKey, array $serverConfig): ?string
+    /**
+     * @param  array<int, string>  $replaceKeys
+     */
+    public function render(string $serverKey, array $serverConfig, array $replaceKeys = []): ?string
     {
         if (! $this->files->exists($this->path) || $this->files->size($this->path) < 3) {
             return $this->encode([
@@ -37,6 +40,18 @@ final readonly class JsonConfigWriter
 
         if (! is_array($servers)) {
             return null;
+        }
+
+        foreach ($replaceKeys as $replaceKey) {
+            if (! array_key_exists($replaceKey, $servers)) {
+                continue;
+            }
+
+            if (! is_array($servers[$replaceKey]) || ! $this->isUpdateable($servers[$replaceKey])) {
+                return null;
+            }
+
+            unset($servers[$replaceKey]);
         }
 
         if (

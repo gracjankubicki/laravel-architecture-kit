@@ -29,10 +29,16 @@ class InstallAgentsCommandTest extends TestCase
         $claudeHooks = $files->get($this->tempPath.'/.claude/settings.json');
         $state = $files->get($this->tempPath.'/.architecture-kit/install.json');
         $guard = $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh');
+        $makefile = $files->get($this->tempPath.'/Makefile');
 
-        $this->assertStringContainsString('[mcp_servers.architecture-kit]', $codexMcp);
-        $this->assertStringContainsString('args = ["artisan", "architecture-kit:mcp"]', $codexMcp);
-        $this->assertStringContainsString('"architecture-kit:mcp"', $claudeMcp);
+        $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $codexMcp);
+        $this->assertStringContainsString('command = "make"', $codexMcp);
+        $this->assertStringContainsString('args = ["mcp-architecture-kit"]', $codexMcp);
+        $this->assertStringContainsString('"'.$this->mcpServerKey().'"', $claudeMcp);
+        $this->assertStringContainsString('"command": "make"', $claudeMcp);
+        $this->assertStringContainsString('"mcp-architecture-kit"', $claudeMcp);
+        $this->assertStringContainsString('mcp-architecture-kit:', $makefile);
+        $this->assertStringContainsString("'php' 'artisan' 'architecture-kit:mcp'", $makefile);
         $this->assertStringContainsString("RUNNER=('php')", $guard);
         $this->assertStringContainsString('architecture-kit: runtime unavailable', $guard);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $codexHooks);
@@ -58,9 +64,13 @@ class InstallAgentsCommandTest extends TestCase
             ->assertExitCode(0);
 
         $files = new Filesystem;
+        $codexMcp = $files->get($this->tempPath.'/.codex/config.toml');
+        $makefile = $files->get($this->tempPath.'/Makefile');
 
-        $this->assertStringContainsString('command = "docker"', $files->get($this->tempPath.'/.codex/config.toml'));
-        $this->assertStringContainsString('args = ["compose", "exec", "-T", "api", "php", "artisan", "architecture-kit:mcp"]', $files->get($this->tempPath.'/.codex/config.toml'));
+        $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $codexMcp);
+        $this->assertStringContainsString('command = "make"', $codexMcp);
+        $this->assertStringContainsString('args = ["mcp-architecture-kit"]', $codexMcp);
+        $this->assertStringContainsString("'docker' 'compose' 'exec' '-T' 'api' 'php' 'artisan' 'architecture-kit:mcp'", $makefile);
         $this->assertStringContainsString("RUNNER=('docker' 'compose' 'exec' '-T' 'api' 'php')", $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh'));
     }
 
@@ -89,8 +99,67 @@ class InstallAgentsCommandTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertStringContainsString('[mcp_servers.other]', $files->get($this->tempPath.'/.codex/config.toml'));
-        $this->assertStringContainsString('[mcp_servers.architecture-kit]', $files->get($this->tempPath.'/.codex/config.toml'));
+        $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $files->get($this->tempPath.'/.codex/config.toml'));
         $this->assertStringContainsString('vendor/bin/phpunit', $files->get($this->tempPath.'/.codex/hooks.json'));
+    }
+
+    public function test_it_replaces_legacy_architecture_kit_mcp_server_key(): void
+    {
+        $this->writeCurrentResources(runtime: [
+            'driver' => 'docker',
+            'service' => 'app',
+            'php' => 'php',
+            'command' => null,
+        ]);
+
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.codex');
+        $files->put($this->tempPath.'/.codex/config.toml', <<<'TOML'
+[mcp_servers.architecture-kit]
+command = "docker"
+args = ["compose", "exec", "-T", "app", "php", "artisan", "architecture-kit:mcp"]
+required = true
+
+[mcp_servers.architecture-kit.env]
+OLD = "1"
+TOML);
+        $files->put($this->tempPath.'/.mcp.json', json_encode([
+            'mcpServers' => [
+                'architecture-kit' => [
+                    'command' => 'docker',
+                    'args' => ['compose', 'exec', '-T', 'app', 'php', 'artisan', 'architecture-kit:mcp'],
+                ],
+            ],
+        ], JSON_PRETTY_PRINT));
+
+        $this->artisan('architecture-kit:install-agents --codex --claude --mcp')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $codexMcp = $files->get($this->tempPath.'/.codex/config.toml');
+        $claudeMcp = json_decode($files->get($this->tempPath.'/.mcp.json'), true);
+
+        $this->assertStringNotContainsString('[mcp_servers.architecture-kit]'."\n", $codexMcp);
+        $this->assertStringNotContainsString('[mcp_servers.architecture-kit.env]'."\n", $codexMcp);
+        $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $codexMcp);
+        $this->assertArrayNotHasKey('architecture-kit', $claudeMcp['mcpServers']);
+        $this->assertSame('make', $claudeMcp['mcpServers'][$this->mcpServerKey()]['command']);
+    }
+
+    public function test_it_preserves_existing_makefile_mcp_target(): void
+    {
+        $this->writeCurrentResources();
+
+        $files = new Filesystem;
+        $makefile = "mcp-architecture-kit:\n\t./bin/custom-mcp\n";
+        $files->put($this->tempPath.'/Makefile', $makefile);
+
+        $this->artisan('architecture-kit:install-agents --codex --mcp')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $this->assertSame($makefile, $files->get($this->tempPath.'/Makefile'));
+        $this->assertStringContainsString('args = ["mcp-architecture-kit"]', $files->get($this->tempPath.'/.codex/config.toml'));
     }
 
     public function test_it_blocks_invalid_agent_config_before_writing(): void
@@ -101,7 +170,6 @@ class InstallAgentsCommandTest extends TestCase
         $files->put($this->tempPath.'/.codex/config.toml', "[mcp_servers.architecture-kit]\ncommand = \"node\"\n");
 
         $this->artisan('architecture-kit:install-agents --codex --mcp --hooks')
-            ->expectsOutputToContain('blocked  .codex/config.toml')
             ->expectsOutputToContain('blocked  .codex/hooks.json')
             ->assertExitCode(1);
 
@@ -168,5 +236,14 @@ class InstallAgentsCommandTest extends TestCase
             $files->ensureDirectoryExists(dirname($file->path));
             $files->put($file->path, $file->contents);
         }
+    }
+
+    private function mcpServerKey(): string
+    {
+        $project = strtolower(basename($this->tempPath));
+        $project = preg_replace('/[^a-z0-9]+/', '-', $project) ?: 'project';
+        $project = trim($project, '-');
+
+        return 'architecture-kit-'.($project === '' ? 'project' : $project);
     }
 }

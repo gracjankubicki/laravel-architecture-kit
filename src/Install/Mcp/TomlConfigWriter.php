@@ -17,7 +17,10 @@ final readonly class TomlConfigWriter
     /**
      * @param  array<string, mixed>  $serverConfig
      */
-    public function render(string $serverKey, array $serverConfig): ?string
+    /**
+     * @param  array<int, string>  $replaceKeys
+     */
+    public function render(string $serverKey, array $serverConfig, array $replaceKeys = []): ?string
     {
         $section = $this->buildSection($serverKey, $serverConfig);
 
@@ -26,34 +29,83 @@ final readonly class TomlConfigWriter
         }
 
         $content = $this->files->get($this->path);
-        $header = '['.$this->configKey.'.'.$serverKey.']';
 
         if (substr_count($content, '[') !== substr_count($content, ']')) {
             return null;
         }
 
-        if (! preg_match('/^'.preg_quote($header, '/').'\s*$/m', $content, $match, PREG_OFFSET_CAPTURE)) {
+        $targetKey = $this->firstExistingKey($content, [$serverKey, ...$replaceKeys]);
+
+        if ($targetKey === null) {
             return rtrim($content)."\n\n".$section."\n";
+        }
+
+        $range = $this->sectionRange($content, $targetKey);
+
+        if ($range === null || ! str_contains($range['contents'], 'architecture-kit')) {
+            return null;
+        }
+
+        $content = substr_replace($content, $section."\n", $range['start'], $range['end'] - $range['start']);
+
+        foreach ($replaceKeys as $replaceKey) {
+            if ($replaceKey !== $targetKey) {
+                $content = $this->removeSection($content, $replaceKey);
+            }
+
+            $content = $this->removeSection($content, $replaceKey.'.env');
+        }
+
+        return rtrim($content)."\n";
+    }
+
+    /**
+     * @param  array<int, string>  $keys
+     */
+    private function firstExistingKey(string $content, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if ($this->sectionRange($content, $key) !== null) {
+                return $key;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{start: int, end: int, contents: string}|null
+     */
+    private function sectionRange(string $content, string $serverKey): ?array
+    {
+        $header = '['.$this->configKey.'.'.$serverKey.']';
+
+        if (! preg_match('/^'.preg_quote($header, '/').'\s*$/m', $content, $match, PREG_OFFSET_CAPTURE)) {
+            return null;
         }
 
         $start = $match[0][1];
         $afterHeader = $start + strlen($match[0][0]);
-        $nextSectionOffset = preg_match('/^\[.+\]\s*$/m', $content, $nextMatch, PREG_OFFSET_CAPTURE, $afterHeader)
+        $end = preg_match('/^\[.+\]\s*$/m', $content, $nextMatch, PREG_OFFSET_CAPTURE, $afterHeader)
             ? $nextMatch[0][1]
             : strlen($content);
 
-        $currentSection = substr($content, $start, $nextSectionOffset - $start);
+        return [
+            'start' => $start,
+            'end' => $end,
+            'contents' => substr($content, $start, $end - $start),
+        ];
+    }
 
-        if (! str_contains(substr($currentSection, strlen($match[0][0])), 'architecture-kit')) {
-            return null;
+    private function removeSection(string $content, string $serverKey): string
+    {
+        $range = $this->sectionRange($content, $serverKey);
+
+        if ($range === null) {
+            return $content;
         }
 
-        $before = rtrim(substr($content, 0, $start));
-        $after = ltrim(substr($content, $nextSectionOffset));
-
-        return ($before !== '' ? $before."\n\n" : '')
-            .$section."\n"
-            .($after !== '' ? "\n".$after : '');
+        return substr_replace($content, '', $range['start'], $range['end'] - $range['start']);
     }
 
     /**

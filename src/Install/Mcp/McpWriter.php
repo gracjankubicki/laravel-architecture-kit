@@ -12,7 +12,7 @@ use Taqie\ArchitectureKit\Support\RuntimeResolver;
 
 final readonly class McpWriter
 {
-    public const SERVER_KEY = 'architecture-kit';
+    public const LEGACY_SERVER_KEY = 'architecture-kit';
 
     public function __construct(
         private Filesystem $files,
@@ -50,6 +50,13 @@ final readonly class McpWriter
             }
         }
 
+        if ($agents !== []) {
+            $makefile = (new MakefileMcpTargetWriter($this->files, $this->basePath, $this->runtime))->plan();
+            $creates = [...$creates, ...$makefile->creates];
+            $updates = [...$updates, ...$makefile->updates];
+            $blocked = [...$blocked, ...$makefile->blocked];
+        }
+
         return new InstallResult($creates, $updates, $blocked);
     }
 
@@ -58,6 +65,10 @@ final readonly class McpWriter
      */
     public function write(array $agents): void
     {
+        if ($agents !== []) {
+            (new MakefileMcpTargetWriter($this->files, $this->basePath, $this->runtime))->write();
+        }
+
         foreach ($agents as $agent) {
             $path = $this->absolute($agent->mcpConfigPath());
             $contents = $this->render($agent);
@@ -74,13 +85,22 @@ final readonly class McpWriter
     private function render(Agent&SupportsMcp $agent): ?string
     {
         $path = $this->absolute($agent->mcpConfigPath());
-        $config = $agent->mcpServerConfig($this->command(), $this->args());
+        $config = $agent->mcpServerConfig('make', [MakefileMcpTargetWriter::TARGET]);
+        $serverKey = $this->serverKey();
 
         if (str_ends_with($path, '.toml')) {
-            return (new TomlConfigWriter($this->files, $path, $agent->mcpConfigKey()))->render(self::SERVER_KEY, $config);
+            return (new TomlConfigWriter($this->files, $path, $agent->mcpConfigKey()))->render(
+                $serverKey,
+                $config,
+                [self::LEGACY_SERVER_KEY],
+            );
         }
 
-        return (new JsonConfigWriter($this->files, $path, $agent->mcpConfigKey()))->render(self::SERVER_KEY, $config);
+        return (new JsonConfigWriter($this->files, $path, $agent->mcpConfigKey()))->render(
+            $serverKey,
+            $config,
+            [self::LEGACY_SERVER_KEY],
+        );
     }
 
     private function absolute(string $path): string
@@ -88,16 +108,12 @@ final readonly class McpWriter
         return $this->basePath.'/'.$path;
     }
 
-    private function command(): string
+    private function serverKey(): string
     {
-        return $this->runtime->mcpCommand()['command'];
-    }
+        $project = strtolower(basename($this->basePath));
+        $project = preg_replace('/[^a-z0-9]+/', '-', $project) ?: 'project';
+        $project = trim($project, '-');
 
-    /**
-     * @return array<int, string>
-     */
-    private function args(): array
-    {
-        return $this->runtime->mcpCommand()['args'];
+        return self::LEGACY_SERVER_KEY.'-'.($project === '' ? 'project' : $project);
     }
 }

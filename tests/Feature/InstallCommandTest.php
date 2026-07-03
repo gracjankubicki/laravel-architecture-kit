@@ -148,10 +148,19 @@ class InstallCommandTest extends TestCase
             ->assertExitCode(0);
 
         $files = new Filesystem;
+        $codexMcp = $files->get($this->tempPath.'/.codex/config.toml');
+        $claudeMcp = $files->get($this->tempPath.'/.mcp.json');
+        $makefile = $files->get($this->tempPath.'/Makefile');
 
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-actions/SKILL.md');
-        $this->assertStringContainsString('[mcp_servers.architecture-kit]', $files->get($this->tempPath.'/.codex/config.toml'));
-        $this->assertStringContainsString('"architecture-kit:mcp"', $files->get($this->tempPath.'/.mcp.json'));
+        $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $codexMcp);
+        $this->assertStringContainsString('command = "make"', $codexMcp);
+        $this->assertStringContainsString('args = ["mcp-architecture-kit"]', $codexMcp);
+        $this->assertStringContainsString('"'.$this->mcpServerKey().'"', $claudeMcp);
+        $this->assertStringContainsString('"command": "make"', $claudeMcp);
+        $this->assertStringContainsString('"mcp-architecture-kit"', $claudeMcp);
+        $this->assertStringContainsString('mcp-architecture-kit:', $makefile);
+        $this->assertStringContainsString("'php' 'artisan' 'architecture-kit:mcp'", $makefile);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $files->get($this->tempPath.'/.codex/hooks.json'));
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh claude', $files->get($this->tempPath.'/.claude/settings.json'));
         $this->assertStringContainsString('"claude_code"', $files->get($this->tempPath.'/.architecture-kit/install.json'));
@@ -189,12 +198,15 @@ YAML);
 
         $config = $files->get($this->tempPath.'/config/architectures.php');
         $codexMcp = $files->get($this->tempPath.'/.codex/config.toml');
+        $makefile = $files->get($this->tempPath.'/Makefile');
         $guard = $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh');
 
         $this->assertStringContainsString("'driver' => 'docker'", $config);
         $this->assertStringContainsString("'service' => 'api'", $config);
-        $this->assertStringContainsString('command = "docker"', $codexMcp);
-        $this->assertStringContainsString('args = ["compose", "exec", "-T", "api", "php", "artisan", "architecture-kit:mcp"]', $codexMcp);
+        $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $codexMcp);
+        $this->assertStringContainsString('command = "make"', $codexMcp);
+        $this->assertStringContainsString('args = ["mcp-architecture-kit"]', $codexMcp);
+        $this->assertStringContainsString("'docker' 'compose' 'exec' '-T' 'api' 'php' 'artisan' 'architecture-kit:mcp'", $makefile);
         $this->assertStringContainsString("RUNNER=('docker' 'compose' 'exec' '-T' 'api' 'php')", $guard);
         $this->assertStringContainsString('architecture-kit: runtime unavailable', $guard);
     }
@@ -919,6 +931,15 @@ PHP);
             $files->ensureDirectoryExists(dirname($file->path));
             $files->put($file->path, $file->contents);
         }
+    }
+
+    private function mcpServerKey(): string
+    {
+        $project = strtolower(basename($this->tempPath));
+        $project = preg_replace('/[^a-z0-9]+/', '-', $project) ?: 'project';
+        $project = trim($project, '-');
+
+        return 'architecture-kit-'.($project === '' ? 'project' : $project);
     }
 }
 
