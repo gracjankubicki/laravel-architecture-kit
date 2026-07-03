@@ -28,10 +28,13 @@ class InstallAgentsCommandTest extends TestCase
         $codexHooks = $files->get($this->tempPath.'/.codex/hooks.json');
         $claudeHooks = $files->get($this->tempPath.'/.claude/settings.json');
         $state = $files->get($this->tempPath.'/.architecture-kit/install.json');
+        $guard = $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh');
 
         $this->assertStringContainsString('[mcp_servers.architecture-kit]', $codexMcp);
         $this->assertStringContainsString('args = ["artisan", "architecture-kit:mcp"]', $codexMcp);
         $this->assertStringContainsString('"architecture-kit:mcp"', $claudeMcp);
+        $this->assertStringContainsString("RUNNER=('php')", $guard);
+        $this->assertStringContainsString('architecture-kit: runtime unavailable', $guard);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $codexHooks);
         $this->assertStringNotContainsString('_architectureKit', $codexHooks);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh claude', $claudeHooks);
@@ -39,6 +42,26 @@ class InstallAgentsCommandTest extends TestCase
         $this->assertStringContainsString('"codex"', $state);
         $this->assertStringContainsString('"claude_code"', $state);
         $this->assertSame('755', substr(sprintf('%o', fileperms($this->tempPath.'/.architecture-kit/hooks/guard.sh')), -3));
+    }
+
+    public function test_it_uses_runtime_config_for_mcp_and_hooks(): void
+    {
+        $this->writeCurrentResources(runtime: [
+            'driver' => 'sail',
+            'service' => 'api',
+            'php' => 'php',
+            'command' => null,
+        ]);
+
+        $this->artisan('architecture-kit:install-agents --codex --mcp --hooks')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $files = new Filesystem;
+
+        $this->assertStringContainsString('command = "docker"', $files->get($this->tempPath.'/.codex/config.toml'));
+        $this->assertStringContainsString('args = ["compose", "exec", "-T", "api", "php", "artisan", "architecture-kit:mcp"]', $files->get($this->tempPath.'/.codex/config.toml'));
+        $this->assertStringContainsString("RUNNER=('docker' 'compose' 'exec' '-T' 'api' 'php')", $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh'));
     }
 
     public function test_it_preserves_unrelated_mcp_servers_and_hooks(): void
@@ -70,36 +93,6 @@ class InstallAgentsCommandTest extends TestCase
         $this->assertStringContainsString('vendor/bin/phpunit', $files->get($this->tempPath.'/.codex/hooks.json'));
     }
 
-    public function test_it_uses_configured_mcp_and_hook_commands(): void
-    {
-        config()->set('architectures.agents.mcp', [
-            'command' => 'docker',
-            'args' => ['compose', 'exec', '-T', 'api', 'php', 'artisan', 'architecture-kit:mcp'],
-            'cwd' => '/repo',
-        ]);
-        config()->set('architectures.agents.hooks', [
-            'guard_command' => ['docker', 'compose', 'run', '--rm', 'api', 'artisan', 'architecture-kit:guard'],
-            'commands' => [
-                'codex' => 'sh "/repo/backend/.architecture-kit/hooks/guard.sh" codex',
-                'claude' => '/repo/backend/.architecture-kit/hooks/guard.sh claude',
-            ],
-        ]);
-
-        $this->artisan('architecture-kit:install-agents --codex --claude --mcp --hooks')
-            ->expectsConfirmation('Continue?', 'yes')
-            ->assertExitCode(0);
-
-        $files = new Filesystem;
-
-        $this->assertStringContainsString('command = "docker"', $files->get($this->tempPath.'/.codex/config.toml'));
-        $this->assertStringContainsString('cwd = "/repo"', $files->get($this->tempPath.'/.codex/config.toml'));
-        $this->assertStringContainsString('"command": "docker"', $files->get($this->tempPath.'/.mcp.json'));
-        $this->assertStringContainsString('"cwd": "/repo"', $files->get($this->tempPath.'/.mcp.json'));
-        $this->assertStringContainsString("'docker' 'compose' 'run' '--rm' 'api' 'artisan' 'architecture-kit:guard'", $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh'));
-        $this->assertStringContainsString('sh \\"/repo/backend/.architecture-kit/hooks/guard.sh\\" codex', $files->get($this->tempPath.'/.codex/hooks.json'));
-        $this->assertStringContainsString('/repo/backend/.architecture-kit/hooks/guard.sh claude', $files->get($this->tempPath.'/.claude/settings.json'));
-    }
-
     public function test_it_blocks_invalid_agent_config_before_writing(): void
     {
         $files = new Filesystem;
@@ -125,15 +118,16 @@ class InstallAgentsCommandTest extends TestCase
 
         $this->artisan('architecture-kit:doctor')
             ->expectsOutputToContain('Agents:')
-            ->expectsOutputToContain('current  .codex/config.toml')
-            ->expectsOutputToContain('current  .codex/hooks.json')
+            ->expectsOutputToContain('current  .architecture-kit/install.json')
+            ->expectsOutputToContain('current  artisan architecture-kit:mcp')
+            ->expectsOutputToContain('current  mcp:architecture-kit')
             ->assertExitCode(0);
 
         (new Filesystem)->delete($this->tempPath.'/.codex/config.toml');
 
         $this->artisan('architecture-kit:doctor')
-            ->expectsOutputToContain('missing  .codex/config.toml')
-            ->assertExitCode(1);
+            ->expectsOutputToContain('current  .architecture-kit/install.json')
+            ->assertExitCode(0);
     }
 
     public function test_guard_json_includes_agent_checks(): void
@@ -149,8 +143,8 @@ class InstallAgentsCommandTest extends TestCase
             ->toArray();
 
         $this->assertSame(
-            '.codex/config.toml',
-            collect($result['agents']['checks'])->firstWhere('path', '.codex/config.toml')['path'] ?? null,
+            '.architecture-kit/install.json',
+            collect($result['agents']['checks'])->firstWhere('path', '.architecture-kit/install.json')['path'] ?? null,
         );
 
         $this->artisan('architecture-kit:guard --json')
@@ -158,14 +152,17 @@ class InstallAgentsCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
-    private function writeCurrentResources(): void
+    /**
+     * @param  array<string, mixed>|null  $runtime
+     */
+    private function writeCurrentResources(?array $runtime = null): void
     {
         $files = new Filesystem;
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
         $enabled = [Architecture::Actions];
 
-        $config->write($enabled);
+        $config->write($enabled, $runtime);
 
         foreach (array_merge([$resources->guideline($enabled)], array_values($resources->skills($enabled))) as $file) {
             $files->ensureDirectoryExists(dirname($file->path));

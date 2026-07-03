@@ -9,6 +9,9 @@ use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Install\AgentInstaller;
 use Taqie\ArchitectureKit\Install\AgentsDetector;
 use Taqie\ArchitectureKit\Install\InstallResult;
+use Taqie\ArchitectureKit\Support\ArchitectureConfig;
+use Taqie\ArchitectureKit\Support\ArchitectureConfigPath;
+use Throwable;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -25,12 +28,20 @@ class InstallAgentsCommand extends Command
 
     public function handle(Filesystem $files): int
     {
+        try {
+            $runtime = (new ArchitectureConfig(ArchitectureConfigPath::resolve($files, base_path()), $files))->runtime();
+        } catch (Throwable $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
         $detector = new AgentsDetector($files, base_path());
         $agentNames = $this->agentNames($detector);
         $features = $this->features();
 
         $agents = $detector->resolve($agentNames);
-        $installer = new AgentInstaller($files, base_path());
+        $installer = new AgentInstaller($files, base_path(), $runtime);
         $plan = $installer->plan($agents, $features['mcp'], $features['hooks']);
 
         if ($this->blocked($plan) !== []) {

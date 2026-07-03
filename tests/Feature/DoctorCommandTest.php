@@ -244,6 +244,38 @@ PHP);
             ->assertExitCode(0);
     }
 
+    public function test_it_warns_when_docker_runtime_has_no_compose_file(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions], [
+            'driver' => 'docker',
+            'service' => 'app',
+            'php' => 'php',
+            'command' => null,
+        ]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('Runtime:')
+            ->expectsOutputToContain('warning  compose.yaml')
+            ->expectsOutputToContain('Runtime driver is docker but no compose.yaml')
+            ->assertExitCode(0);
+    }
+
+    public function test_it_warns_when_sail_runtime_has_no_sail_binary(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions], [
+            'driver' => 'sail',
+            'service' => 'laravel.test',
+            'php' => 'php',
+            'command' => null,
+        ]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('Runtime:')
+            ->expectsOutputToContain('warning  vendor/bin/sail')
+            ->expectsOutputToContain('Runtime driver is sail but vendor/bin/sail was not found.')
+            ->assertExitCode(0);
+    }
+
     public function test_it_reports_orphaned_baseline_entries_and_update_baseline_removes_them(): void
     {
         $this->writeCurrentResources([
@@ -345,13 +377,13 @@ PHP);
     /**
      * @param  array<int, Architecture>  $enabled
      */
-    private function writeCurrentResources(array $enabled): void
+    private function writeCurrentResources(array $enabled, ?array $runtime = null): void
     {
         $files = new Filesystem;
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
 
-        $config->write($enabled);
+        $config->write($enabled, $runtime);
 
         $generated = array_merge(
             [$resources->guideline($enabled)],

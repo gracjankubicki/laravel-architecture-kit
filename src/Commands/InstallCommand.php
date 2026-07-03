@@ -13,6 +13,7 @@ use Taqie\ArchitectureKit\Install\AgentsDetector;
 use Taqie\ArchitectureKit\Install\InstallResult;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
+use Taqie\ArchitectureKit\Support\ComposeServices;
 use Taqie\ArchitectureKit\Support\GeneratedFile;
 use Taqie\ArchitectureKit\Support\LaravelAiRequirement;
 use Taqie\ArchitectureKit\Support\PhpRequirement;
@@ -22,6 +23,8 @@ use Throwable;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
+use function Laravel\Prompts\select;
+use function Laravel\Prompts\text;
 
 class InstallCommand extends Command
 {
@@ -36,6 +39,7 @@ class InstallCommand extends Command
 
         try {
             $current = $config->readOrDefault();
+            $currentRuntime = $config->runtime();
 
             if (
                 ! $files->exists(config_path('architectures.php'))
@@ -152,7 +156,8 @@ class InstallCommand extends Command
             return self::FAILURE;
         }
 
-        $expected = $this->expectedFiles($config, $resources, $enabled);
+        $runtime = $this->runtime($files, $currentRuntime);
+        $expected = $this->expectedFiles($config, $resources, $enabled, $runtime);
         $removals = $this->staleSkills($resources, $enabled);
         $plan = $this->plan($files, $resources, $expected, $removals);
 
@@ -170,7 +175,7 @@ class InstallCommand extends Command
             return self::FAILURE;
         }
 
-        $agentInstall = $this->agentInstall($files);
+        $agentInstall = $this->agentInstall($files, $runtime);
         $agentPlan = $agentInstall === null
             ? $this->emptyAgentPlan()
             : $agentInstall['installer']->plan($agentInstall['agents'], $agentInstall['mcp'], $agentInstall['hooks']);
@@ -244,14 +249,15 @@ class InstallCommand extends Command
 
     /**
      * @param  array<int, Architecture|string>  $enabled
+     * @param  array<string, mixed>  $runtime
      * @return array<string, GeneratedFile>
      */
-    private function expectedFiles(ArchitectureConfig $config, ArchitectureResources $resources, array $enabled): array
+    private function expectedFiles(ArchitectureConfig $config, ArchitectureResources $resources, array $enabled, array $runtime): array
     {
         $files = [
             'config' => new GeneratedFile(
                 path: config_path('architectures.php'),
-                contents: $config->render($enabled),
+                contents: $config->render($enabled, $runtime),
             ),
             'guideline' => $resources->guideline($enabled),
         ];
@@ -393,9 +399,101 @@ class InstallCommand extends Command
     }
 
     /**
+     * @param  array{driver: string, service: string|null, php: string, command: array<int, string>|null}  $current
+     * @return array{driver: string, service: string|null, php: string, command: array<int, string>|null}
+     */
+    private function runtime(Filesystem $files, array $current): array
+    {
+        $compose = new ComposeServices($files, base_path());
+        $default = $current['driver'] !== 'local' ? $current['driver'] : $compose->detectedRuntimeDriver();
+        $driver = select(
+            label: 'How does this project run PHP?',
+            options: $this->runtimeOptions(),
+            default: $default,
+        );
+        $php = $current['php'] !== '' ? $current['php'] : 'php';
+
+        if ($driver === 'docker') {
+            return [
+                'driver' => 'docker',
+                'service' => $this->dockerService($compose, $current['service']),
+                'php' => $php,
+                'command' => null,
+            ];
+        }
+
+        if ($driver === 'sail') {
+            return [
+                'driver' => 'sail',
+                'service' => $compose->sailService(),
+                'php' => $php,
+                'command' => null,
+            ];
+        }
+
+        if ($driver === 'custom') {
+            $defaultCommand = $current['command'] !== null ? implode(' ', $current['command']) : 'bin/php-runner';
+            $command = text(
+                label: 'Command prefix?',
+                default: $defaultCommand,
+                required: 'Provide the command prefix that runs PHP for this project.',
+                hint: 'Example: bin/php-runner. Architecture Kit appends artisan and the command name.',
+            );
+
+            return [
+                'driver' => 'custom',
+                'service' => null,
+                'php' => $php,
+                'command' => preg_split('/\s+/', trim($command)) ?: [$command],
+            ];
+        }
+
+        return [
+            'driver' => 'local',
+            'service' => null,
+            'php' => $php,
+            'command' => null,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function runtimeOptions(): array
+    {
+        return [
+            'docker' => 'Docker Compose',
+            'sail' => 'Laravel Sail',
+            'local' => 'Local PHP',
+            'custom' => 'Custom command',
+        ];
+    }
+
+    private function dockerService(ComposeServices $compose, ?string $currentService): string
+    {
+        $services = $compose->services();
+        $default = $currentService !== null && $currentService !== '' ? $currentService : 'app';
+
+        if ($services === null) {
+            return text(
+                label: 'Which Docker Compose service runs PHP?',
+                default: $default,
+                required: 'Provide the Docker Compose service name.',
+            );
+        }
+
+        return select(
+            label: 'Which Docker Compose service runs PHP?',
+            options: array_combine($services, $services) ?: ['app' => 'app'],
+            default: in_array($default, $services, true) ? $default : ($services[0] ?? 'app'),
+        );
+    }
+
+    /**
+     * @param  array{driver: string, service: string|null, php: string, command: array<int, string>|null}  $runtime
      * @return array{installer: AgentInstaller, agents: array<int, Agent>, mcp: bool, hooks: bool}|null
      */
-    private function agentInstall(Filesystem $files): ?array
+    private function agentInstall(Filesystem $files, array $runtime): ?array
     {
         if (! confirm('Install Architecture Kit MCP and hooks for AI agents now?', default: true)) {
             return null;
@@ -406,7 +504,7 @@ class InstallCommand extends Command
         $features = $this->agentFeatures();
 
         return [
-            'installer' => new AgentInstaller($files, base_path()),
+            'installer' => new AgentInstaller($files, base_path(), $runtime),
             'agents' => $detector->resolve($agentNames),
             'mcp' => $features['mcp'],
             'hooks' => $features['hooks'],

@@ -9,6 +9,7 @@ use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Support\AgentOutput;
 use Taqie\ArchitectureKit\Support\ApplicationAudit;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
+use Taqie\ArchitectureKit\Support\ArchitectureConfigPath;
 use Throwable;
 
 class AuditCommand extends Command
@@ -36,7 +37,7 @@ class AuditCommand extends Command
             return self::SUCCESS;
         }
 
-        $config = new ArchitectureConfig(config_path('architectures.php'), $files);
+        $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($files, base_path()), $files);
 
         try {
             $enabled = $config->read();

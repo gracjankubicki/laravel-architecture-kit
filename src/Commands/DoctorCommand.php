@@ -9,6 +9,7 @@ use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\Support\AgentOutput;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
+use Taqie\ArchitectureKit\Support\ArchitectureConfigPath;
 use Taqie\ArchitectureKit\Support\ArchitectureDoctor;
 use Taqie\ArchitectureKit\Support\ArchitectureDoctorCheck;
 use Taqie\ArchitectureKit\Support\ArchitectureResources;
@@ -33,7 +34,7 @@ class DoctorCommand extends Command
             return self::SUCCESS;
         }
 
-        $config = new ArchitectureConfig(config_path('architectures.php'), $files);
+        $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($files, base_path()), $files);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files);
         $result = (new ArchitectureDoctor($config, $resources, $files, base_path(), $this->getApplication()))->run();
 
@@ -72,6 +73,21 @@ class DoctorCommand extends Command
 
         foreach ($this->checksFor($result->checks, 'generated') as $check) {
             $this->line(sprintf('  %-8s %s', $check->status, $check->path));
+        }
+
+        $runtimeChecks = $this->checksFor($result->checks, 'runtime');
+
+        if ($runtimeChecks !== []) {
+            $this->newLine();
+            $this->line('Runtime:');
+
+            foreach ($runtimeChecks as $check) {
+                $this->line(sprintf('  %-8s %s', $check->status, $check->path));
+
+                if ($check->message !== null) {
+                    $this->line('  reason   '.$check->message);
+                }
+            }
         }
 
         $baselineChecks = $this->checksFor($result->checks, 'baseline');

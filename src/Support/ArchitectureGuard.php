@@ -18,7 +18,7 @@ final readonly class ArchitectureGuard
 
     public function run(bool $changedOnly, ?string $baseRef, bool $strict): ArchitectureGuardResult
     {
-        $config = new ArchitectureConfig($this->basePath.'/config/architectures.php', $this->files);
+        $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($this->files, $this->basePath), $this->files);
         $resources = new ArchitectureResources($this->packagePath, $this->basePath, $this->files);
         $doctor = (new ArchitectureDoctor($config, $resources, $this->files, $this->basePath, $this->console))->run();
         $audit = null;

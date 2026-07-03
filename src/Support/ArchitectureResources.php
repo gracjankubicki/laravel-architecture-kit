@@ -6,6 +6,7 @@ namespace Taqie\ArchitectureKit\Support;
 
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
+use SplFileInfo;
 use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\EnabledArchitecture;
 
@@ -51,8 +52,8 @@ final class ArchitectureResources
         $skills = [];
 
         foreach ($this->ordered($enabled) as $architecture) {
-            $contents = $this->files->exists($this->skillSource($architecture))
-                ? $this->files->get($this->skillSource($architecture))
+            $contents = $this->sourceExists($this->skillSource($architecture))
+                ? $this->sourceContents($architecture, 'skill', $enabled)
                 : $this->defaultSkill($architecture);
             $this->assertSkillName($architecture, $contents);
 
@@ -91,12 +92,12 @@ final class ArchitectureResources
 
     public function guidelineSource(EnabledArchitecture|Architecture|string $architecture): string
     {
-        return $this->enabledArchitecture($architecture)->guidelineSource($this->packagePath);
+        return $this->resolvedSource($this->enabledArchitecture($architecture)->guidelineSource($this->packagePath), 'guideline');
     }
 
     public function skillSource(EnabledArchitecture|Architecture|string $architecture): string
     {
-        return $this->enabledArchitecture($architecture)->skillSource($this->packagePath);
+        return $this->resolvedSource($this->enabledArchitecture($architecture)->skillSource($this->packagePath), 'skill');
     }
 
     /**
@@ -105,11 +106,11 @@ final class ArchitectureResources
     public function assertSourcesExist(array $enabled): void
     {
         foreach ($this->ordered($enabled) as $architecture) {
-            if (! $this->files->exists($this->guidelineSource($architecture))) {
+            if (! $this->sourceExists($this->guidelineSource($architecture))) {
                 throw new RuntimeException("Missing Architecture Kit source resource: {$this->guidelineSource($architecture)}");
             }
 
-            if ($architecture->value instanceof Architecture && ! $this->files->exists($this->skillSource($architecture))) {
+            if ($architecture->value instanceof Architecture && ! $this->sourceExists($this->skillSource($architecture))) {
                 throw new RuntimeException("Missing Architecture Kit source resource: {$this->skillSource($architecture)}");
             }
         }
@@ -159,7 +160,7 @@ final class ArchitectureResources
         $sections = ['## Architecture Rules'];
 
         foreach ($this->ordered($enabled) as $architecture) {
-            $guideline = trim($this->files->get($this->guidelineSource($architecture)));
+            $guideline = trim($this->sourceContents($architecture, 'guideline', $enabled));
 
             $sections[] = implode("\n\n", [
                 '### '.$architecture->label(),
@@ -365,7 +366,7 @@ MARKDOWN;
             '',
             '# '.$architecture->label(),
             '',
-            trim($this->files->get($this->guidelineSource($architecture))),
+            trim($this->sourceContents($architecture, 'guideline', [$architecture->value])),
             '',
         ]);
     }
@@ -375,5 +376,92 @@ MARKDOWN;
         return $architecture instanceof EnabledArchitecture
             ? $architecture
             : new EnabledArchitecture($architecture, $this->projectPath);
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     */
+    private function sourceContents(EnabledArchitecture $architecture, string $kind, array $enabled): string
+    {
+        $source = $kind === 'skill'
+            ? $this->skillSource($architecture)
+            : $this->guidelineSource($architecture);
+
+        if ($this->files->isDirectory($source)) {
+            $contents = $this->fragmentContents($source, $enabled);
+
+            if ($kind === 'skill' && ! str_starts_with(trim($contents), "---\n")) {
+                throw new RuntimeException("Architecture Kit skill fragment directory [{$source}] must start with a frontmatter fragment.");
+            }
+
+            return $contents;
+        }
+
+        return $this->files->get($source);
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     */
+    private function fragmentContents(string $directory, array $enabled): string
+    {
+        $fragments = array_values(array_filter(
+            array_map(fn (SplFileInfo $file): string => $file->getFilename(), $this->files->files($directory)),
+            fn (string $name): bool => str_ends_with($name, '.md'),
+        ));
+
+        if ($fragments === []) {
+            throw new RuntimeException("Architecture Kit resource fragment directory [{$directory}] must contain at least one .md file.");
+        }
+
+        $selected = (new ResourceFragments)->select($this->enabledSlugs($enabled), $fragments);
+
+        return implode("\n\n", array_map(
+            fn (string $name): string => trim($this->files->get($directory.'/'.$name)),
+            $selected,
+        ));
+    }
+
+    private function sourceExists(string $source): bool
+    {
+        if ($this->files->isDirectory($source)) {
+            return count(array_filter(
+                $this->files->files($source),
+                fn (SplFileInfo $file): bool => $file->getExtension() === 'md',
+            )) > 0;
+        }
+
+        if ($this->files->isFile($source)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function resolvedSource(string $fileSource, string $directoryName): string
+    {
+        if ($this->files->exists($fileSource)) {
+            return $fileSource;
+        }
+
+        $directorySource = dirname($fileSource).'/'.$directoryName;
+
+        if ($this->files->isDirectory($directorySource)) {
+            return $directorySource;
+        }
+
+        return $fileSource;
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<int, string>
+     */
+    private function enabledSlugs(array $enabled): array
+    {
+        return array_map(
+            fn (Architecture|string $architecture): string => $architecture instanceof Architecture ? $architecture->value : $architecture,
+            $enabled,
+        );
     }
 }

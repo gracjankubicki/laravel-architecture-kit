@@ -82,6 +82,24 @@ final class ArchitectureConfig
     }
 
     /**
+     * @return array{driver: string, service: string|null, php: string, command: array<int, string>|null}
+     */
+    public function runtime(): array
+    {
+        $config = $this->config();
+
+        if (! isset($config['runtime'])) {
+            return (new RuntimeResolver)->runtime();
+        }
+
+        if (! is_array($config['runtime'])) {
+            throw new InvalidArgumentException('config/architectures.php runtime must be an array.');
+        }
+
+        return (new RuntimeResolver($config['runtime']))->runtime();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function config(): array
@@ -102,24 +120,25 @@ final class ArchitectureConfig
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
-    public function render(array $enabled): string
+    public function render(array $enabled, ?array $runtime = null): string
     {
         if ($this->files->exists($this->path)) {
             $contents = $this->files->get($this->path);
             $updated = $this->replaceEnabledBlock($contents, $enabled);
 
             if ($updated !== null) {
-                return $updated;
+                return $runtime === null ? $updated : $this->replaceOrInsertRuntimeBlock($this->removeTopLevelArrayBlock($updated, 'agents'), $runtime);
             }
         }
 
-        return $this->renderFresh($enabled);
+        return $this->renderFresh($enabled, $runtime);
     }
 
     /**
      * @param  array<int, Architecture|string>  $enabled
+     * @param  array<string, mixed>|null  $runtime
      */
-    private function renderFresh(array $enabled): string
+    private function renderFresh(array $enabled, ?array $runtime = null): string
     {
         $lines = [
             '<?php',
@@ -135,6 +154,11 @@ final class ArchitectureConfig
         }
 
         $lines[] = '    ],';
+
+        if ($runtime !== null) {
+            $lines[] = $this->renderRuntimeBlock($runtime, '    ');
+        }
+
         $lines[] = '];';
         $lines[] = '';
 
@@ -165,6 +189,44 @@ final class ArchitectureConfig
             $match[0][1],
             strlen($match[0][0]),
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $runtime
+     */
+    private function replaceOrInsertRuntimeBlock(string $contents, array $runtime): string
+    {
+        $normalized = (new RuntimeResolver($runtime))->runtime();
+        $replacement = $this->renderRuntimeBlock($normalized, '    ');
+
+        $matched = preg_match(
+            '/^(?<indent>\s*)[\'"]runtime[\'"]\s*=>\s*\[\R.*?^\k<indent>\],/ms',
+            $contents,
+            $match,
+            PREG_OFFSET_CAPTURE,
+        );
+
+        if ($matched === 1) {
+            return substr_replace(
+                $contents,
+                $this->renderRuntimeBlock($normalized, $match['indent'][0]),
+                $match[0][1],
+                strlen($match[0][0]),
+            );
+        }
+
+        return preg_replace('/^\s*\];\s*$/m', $replacement."\n];", $contents, 1) ?? $contents;
+    }
+
+    private function removeTopLevelArrayBlock(string $contents, string $key): string
+    {
+        $range = $this->topLevelArrayBlockRange($contents, $key);
+
+        if ($range === null) {
+            return $contents;
+        }
+
+        return substr_replace($contents, '', $range['start'], $range['end'] - $range['start']);
     }
 
     /**
@@ -222,7 +284,7 @@ final class ArchitectureConfig
             if (
                 $returnArrayDepth !== null
                 && $arrayDepth === $returnArrayDepth
-                && $this->isEnabledKeyToken($token)
+                && $this->isStringKeyToken($token, 'enabled')
                 && $this->nextSignificantTokenText($tokens, $index) === '=>'
             ) {
                 $valueIndex = $this->nextSignificantTokenIndex(
@@ -241,6 +303,82 @@ final class ArchitectureConfig
                 }
 
                 return $this->rangeFromOffsets($contents, $token['offset'], $valueEnd);
+            }
+
+            if ($text === '[') {
+                $arrayDepth++;
+
+                if ($waitingForReturnArray) {
+                    $returnArrayDepth = $arrayDepth;
+                    $waitingForReturnArray = false;
+                }
+
+                continue;
+            }
+
+            if ($text === ']') {
+                $arrayDepth--;
+
+                if ($returnArrayDepth !== null && $arrayDepth < $returnArrayDepth) {
+                    $returnArrayDepth = null;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{start: int, end: int}|null
+     */
+    private function topLevelArrayBlockRange(string $contents, string $key): ?array
+    {
+        $tokens = $this->tokensWithOffsets($contents);
+        $arrayDepth = 0;
+        $waitingForReturnArray = false;
+        $returnArrayDepth = null;
+
+        foreach ($tokens as $index => $token) {
+            $text = $token['text'];
+
+            if ($token['id'] === T_RETURN) {
+                $waitingForReturnArray = true;
+
+                continue;
+            }
+
+            if ($waitingForReturnArray && ! $this->isIgnorableToken($token)) {
+                $waitingForReturnArray = $text === '[';
+            }
+
+            if (
+                $returnArrayDepth !== null
+                && $arrayDepth === $returnArrayDepth
+                && $this->isStringKeyToken($token, $key)
+                && $this->nextSignificantTokenText($tokens, $index) === '=>'
+            ) {
+                $valueIndex = $this->nextSignificantTokenIndex(
+                    $tokens,
+                    $this->nextSignificantTokenIndex($tokens, $index) ?? $index,
+                );
+
+                if ($valueIndex === null || $tokens[$valueIndex]['text'] !== '[') {
+                    continue;
+                }
+
+                $valueEnd = $this->matchingShortArrayEnd($tokens, $valueIndex);
+
+                if ($valueEnd === null) {
+                    return null;
+                }
+
+                $start = $token['offset'];
+                $end = $this->consumeTrailingComma($contents, $valueEnd);
+
+                return [
+                    'start' => $start,
+                    'end' => $end,
+                ];
             }
 
             if ($text === '[') {
@@ -298,7 +436,7 @@ final class ArchitectureConfig
     /**
      * @param  array{id: int|null, text: string, offset: int}  $token
      */
-    private function isEnabledKeyToken(array $token): bool
+    private function isStringKeyToken(array $token, string $key): bool
     {
         if ($token['id'] !== T_CONSTANT_ENCAPSED_STRING) {
             return false;
@@ -311,7 +449,7 @@ final class ArchitectureConfig
             return false;
         }
 
-        return stripcslashes(substr($text, 1, -1)) === 'enabled';
+        return stripcslashes(substr($text, 1, -1)) === $key;
     }
 
     /**
@@ -445,12 +583,60 @@ final class ArchitectureConfig
     }
 
     /**
+     * @param  array<string, mixed>  $runtime
+     */
+    private function renderRuntimeBlock(array $runtime, string $indent): string
+    {
+        $runtime = (new RuntimeResolver($runtime))->runtime();
+        $lines = [
+            $indent."'runtime' => [",
+            $indent."    'driver' => ".var_export($runtime['driver'], true).',',
+        ];
+
+        if ($runtime['service'] !== null) {
+            $lines[] = $indent."    'service' => ".var_export($runtime['service'], true).',';
+        }
+
+        $lines[] = $indent."    'php' => ".var_export($runtime['php'], true).',';
+
+        if ($runtime['driver'] === 'custom') {
+            $lines[] = $indent."    'command' => ".$this->renderStringArray($runtime['command'] ?? [], $indent.'    ').',';
+        } else {
+            $lines[] = $indent."    'command' => null,";
+        }
+
+        $lines[] = $indent.'],';
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param  array<int, string>  $values
+     */
+    private function renderStringArray(array $values, string $indent): string
+    {
+        if ($values === []) {
+            return '[]';
+        }
+
+        $lines = ['['];
+
+        foreach ($values as $value) {
+            $lines[] = $indent.'    '.var_export($value, true).',';
+        }
+
+        $lines[] = $indent.']';
+
+        return implode("\n", $lines);
+    }
+
+    /**
      * @param  array<int, Architecture|string>  $enabled
      */
-    public function write(array $enabled): void
+    public function write(array $enabled, ?array $runtime = null): void
     {
         $this->files->ensureDirectoryExists(dirname($this->path));
-        $this->files->put($this->path, $this->render($enabled));
+        $this->files->put($this->path, $this->render($enabled, $runtime));
     }
 
     /**

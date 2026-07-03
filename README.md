@@ -55,9 +55,9 @@ php artisan architecture-kit:doctor --agent
 php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE --agent
 ```
 
-`architecture-kit:install` is idempotent. Re-run it to change the selected architectures or regenerate outdated `.ai` resources.
+`architecture-kit:install` is idempotent. Re-run it to change the selected architectures, the PHP runtime, or regenerate outdated `.ai` resources.
 
-`architecture-kit:install-agents` repairs MCP and hook configuration for selected AI agents. It writes Codex MCP config to `.codex/config.toml` and Claude Code MCP config to `.mcp.json`, using `php artisan architecture-kit:mcp` as the stable wrapper command.
+`architecture-kit:install-agents` repairs MCP and hook configuration for selected AI agents. It writes Codex MCP config to `.codex/config.toml` and Claude Code MCP config to `.mcp.json`, using the runtime from `config/architectures.php` as the stable wrapper command.
 
 `architecture-kit:doctor` is read-only. It reports missing, outdated, stale, or blocked generated resources and, when agents were installed, verifies the selected agent MCP and hook state.
 
@@ -110,6 +110,63 @@ php artisan architecture-kit:guard --changed --strict --json
 ```
 
 Existing valid agent config is merged and unrelated MCP servers or hooks are preserved. Invalid JSON/TOML, or incompatible unmanaged `architecture-kit` entries, block installation with a clear error.
+
+## Docker, Sail, and Custom PHP Runtimes
+
+`config/architectures.php` stores how the project runs PHP. Missing `runtime` means local PHP for backwards compatibility.
+
+```php
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'runtime' => [
+        'driver' => 'docker', // local | sail | docker | custom
+        'service' => 'app',
+        'php' => 'php',
+        'command' => null,
+    ],
+];
+```
+
+For Docker Compose and Sail, generated hooks and MCP configs use raw non-TTY compose commands:
+
+```bash
+docker compose exec -T app php artisan architecture-kit:guard --changed --strict --json
+docker compose exec -T app php artisan architecture-kit:mcp
+```
+
+Sail is treated as detection convenience only. Architecture Kit reads `APP_SERVICE` from `.env` and defaults to `laravel.test`, but still generates `docker compose exec -T ...` so hooks and MCP stdio stay deterministic.
+
+For `--changed` audits inside Docker or Sail, the PHP runtime must have:
+
+- `git` installed in the container,
+- the repository mounted with `.git`,
+- the same project files available where artisan runs.
+
+If those requirements are missing, `architecture-kit:doctor` reports runtime warnings. Hooks are fail-closed for every runtime: if the runtime is unavailable and no Architecture Kit JSON payload is returned, the agent turn is blocked with a runtime message.
+
+Mixed teams can commit a small wrapper and use `driver: custom`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v docker >/dev/null 2>&1 && [ -f compose.yaml ]; then
+    exec docker compose exec -T app php "$@"
+fi
+
+exec php "$@"
+```
+
+```php
+'runtime' => [
+    'driver' => 'custom',
+    'service' => null,
+    'php' => 'php',
+    'command' => ['bin/php-runner'],
+],
+```
 
 ## Architectures
 
@@ -233,7 +290,7 @@ php artisan architecture-kit:install
 php artisan architecture-kit:install-agents
 ```
 
-Codex receives:
+For the local runtime, Codex receives:
 
 ```toml
 [mcp_servers.architecture-kit]
@@ -242,7 +299,7 @@ args = ["artisan", "architecture-kit:mcp"]
 required = true
 ```
 
-Claude Code receives the same server under `.mcp.json` / `mcpServers`.
+For Docker and Sail runtimes, `command` becomes `docker` and `args` include `compose exec -T {service} php artisan architecture-kit:mcp`. Claude Code receives the same server under `.mcp.json` / `mcpServers`.
 
 The MCP server exposes read-only tools for enabled architectures, generated rules, doctor state, changed-file audit, guard state, and finding explanations. It does not regenerate files, install hooks, run migrations, write code, or mutate application data.
 

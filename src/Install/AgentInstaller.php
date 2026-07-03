@@ -10,13 +10,22 @@ use Taqie\ArchitectureKit\Install\Contracts\SupportsHooks;
 use Taqie\ArchitectureKit\Install\Contracts\SupportsMcp;
 use Taqie\ArchitectureKit\Install\Hooks\HookWriter;
 use Taqie\ArchitectureKit\Install\Mcp\McpWriter;
+use Taqie\ArchitectureKit\Support\RuntimeResolver;
 
 final readonly class AgentInstaller
 {
+    private RuntimeResolver $runtime;
+
+    /**
+     * @param  array<string, mixed>  $runtime
+     */
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {}
+        array $runtime = [],
+    ) {
+        $this->runtime = new RuntimeResolver($runtime);
+    }
 
     /**
      * @param  array<int, Agent>  $agents
@@ -27,8 +36,8 @@ final readonly class AgentInstaller
         $empty = new InstallResult;
 
         return [
-            'mcp' => $mcp ? (new McpWriter($this->files, $this->basePath))->plan($this->mcpAgents($agents)) : $empty,
-            'hooks' => $hooks ? (new HookWriter($this->files, $this->basePath))->plan($this->hookAgents($agents)) : $empty,
+            'mcp' => $mcp ? (new McpWriter($this->files, $this->basePath, $this->runtime))->plan($this->mcpAgents($agents)) : $empty,
+            'hooks' => $hooks ? (new HookWriter($this->files, $this->basePath, $this->runtime))->plan($this->hookAgents($agents)) : $empty,
             'state' => $this->statePlan($agents, $mcp, $hooks),
         ];
     }
@@ -39,11 +48,11 @@ final readonly class AgentInstaller
     public function write(array $agents, bool $mcp, bool $hooks): void
     {
         if ($mcp) {
-            (new McpWriter($this->files, $this->basePath))->write($this->mcpAgents($agents));
+            (new McpWriter($this->files, $this->basePath, $this->runtime))->write($this->mcpAgents($agents));
         }
 
         if ($hooks) {
-            (new HookWriter($this->files, $this->basePath))->write($this->hookAgents($agents));
+            (new HookWriter($this->files, $this->basePath, $this->runtime))->write($this->hookAgents($agents));
         }
 
         (new InstallState($this->files, $this->basePath))->write(

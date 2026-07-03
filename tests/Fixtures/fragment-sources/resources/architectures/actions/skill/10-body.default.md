@@ -1,0 +1,3 @@
+# Actions
+
+Default skill body.

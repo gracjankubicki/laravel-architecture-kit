@@ -9,6 +9,7 @@ use Taqie\ArchitectureKit\Architecture;
 use Taqie\ArchitectureKit\Support\ApplicationAudit;
 use Taqie\ArchitectureKit\Support\ApplicationAuditResult;
 use Taqie\ArchitectureKit\Support\ArchitectureConfig;
+use Taqie\ArchitectureKit\Support\ArchitectureConfigPath;
 use Taqie\ArchitectureKit\Support\ArchitectureDoctor;
 use Taqie\ArchitectureKit\Support\ArchitectureDoctorResult;
 use Taqie\ArchitectureKit\Support\ArchitectureGuard;
@@ -29,7 +30,7 @@ trait UsesArchitectureKitState
 
     protected function config(): ArchitectureConfig
     {
-        return new ArchitectureConfig(config_path('architectures.php'), $this->files());
+        return new ArchitectureConfig(ArchitectureConfigPath::resolve($this->files(), base_path()), $this->files());
     }
 
     protected function resources(): ArchitectureResources

@@ -28,6 +28,7 @@ final readonly class ArchitectureDoctor
 
         try {
             $enabled = $this->config->read();
+            $runtime = $this->config->runtime();
             $this->resources->assertSourcesExist($enabled);
             $checks[] = new ArchitectureDoctorCheck('config', 'current', 'config/architectures.php');
         } catch (Throwable $exception) {
@@ -106,6 +107,10 @@ final readonly class ArchitectureDoctor
             );
         }
 
+        foreach ($this->runtimeChecks($runtime) as $check) {
+            $checks[] = $check;
+        }
+
         foreach ($this->customRuleChecks() as $check) {
             $checks[] = $check;
         }
@@ -181,6 +186,59 @@ final readonly class ArchitectureDoctor
     private function boostInstalled(): bool
     {
         return $this->console?->has('boost:update') === true;
+    }
+
+    /**
+     * @param  array{driver: string, service: string|null, php: string, command: array<int, string>|null}  $runtime
+     * @return array<int, ArchitectureDoctorCheck>
+     */
+    private function runtimeChecks(array $runtime): array
+    {
+        $checks = [];
+        $compose = new ComposeServices($this->files, $this->basePath);
+
+        if ($runtime['driver'] === 'docker' && $compose->composePath() === null) {
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'runtime',
+                status: 'warning',
+                path: 'compose.yaml',
+                message: 'Runtime driver is docker but no compose.yaml, compose.yml, docker-compose.yml, or docker-compose.yaml file was found.',
+            );
+        }
+
+        if ($runtime['driver'] === 'sail' && ! $this->files->exists($this->basePath.'/vendor/bin/sail')) {
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'runtime',
+                status: 'warning',
+                path: 'vendor/bin/sail',
+                message: 'Runtime driver is sail but vendor/bin/sail was not found.',
+            );
+        }
+
+        $resolver = new RuntimeResolver($runtime);
+
+        if (! $this->commandSucceeds($resolver->gitCommand())) {
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'runtime',
+                status: 'warning',
+                path: 'git',
+                message: 'git is unavailable from the configured Architecture Kit runtime. Changed-file hooks may fall back to a full app scan.',
+            );
+        }
+
+        return $checks;
+    }
+
+    /**
+     * @param  array<int, string>  $command
+     */
+    private function commandSucceeds(array $command): bool
+    {
+        $output = [];
+        $status = 1;
+        @exec(implode(' ', array_map(escapeshellarg(...), $command)).' 2>/dev/null', $output, $status);
+
+        return $status === 0;
     }
 
     /**

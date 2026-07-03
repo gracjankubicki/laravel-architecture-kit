@@ -8,6 +8,7 @@ use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Install\Agents\Agent;
 use Taqie\ArchitectureKit\Install\Contracts\SupportsHooks;
 use Taqie\ArchitectureKit\Install\InstallResult;
+use Taqie\ArchitectureKit\Support\RuntimeResolver;
 
 final readonly class HookWriter
 {
@@ -16,6 +17,7 @@ final readonly class HookWriter
     public function __construct(
         private Filesystem $files,
         private string $basePath,
+        private RuntimeResolver $runtime = new RuntimeResolver,
     ) {}
 
     /**
@@ -68,24 +70,6 @@ final readonly class HookWriter
                 $this->files->chmod($absolutePath, 0755);
             }
         }
-    }
-
-    public function guardScriptCurrent(): bool
-    {
-        $path = $this->absolute('.architecture-kit/hooks/guard.sh');
-
-        return $this->files->exists($path)
-            && $this->files->get($path) === $this->guardScript();
-    }
-
-    public function agentHookCurrent(Agent&SupportsHooks $agent): bool
-    {
-        $rendered = $this->renderHookConfig($agent);
-        $path = $this->absolute($agent->hookConfigPath());
-
-        return $rendered !== null
-            && $this->files->exists($path)
-            && $this->files->get($path) === $rendered;
     }
 
     /**
@@ -209,12 +193,6 @@ final readonly class HookWriter
 
     private function commandFor(Agent&SupportsHooks $agent): string
     {
-        $configured = config('architectures.agents.hooks.commands.'.$agent->hookMode());
-
-        if (is_string($configured) && $configured !== '') {
-            return $configured;
-        }
-
         if ($agent->hookMode() === 'claude') {
             return (new ClaudeHookWriter)->command();
         }
@@ -224,7 +202,9 @@ final readonly class HookWriter
 
     private function guardScript(): string
     {
-        $guardCommand = $this->guardCommand();
+        $runner = $this->guardRunner();
+        $invocation = $runner['invocation'];
+        $label = $runner['label'];
 
         return <<<SH
 #!/usr/bin/env bash
@@ -236,11 +216,17 @@ ROOT="\$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 cd "\$ROOT" || exit 1
 
-OUTPUT="\$($guardCommand 2>&1)"
+RUNTIME_LABEL="$label"
+$invocation
 STATUS=\$?
 
 if [ "\$STATUS" -eq 0 ]; then
     exit 0
+fi
+
+if ! printf '%s' "\$OUTPUT" | grep -q '"ok"'; then
+    echo "architecture-kit: runtime unavailable (\$RUNTIME_LABEL failed)." >&2
+    echo "Start the project runtime and retry, e.g. docker compose up -d." >&2
 fi
 
 printf '%s\\n' "\$OUTPUT" >&2
@@ -269,22 +255,14 @@ MD;
         return $this->basePath.'/'.$path;
     }
 
-    private function guardCommand(): string
+    /**
+     * @return array{label: string, invocation: string}
+     */
+    private function guardRunner(): array
     {
-        $configured = config('architectures.agents.hooks.guard_command');
-
-        if (is_string($configured) && $configured !== '') {
-            return $configured;
-        }
-
-        if (is_array($configured)) {
-            $parts = array_values(array_filter($configured, is_string(...)));
-
-            if ($parts !== []) {
-                return implode(' ', array_map(escapeshellarg(...), $parts));
-            }
-        }
-
-        return 'php artisan architecture-kit:guard --changed --strict --json';
+        return [
+            'label' => addcslashes(implode(' ', $this->runtime->commandPrefix()), '"\\$`'),
+            'invocation' => $this->runtime->shellArray('RUNNER')."\n".'OUTPUT="$("${RUNNER[@]}" artisan architecture-kit:guard --changed --strict --json 2>&1)"',
+        ];
     }
 }
