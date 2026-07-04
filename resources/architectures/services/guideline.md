@@ -25,6 +25,8 @@ Rules:
 - Do not create static utility Services.
 - Do not add public static application behavior to Services.
 - Do not create Service interfaces by default. Add an interface only for multiple real implementations, swappable providers, package/public boundaries, or a concrete testing need.
+- If Ports And Adapters are enabled, Services may depend on Ports when they orchestrate a workflow or integration boundary.
+- Prefer dedicated Adapters as Port implementations; do not make broad Services implement Ports by default.
 - Services may use Eloquent, transactions, queues, cache, HTTP clients, or external SDKs when that dependency belongs to the Service responsibility.
 - Do not create a Service only to hide Eloquent from Actions or Controllers.
 - When a Service orchestrates domain writes, transaction boundaries must be explicit and testable.

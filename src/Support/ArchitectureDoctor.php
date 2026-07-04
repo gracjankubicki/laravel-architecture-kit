@@ -107,6 +107,18 @@ final readonly class ArchitectureDoctor
             );
         }
 
+        if (
+            in_array(Architecture::PortsAndAdapters, $enabled, true)
+            && ! in_array(Architecture::DataObjects, $enabled, true)
+        ) {
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'config',
+                status: 'warning',
+                path: 'config/architectures.php',
+                message: 'Ports And Adapters works best with Data Objects enabled because Port boundaries should use typed project-owned payloads instead of raw arrays.',
+            );
+        }
+
         foreach ($this->runtimeChecks($runtime) as $check) {
             $checks[] = $check;
         }

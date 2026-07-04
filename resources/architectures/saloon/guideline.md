@@ -38,3 +38,5 @@ Rules:
 - Enable `Config::preventStrayRequests()` in the base test case so tests never hit real APIs.
 - Never `serialize()` or `unserialize()` authenticators for storage. Store token fields explicitly.
 - Fixture names are static literals and must not include path segments built from variables.
+- If Ports And Adapters are enabled, Saloon Connector and Request classes are technical integration adapters. Add an application Port above Saloon only when the workflow needs a provider-neutral capability boundary or tests should replace the provider call.
+- Ports And Adapters does not require Saloon. When both are enabled and an Adapter wraps an external HTTP API, use Saloon Connector/Request classes instead of raw HTTP clients.

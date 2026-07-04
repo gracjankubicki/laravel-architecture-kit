@@ -23,5 +23,7 @@ Use this skill when implementing search, list, dashboard, report, or other named
 - Query Objects can own eager loading and pagination for their read use case.
 - Query Objects are the right place for repeated private controller read helpers and non-trivial filtered reads.
 - If the same query logic is copied across controllers/resources/payload helpers, extract it to one named Query Object.
+- Do not introduce CQRS as a separate architecture. Use Query Objects for reusable or non-trivial reads and Actions for writes.
+- If Ports And Adapters are enabled, add a read Port only for real external, provider, legacy, package, or non-Eloquent data boundaries.
 - Query folders MUST contain Query Objects only.
 - Do not put filter Data Objects, Result objects, Builders, Resources, Actions, or Enums under `app/Queries/**`.

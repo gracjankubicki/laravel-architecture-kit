@@ -42,6 +42,8 @@ A Service may represent:
 - Do not add public static Service methods for application behavior.
 - Do not create Service interfaces by default.
 - Add a Service interface only when there are multiple real implementations, a swappable provider, a package/public boundary, or a concrete testing need.
+- If Ports And Adapters are enabled, Services may depend on Ports when they orchestrate a workflow or integration boundary.
+- Prefer dedicated Adapters as Port implementations; do not make broad Services implement Ports by default.
 - Services may use Eloquent, transactions, queues, cache, HTTP clients, or external SDKs when that dependency belongs to the Service responsibility.
 - Do not create a Service only to hide Eloquent from Actions or Controllers.
 - When a Service orchestrates domain writes, transaction boundaries must be explicit and testable.

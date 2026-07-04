@@ -87,6 +87,47 @@ class InstallCommandTest extends TestCase
         $this->assertArrayHasKey('laravel-best-practices', Architecture::promptOptions());
     }
 
+    public function test_ports_and_adapters_is_optional_and_generates_resources(): void
+    {
+        $this->assertNotContains(Architecture::PortsAndAdapters, Architecture::defaultSelection());
+        $this->assertArrayHasKey('ports-and-adapters', Architecture::promptOptions());
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', [
+                'ports-and-adapters',
+                'data-objects',
+                'laravel-best-practices',
+            ], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $files = new Filesystem;
+        $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-ports-and-adapters/SKILL.md');
+        $laravelBestPracticesSkill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-laravel-best-practices/SKILL.md');
+
+        $this->assertStringContainsString('Architecture::PortsAndAdapters', $files->get($this->tempPath.'/config/architectures.php'));
+        $this->assertStringContainsString('### Ports And Adapters', $guideline);
+        $this->assertStringContainsString('Port interface must include short bilingual EN/PL PHPDoc', $guideline);
+        $this->assertStringContainsString('Do not introduce CQRS as a separate architecture.', $guideline);
+        $this->assertStringContainsString('name: architecture-kit-ports-and-adapters', $skill);
+        $this->assertStringContainsString('Before adding a Port, answer:', $skill);
+        $this->assertStringContainsString('## Ports And Laravel Abstractions', $laravelBestPracticesSkill);
+    }
+
+    public function test_it_warns_when_installing_ports_and_adapters_without_data_objects(): void
+    {
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['ports-and-adapters'], Architecture::promptOptions())
+            ->expectsOutputToContain('Ports And Adapters works best with Data Objects enabled')
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+    }
+
     public function test_it_warns_when_installing_laravel_best_practices_with_generic_boost_skill_present(): void
     {
         $files = new Filesystem;

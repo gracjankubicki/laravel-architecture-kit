@@ -19,6 +19,7 @@ Rules:
 - Controllers and other adapters must map HTTP input into Data Objects, Value Objects, or explicit typed arguments before calling Actions.
 - Actions should return models, Data/Result objects, enums, scalars, or domain/application results. Controllers format HTTP responses.
 - Action-to-Action calls are exceptional and should only represent explicit orchestration of multiple full use cases.
+- If Ports And Adapters are enabled, Actions may depend on Ports for real provider, infrastructure, package, legacy, runtime, or testability boundaries. Do not create a Port for every Action.
 - Put supporting classes in their matching architecture folders, for example `app/Data`, `app/Enums`, `app/Exceptions`, or their domain-first equivalents.
 
 Good names:

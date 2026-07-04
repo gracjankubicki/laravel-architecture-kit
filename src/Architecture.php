@@ -18,6 +18,7 @@ enum Architecture: string
     case ApiResources = 'api-resources';
     case EloquentLifecycle = 'eloquent-lifecycle';
     case Saloon = 'saloon';
+    case PortsAndAdapters = 'ports-and-adapters';
     case ModernPhp85 = 'modern-php-85';
     case LaravelAi = 'laravel-ai';
     case LaravelBestPractices = 'laravel-best-practices';
@@ -55,6 +56,7 @@ enum Architecture: string
             self::ApiResources,
             self::EloquentLifecycle,
             self::Saloon,
+            self::PortsAndAdapters,
             self::ModernPhp85,
             self::LaravelAi,
             self::LaravelBestPractices,
@@ -90,6 +92,7 @@ enum Architecture: string
             self::ApiResources => 'API Resources',
             self::EloquentLifecycle => 'Eloquent Lifecycle',
             self::Saloon => 'Saloon',
+            self::PortsAndAdapters => 'Ports And Adapters',
             self::ModernPhp85 => 'Modern PHP 8.5',
             self::LaravelAi => 'Laravel AI',
             self::LaravelBestPractices => 'Laravel Best Practices',

@@ -19,6 +19,7 @@ use Taqie\ArchitectureKit\Audit\Rules\Enums\EnumsRule;
 use Taqie\ArchitectureKit\Audit\Rules\FormRequests\FormRequestsRule;
 use Taqie\ArchitectureKit\Audit\Rules\LaravelAi\LaravelAiRule;
 use Taqie\ArchitectureKit\Audit\Rules\ModernPhp85\ModernPhp85Rule;
+use Taqie\ArchitectureKit\Audit\Rules\PortsAndAdapters\PortsAndAdaptersRule;
 use Taqie\ArchitectureKit\Audit\Rules\QueryObjects\QueryObjectsRule;
 use Taqie\ArchitectureKit\Audit\Rules\Saloon\SaloonRule;
 use Taqie\ArchitectureKit\Audit\Rules\Services\ServicesRule;
@@ -174,6 +175,7 @@ final class ApplicationAudit
             new FormRequestsRule($enabled),
             new EnumsRule($this->files, $this->basePath, $enabled),
             new ApiResourcesRule,
+            new PortsAndAdaptersRule($this->files, $this->basePath, $enabled),
             new ModernPhp85Rule,
             new LaravelAiRule,
             new EloquentLifecycleRule($this->files, $this->basePath),
@@ -202,6 +204,7 @@ final class ApplicationAudit
             'invalid-suppression',
             'laravel-ai',
             'modern-php-85',
+            'ports-and-adapters',
             'query-objects',
             'saloon',
             'service-locator',

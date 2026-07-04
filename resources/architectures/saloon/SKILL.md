@@ -238,6 +238,12 @@ Every connector defines:
 
 Prefer queued Jobs for external calls. Never call external APIs inside an open database transaction.
 
+## Ports And Adapters
+
+If Ports And Adapters are enabled, Saloon Connector and Request classes are technical integration adapters. Add an application Port above Saloon only when the workflow needs a provider-neutral capability boundary or tests should replace the provider call.
+
+Ports And Adapters does not require Saloon. When both are enabled and an Adapter wraps an external HTTP API, use Saloon Connector/Request classes instead of raw HTTP clients.
+
 ## Testing
 
 Use:

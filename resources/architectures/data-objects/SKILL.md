@@ -24,6 +24,8 @@ Use this skill when typed payloads should cross application boundaries.
 - Data folders MUST contain Data Objects, DTOs, and Result objects only.
 - Do not put Data Objects or Result objects under `app/Actions/**` or `app/Queries/**`.
 - Result objects returned by Actions or Query Objects belong in the Data folder unless the project already has a stricter convention.
+- If Ports And Adapters are enabled, Port boundaries should prefer immutable Data/Result objects over raw arrays.
+- Data Objects used at Port boundaries must be project-owned and provider-neutral.
 
 ## Folder Purity
 

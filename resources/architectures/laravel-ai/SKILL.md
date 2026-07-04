@@ -179,6 +179,12 @@ final readonly class DocumentReviewResultData
 - Test Tool boundaries and write Tool delegation to Actions.
 - Keep small redacted fixtures or examples for non-trivial workflows.
 
+## Ports And Adapters
+
+If Ports And Adapters are enabled, AI Gateway/Agent classes may act as technical Adapters behind project-owned Ports.
+
+AI/OCR Ports must return project-owned Data/Result objects and must not expose provider payloads, provider model config, or vendor exceptions.
+
 ## Good Example
 
 ```php

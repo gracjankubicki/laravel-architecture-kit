@@ -627,6 +627,422 @@ PHP);
             ->assertExitCode(0);
     }
 
+    public function test_ports_and_adapters_reports_speculative_interfaces_and_boundary_leaks(): void
+    {
+        $this->writeConfig([
+            Architecture::PortsAndAdapters,
+            Architecture::DataObjects,
+        ]);
+
+        $this->writeFile('app/Contracts/CreateInvoiceInterface.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Contracts;
+
+interface CreateInvoiceInterface
+{
+    public function handle(array $payload): array;
+}
+PHP);
+
+        $this->writeFile('app/Actions/CreateInvoice.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class CreateInvoice
+{
+}
+PHP);
+
+        $this->writeFile('app/Contracts/DocumentApiGateway.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Contracts;
+
+use Saloon\Http\Response;
+
+/**
+ * Port boundary for document API access.
+ *
+ * EN: Exists to keep document workflows independent from the external API provider.
+ *
+ * PL: Istnieje po to, żeby workflow dokumentów był niezależny od zewnętrznego API.
+ */
+interface DocumentApiGateway
+{
+    public function send(Response $response): DocumentApiResultData;
+}
+PHP);
+
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([
+            Architecture::PortsAndAdapters,
+            Architecture::DataObjects,
+        ], changedOnly: false);
+
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'ports-and-adapters'
+                && str_contains($finding->message, 'bilingual EN/PL PHPDoc')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'ports-and-adapters'
+                && str_contains($finding->message, 'mirror a single local implementation')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'ports-and-adapters'
+                && str_contains($finding->message, 'raw arrays')
+        ));
+        $this->assertTrue(collect($result->findings)->contains(
+            fn ($finding): bool => $finding->rule === 'ports-and-adapters'
+                && str_contains($finding->message, 'vendor response types')
+        ));
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('warn  ports-and-adapters')
+            ->expectsOutputToContain('error ports-and-adapters')
+            ->assertExitCode(1);
+    }
+
+    public function test_ports_and_adapters_accepts_documented_provider_boundary(): void
+    {
+        $this->writeConfig([
+            Architecture::PortsAndAdapters,
+            Architecture::DataObjects,
+        ]);
+
+        $this->writeFile('app/Documents/Ports/DocumentTypeDetector.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Documents\Ports;
+
+/**
+ * Port boundary for document type detection.
+ *
+ * EN: Exists to keep document workflows independent from the AI/OCR provider
+ * and to allow tests to replace provider calls with a fake detector.
+ *
+ * PL: Istnieje po to, żeby workflow dokumentów był niezależny od providera AI/OCR
+ * i żeby testy mogły zastąpić wywołania providera fake detektorem.
+ */
+interface DocumentTypeDetector
+{
+    public function detect(OcrResultData $ocrResult): DetectedDocumentTypeData;
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->assertExitCode(0);
+    }
+
+    public function test_ports_and_adapters_ignores_framework_style_interfaces(): void
+    {
+        $this->writeConfig([
+            Architecture::PortsAndAdapters,
+        ]);
+
+        $this->writeFile('app/Support/Arrayable.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Support;
+
+interface Arrayable
+{
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->assertExitCode(0);
+    }
+
+    public function test_ast_backed_audit_rules_report_findings_for_every_ast_architecture(): void
+    {
+        $enabled = [
+            Architecture::ThinControllers,
+            Architecture::FormRequests,
+            Architecture::Actions,
+            Architecture::Services,
+            Architecture::QueryObjects,
+            Architecture::DataObjects,
+            Architecture::ValueObjects,
+            Architecture::Enums,
+            Architecture::ApiResources,
+            Architecture::CustomEloquentBuilders,
+            Architecture::PortsAndAdapters,
+            Architecture::LaravelAi,
+            Architecture::ModernPhp85,
+        ];
+
+        $this->writeConfig($enabled);
+
+        $this->writeFile('app/Http/Controllers/AstController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use Laravel\Ai\Facades\Ai;
+
+final class AstController
+{
+    public function update($document): void
+    {
+        $document->update(['status' => 'ready']);
+        app(AstPortInterface::class);
+        Ai::prompt('Summarize document');
+    }
+}
+PHP);
+
+        $this->writeFile('app/Actions/AstAction.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+use Illuminate\Http\Request;
+
+final class AstAction
+{
+    public function handle(Request $request): void
+    {
+    }
+}
+PHP);
+
+        $this->writeFile('app/Actions/AstResult.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final readonly class AstResult
+{
+}
+PHP);
+
+        $this->writeFile('app/Actions/AstFactoryAction.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class AstFactoryAction
+{
+    public function handle(): void
+    {
+        self::collaborator()->handle();
+    }
+
+    private static function collaborator(): AstCollaborator
+    {
+        return new AstCollaborator();
+    }
+}
+PHP);
+
+        $this->writeFile('app/Services/AstWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+final class AstWorkflow
+{
+}
+PHP);
+
+        $this->writeFile('app/Queries/AstQuery.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Queries;
+
+use Illuminate\Http\Request;
+
+final class AstQuery
+{
+    public function handle(Request $request): void
+    {
+    }
+}
+PHP);
+
+        $this->writeFile('app/Data/AstPayloadData.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Data;
+
+final readonly class AstPayloadData
+{
+    public function setName(string $name): void
+    {
+    }
+}
+PHP);
+
+        $this->writeFile('app/ValueObjects/AstMoneyValue.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\ValueObjects;
+
+final class AstMoneyValue
+{
+}
+PHP);
+
+        $this->writeFile('app/Models/AstDocument.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+final class AstDocument
+{
+    public const STATUS_READY = 'ready';
+}
+PHP);
+
+        $this->writeFile('app/Http/Requests/AstRequest.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+final class AstRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'name' => ['required', 'string'],
+        ];
+    }
+
+    public function data(): array
+    {
+        return $this->validated();
+    }
+}
+PHP);
+
+        $this->writeFile('app/Http/Resources/AstResource.php', <<<'PHP'
+<?php
+
+namespace App\Http\Resources;
+
+use App\Models\AstDocument;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+final class AstResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'documents' => AstDocument::query()->where('status', 'ready')->get(),
+            'status' => $this->status,
+        ];
+    }
+}
+PHP);
+
+        $this->writeFile('app/Models/Builders/AstScope.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models\Builders;
+
+final class AstScope
+{
+}
+PHP);
+
+        $this->writeFile('app/Contracts/AstPortInterface.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Contracts;
+
+use Saloon\Http\Response;
+
+interface AstPortInterface
+{
+    public function handle(array $payload): Response;
+}
+PHP);
+
+        $this->writeFile('app/Contracts/AstPort.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Contracts;
+
+final class AstPort
+{
+}
+PHP);
+
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run($enabled, changedOnly: false);
+
+        $expectedRules = [
+            'actions',
+            'api-resource',
+            'custom-eloquent-builders',
+            'data-objects',
+            'enums',
+            'folder-purity',
+            'form-request',
+            'laravel-ai',
+            'modern-php-85',
+            'ports-and-adapters',
+            'query-objects',
+            'service-locator',
+            'services',
+            'testability',
+            'thin-controller',
+            'value-objects',
+        ];
+
+        $actualRules = collect($result->findings)
+            ->pluck('rule')
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        $missingRules = array_values(array_diff($expectedRules, $actualRules));
+
+        $this->assertSame([], $missingRules, 'Missing AST-backed findings: '.implode(', ', $missingRules));
+    }
+
     public function test_strict_mode_fails_on_warnings(): void
     {
         $this->writeConfig([

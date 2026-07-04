@@ -26,6 +26,8 @@ Use this skill when implementing or refactoring write/application use cases.
 - Do not inject or accept `Request`, `FormRequest`, `JsonResponse`, `Response`, `RedirectResponse`, or `StreamedResponse`.
 - Do not return HTTP responses from Actions. Return a model, Data/Result object, enum, scalar, or domain/application result.
 - Map uploaded/request data in the controller/FormRequest layer before calling the Action.
+- If Ports And Adapters are enabled, Actions may depend on Ports for real provider, infrastructure, package, legacy, runtime, or testability boundaries.
+- Do not create a Port for every Action.
 - Action folders MUST contain Actions only.
 - Do not put Data Objects, Result objects, Enums, Exceptions, API Resources, or Value Objects under `app/Actions/**`.
 - Put supporting classes in the matching architecture folder, for example `app/Data/Documents`, `app/Enums/Documents`, or `app/Exceptions/Documents`.

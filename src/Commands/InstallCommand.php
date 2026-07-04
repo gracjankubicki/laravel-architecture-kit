@@ -130,6 +130,13 @@ class InstallCommand extends Command
         }
 
         if (
+            in_array(Architecture::PortsAndAdapters, $enabled, true)
+            && ! in_array(Architecture::DataObjects, $enabled, true)
+        ) {
+            $this->warn('Ports And Adapters works best with Data Objects enabled because Port boundaries should use typed project-owned payloads instead of raw arrays.');
+        }
+
+        if (
             in_array(Architecture::ModernPhp85, $enabled, true)
             && ! PhpRequirement::projectRequiresPhp85($files, base_path())
         ) {

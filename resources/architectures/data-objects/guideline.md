@@ -15,6 +15,8 @@ Rules:
 - Use `fromArray`, `toArray`, or `fromRequest` only when they clarify boundary mapping.
 - If Value Objects are enabled, Data Objects may contain Value Objects for domain values.
 - Result objects for Actions or Query Objects are Data Objects unless the project has a more specific existing convention.
+- If Ports And Adapters are enabled, Port boundaries should prefer immutable Data/Result objects over raw arrays.
+- Data Objects used at Port boundaries must be project-owned and provider-neutral.
 
 Good example:
 

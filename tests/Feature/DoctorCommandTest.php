@@ -244,6 +244,16 @@ PHP);
             ->assertExitCode(0);
     }
 
+    public function test_it_warns_when_ports_and_adapters_is_enabled_without_data_objects(): void
+    {
+        $this->writeCurrentResources([Architecture::PortsAndAdapters]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('warning  config/architectures.php')
+            ->expectsOutputToContain('Ports And Adapters works best with Data Objects enabled')
+            ->assertExitCode(0);
+    }
+
     public function test_it_warns_when_generic_laravel_best_practices_skill_is_present(): void
     {
         $files = new Filesystem;

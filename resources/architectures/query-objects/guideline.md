@@ -17,6 +17,8 @@ Rules:
 - A Query Object may decide eager loading, sorting, filtering, and pagination for one read use case.
 - Move repeated read helpers and non-trivial private controller queries into Query Objects.
 - If several controllers/resources need the same filtered read model, create one named Query Object instead of copying a private method.
+- Do not introduce CQRS as a separate architecture. Use Query Objects for reusable or non-trivial reads and Actions for writes.
+- If Ports And Adapters are enabled, add a read Port only for real external, provider, legacy, package, or non-Eloquent data boundaries.
 - Put filter/result payloads in Data Object folders and reusable model query vocabulary in Builder folders.
 
 Good example:
