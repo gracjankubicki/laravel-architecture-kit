@@ -213,7 +213,7 @@ class DoctorCommandTest extends TestCase
             'require' => [
                 'saloonphp/saloon' => '^3.0',
                 'saloonphp/laravel-plugin' => '^4.0',
-                'saloonphp/rate-limit-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^2.5',
             ],
         ], JSON_PRETTY_PRINT));
 
@@ -231,7 +231,7 @@ class DoctorCommandTest extends TestCase
             'require' => [
                 'saloonphp/saloon' => '^4.0',
                 'saloonphp/laravel-plugin' => '^4.0',
-                'saloonphp/rate-limit-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^2.5',
             ],
         ], JSON_PRETTY_PRINT));
 

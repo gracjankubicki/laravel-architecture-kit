@@ -190,23 +190,36 @@ exec php "$@"
 
 ## Architectures
 
-The MVP architecture catalog includes:
+The architecture catalog:
 
-- Thin Controllers
-- Form Requests
-- Actions
-- Query Objects
-- Custom Eloquent Builders
-- Data Objects
-- Value Objects
-- Enums
-- API Resources
-- Modern PHP 8.5
+| Pattern | Default placement | Focus |
+| --- | --- | --- |
+| Thin Controllers | `app/Http/Controllers` | Controllers as HTTP adapters only |
+| Form Requests | `app/Http/Requests` | Request validation and authorization |
+| Actions | `app/Actions` | Application use cases with a single public `handle()` |
+| Services | `app/Services` | Aggregated application APIs over several Actions |
+| Query Objects | `app/Queries` | Encapsulated read use cases |
+| Custom Eloquent Builders | `app/Models/Builders` | Reusable model-level query scopes |
+| Data Objects | `app/Data` | Typed immutable input and result carriers |
+| Value Objects | `app/ValueObjects` | Validated immutable domain values |
+| Enums | domain-first | Closed sets with exhaustive `match` |
+| API Resources | `app/Http/Resources` | Read output shaping |
+| Eloquent Lifecycle | `app/Observers`, `app/Lifecycle` | Model lifecycle boundaries: thin observers, handlers, after-commit events |
+| Saloon | `app/Http/Integrations` | External HTTP integrations through Saloon connectors |
+| Ports And Adapters | near the owning boundary | Explicit outbound seams for providers and infrastructure |
+| Modern PHP 8.5 | cross-cutting | Strict modern PHP runtime contract |
+| Laravel AI | `app/Ai` | Typed `laravel/ai` agents, tools, and prompts |
+| Laravel Best Practices | cross-cutting | Laravel-native defaults composed with the other enabled patterns |
 
-`Modern PHP 8.5` is a strict runtime contract. If it is enabled, the consuming
-project must require PHP 8.5 or newer in `composer.json`; otherwise
-`architecture-kit:install` and `architecture-kit:doctor` report the configuration
-as invalid.
+Some patterns have hard requirements, validated by `architecture-kit:install` and `architecture-kit:doctor`:
+
+- `Modern PHP 8.5` is a strict runtime contract. The consuming project must require PHP 8.5 or newer in `composer.json`; otherwise the configuration is reported as invalid.
+- `Saloon` requires `saloonphp/saloon` `^4.0`, `saloonphp/laravel-plugin`, and `saloonphp/rate-limit-plugin`. The install command offers to `composer require` the missing packages. Constraints that still allow Saloon 3 are reported as invalid because Saloon 4 fixes security issues in v3.
+- `Laravel AI` requires `laravel/ai` in `composer.json`.
+
+On the first install (before `config/architectures.php` exists), `Services` is preselected when the project already has an `app/Services` folder, and `Laravel AI` is preselected when `composer.json` already requires `laravel/ai`.
+
+The install command also warns about weak pattern combinations, for example Thin Controllers, Eloquent Lifecycle, or Saloon enabled without Actions as the application boundary.
 
 The project source of truth is `config/architectures.php`:
 

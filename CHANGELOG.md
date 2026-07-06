@@ -2,6 +2,12 @@
 
 All notable changes to `taqie/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.1 - 2026-07-06
+
+### Fixed
+
+- Saloon install no longer requires `saloonphp/rate-limit-plugin:^4.0`, which does not exist on Packagist; the constraint is now `^2.5`, the first release line compatible with Saloon 4.
+
 ## v0.1.0 - 2026-07-06
 
 ### Added

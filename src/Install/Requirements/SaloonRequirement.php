@@ -16,7 +16,7 @@ final readonly class SaloonRequirement
     public const REQUIRED_PACKAGES = [
         'saloonphp/saloon' => '^4.0',
         'saloonphp/laravel-plugin' => '^4.0',
-        'saloonphp/rate-limit-plugin' => '^4.0',
+        'saloonphp/rate-limit-plugin' => '^2.5',
     ];
 
     /**

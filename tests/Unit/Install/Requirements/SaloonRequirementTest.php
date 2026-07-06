@@ -34,7 +34,7 @@ final class SaloonRequirementTest extends TestCase
         $this->assertSame([
             'saloonphp/saloon:^4.0',
             'saloonphp/laravel-plugin:^4.0',
-            'saloonphp/rate-limit-plugin:^4.0',
+            'saloonphp/rate-limit-plugin:^2.5',
         ], SaloonRequirement::missingInstallPackages(new Filesystem, $this->tempPath));
     }
 
@@ -44,7 +44,7 @@ final class SaloonRequirementTest extends TestCase
             'require' => [
                 'saloonphp/saloon' => '^3.0 || ^4.0',
                 'saloonphp/laravel-plugin' => '^4.0',
-                'saloonphp/rate-limit-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^2.5',
             ],
         ], JSON_THROW_ON_ERROR));
 
@@ -59,7 +59,7 @@ final class SaloonRequirementTest extends TestCase
             'require' => [
                 'saloonphp/saloon' => '^4.0',
                 'saloonphp/laravel-plugin' => '^4.0',
-                'saloonphp/rate-limit-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^2.5',
             ],
         ], JSON_THROW_ON_ERROR));
 

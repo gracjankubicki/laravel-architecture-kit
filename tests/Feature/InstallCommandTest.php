@@ -647,7 +647,7 @@ MARKDOWN);
             ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
             ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
             ->expectsOutputToContain('Saloon is enabled, but required Saloon packages are missing.')
-            ->expectsOutputToContain('composer require saloonphp/saloon:^4.0 saloonphp/laravel-plugin:^4.0 saloonphp/rate-limit-plugin:^4.0')
+            ->expectsOutputToContain('composer require saloonphp/saloon:^4.0 saloonphp/laravel-plugin:^4.0 saloonphp/rate-limit-plugin:^2.5')
             ->expectsOutputToContain('Required Saloon packages installed.')
             ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
             ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
@@ -658,7 +658,7 @@ MARKDOWN);
             'packages' => [
                 'saloonphp/saloon:^4.0',
                 'saloonphp/laravel-plugin:^4.0',
-                'saloonphp/rate-limit-plugin:^4.0',
+                'saloonphp/rate-limit-plugin:^2.5',
             ],
             'workingDirectory' => $this->tempPath,
         ]], $composer->calls);
@@ -716,7 +716,7 @@ MARKDOWN);
             'require' => [
                 'saloonphp/saloon' => '^4.0',
                 'saloonphp/laravel-plugin' => '^4.0',
-                'saloonphp/rate-limit-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^2.5',
             ],
         ], JSON_PRETTY_PRINT));
         $files->ensureDirectoryExists($this->tempPath.'/config');
@@ -746,7 +746,7 @@ MARKDOWN);
             'require' => [
                 'saloonphp/saloon' => '^4.0',
                 'saloonphp/laravel-plugin' => '^4.0',
-                'saloonphp/rate-limit-plugin' => '^4.0',
+                'saloonphp/rate-limit-plugin' => '^2.5',
             ],
         ], JSON_PRETTY_PRINT));
         $files->ensureDirectoryExists($this->tempPath.'/config');
