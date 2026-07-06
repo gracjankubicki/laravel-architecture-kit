@@ -79,20 +79,23 @@ trait UsesArchitectureKitState
     }
 
     /**
-     * @return array<int, array{value: string, label: string, skill: string, source: string}>
+     * @return array<int, array{value: string, label: string, skill: string, source: string, sum: string}>
      */
     protected function architectureSummaries(): array
     {
+        $enabled = $this->enabled();
+
         return array_map(fn ($architecture): array => [
             'value' => $architecture->slug(),
             'label' => $architecture->label(),
             'skill' => $architecture->skillName(),
             'source' => $architecture->sourcePath(),
-        ], $this->resources()->ordered($this->enabled()));
+            'sum' => $this->resources()->summaryFor($architecture, $enabled),
+        ], $this->resources()->ordered($enabled));
     }
 
     protected function guideline(): string
     {
-        return $this->resources()->guideline($this->enabled())->contents;
+        return $this->resources()->fullGuideline($this->enabled());
     }
 }

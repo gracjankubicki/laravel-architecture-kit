@@ -13,7 +13,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Taqie\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 
 #[Name('architecture-rules')]
-#[Description('Return the generated Architecture Kit guideline for enabled architectures.')]
+#[Description('Return the full generated Architecture Kit guideline for enabled architectures.')]
 #[IsReadOnly]
 class ArchitectureRules extends Tool
 {

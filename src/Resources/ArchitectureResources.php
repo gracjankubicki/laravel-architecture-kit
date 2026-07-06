@@ -27,12 +27,11 @@ final class ArchitectureResources
     {
         $body = implode("\n\n", [
             '## Architecture Kit',
-            $this->globalRules(),
-            $this->packageFirstRule(),
-            $this->testabilityRule(),
-            $this->enabledArchitectures($enabled),
+            $this->compactIntro(),
             $this->composition($enabled),
-            $this->architectureRules($enabled),
+            $this->architectureIndex($enabled),
+            $this->compactGlobalRules(),
+            $this->beforeFinishing(),
         ]);
 
         $contents = $this->withTopMarker($body);
@@ -41,6 +40,37 @@ final class ArchitectureResources
             path: $this->projectPath.'/.ai/guidelines/architecture-kit.md',
             contents: $contents,
         );
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     */
+    public function fullGuideline(array $enabled): string
+    {
+        return $this->withTopMarker(implode("\n\n", [
+            '## Architecture Kit',
+            $this->globalRules(),
+            $this->packageFirstRule(),
+            $this->testabilityRule(),
+            $this->enabledArchitectures($enabled),
+            $this->composition($enabled),
+            $this->architectureRules($enabled),
+        ]));
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     */
+    public function architectureGuideline(EnabledArchitecture|Architecture|string $architecture, array $enabled): string
+    {
+        $architecture = $this->enabledArchitecture($architecture);
+
+        return implode("\n\n", [
+            '## '.$architecture->label(),
+            'Status: '.(in_array($architecture->slug(), $this->enabledSlugs($enabled), true) ? 'enabled globally.' : 'available, not enabled globally.'),
+            'Skill: `'.$architecture->skillName().'`',
+            trim($this->sourceContents($architecture, 'guideline', $enabled)),
+        ]);
     }
 
     /**
@@ -100,6 +130,34 @@ final class ArchitectureResources
         return $this->resolvedSource($this->enabledArchitecture($architecture)->skillSource($this->packagePath), 'skill');
     }
 
+    public function summarySource(EnabledArchitecture|Architecture|string $architecture): string
+    {
+        return $this->resolvedSource($this->enabledArchitecture($architecture)->summarySource($this->packagePath), 'summary');
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     */
+    public function summaryFor(EnabledArchitecture|Architecture|string $architecture, array $enabled): string
+    {
+        $architecture = $this->enabledArchitecture($architecture);
+        $source = $this->summarySource($architecture);
+
+        if ($this->sourceExists($source)) {
+            return $this->singleLine(trim($this->sourceContents($architecture, 'summary', $enabled)));
+        }
+
+        if ($architecture->value instanceof Architecture) {
+            throw new RuntimeException("Missing Architecture Kit source resource: {$source}");
+        }
+
+        $fallback = $this->firstNonEmptyLine($this->sourceContents($architecture, 'guideline', $enabled));
+
+        return $fallback === ''
+            ? 'Custom architecture - expand for details.'
+            : $this->truncate($this->singleLine($fallback), 160);
+    }
+
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
@@ -112,6 +170,10 @@ final class ArchitectureResources
 
             if ($architecture->value instanceof Architecture && ! $this->sourceExists($this->skillSource($architecture))) {
                 throw new RuntimeException("Missing Architecture Kit source resource: {$this->skillSource($architecture)}");
+            }
+
+            if ($architecture->value instanceof Architecture && ! $this->sourceExists($this->summarySource($architecture))) {
+                throw new RuntimeException("Missing Architecture Kit source resource: {$this->summarySource($architecture)}");
             }
         }
     }
@@ -171,6 +233,14 @@ final class ArchitectureResources
         }
 
         return implode("\n\n", $sections);
+    }
+
+    private function compactIntro(): string
+    {
+        return implode("\n", [
+            'This file is a compact index of enabled Architecture Kit rules. Full rules are available on demand through skills, MCP `architecture-rules` / `architecture-kit://guideline`, or `php artisan architecture-kit:guidelines {slug} --agent`.',
+            'Violations are blocked by deterministic audit rules. Load the relevant skill or expanded guideline before implementing or refactoring that architecture.',
+        ]);
     }
 
     private function globalRules(): string
@@ -275,6 +345,45 @@ MARKDOWN;
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
+    private function architectureIndex(array $enabled): string
+    {
+        $lines = [
+            '## Enabled Architecture Index',
+            '| Pattern | Folder | Hard rules |',
+            '| --- | --- | --- |',
+        ];
+
+        foreach ($this->ordered($enabled) as $architecture) {
+            $lines[] = '| '.$architecture->label().' | `'.$architecture->sourcePath().'` | '.$this->summaryFor($architecture, $enabled).' |';
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function compactGlobalRules(): string
+    {
+        return <<<'MARKDOWN'
+## Global Rules
+- Package-first: check Laravel features, maintained Laravel ecosystem packages, and maintained PHP packages before custom infrastructure; document why custom code was needed.
+- Testability: inject collaborators; do not replace `app()` with private static factories or hidden `new SomeClass()` helpers.
+- Folder purity: each architecture folder contains only that architecture type; use matching domain subfolders when the project is domain-first.
+- Follow the existing project structure when it is more specific than these defaults.
+- Keep framework adapters thin and business decisions inside the enabled architecture boundary.
+- Load the relevant `architecture-kit-*` skill or expanded guideline before changing that pattern.
+MARKDOWN;
+    }
+
+    private function beforeFinishing(): string
+    {
+        return <<<'MARKDOWN'
+## Before Finishing
+Run `php artisan architecture-kit:guard --changed --strict` before handing off work. Fix all errors, and use `php artisan architecture-kit:explain {CODE} --agent` for finding details.
+MARKDOWN;
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     */
     private function composition(array $enabled): string
     {
         $enabledValues = array_map(
@@ -373,6 +482,10 @@ MARKDOWN;
 
     private function enabledArchitecture(EnabledArchitecture|Architecture|string $architecture): EnabledArchitecture
     {
+        if (is_string($architecture) && Architecture::tryFrom($architecture) !== null) {
+            return new EnabledArchitecture(Architecture::from($architecture), $this->projectPath);
+        }
+
         return $architecture instanceof EnabledArchitecture
             ? $architecture
             : new EnabledArchitecture($architecture, $this->projectPath);
@@ -383,9 +496,11 @@ MARKDOWN;
      */
     private function sourceContents(EnabledArchitecture $architecture, string $kind, array $enabled): string
     {
-        $source = $kind === 'skill'
-            ? $this->skillSource($architecture)
-            : $this->guidelineSource($architecture);
+        $source = match ($kind) {
+            'skill' => $this->skillSource($architecture),
+            'summary' => $this->summarySource($architecture),
+            default => $this->guidelineSource($architecture),
+        };
 
         if ($this->files->isDirectory($source)) {
             $contents = $this->fragmentContents($source, $enabled);
@@ -463,5 +578,32 @@ MARKDOWN;
             fn (Architecture|string $architecture): string => $architecture instanceof Architecture ? $architecture->value : $architecture,
             $enabled,
         );
+    }
+
+    private function singleLine(string $contents): string
+    {
+        return preg_replace('/\s+/', ' ', $contents) ?? $contents;
+    }
+
+    private function firstNonEmptyLine(string $contents): string
+    {
+        foreach (preg_split('/\R/', $contents) ?: [] as $line) {
+            $line = trim($line);
+
+            if ($line !== '') {
+                return $line;
+            }
+        }
+
+        return '';
+    }
+
+    private function truncate(string $contents, int $limit): string
+    {
+        if (strlen($contents) <= $limit) {
+            return $contents;
+        }
+
+        return rtrim(substr($contents, 0, $limit - 3)).'...';
     }
 }

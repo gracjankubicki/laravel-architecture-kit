@@ -46,6 +46,13 @@ final readonly class EnabledArchitecture
             : $this->projectPath.'/.architecture-kit/architectures/'.$this->value.'/guideline.md';
     }
 
+    public function summarySource(string $packagePath): string
+    {
+        return $this->value instanceof Architecture
+            ? $packagePath.'/resources/architectures/'.$this->value->value.'/summary.md'
+            : $this->projectPath.'/.architecture-kit/architectures/'.$this->value.'/summary.md';
+    }
+
     public function skillSource(string $packagePath): string
     {
         return $this->value instanceof Architecture

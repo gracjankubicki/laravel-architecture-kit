@@ -67,6 +67,28 @@ class DoctorCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_it_fails_when_generated_guideline_uses_old_full_format(): void
+    {
+        $files = new Filesystem;
+        $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
+        $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
+        $enabled = [Architecture::Actions];
+
+        $config->write($enabled);
+        $guideline = $resources->guideline($enabled);
+        $files->ensureDirectoryExists(dirname($guideline->path));
+        $files->put($guideline->path, $resources->fullGuideline($enabled));
+
+        foreach ($resources->skills($enabled) as $skill) {
+            $files->ensureDirectoryExists(dirname($skill->path));
+            $files->put($skill->path, $skill->contents);
+        }
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('outdated .ai/guidelines/architecture-kit.md')
+            ->assertExitCode(1);
+    }
+
     public function test_it_fails_when_generated_skill_is_missing(): void
     {
         $files = new Filesystem;
@@ -409,6 +431,8 @@ PHP);
         foreach (Architecture::cases() as $architecture) {
             $this->assertFileExists($resources->guidelineSource($architecture));
             $this->assertFileExists($resources->skillSource($architecture));
+            $this->assertTrue($resources->summarySource($architecture) !== '');
+            $this->assertTrue(is_file($resources->summarySource($architecture)) || is_dir($resources->summarySource($architecture)));
         }
     }
 

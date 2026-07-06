@@ -52,7 +52,9 @@ class McpIntegrationTest extends TestCase
             ->assertOk()
             ->assertStructuredContent(fn ($json) => $json
                 ->where('architectures.0.value', 'actions')
+                ->where('architectures.0.sum', fn (string $summary): bool => str_contains($summary, 'Actions are final application use cases'))
                 ->where('guideline', fn (string $guideline): bool => str_contains($guideline, '### Actions'))
+                ->where('guideline', fn (string $guideline): bool => str_contains($guideline, 'Good example:'))
             );
     }
 
