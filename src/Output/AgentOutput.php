@@ -133,6 +133,7 @@ final readonly class AgentOutput
             'guard' => $this->guardSchema(),
             'doctor' => $this->doctorSchema(),
             'explain' => $this->explainSchema(),
+            'guidelines' => $this->guidelinesSchema(),
             default => [
                 '$schema' => 'https://json-schema.org/draft/2020-12/schema',
                 'type' => 'object',
@@ -391,6 +392,74 @@ final readonly class AgentOutput
                 'next' => $this->stringListSchema(),
             ],
             'additionalProperties' => false,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function guidelinesSchema(): array
+    {
+        return [
+            '$schema' => 'https://json-schema.org/draft/2020-12/schema',
+            'title' => 'Architecture Kit guidelines agent output',
+            'oneOf' => [
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'arch', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => true],
+                        'cmd' => ['const' => 'guidelines'],
+                        'arch' => [
+                            'type' => 'array',
+                            'items' => [
+                                'type' => 'object',
+                                'required' => ['slug', 'label', 'enabled', 'skill', 'sum'],
+                                'properties' => [
+                                    'slug' => ['type' => 'string'],
+                                    'label' => ['type' => 'string'],
+                                    'enabled' => ['type' => 'boolean'],
+                                    'skill' => ['type' => 'string'],
+                                    'sum' => ['type' => 'string'],
+                                ],
+                                'additionalProperties' => false,
+                            ],
+                        ],
+                        'next' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'slug', 'label', 'enabled', 'skill', 'md'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => true],
+                        'cmd' => ['const' => 'guidelines'],
+                        'slug' => ['type' => 'string'],
+                        'label' => ['type' => 'string'],
+                        'enabled' => ['type' => 'boolean'],
+                        'skill' => ['type' => 'string'],
+                        'md' => ['type' => 'string'],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'slug', 'm', 'known', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => false],
+                        'cmd' => ['const' => 'guidelines'],
+                        'slug' => ['type' => 'string'],
+                        'm' => ['const' => 'E_UNKNOWN_ARCHITECTURE'],
+                        'known' => $this->stringListSchema(),
+                        'next' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
+            ],
         ];
     }
 

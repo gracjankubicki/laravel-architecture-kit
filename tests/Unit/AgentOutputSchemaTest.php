@@ -76,4 +76,15 @@ class AgentOutputSchemaTest extends TestCase
             $this->assertFalse($schema['additionalProperties']);
         }
     }
+
+    public function test_it_exposes_guidelines_agent_output_schema(): void
+    {
+        $schema = (new AgentOutput)->schema('guidelines');
+
+        $this->assertSame('Architecture Kit guidelines agent output', $schema['title']);
+        $this->assertSame(1, $schema['oneOf'][0]['properties']['v']['const']);
+        $this->assertSame('guidelines', $schema['oneOf'][0]['properties']['cmd']['const']);
+        $this->assertSame('guidelines', $schema['oneOf'][1]['properties']['cmd']['const']);
+        $this->assertSame('E_UNKNOWN_ARCHITECTURE', $schema['oneOf'][2]['properties']['m']['const']);
+    }
 }

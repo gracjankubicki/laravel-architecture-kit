@@ -10,6 +10,7 @@ use Taqie\ArchitectureKit\Commands\AuditCommand;
 use Taqie\ArchitectureKit\Commands\DoctorCommand;
 use Taqie\ArchitectureKit\Commands\ExplainCommand;
 use Taqie\ArchitectureKit\Commands\GuardCommand;
+use Taqie\ArchitectureKit\Commands\GuidelinesCommand;
 use Taqie\ArchitectureKit\Commands\InstallAgentsCommand;
 use Taqie\ArchitectureKit\Commands\InstallCommand;
 use Taqie\ArchitectureKit\Commands\InstallHooksCommand;
@@ -38,6 +39,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
             DoctorCommand::class,
             ExplainCommand::class,
             GuardCommand::class,
+            GuidelinesCommand::class,
             InstallAgentsCommand::class,
             InstallCommand::class,
             InstallHooksCommand::class,
