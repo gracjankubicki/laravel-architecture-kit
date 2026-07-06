@@ -104,6 +104,28 @@ enum Architecture: string
         return 'architecture-kit-'.$this->value;
     }
 
+    public function defaultPlacement(): ?string
+    {
+        return match ($this) {
+            self::ThinControllers => 'app/Http/Controllers',
+            self::FormRequests => 'app/Http/Requests',
+            self::Actions => 'app/Actions',
+            self::Services => 'app/Services',
+            self::QueryObjects => 'app/Queries',
+            self::CustomEloquentBuilders => 'app/Models/Builders',
+            self::DataObjects => 'app/Data',
+            self::ValueObjects => 'app/ValueObjects',
+            self::Enums => null,
+            self::ApiResources => 'app/Http/Resources',
+            self::EloquentLifecycle => 'app/Observers, app/Lifecycle',
+            self::Saloon => 'app/Http/Integrations',
+            self::PortsAndAdapters => null,
+            self::ModernPhp85 => null,
+            self::LaravelAi => 'app/Ai',
+            self::LaravelBestPractices => null,
+        };
+    }
+
     public function sourcePath(): string
     {
         return 'resources/architectures/'.$this->value;

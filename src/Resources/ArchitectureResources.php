@@ -354,10 +354,17 @@ MARKDOWN;
         ];
 
         foreach ($this->ordered($enabled) as $architecture) {
-            $lines[] = '| '.$architecture->label().' | `'.$architecture->sourcePath().'` | '.$this->summaryFor($architecture, $enabled).' |';
+            $lines[] = '| '.$architecture->label().' | '.$this->placementCell($architecture).' | '.$this->summaryFor($architecture, $enabled).' |';
         }
 
         return implode("\n", $lines);
+    }
+
+    private function placementCell(EnabledArchitecture $architecture): string
+    {
+        $placement = $architecture->defaultPlacement();
+
+        return $placement === null ? '—' : '`'.$placement.'`';
     }
 
     private function compactGlobalRules(): string

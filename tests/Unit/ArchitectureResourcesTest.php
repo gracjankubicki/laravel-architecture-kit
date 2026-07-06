@@ -82,6 +82,17 @@ class ArchitectureResourcesTest extends TestCase
         );
     }
 
+    public function test_custom_architecture_renders_without_default_placement(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/billing-workflows');
+        $files->put($this->tempPath.'/.architecture-kit/architectures/billing-workflows/guideline.md', 'Custom billing workflow rules.');
+
+        $guideline = $this->resources()->guideline(['billing-workflows'])->contents;
+
+        $this->assertStringContainsString('| Billing Workflows | — | Custom billing workflow rules. |', $guideline);
+    }
+
     public function test_builtin_architectures_require_summary_resources(): void
     {
         $files = new Filesystem;

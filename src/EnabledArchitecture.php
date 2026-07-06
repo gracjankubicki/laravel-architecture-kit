@@ -39,6 +39,13 @@ final readonly class EnabledArchitecture
             : '.architecture-kit/architectures/'.$this->value;
     }
 
+    public function defaultPlacement(): ?string
+    {
+        return $this->value instanceof Architecture
+            ? $this->value->defaultPlacement()
+            : null;
+    }
+
     public function guidelineSource(string $packagePath): string
     {
         return $this->value instanceof Architecture

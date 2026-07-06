@@ -20,3 +20,7 @@ All notable changes to `taqie/laravel-architecture-kit` will be documented in th
 - Reorganized internal `Support` classes into domain namespaces and split Eloquent Lifecycle and Saloon audit rules into focused file checks.
 - `.ai/guidelines/architecture-kit.md` now renders a compact index; full generated guidelines remain available through skills, MCP, and `architecture-kit:guidelines`.
 - MCP `architecture-rules` and `architecture-kit://guideline` return the full generated guideline.
+
+### Fixed
+
+- Compact guideline index `Folder` column now shows project default placement instead of package resource paths.
