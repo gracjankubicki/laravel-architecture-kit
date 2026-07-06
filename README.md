@@ -36,6 +36,14 @@ php artisan boost:update --discover
 
 Boost then syncs the generated `.ai` resources into agent files such as `AGENTS.md`, `CLAUDE.md`, and other configured AI instructions.
 
+The generated `.ai/guidelines/architecture-kit.md` file is a compact index, not the full rulebook. It lists enabled architectures, folders, hard rules, global rules, and the guard command. Agents should expand details only when needed through:
+
+```bash
+php artisan architecture-kit:guidelines actions --agent
+```
+
+The same full rules are also available through the generated `architecture-kit-{architecture}` skills and MCP `architecture-rules` / `architecture-kit://guideline`.
+
 ## Commands
 
 ```bash
@@ -44,6 +52,8 @@ php artisan architecture-kit:install-agents
 php artisan architecture-kit:install-hooks
 php artisan architecture-kit:mcp
 php artisan architecture-kit:doctor
+php artisan architecture-kit:guidelines
+php artisan architecture-kit:guidelines actions --agent
 php artisan architecture-kit:guard --changed --strict
 php artisan architecture-kit:guard --changed --base=origin/main --strict
 php artisan architecture-kit:audit --changed --strict
@@ -60,6 +70,8 @@ php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE --agent
 `architecture-kit:install-agents` repairs MCP and hook configuration for selected AI agents. It writes Codex MCP config to `.codex/config.toml` and Claude Code MCP config to `.mcp.json`, using the runtime from `config/architectures.php` as the stable wrapper command.
 
 `architecture-kit:doctor` is read-only. It reports missing, outdated, stale, or blocked generated resources and, when agents were installed, verifies the selected agent MCP and hook state.
+
+`architecture-kit:guidelines` is read-only. Without an argument it lists known architectures with a one-line summary. With a slug it returns the full guideline for one architecture, even when that architecture is available but not enabled.
 
 `architecture-kit:audit` is read-only. It scans application code against the enabled architecture rules. Use `--changed --strict` before finishing AI-generated code so warnings and errors block the final handoff. In CI or after committing, pass `--base=origin/main` or another base ref to audit the committed diff.
 
@@ -93,6 +105,14 @@ Agents can inspect the contract without running the audit:
 
 ```bash
 php artisan architecture-kit:audit --agent --schema
+```
+
+For cheap on-demand rule expansion:
+
+```bash
+php artisan architecture-kit:guidelines --agent
+php artisan architecture-kit:guidelines actions --agent
+php artisan architecture-kit:guidelines --schema
 ```
 
 `architecture-kit:install-hooks` is a compatibility shortcut for installing only hook integration through the same merge-aware agent installer:
@@ -240,16 +260,33 @@ File-level suppression is also rule-specific:
 
 Unknown suppression rules are reported as `invalid-suppression` warnings and do not hide the original finding.
 
+### Composer Update Check
+
+Use a read-only Composer hook to detect stale generated resources after package updates:
+
+```json
+{
+    "scripts": {
+        "post-update-cmd": [
+            "@php artisan architecture-kit:doctor --agent"
+        ]
+    }
+}
+```
+
+Do not run `architecture-kit:install` from Composer hooks. It is interactive; run it manually when `doctor` reports outdated resources.
+
 ### Custom Architectures
 
 Project-owned architectures live under:
 
 ```text
 .architecture-kit/architectures/{slug}/guideline.md
+.architecture-kit/architectures/{slug}/summary.md
 .architecture-kit/architectures/{slug}/SKILL.md
 ```
 
-`guideline.md` is required. `SKILL.md` is optional; when it is missing, Architecture Kit generates a skill from the guideline. Custom architecture slugs must be kebab-case and can be enabled as strings in `config/architectures.php`.
+`guideline.md` is required. `summary.md` is optional; when it is missing, Architecture Kit uses the first non-empty guideline line as the compact index summary. `SKILL.md` is optional; when it is missing, Architecture Kit generates a skill from the guideline. Custom architecture slugs must be kebab-case and can be enabled as strings in `config/architectures.php`.
 
 ### Custom Audit Rules
 
@@ -269,7 +306,7 @@ That guideline only points agents to the generated project-specific file:
 .ai/guidelines/architecture-kit.md
 ```
 
-The detailed architecture rules and skills are generated into the consuming project after `architecture-kit:install`.
+The compact architecture index, detailed architecture rules, and skills are generated into the consuming project after `architecture-kit:install`.
 
 Generated Architecture Kit guidance includes a Package-First Architecture Rule. AI agents must search existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party PHP packages before writing custom infrastructure. Custom code is allowed only when no suitable maintained package fits the project constraints or can safely provide the required behavior.
 
