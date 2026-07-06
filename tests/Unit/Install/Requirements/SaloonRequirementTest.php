@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Tests\Unit\Install\Requirements;
 
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Support\SaloonRequirement;
+use Taqie\ArchitectureKit\Install\Requirements\SaloonRequirement;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
 final class SaloonRequirementTest extends TestCase

@@ -16,10 +16,10 @@ use Taqie\ArchitectureKit\Install\ComposeServices;
 use Taqie\ArchitectureKit\Install\InstallResult;
 use Taqie\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use Taqie\ArchitectureKit\Install\Requirements\PhpRequirement;
+use Taqie\ArchitectureKit\Install\Requirements\SaloonRequirement;
 use Taqie\ArchitectureKit\Install\Requirements\ServicesRequirement;
 use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 use Taqie\ArchitectureKit\Resources\GeneratedFile;
-use Taqie\ArchitectureKit\Support\SaloonRequirement;
 use Throwable;
 
 use function Laravel\Prompts\confirm;
