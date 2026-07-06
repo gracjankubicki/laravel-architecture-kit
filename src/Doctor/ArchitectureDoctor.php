@@ -2,13 +2,23 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Support;
+namespace Taqie\ArchitectureKit\Doctor;
 
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Application as ConsoleApplication;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\ApplicationAudit;
 use Taqie\ArchitectureKit\Audit\RuleRegistry;
 use Taqie\ArchitectureKit\Audit\Suppression\Baseline;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Install\ComposeServices;
+use Taqie\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
+use Taqie\ArchitectureKit\Install\Requirements\PhpRequirement;
+use Taqie\ArchitectureKit\Install\Requirements\ServicesRequirement;
+use Taqie\ArchitectureKit\Install\RuntimeResolver;
+use Taqie\ArchitectureKit\Resources\ArchitectureResources;
+use Taqie\ArchitectureKit\Resources\GeneratedFile;
+use Taqie\ArchitectureKit\Support\SaloonRequirement;
 use Throwable;
 
 final readonly class ArchitectureDoctor

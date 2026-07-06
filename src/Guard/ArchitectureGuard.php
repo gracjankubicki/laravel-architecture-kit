@@ -2,10 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Support;
+namespace Taqie\ArchitectureKit\Guard;
 
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Application as ConsoleApplication;
+use Taqie\ArchitectureKit\Audit\ApplicationAudit;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Config\ArchitectureConfigPath;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctor;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorResult;
+use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 
 final readonly class ArchitectureGuard
 {

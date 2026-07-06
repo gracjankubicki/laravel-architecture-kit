@@ -6,7 +6,7 @@ namespace Taqie\ArchitectureKit\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
-use Taqie\ArchitectureKit\Support\ResourceFragments;
+use Taqie\ArchitectureKit\Resources\ResourceFragments;
 
 class ResourceFragmentsTest extends TestCase
 {

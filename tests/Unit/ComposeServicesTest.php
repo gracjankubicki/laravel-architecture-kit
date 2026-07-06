@@ -6,7 +6,7 @@ namespace Taqie\ArchitectureKit\Tests\Unit;
 
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
-use Taqie\ArchitectureKit\Support\ComposeServices;
+use Taqie\ArchitectureKit\Install\ComposeServices;
 
 class ComposeServicesTest extends TestCase
 {

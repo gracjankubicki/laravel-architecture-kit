@@ -2,11 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Support;
+namespace Taqie\ArchitectureKit\Config;
 
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Install\RuntimeResolver;
 
 final class ArchitectureConfig
 {

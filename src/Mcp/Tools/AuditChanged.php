@@ -12,7 +12,7 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Taqie\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
-use Taqie\ArchitectureKit\Support\AgentOutput;
+use Taqie\ArchitectureKit\Output\AgentOutput;
 
 #[Name('audit-changed')]
 #[Description('Audit changed application files against enabled Architecture Kit rules.')]

@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Tests\Unit\Audit\Rules;
 
 use Illuminate\Filesystem\Filesystem;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 use Taqie\ArchitectureKit\Audit\FileContext;
 use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\EloquentLifecycleRule;
 use Taqie\ArchitectureKit\Audit\Rules\Saloon\SaloonRule;
-use Taqie\ArchitectureKit\Support\AuditFinding;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
 abstract class RuleCheckTestCase extends TestCase

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Commands;
 
 use Illuminate\Console\Command;
-use Taqie\ArchitectureKit\Support\AgentOutput;
-use Taqie\ArchitectureKit\Support\FindingCodeRegistry;
+use Taqie\ArchitectureKit\Audit\FindingCodeRegistry;
+use Taqie\ArchitectureKit\Output\AgentOutput;
 
 class ExplainCommand extends Command
 {

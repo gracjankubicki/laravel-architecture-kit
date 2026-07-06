@@ -7,11 +7,11 @@ namespace Taqie\ArchitectureKit\Tests\Feature;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\ApplicationAudit;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 use Taqie\ArchitectureKit\Audit\AuditRule;
 use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Support\ApplicationAudit;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\AuditFinding;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
 class AuditCommandTest extends TestCase

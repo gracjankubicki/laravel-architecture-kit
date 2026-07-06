@@ -6,10 +6,10 @@ namespace Taqie\ArchitectureKit\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Support\AgentOutput;
-use Taqie\ArchitectureKit\Support\ApplicationAudit;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\ArchitectureConfigPath;
+use Taqie\ArchitectureKit\Audit\ApplicationAudit;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Config\ArchitectureConfigPath;
+use Taqie\ArchitectureKit\Output\AgentOutput;
 use Throwable;
 
 class AuditCommand extends Command

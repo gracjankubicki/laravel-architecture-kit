@@ -6,7 +6,7 @@ namespace Taqie\ArchitectureKit\Install\Mcp;
 
 use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Install\InstallResult;
-use Taqie\ArchitectureKit\Support\RuntimeResolver;
+use Taqie\ArchitectureKit\Install\RuntimeResolver;
 
 final readonly class MakefileMcpTargetWriter
 {

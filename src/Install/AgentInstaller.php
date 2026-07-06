@@ -10,7 +10,6 @@ use Taqie\ArchitectureKit\Install\Contracts\SupportsHooks;
 use Taqie\ArchitectureKit\Install\Contracts\SupportsMcp;
 use Taqie\ArchitectureKit\Install\Hooks\HookWriter;
 use Taqie\ArchitectureKit\Install\Mcp\McpWriter;
-use Taqie\ArchitectureKit\Support\RuntimeResolver;
 
 final readonly class AgentInstaller
 {

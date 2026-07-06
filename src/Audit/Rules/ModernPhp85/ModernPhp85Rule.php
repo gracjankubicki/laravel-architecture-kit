@@ -8,9 +8,9 @@ use PhpParser\Node;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 use Taqie\ArchitectureKit\Audit\AuditRule;
 use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Support\AuditFinding;
 
 final readonly class ModernPhp85Rule implements AuditRule
 {

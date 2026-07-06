@@ -8,10 +8,10 @@ use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Name;
 use PhpParser\NodeVisitorAbstract;
+use Taqie\ArchitectureKit\Audit\Ast\PhpAst;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 use Taqie\ArchitectureKit\Audit\AuditRule;
 use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Support\AuditFinding;
-use Taqie\ArchitectureKit\Support\PhpAst;
 
 final readonly class ServiceLocatorRule implements AuditRule
 {

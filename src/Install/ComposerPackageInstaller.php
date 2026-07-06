@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Support;
+namespace Taqie\ArchitectureKit\Install;
 
 use Symfony\Component\Process\Process;
 

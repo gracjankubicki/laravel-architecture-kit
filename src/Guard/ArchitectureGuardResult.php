@@ -2,7 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Support;
+namespace Taqie\ArchitectureKit\Guard;
+
+use Taqie\ArchitectureKit\Audit\ApplicationAuditResult;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 
 final readonly class ArchitectureGuardResult
 {

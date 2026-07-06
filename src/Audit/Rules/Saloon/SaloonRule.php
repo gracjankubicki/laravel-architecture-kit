@@ -6,9 +6,9 @@ namespace Taqie\ArchitectureKit\Audit\Rules\Saloon;
 
 use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 use Taqie\ArchitectureKit\Audit\AuditRule;
 use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Support\AuditFinding;
 use Taqie\ArchitectureKit\Support\SaloonRequirement;
 
 final readonly class SaloonRule implements AuditRule

@@ -6,11 +6,11 @@ namespace Taqie\ArchitectureKit\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Config\ArchitectureConfigPath;
 use Taqie\ArchitectureKit\Install\AgentInstaller;
 use Taqie\ArchitectureKit\Install\AgentsDetector;
 use Taqie\ArchitectureKit\Install\InstallResult;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\ArchitectureConfigPath;
 use Throwable;
 
 use function Laravel\Prompts\confirm;

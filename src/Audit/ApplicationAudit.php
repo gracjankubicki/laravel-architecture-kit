@@ -2,14 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Support;
+namespace Taqie\ArchitectureKit\Audit;
 
 use Illuminate\Filesystem\Filesystem;
 use SplFileInfo;
 use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\AuditRule;
-use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Audit\RuleRegistry;
 use Taqie\ArchitectureKit\Audit\Rules\Actions\ActionsRule;
 use Taqie\ArchitectureKit\Audit\Rules\ApiResources\ApiResourcesRule;
 use Taqie\ArchitectureKit\Audit\Rules\CustomEloquentBuilders\CustomEloquentBuildersRule;

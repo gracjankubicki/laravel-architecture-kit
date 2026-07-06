@@ -6,15 +6,15 @@ namespace Taqie\ArchitectureKit\Mcp\Concerns;
 
 use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Support\ApplicationAudit;
-use Taqie\ArchitectureKit\Support\ApplicationAuditResult;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\ArchitectureConfigPath;
-use Taqie\ArchitectureKit\Support\ArchitectureDoctor;
-use Taqie\ArchitectureKit\Support\ArchitectureDoctorResult;
-use Taqie\ArchitectureKit\Support\ArchitectureGuard;
-use Taqie\ArchitectureKit\Support\ArchitectureGuardResult;
-use Taqie\ArchitectureKit\Support\ArchitectureResources;
+use Taqie\ArchitectureKit\Audit\ApplicationAudit;
+use Taqie\ArchitectureKit\Audit\ApplicationAuditResult;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Config\ArchitectureConfigPath;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctor;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorResult;
+use Taqie\ArchitectureKit\Guard\ArchitectureGuard;
+use Taqie\ArchitectureKit\Guard\ArchitectureGuardResult;
+use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 
 trait UsesArchitectureKitState
 {

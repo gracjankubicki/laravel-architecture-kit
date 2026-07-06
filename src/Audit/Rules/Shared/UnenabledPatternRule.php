@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Audit\Rules\Shared;
 
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 use Taqie\ArchitectureKit\Audit\AuditRule;
 use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Support\AuditFinding;
 
 final readonly class UnenabledPatternRule implements AuditRule
 {

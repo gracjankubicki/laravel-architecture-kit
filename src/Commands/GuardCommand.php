@@ -6,8 +6,8 @@ namespace Taqie\ArchitectureKit\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Support\AgentOutput;
-use Taqie\ArchitectureKit\Support\ArchitectureGuard;
+use Taqie\ArchitectureKit\Guard\ArchitectureGuard;
+use Taqie\ArchitectureKit\Output\AgentOutput;
 
 class GuardCommand extends Command
 {

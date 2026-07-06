@@ -13,10 +13,10 @@ use PhpParser\Node\Stmt;
 use PhpParser\NodeVisitorAbstract;
 use SplFileInfo;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\Ast\PhpAst;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 use Taqie\ArchitectureKit\Audit\AuditRule;
 use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Support\AuditFinding;
-use Taqie\ArchitectureKit\Support\PhpAst;
 
 final readonly class PortsAndAdaptersRule implements AuditRule
 {

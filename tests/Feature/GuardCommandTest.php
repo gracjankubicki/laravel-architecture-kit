@@ -7,8 +7,8 @@ namespace Taqie\ArchitectureKit\Tests\Feature;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\ArchitectureResources;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
 class GuardCommandTest extends TestCase

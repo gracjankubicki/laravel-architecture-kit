@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
-use Taqie\ArchitectureKit\Support\AgentOutput;
+use Taqie\ArchitectureKit\Output\AgentOutput;
 
 class AgentOutputSchemaTest extends TestCase
 {

@@ -6,9 +6,9 @@ namespace Taqie\ArchitectureKit\Tests\Feature;
 
 use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\ArchitectureGuard;
-use Taqie\ArchitectureKit\Support\ArchitectureResources;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Guard\ArchitectureGuard;
+use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
 class InstallAgentsCommandTest extends TestCase

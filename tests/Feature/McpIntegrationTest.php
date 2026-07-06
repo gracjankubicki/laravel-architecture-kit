@@ -7,14 +7,14 @@ namespace Taqie\ArchitectureKit\Tests\Feature;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Facades\Mcp;
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
 use Taqie\ArchitectureKit\Mcp\ArchitectureKitServer;
 use Taqie\ArchitectureKit\Mcp\Tools\ArchitectureRules;
 use Taqie\ArchitectureKit\Mcp\Tools\AuditChanged;
 use Taqie\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
 use Taqie\ArchitectureKit\Mcp\Tools\ExplainFinding;
 use Taqie\ArchitectureKit\Mcp\Tools\Guard;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\ArchitectureResources;
+use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
 class McpIntegrationTest extends TestCase

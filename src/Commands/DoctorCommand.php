@@ -7,12 +7,12 @@ namespace Taqie\ArchitectureKit\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Support\AgentOutput;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\ArchitectureConfigPath;
-use Taqie\ArchitectureKit\Support\ArchitectureDoctor;
-use Taqie\ArchitectureKit\Support\ArchitectureDoctorCheck;
-use Taqie\ArchitectureKit\Support\ArchitectureResources;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Config\ArchitectureConfigPath;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctor;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
+use Taqie\ArchitectureKit\Output\AgentOutput;
+use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 
 class DoctorCommand extends Command
 {

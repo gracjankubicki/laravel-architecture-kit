@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Taqie\ArchitectureKit\Audit\Suppression;
 
-use Taqie\ArchitectureKit\Support\AuditFinding;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 
 final readonly class SuppressionResult
 {

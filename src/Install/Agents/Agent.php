@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Taqie\ArchitectureKit\Install\Agents;
 
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Support\CommandNormalizer;
+use Taqie\ArchitectureKit\Install\CommandNormalizer;
 
 abstract class Agent
 {

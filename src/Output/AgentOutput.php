@@ -2,9 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Support;
+namespace Taqie\ArchitectureKit\Output;
 
 use Taqie\ArchitectureKit\Architecture;
+use Taqie\ArchitectureKit\Audit\ApplicationAuditResult;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
+use Taqie\ArchitectureKit\Audit\FindingCodeRegistry;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorResult;
+use Taqie\ArchitectureKit\Guard\ArchitectureGuardResult;
 
 final readonly class AgentOutput
 {

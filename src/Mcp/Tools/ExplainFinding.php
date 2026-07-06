@@ -11,8 +11,8 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
+use Taqie\ArchitectureKit\Audit\FindingCodeRegistry;
 use Taqie\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
-use Taqie\ArchitectureKit\Support\FindingCodeRegistry;
 
 #[Name('explain-finding')]
 #[Description('Explain an Architecture Kit audit rule and point to relevant generated guidance.')]

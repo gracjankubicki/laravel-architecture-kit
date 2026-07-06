@@ -6,7 +6,7 @@ namespace Taqie\ArchitectureKit\Tests\Unit;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
-use Taqie\ArchitectureKit\Support\RuntimeResolver;
+use Taqie\ArchitectureKit\Install\RuntimeResolver;
 
 class RuntimeResolverTest extends TestCase
 {

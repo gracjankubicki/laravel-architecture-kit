@@ -8,7 +8,7 @@ use Illuminate\Filesystem\Filesystem;
 use Taqie\ArchitectureKit\Install\Agents\Agent;
 use Taqie\ArchitectureKit\Install\Contracts\SupportsHooks;
 use Taqie\ArchitectureKit\Install\InstallResult;
-use Taqie\ArchitectureKit\Support\RuntimeResolver;
+use Taqie\ArchitectureKit\Install\RuntimeResolver;
 
 final readonly class HookWriter
 {

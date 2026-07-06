@@ -7,12 +7,12 @@ namespace Taqie\ArchitectureKit\Tests\Feature;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
 use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Support\ArchitectureConfig;
-use Taqie\ArchitectureKit\Support\ArchitectureDoctor;
-use Taqie\ArchitectureKit\Support\ArchitectureResources;
-use Taqie\ArchitectureKit\Support\ComposerPackageInstaller;
-use Taqie\ArchitectureKit\Support\ComposerRequireResult;
-use Taqie\ArchitectureKit\Support\GeneratedFile;
+use Taqie\ArchitectureKit\Config\ArchitectureConfig;
+use Taqie\ArchitectureKit\Doctor\ArchitectureDoctor;
+use Taqie\ArchitectureKit\Install\ComposerPackageInstaller;
+use Taqie\ArchitectureKit\Install\ComposerRequireResult;
+use Taqie\ArchitectureKit\Resources\ArchitectureResources;
+use Taqie\ArchitectureKit\Resources\GeneratedFile;
 use Taqie\ArchitectureKit\Tests\TestCase;
 
 class InstallCommandTest extends TestCase

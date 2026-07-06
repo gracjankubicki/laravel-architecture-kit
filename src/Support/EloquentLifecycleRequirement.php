@@ -20,6 +20,8 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeVisitorAbstract;
+use Taqie\ArchitectureKit\Audit\Ast\PhpAst;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 
 final readonly class EloquentLifecycleRequirement
 {

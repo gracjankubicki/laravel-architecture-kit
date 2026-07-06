@@ -6,7 +6,7 @@ namespace Taqie\ArchitectureKit\Audit\Suppression;
 
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
-use Taqie\ArchitectureKit\Support\AuditFinding;
+use Taqie\ArchitectureKit\Audit\AuditFinding;
 
 final class Baseline
 {
