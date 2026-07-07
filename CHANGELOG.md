@@ -2,12 +2,19 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.2 - 2026-07-07
+
+### Fixed
+
+- PHP namespaces now use `GracjanKubicki\ArchitectureKit` to match the package vendor.
+- Generated `config/architectures.php` files now import `GracjanKubicki\ArchitectureKit\Architecture`.
+- License copyright now uses `Gracjan Kubicki`.
+
 ## v0.1.1 - 2026-07-06
 
 ### Fixed
 
 - Composer package name is now `gracjankubicki/laravel-architecture-kit` to match the publishing account.
-- PHP namespaces now use `GracjanKubicki\ArchitectureKit` to match the package vendor.
 - Saloon install no longer requires `saloonphp/rate-limit-plugin:^4.0`, which does not exist on Packagist; the constraint is now `^2.5`, the first release line compatible with Saloon 4.
 
 ## v0.1.0 - 2026-07-06
