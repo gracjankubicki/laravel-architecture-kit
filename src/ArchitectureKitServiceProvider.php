@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit;
+namespace GracjanKubicki\ArchitectureKit;
 
+use GracjanKubicki\ArchitectureKit\Commands\AuditCommand;
+use GracjanKubicki\ArchitectureKit\Commands\DoctorCommand;
+use GracjanKubicki\ArchitectureKit\Commands\ExplainCommand;
+use GracjanKubicki\ArchitectureKit\Commands\GuardCommand;
+use GracjanKubicki\ArchitectureKit\Commands\GuidelinesCommand;
+use GracjanKubicki\ArchitectureKit\Commands\InstallAgentsCommand;
+use GracjanKubicki\ArchitectureKit\Commands\InstallCommand;
+use GracjanKubicki\ArchitectureKit\Commands\InstallHooksCommand;
+use GracjanKubicki\ArchitectureKit\Commands\McpCommand;
+use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Mcp\Facades\Mcp;
-use Taqie\ArchitectureKit\Commands\AuditCommand;
-use Taqie\ArchitectureKit\Commands\DoctorCommand;
-use Taqie\ArchitectureKit\Commands\ExplainCommand;
-use Taqie\ArchitectureKit\Commands\GuardCommand;
-use Taqie\ArchitectureKit\Commands\GuidelinesCommand;
-use Taqie\ArchitectureKit\Commands\InstallAgentsCommand;
-use Taqie\ArchitectureKit\Commands\InstallCommand;
-use Taqie\ArchitectureKit\Commands\InstallHooksCommand;
-use Taqie\ArchitectureKit\Commands\McpCommand;
-use Taqie\ArchitectureKit\Mcp\ArchitectureKitServer;
 
 class ArchitectureKitServiceProvider extends ServiceProvider
 {

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
 use PHPUnit\Framework\TestCase;
-use Taqie\ArchitectureKit\Architecture;
 
 class ArchitecturePlacementTest extends TestCase
 {

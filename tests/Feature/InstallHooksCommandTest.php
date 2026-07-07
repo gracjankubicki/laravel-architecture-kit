@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Feature;
+namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Tests\TestCase;
 
 class InstallHooksCommandTest extends TestCase
 {

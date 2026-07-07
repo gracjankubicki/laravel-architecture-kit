@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Commands;
+namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
+use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Config\ArchitectureConfigPath;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctor;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
-use Taqie\ArchitectureKit\Output\AgentOutput;
-use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 
 class DoctorCommand extends Command
 {

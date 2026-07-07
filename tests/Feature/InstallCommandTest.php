@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Feature;
+namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor;
+use GracjanKubicki\ArchitectureKit\Install\ComposerPackageInstaller;
+use GracjanKubicki\ArchitectureKit\Install\ComposerRequireResult;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
+use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctor;
-use Taqie\ArchitectureKit\Install\ComposerPackageInstaller;
-use Taqie\ArchitectureKit\Install\ComposerRequireResult;
-use Taqie\ArchitectureKit\Resources\ArchitectureResources;
-use Taqie\ArchitectureKit\Resources\GeneratedFile;
-use Taqie\ArchitectureKit\Tests\TestCase;
 
 class InstallCommandTest extends TestCase
 {
@@ -287,7 +287,7 @@ YAML);
         $files->put($this->tempPath.'/config/architectures.php', <<<'PHP'
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Architecture;
 
 return [
     'enabled' => [
@@ -339,7 +339,7 @@ PHP);
         $files->put($this->tempPath.'/config/architectures.php', <<<'PHP'
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Architecture;
 
 return ["enabled" => [Architecture::Actions], "agents" => ["mcp" => ["command" => "docker"]]];
 PHP);
@@ -923,7 +923,7 @@ PHP);
         $lines = [
             '<?php',
             '',
-            'use Taqie\\ArchitectureKit\\Architecture;',
+            'use GracjanKubicki\\ArchitectureKit\\Architecture;',
             '',
             'return [',
             "    'enabled' => [",

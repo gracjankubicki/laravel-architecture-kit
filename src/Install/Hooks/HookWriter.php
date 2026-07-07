@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install\Hooks;
+namespace GracjanKubicki\ArchitectureKit\Install\Hooks;
 
+use GracjanKubicki\ArchitectureKit\Install\Agents\Agent;
+use GracjanKubicki\ArchitectureKit\Install\Contracts\SupportsHooks;
+use GracjanKubicki\ArchitectureKit\Install\InstallResult;
+use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Install\Agents\Agent;
-use Taqie\ArchitectureKit\Install\Contracts\SupportsHooks;
-use Taqie\ArchitectureKit\Install\InstallResult;
-use Taqie\ArchitectureKit\Install\RuntimeResolver;
 
 final readonly class HookWriter
 {

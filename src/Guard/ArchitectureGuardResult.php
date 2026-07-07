@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Guard;
+namespace GracjanKubicki\ArchitectureKit\Guard;
 
-use Taqie\ArchitectureKit\Audit\ApplicationAuditResult;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorResult;
+use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 
 final readonly class ArchitectureGuardResult
 {

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests;
+namespace GracjanKubicki\ArchitectureKit\Tests;
 
+use GracjanKubicki\ArchitectureKit\ArchitectureKitServiceProvider;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Server\McpServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
-use Taqie\ArchitectureKit\ArchitectureKitServiceProvider;
 
 abstract class TestCase extends Orchestra
 {

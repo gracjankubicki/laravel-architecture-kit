@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 
 class ArchitectureResourcesTest extends TestCase
 {

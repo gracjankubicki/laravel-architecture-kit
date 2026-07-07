@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Config;
+namespace GracjanKubicki\ArchitectureKit\Config;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Install\RuntimeResolver;
 
 final class ArchitectureConfig
 {
@@ -144,7 +144,7 @@ final class ArchitectureConfig
         $lines = [
             '<?php',
             '',
-            'use Taqie\\ArchitectureKit\\Architecture;',
+            'use GracjanKubicki\\ArchitectureKit\\Architecture;',
             '',
             'return [',
             "    'enabled' => [",

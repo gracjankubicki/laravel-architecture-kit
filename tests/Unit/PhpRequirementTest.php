@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
+use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Taqie\ArchitectureKit\Install\Requirements\PhpRequirement;
 
 class PhpRequirementTest extends TestCase
 {

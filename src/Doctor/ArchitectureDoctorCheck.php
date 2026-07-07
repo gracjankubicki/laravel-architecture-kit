@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Doctor;
+namespace GracjanKubicki\ArchitectureKit\Doctor;
 
 final readonly class ArchitectureDoctorCheck
 {

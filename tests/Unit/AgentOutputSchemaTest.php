@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
+use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use PHPUnit\Framework\TestCase;
-use Taqie\ArchitectureKit\Output\AgentOutput;
 
 class AgentOutputSchemaTest extends TestCase
 {

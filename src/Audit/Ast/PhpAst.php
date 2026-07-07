@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Ast;
+namespace GracjanKubicki\ArchitectureKit\Audit\Ast;
 
 use PhpParser\Error;
 use PhpParser\Node;

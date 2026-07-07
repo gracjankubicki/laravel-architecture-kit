@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install;
+namespace GracjanKubicki\ArchitectureKit\Install;
 
 final class CommandNormalizer
 {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit;
+namespace GracjanKubicki\ArchitectureKit\Audit;
 
 final readonly class FindingCodeRegistry
 {

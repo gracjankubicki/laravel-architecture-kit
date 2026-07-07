@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
+use GracjanKubicki\ArchitectureKit\Resources\ResourceFragments;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
-use Taqie\ArchitectureKit\Resources\ResourceFragments;
 
 class ResourceFragmentsTest extends TestCase
 {

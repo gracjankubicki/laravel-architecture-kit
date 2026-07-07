@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Feature;
+namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\ApplicationAudit;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\AuditRule;
-use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Tests\TestCase;
 
 class AuditCommandTest extends TestCase
 {
@@ -159,8 +159,8 @@ PHP);
         $this->writeRawConfig(<<<'PHP'
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule;
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule;
 
 return [
     'enabled' => [
@@ -1019,7 +1019,7 @@ PHP);
         $this->writeRawConfig(<<<'PHP'
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Architecture;
 
 return [
     'enabled' => [
@@ -1068,8 +1068,8 @@ PHP);
         $this->writeRawConfig(<<<PHP
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Tests\Feature\FixtureAuditRule;
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Feature\FixtureAuditRule;
 
 return [
     'enabled' => [
@@ -1140,8 +1140,8 @@ PHP);
         $this->writeRawConfig(<<<'PHP'
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule;
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule;
 
 return [
     'enabled' => [
@@ -1154,7 +1154,7 @@ return [
 PHP);
 
         $this->artisan('architecture-kit:audit')
-            ->expectsOutputToContain('Architecture Kit audit rule [Taqie\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule] does not exist.')
+            ->expectsOutputToContain('Architecture Kit audit rule [GracjanKubicki\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule] does not exist.')
             ->assertExitCode(1);
     }
 
@@ -1163,8 +1163,8 @@ PHP);
         $this->writeRawConfig(<<<'PHP'
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Tests\Feature\FixtureNotAuditRule;
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Feature\FixtureNotAuditRule;
 
 return [
     'enabled' => [
@@ -1177,7 +1177,7 @@ return [
 PHP);
 
         $this->artisan('architecture-kit:audit')
-            ->expectsOutputToContain('Architecture Kit audit rule [Taqie\ArchitectureKit\Tests\Feature\FixtureNotAuditRule] must implement Taqie\ArchitectureKit\Audit\AuditRule.')
+            ->expectsOutputToContain('Architecture Kit audit rule [GracjanKubicki\ArchitectureKit\Tests\Feature\FixtureNotAuditRule] must implement GracjanKubicki\ArchitectureKit\Audit\AuditRule.')
             ->assertExitCode(1);
     }
 

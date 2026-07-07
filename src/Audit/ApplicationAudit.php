@@ -2,32 +2,32 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit;
+namespace GracjanKubicki\ArchitectureKit\Audit;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Actions\ActionsRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\ApiResources\ApiResourcesRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\CustomEloquentBuilders\CustomEloquentBuildersRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\DataObjects\DataObjectsRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\EloquentLifecycleRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Enums\EnumsRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\FormRequests\FormRequestsRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\LaravelAi\LaravelAiRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\ModernPhp85\ModernPhp85Rule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\PortsAndAdapters\PortsAndAdaptersRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\QueryObjects\QueryObjectsRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\SaloonRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Services\ServicesRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\FolderPurityRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\ServiceLocatorRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\TestabilityRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\UnenabledPatternRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\ThinControllers\ThinControllerRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
+use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
+use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
 use Illuminate\Filesystem\Filesystem;
 use SplFileInfo;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\Rules\Actions\ActionsRule;
-use Taqie\ArchitectureKit\Audit\Rules\ApiResources\ApiResourcesRule;
-use Taqie\ArchitectureKit\Audit\Rules\CustomEloquentBuilders\CustomEloquentBuildersRule;
-use Taqie\ArchitectureKit\Audit\Rules\DataObjects\DataObjectsRule;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\EloquentLifecycleRule;
-use Taqie\ArchitectureKit\Audit\Rules\Enums\EnumsRule;
-use Taqie\ArchitectureKit\Audit\Rules\FormRequests\FormRequestsRule;
-use Taqie\ArchitectureKit\Audit\Rules\LaravelAi\LaravelAiRule;
-use Taqie\ArchitectureKit\Audit\Rules\ModernPhp85\ModernPhp85Rule;
-use Taqie\ArchitectureKit\Audit\Rules\PortsAndAdapters\PortsAndAdaptersRule;
-use Taqie\ArchitectureKit\Audit\Rules\QueryObjects\QueryObjectsRule;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\SaloonRule;
-use Taqie\ArchitectureKit\Audit\Rules\Services\ServicesRule;
-use Taqie\ArchitectureKit\Audit\Rules\Shared\FolderPurityRule;
-use Taqie\ArchitectureKit\Audit\Rules\Shared\ServiceLocatorRule;
-use Taqie\ArchitectureKit\Audit\Rules\Shared\TestabilityRule;
-use Taqie\ArchitectureKit\Audit\Rules\Shared\UnenabledPatternRule;
-use Taqie\ArchitectureKit\Audit\Rules\ThinControllers\ThinControllerRule;
-use Taqie\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
-use Taqie\ArchitectureKit\Audit\Suppression\Baseline;
-use Taqie\ArchitectureKit\Audit\Suppression\InlineIgnores;
 
 final class ApplicationAudit
 {

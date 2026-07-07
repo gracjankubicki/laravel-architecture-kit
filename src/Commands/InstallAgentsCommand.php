@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Commands;
+namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
+use GracjanKubicki\ArchitectureKit\Install\AgentInstaller;
+use GracjanKubicki\ArchitectureKit\Install\AgentsDetector;
+use GracjanKubicki\ArchitectureKit\Install\InstallResult;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Config\ArchitectureConfigPath;
-use Taqie\ArchitectureKit\Install\AgentInstaller;
-use Taqie\ArchitectureKit\Install\AgentsDetector;
-use Taqie\ArchitectureKit\Install\InstallResult;
 use Throwable;
 
 use function Laravel\Prompts\confirm;

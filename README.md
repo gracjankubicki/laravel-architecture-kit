@@ -226,7 +226,7 @@ The project source of truth is `config/architectures.php`:
 ```php
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Architecture;
 
 return [
     'enabled' => [
@@ -303,7 +303,7 @@ Project-owned architectures live under:
 
 ### Custom Audit Rules
 
-Custom rules are PHP classes registered in `config/architectures.php` under `rules`. Each rule must implement `Taqie\ArchitectureKit\Audit\AuditRule`. Custom rule findings participate in inline suppression, baseline suppression, `audit`, `guard`, hooks, and MCP output.
+Custom rules are PHP classes registered in `config/architectures.php` under `rules`. Each rule must implement `GracjanKubicki\ArchitectureKit\Audit\AuditRule`. Custom rule findings participate in inline suppression, baseline suppression, `audit`, `guard`, hooks, and MCP output.
 
 ## Laravel Boost Integration
 

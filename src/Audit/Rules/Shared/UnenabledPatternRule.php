@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Rules\Shared;
+namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Shared;
 
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\AuditRule;
-use Taqie\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 
 final readonly class UnenabledPatternRule implements AuditRule
 {

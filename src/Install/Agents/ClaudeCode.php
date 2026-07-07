@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install\Agents;
+namespace GracjanKubicki\ArchitectureKit\Install\Agents;
 
-use Taqie\ArchitectureKit\Install\Contracts\SupportsHooks;
-use Taqie\ArchitectureKit\Install\Contracts\SupportsMcp;
+use GracjanKubicki\ArchitectureKit\Install\Contracts\SupportsHooks;
+use GracjanKubicki\ArchitectureKit\Install\Contracts\SupportsMcp;
 
 final class ClaudeCode extends Agent implements SupportsHooks, SupportsMcp
 {

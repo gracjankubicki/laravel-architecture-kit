@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit;
+namespace GracjanKubicki\ArchitectureKit;
 
 final readonly class EnabledArchitecture
 {

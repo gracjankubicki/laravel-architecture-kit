@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install\Mcp;
+namespace GracjanKubicki\ArchitectureKit\Install\Mcp;
 
 use Illuminate\Filesystem\Filesystem;
 

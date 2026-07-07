@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks;
+namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Name;
 use PhpParser\NodeVisitorAbstract;
-use Taqie\ArchitectureKit\Audit\Ast\PhpAst;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\FileCheck;
-use Taqie\ArchitectureKit\Audit\FileContext;
 
 final readonly class SecurityCheck implements FileCheck
 {

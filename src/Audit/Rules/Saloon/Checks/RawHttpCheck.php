@@ -2,8 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks;
+namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\IntegrationPaths;
 use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\New_;
@@ -12,11 +17,6 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeVisitorAbstract;
-use Taqie\ArchitectureKit\Audit\Ast\PhpAst;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\FileCheck;
-use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\IntegrationPaths;
 
 final readonly class RawHttpCheck implements FileCheck
 {

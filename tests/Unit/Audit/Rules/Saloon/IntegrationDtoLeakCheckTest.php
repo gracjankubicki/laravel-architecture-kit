@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit\Audit\Rules\Saloon;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Audit\Rules\Saloon;
 
-use Taqie\ArchitectureKit\Tests\Unit\Audit\Rules\RuleCheckTestCase;
+use GracjanKubicki\ArchitectureKit\Tests\Unit\Audit\Rules\RuleCheckTestCase;
 
 final class IntegrationDtoLeakCheckTest extends RuleCheckTestCase
 {

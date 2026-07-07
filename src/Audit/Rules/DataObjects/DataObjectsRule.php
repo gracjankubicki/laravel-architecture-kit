@@ -2,8 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Rules\DataObjects;
+namespace GracjanKubicki\ArchitectureKit\Audit\Rules\DataObjects;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
@@ -11,11 +16,6 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeVisitorAbstract;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\Ast\PhpAst;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\AuditRule;
-use Taqie\ArchitectureKit\Audit\FileContext;
 
 final readonly class DataObjectsRule implements AuditRule
 {

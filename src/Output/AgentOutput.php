@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Output;
+namespace GracjanKubicki\ArchitectureKit\Output;
 
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\ApplicationAuditResult;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\FindingCodeRegistry;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorResult;
-use Taqie\ArchitectureKit\Guard\ArchitectureGuardResult;
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
+use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
 
 final readonly class AgentOutput
 {

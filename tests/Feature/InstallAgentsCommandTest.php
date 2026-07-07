@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Feature;
+namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Guard\ArchitectureGuard;
-use Taqie\ArchitectureKit\Resources\ArchitectureResources;
-use Taqie\ArchitectureKit\Tests\TestCase;
 
 class InstallAgentsCommandTest extends TestCase
 {

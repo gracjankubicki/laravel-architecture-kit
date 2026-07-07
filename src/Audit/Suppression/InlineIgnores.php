@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Suppression;
+namespace GracjanKubicki\ArchitectureKit\Audit\Suppression;
 
-use Taqie\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 
 final class InlineIgnores
 {

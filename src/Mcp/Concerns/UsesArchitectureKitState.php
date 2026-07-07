@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Mcp\Concerns;
+namespace GracjanKubicki\ArchitectureKit\Mcp\Concerns;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
+use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor;
+use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
+use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
+use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\ApplicationAudit;
-use Taqie\ArchitectureKit\Audit\ApplicationAuditResult;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Config\ArchitectureConfigPath;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctor;
-use Taqie\ArchitectureKit\Doctor\ArchitectureDoctorResult;
-use Taqie\ArchitectureKit\Guard\ArchitectureGuard;
-use Taqie\ArchitectureKit\Guard\ArchitectureGuardResult;
-use Taqie\ArchitectureKit\Resources\ArchitectureResources;
 
 trait UsesArchitectureKitState
 {

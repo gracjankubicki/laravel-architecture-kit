@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Doctor;
+namespace GracjanKubicki\ArchitectureKit\Doctor;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
+use GracjanKubicki\ArchitectureKit\Audit\RuleRegistry;
+use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\SaloonRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\ServicesRequirement;
+use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Application as ConsoleApplication;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\ApplicationAudit;
-use Taqie\ArchitectureKit\Audit\RuleRegistry;
-use Taqie\ArchitectureKit\Audit\Suppression\Baseline;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Install\ComposeServices;
-use Taqie\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
-use Taqie\ArchitectureKit\Install\Requirements\PhpRequirement;
-use Taqie\ArchitectureKit\Install\Requirements\SaloonRequirement;
-use Taqie\ArchitectureKit\Install\Requirements\ServicesRequirement;
-use Taqie\ArchitectureKit\Install\RuntimeResolver;
-use Taqie\ArchitectureKit\Resources\ArchitectureResources;
-use Taqie\ArchitectureKit\Resources\GeneratedFile;
 use Throwable;
 
 final readonly class ArchitectureDoctor

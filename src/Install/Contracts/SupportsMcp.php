@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install\Contracts;
+namespace GracjanKubicki\ArchitectureKit\Install\Contracts;
 
 interface SupportsMcp
 {

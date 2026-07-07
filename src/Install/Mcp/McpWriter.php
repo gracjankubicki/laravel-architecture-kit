@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install\Mcp;
+namespace GracjanKubicki\ArchitectureKit\Install\Mcp;
 
+use GracjanKubicki\ArchitectureKit\Install\Agents\Agent;
+use GracjanKubicki\ArchitectureKit\Install\Contracts\SupportsMcp;
+use GracjanKubicki\ArchitectureKit\Install\InstallResult;
+use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Install\Agents\Agent;
-use Taqie\ArchitectureKit\Install\Contracts\SupportsMcp;
-use Taqie\ArchitectureKit\Install\InstallResult;
-use Taqie\ArchitectureKit\Install\RuntimeResolver;
 
 final readonly class McpWriter
 {

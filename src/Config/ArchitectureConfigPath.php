@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Config;
+namespace GracjanKubicki\ArchitectureKit\Config;
 
 use Illuminate\Filesystem\Filesystem;
 

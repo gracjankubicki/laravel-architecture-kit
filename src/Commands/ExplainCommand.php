@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Commands;
+namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use Illuminate\Console\Command;
-use Taqie\ArchitectureKit\Audit\FindingCodeRegistry;
-use Taqie\ArchitectureKit\Output\AgentOutput;
 
 class ExplainCommand extends Command
 {

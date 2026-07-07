@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Feature;
+namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureRules;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\AuditChanged;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\ExplainFinding;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\Guard;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Facades\Mcp;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Mcp\ArchitectureKitServer;
-use Taqie\ArchitectureKit\Mcp\Tools\ArchitectureRules;
-use Taqie\ArchitectureKit\Mcp\Tools\AuditChanged;
-use Taqie\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
-use Taqie\ArchitectureKit\Mcp\Tools\ExplainFinding;
-use Taqie\ArchitectureKit\Mcp\Tools\Guard;
-use Taqie\ArchitectureKit\Resources\ArchitectureResources;
-use Taqie\ArchitectureKit\Tests\TestCase;
 
 class McpIntegrationTest extends TestCase
 {

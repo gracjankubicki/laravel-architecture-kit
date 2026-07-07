@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Resources;
+namespace GracjanKubicki\ArchitectureKit\Resources;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
 use RuntimeException;
-use Taqie\ArchitectureKit\Architecture;
 
 final readonly class ResourceFragments
 {

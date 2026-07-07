@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Doctor;
+namespace GracjanKubicki\ArchitectureKit\Doctor;
 
+use GracjanKubicki\ArchitectureKit\Install\AgentsDetector;
+use GracjanKubicki\ArchitectureKit\Install\InstallState;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Facades\Mcp;
 use Symfony\Component\Console\Application as ConsoleApplication;
-use Taqie\ArchitectureKit\Install\AgentsDetector;
-use Taqie\ArchitectureKit\Install\InstallState;
 
 final readonly class AgentConfigDoctor
 {

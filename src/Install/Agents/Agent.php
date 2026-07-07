@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install\Agents;
+namespace GracjanKubicki\ArchitectureKit\Install\Agents;
 
+use GracjanKubicki\ArchitectureKit\Install\CommandNormalizer;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Install\CommandNormalizer;
 
 abstract class Agent
 {

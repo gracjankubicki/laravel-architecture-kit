@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
+use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
-use Taqie\ArchitectureKit\Install\RuntimeResolver;
 
 class RuntimeResolverTest extends TestCase
 {

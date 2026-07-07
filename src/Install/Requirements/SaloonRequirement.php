@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install\Requirements;
+namespace GracjanKubicki\ArchitectureKit\Install\Requirements;
 
 use Composer\Semver\Semver;
 use Illuminate\Filesystem\Filesystem;

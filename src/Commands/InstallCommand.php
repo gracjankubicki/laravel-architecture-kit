@@ -2,24 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Commands;
+namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Install\AgentInstaller;
+use GracjanKubicki\ArchitectureKit\Install\Agents\Agent;
+use GracjanKubicki\ArchitectureKit\Install\AgentsDetector;
+use GracjanKubicki\ArchitectureKit\Install\ComposerPackageInstaller;
+use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
+use GracjanKubicki\ArchitectureKit\Install\InstallResult;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\SaloonRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\ServicesRequirement;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Config\ArchitectureConfig;
-use Taqie\ArchitectureKit\Install\AgentInstaller;
-use Taqie\ArchitectureKit\Install\Agents\Agent;
-use Taqie\ArchitectureKit\Install\AgentsDetector;
-use Taqie\ArchitectureKit\Install\ComposerPackageInstaller;
-use Taqie\ArchitectureKit\Install\ComposeServices;
-use Taqie\ArchitectureKit\Install\InstallResult;
-use Taqie\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
-use Taqie\ArchitectureKit\Install\Requirements\PhpRequirement;
-use Taqie\ArchitectureKit\Install\Requirements\SaloonRequirement;
-use Taqie\ArchitectureKit\Install\Requirements\ServicesRequirement;
-use Taqie\ArchitectureKit\Resources\ArchitectureResources;
-use Taqie\ArchitectureKit\Resources\GeneratedFile;
 use Throwable;
 
 use function Laravel\Prompts\confirm;

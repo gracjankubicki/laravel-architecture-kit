@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
+use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
-use Taqie\ArchitectureKit\Install\ComposeServices;
 
 class ComposeServicesTest extends TestCase
 {

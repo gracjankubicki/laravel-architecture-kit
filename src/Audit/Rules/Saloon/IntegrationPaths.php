@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Rules\Saloon;
+namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon;
 
+use GracjanKubicki\ArchitectureKit\Audit\Ast\ClassInspector;
 use PhpParser\Node\Stmt;
-use Taqie\ArchitectureKit\Audit\Ast\ClassInspector;
 
 final readonly class IntegrationPaths
 {

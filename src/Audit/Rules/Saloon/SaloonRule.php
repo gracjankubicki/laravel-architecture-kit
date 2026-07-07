@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Rules\Saloon;
+namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
+use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\AdapterBoundaryCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\ConnectorCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\IntegrationDtoLeakCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\IntegrationFolderCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\RawHttpCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\RawSaloonResponseCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\RequestCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\SaloonInsideTransactionCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\SecurityCheck;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\AuditRule;
-use Taqie\ArchitectureKit\Audit\FileCheck;
-use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\AdapterBoundaryCheck;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\ConnectorCheck;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\IntegrationDtoLeakCheck;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\IntegrationFolderCheck;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\RawHttpCheck;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\RawSaloonResponseCheck;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\RequestCheck;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\SaloonInsideTransactionCheck;
-use Taqie\ArchitectureKit\Audit\Rules\Saloon\Checks\SecurityCheck;
 
 final readonly class SaloonRule implements AuditRule
 {

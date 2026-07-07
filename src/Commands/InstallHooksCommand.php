@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Commands;
+namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use Illuminate\Console\Command;
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Resources;
+namespace GracjanKubicki\ArchitectureKit\Resources;
 
 final readonly class GeneratedFile
 {

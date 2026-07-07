@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install;
+namespace GracjanKubicki\ArchitectureKit\Install;
 
+use GracjanKubicki\ArchitectureKit\Install\Agents\Agent;
+use GracjanKubicki\ArchitectureKit\Install\Contracts\SupportsHooks;
+use GracjanKubicki\ArchitectureKit\Install\Contracts\SupportsMcp;
+use GracjanKubicki\ArchitectureKit\Install\Hooks\HookWriter;
+use GracjanKubicki\ArchitectureKit\Install\Mcp\McpWriter;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Install\Agents\Agent;
-use Taqie\ArchitectureKit\Install\Contracts\SupportsHooks;
-use Taqie\ArchitectureKit\Install\Contracts\SupportsMcp;
-use Taqie\ArchitectureKit\Install\Hooks\HookWriter;
-use Taqie\ArchitectureKit\Install\Mcp\McpWriter;
 
 final readonly class AgentInstaller
 {

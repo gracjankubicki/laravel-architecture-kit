@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Install;
+namespace GracjanKubicki\ArchitectureKit\Install;
 
+use GracjanKubicki\ArchitectureKit\Install\Agents\Agent;
+use GracjanKubicki\ArchitectureKit\Install\Agents\ClaudeCode;
+use GracjanKubicki\ArchitectureKit\Install\Agents\Codex;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Install\Agents\Agent;
-use Taqie\ArchitectureKit\Install\Agents\ClaudeCode;
-use Taqie\ArchitectureKit\Install\Agents\Codex;
 
 final readonly class AgentsDetector
 {

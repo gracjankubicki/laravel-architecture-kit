@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Mcp;
+namespace GracjanKubicki\ArchitectureKit\Mcp;
 
+use GracjanKubicki\ArchitectureKit\Mcp\Resources\ArchitectureGuidelineResource;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureRules;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\AuditChanged;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\Doctor;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\ExplainFinding;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\Guard;
 use Laravel\Mcp\Server;
-use Taqie\ArchitectureKit\Mcp\Resources\ArchitectureGuidelineResource;
-use Taqie\ArchitectureKit\Mcp\Tools\ArchitectureRules;
-use Taqie\ArchitectureKit\Mcp\Tools\AuditChanged;
-use Taqie\ArchitectureKit\Mcp\Tools\Doctor;
-use Taqie\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
-use Taqie\ArchitectureKit\Mcp\Tools\ExplainFinding;
-use Taqie\ArchitectureKit\Mcp\Tools\Guard;
 
 class ArchitectureKitServer extends Server
 {

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Resources;
+namespace GracjanKubicki\ArchitectureKit\Resources;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
 use SplFileInfo;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\EnabledArchitecture;
 
 final class ArchitectureResources
 {

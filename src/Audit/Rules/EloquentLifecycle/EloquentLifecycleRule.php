@@ -2,24 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle;
+namespace GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
+use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\AfterObserverMethodsCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\BeforeObserverMethodsCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\InlineModelEventCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\LifecycleFolderPurityCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\ObserverAfterCommitCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\ObserverBranchingCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\ObserverCallBudgetCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\ProviderObserverRegistrationCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\QuietSaveCheck;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\TransactionSideEffectCheck;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Architecture;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\AuditRule;
-use Taqie\ArchitectureKit\Audit\FileCheck;
-use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\AfterObserverMethodsCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\BeforeObserverMethodsCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\InlineModelEventCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\LifecycleFolderPurityCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\ObserverAfterCommitCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\ObserverBranchingCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\ObserverCallBudgetCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\ProviderObserverRegistrationCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\QuietSaveCheck;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks\TransactionSideEffectCheck;
 
 final readonly class EloquentLifecycleRule implements AuditRule
 {

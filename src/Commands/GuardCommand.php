@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Commands;
+namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
+use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Guard\ArchitectureGuard;
-use Taqie\ArchitectureKit\Output\AgentOutput;
 
 class GuardCommand extends Command
 {

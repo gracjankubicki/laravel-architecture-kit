@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Tests\Unit\Audit\Rules\EloquentLifecycle;
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Audit\Rules\EloquentLifecycle;
 
+use GracjanKubicki\ArchitectureKit\Tests\Unit\Audit\Rules\RuleCheckTestCase;
 use Illuminate\Filesystem\Filesystem;
-use Taqie\ArchitectureKit\Tests\Unit\Audit\Rules\RuleCheckTestCase;
 
 final class ProviderObserverRegistrationCheckTest extends RuleCheckTestCase
 {

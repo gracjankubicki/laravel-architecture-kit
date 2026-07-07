@@ -1,6 +1,6 @@
 <?php
 
-use Taqie\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Architecture;
 
 return [
     'enabled' => [

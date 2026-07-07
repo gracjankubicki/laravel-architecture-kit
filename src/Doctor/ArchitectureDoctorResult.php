@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Doctor;
+namespace GracjanKubicki\ArchitectureKit\Doctor;
 
-use Taqie\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Architecture;
 
 final readonly class ArchitectureDoctorResult
 {

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks;
+namespace GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks;
 
-use Taqie\ArchitectureKit\Audit\Ast\ClassInspector;
-use Taqie\ArchitectureKit\Audit\AuditFinding;
-use Taqie\ArchitectureKit\Audit\FileCheck;
-use Taqie\ArchitectureKit\Audit\FileContext;
-use Taqie\ArchitectureKit\Audit\Rules\EloquentLifecycle\LifecycleAst;
+use GracjanKubicki\ArchitectureKit\Audit\Ast\ClassInspector;
+use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\LifecycleAst;
 
 final readonly class LifecycleFolderPurityCheck implements FileCheck
 {
