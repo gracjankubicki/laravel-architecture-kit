@@ -2,6 +2,12 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.3 - 2026-07-07
+
+### Fixed
+
+- Published the namespace-correct package under a fresh immutable patch version for Packagist.
+
 ## v0.1.2 - 2026-07-07
 
 ### Fixed
