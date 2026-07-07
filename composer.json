@@ -1,5 +1,5 @@
 {
-    "name": "taqie/laravel-architecture-kit",
+    "name": "gracjankubicki/laravel-architecture-kit",
     "description": "Opinionated Laravel architecture guidance and Boost resources for AI coding agents.",
     "type": "library",
     "license": "MIT",

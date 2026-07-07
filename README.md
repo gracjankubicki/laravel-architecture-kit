@@ -7,7 +7,7 @@ This package is meant to be installed as a development dependency. It lets a pro
 ## Installation
 
 ```bash
-composer require --dev taqie/laravel-architecture-kit
+composer require --dev gracjankubicki/laravel-architecture-kit
 php artisan architecture-kit:install
 ```
 
