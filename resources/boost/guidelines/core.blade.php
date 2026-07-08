@@ -4,6 +4,10 @@ This package can generate project-specific Architecture Kit guidance for AI codi
 
 If this project contains `.ai/guidelines/architecture-kit.md`, you MUST follow it before adding or changing application architecture.
 
+Before coding, your first Architecture Kit MCP call MUST be `enabled-architectures`. Use it to identify enabled patterns and relevant `architecture-kit-*` skills. Do not implement architecture-sensitive code before this preflight.
+
+If MCP is unavailable, read `.ai/guidelines/architecture-kit.md` or run `php artisan architecture-kit:guidelines --agent` before coding.
+
 For full details, expand one architecture with `php artisan architecture-kit:guidelines {slug} --agent` or use the Architecture Kit MCP `architecture-rules` resource.
 
 Architecture Kit includes a package-first rule. Before implementing custom infrastructure, you MUST check existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party PHP packages, then use the existing option when it fits the project constraints.

@@ -28,6 +28,14 @@ class McpIntegrationTest extends TestCase
         $this->assertNotSame('1.0.0', $version->getDefaultValue());
     }
 
+    public function test_mcp_server_instructions_require_enabled_architectures_preflight(): void
+    {
+        $instructions = new \ReflectionProperty(ArchitectureKitServer::class, 'instructions');
+
+        $this->assertStringContainsString('first Architecture Kit MCP call MUST be enabled-architectures', $instructions->getDefaultValue());
+        $this->assertStringContainsString('Do not implement architecture-sensitive code before this preflight', $instructions->getDefaultValue());
+    }
+
     public function test_it_registers_local_mcp_server(): void
     {
         $this->assertNotNull(Mcp::getLocalServer('architecture-kit'));

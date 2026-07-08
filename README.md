@@ -1,3 +1,28 @@
+<p align="center">
+    <img src="https://raw.githubusercontent.com/gracjankubicki/laravel-architecture-kit/main/art/banner.png" alt="Laravel Architecture Kit">
+</p>
+
+<p align="center">
+    <a href="https://github.com/gracjankubicki/laravel-architecture-kit/actions/workflows/tests.yml">
+        <img src="https://github.com/gracjankubicki/laravel-architecture-kit/actions/workflows/tests.yml/badge.svg?branch=main" alt="Tests">
+    </a>
+    <a href="https://codecov.io/gh/gracjankubicki/laravel-architecture-kit">
+        <img src="https://codecov.io/gh/gracjankubicki/laravel-architecture-kit/branch/main/graph/badge.svg" alt="Coverage">
+    </a>
+    <a href="https://packagist.org/packages/gracjankubicki/laravel-architecture-kit">
+        <img src="https://img.shields.io/packagist/v/gracjankubicki/laravel-architecture-kit.svg?style=flat-square" alt="Latest Version on Packagist">
+    </a>
+    <a href="https://packagist.org/packages/gracjankubicki/laravel-architecture-kit">
+        <img src="https://img.shields.io/packagist/dt/gracjankubicki/laravel-architecture-kit.svg?style=flat-square" alt="Total Downloads">
+    </a>
+    <a href="https://packagist.org/packages/gracjankubicki/laravel-architecture-kit">
+        <img src="https://img.shields.io/packagist/l/gracjankubicki/laravel-architecture-kit.svg?style=flat-square" alt="License">
+    </a>
+    <img src="https://img.shields.io/packagist/php-v/gracjankubicki/laravel-architecture-kit.svg?style=flat-square" alt="PHP Version">
+    <img src="https://img.shields.io/badge/Laravel-12%20%7C%2013-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel 12 and 13">
+    <img src="https://img.shields.io/badge/MCP-enabled-6f42c1?style=flat-square" alt="MCP enabled">
+</p>
+
 # Laravel Architecture Kit
 
 Opinionated Laravel architecture guidance and Boost resources for AI coding agents.

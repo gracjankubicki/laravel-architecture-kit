@@ -2,6 +2,18 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.6 - 2026-07-08
+
+### Added
+
+- README now includes a generated project banner and package status badges for tests, coverage, Packagist, downloads, license, PHP, Laravel, and MCP.
+- GitHub Actions now includes a dedicated coverage job that uploads Clover coverage to Codecov.
+- Generated AI guidance now tells agents to inspect enabled Architecture Kit rules through MCP before coding.
+
+### Changed
+
+- MCP resource summaries now reinforce the enabled-architecture preflight requirement for agents.
+
 ## v0.1.5 - 2026-07-08
 
 ### Removed

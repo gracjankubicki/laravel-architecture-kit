@@ -239,6 +239,7 @@ final class ArchitectureResources
     {
         return implode("\n", [
             'This file is a compact index of enabled Architecture Kit rules. Full rules are available on demand through skills, MCP `architecture-rules` / `architecture-kit://guideline`, or `php artisan architecture-kit:guidelines {slug} --agent`.',
+            'Before coding, the first Architecture Kit MCP call MUST be `enabled-architectures`. If MCP is unavailable, read this file or run `php artisan architecture-kit:guidelines --agent` before coding.',
             'Violations are blocked by deterministic audit rules. Load the relevant skill or expanded guideline before implementing or refactoring that architecture.',
         ]);
     }
@@ -251,6 +252,8 @@ This project MUST follow the enabled Architecture Kit patterns globally.
 Before changing application architecture:
 
 - Follow the enabled architecture sections in this file.
+- Before coding, call MCP `enabled-architectures` first. Use it to identify enabled patterns and relevant `architecture-kit-*` skills.
+- If MCP is unavailable, read `.ai/guidelines/architecture-kit.md` or run `php artisan architecture-kit:guidelines --agent` before coding.
 - Do not introduce architecture patterns that are not listed here.
 - Follow existing project structure when it is more specific than the default paths below.
 - Keep framework adapters thin and keep business decisions in the architecture boundary selected for that behavior.
@@ -376,6 +379,7 @@ MARKDOWN;
 - Folder purity: each architecture folder contains only that architecture type; use matching domain subfolders when the project is domain-first.
 - Follow the existing project structure when it is more specific than these defaults.
 - Keep framework adapters thin and business decisions inside the enabled architecture boundary.
+- Before coding, call MCP `enabled-architectures` first; if MCP is unavailable, read this generated guideline or run `php artisan architecture-kit:guidelines --agent`.
 - Load the relevant `architecture-kit-*` skill or expanded guideline before changing that pattern.
 MARKDOWN;
     }
