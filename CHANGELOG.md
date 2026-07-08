@@ -2,6 +2,12 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.7 - 2026-07-08
+
+### Fixed
+
+- Fixed Codecov upload authentication in GitHub Actions by using OIDC for the dedicated coverage job.
+
 ## v0.1.6 - 2026-07-08
 
 ### Added
