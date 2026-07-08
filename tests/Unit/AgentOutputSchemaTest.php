@@ -77,6 +77,22 @@ class AgentOutputSchemaTest extends TestCase
         }
     }
 
+    public function test_guard_agent_schema_includes_suppression_counters(): void
+    {
+        $schema = (new AgentOutput)->schema('guard');
+
+        $this->assertContains('sup', $schema['required']);
+        $this->assertSame([
+            'type' => 'object',
+            'required' => ['inline', 'baseline'],
+            'properties' => [
+                'inline' => ['type' => 'integer', 'minimum' => 0],
+                'baseline' => ['type' => 'integer', 'minimum' => 0],
+            ],
+            'additionalProperties' => false,
+        ], $schema['properties']['sup']);
+    }
+
     public function test_it_exposes_guidelines_agent_output_schema(): void
     {
         $schema = (new AgentOutput)->schema('guidelines');

@@ -12,7 +12,7 @@
         "ai"
     ],
     "require": {
-        "php": "^8.2",
+        "php": "^8.3",
         "composer/semver": "^3.4",
         "illuminate/console": "^12.41.1|^13.0",
         "illuminate/filesystem": "^12.41.1|^13.0",

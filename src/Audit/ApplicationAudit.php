@@ -39,14 +39,14 @@ final class ApplicationAudit
     /**
      * @param  array<int, Architecture|string>  $enabled
      * @param  array<int, string>  $exclude
-     * @param  array<int, class-string>  $customRules
+     * @param  array<int, class-string>|CustomRuleSet  $customRules
      */
     public function run(
         array $enabled,
         bool $changedOnly,
         ?string $baseRef = null,
         array $exclude = [],
-        array $customRules = [],
+        array|CustomRuleSet $customRules = [],
         bool $useBaseline = true,
         bool $updateBaseline = false,
     ): ApplicationAuditResult {
@@ -54,7 +54,11 @@ final class ApplicationAudit
         $paths = $this->excludePaths($paths, $exclude);
         $findings = [];
         $suppressedInline = 0;
-        $customAuditRules = (new RuleRegistry($customRules))->customRules();
+        $customRuleSet = $customRules instanceof CustomRuleSet
+            ? $customRules
+            : CustomRuleSet::fromGlobal($customRules);
+        $customAuditRules = (new RuleRegistry($customRuleSet->rulesFor($enabled)))->customRules();
+        $knownRules = $this->knownRules($customRuleSet);
 
         foreach ($paths as $path) {
             $contents = $this->files->get($this->absolute($path));
@@ -62,7 +66,7 @@ final class ApplicationAudit
             $parseFindings = $this->unparseableFileFindings($file);
 
             if ($parseFindings !== []) {
-                $inlineResult = (new InlineIgnores)->apply($path, $contents, $parseFindings, $this->knownRules($customRules));
+                $inlineResult = (new InlineIgnores)->apply($path, $contents, $parseFindings, $knownRules);
                 $suppressedInline += $inlineResult->inline;
                 array_push($findings, ...$inlineResult->findings);
 
@@ -77,7 +81,7 @@ final class ApplicationAudit
                 }
             }
 
-            $inlineResult = (new InlineIgnores)->apply($path, $contents, $fileFindings, $this->knownRules($customRules));
+            $inlineResult = (new InlineIgnores)->apply($path, $contents, $fileFindings, $knownRules);
             $suppressedInline += $inlineResult->inline;
             array_push($findings, ...$inlineResult->findings);
         }
@@ -184,10 +188,9 @@ final class ApplicationAudit
     }
 
     /**
-     * @param  array<int, class-string>  $customRules
      * @return array<int, string>
      */
-    private function knownRules(array $customRules): array
+    private function knownRules(CustomRuleSet $customRules): array
     {
         $rules = [
             'actions',
@@ -214,7 +217,7 @@ final class ApplicationAudit
             'value-objects',
         ];
 
-        foreach ($customRules as $rule) {
+        foreach ($customRules->knownRuleClasses() as $rule) {
             if (! class_exists($rule)) {
                 continue;
             }

@@ -64,7 +64,7 @@ trait UsesArchitectureKitState
             changedOnly: $changedOnly,
             baseRef: $baseRef,
             exclude: $this->config()->auditExcludes(),
-            customRules: $this->config()->customRules(),
+            customRules: $this->config()->customRuleSet(),
         );
     }
 
@@ -79,11 +79,12 @@ trait UsesArchitectureKitState
     }
 
     /**
-     * @return array<int, array{value: string, label: string, skill: string, source: string, sum: string}>
+     * @return array<int, array{value: string, label: string, skill: string, source: string, sum: string, rules: array<int, string>}>
      */
     protected function architectureSummaries(): array
     {
         $enabled = $this->enabled();
+        $ruleSet = $this->config()->customRuleSet();
 
         return array_map(fn ($architecture): array => [
             'value' => $architecture->slug(),
@@ -91,6 +92,7 @@ trait UsesArchitectureKitState
             'skill' => $architecture->skillName(),
             'source' => $architecture->sourcePath(),
             'sum' => $this->resources()->summaryFor($architecture, $enabled),
+            'rules' => $ruleSet->architectureRuleBasenames($architecture->slug()),
         ], $this->resources()->ordered($enabled));
     }
 

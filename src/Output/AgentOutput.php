@@ -57,6 +57,10 @@ final readonly class AgentOutput
             'audit' => $auditOk,
             'err' => $result->audit?->errors() ?? 0,
             'warn' => $result->audit?->warnings() ?? 0,
+            'sup' => [
+                'inline' => $result->audit?->suppressedInline ?? 0,
+                'baseline' => $result->audit?->suppressedBaseline ?? 0,
+            ],
             ...$findings,
             'next' => $result->ok()
                 ? ['continue']
@@ -309,7 +313,7 @@ final readonly class AgentOutput
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit guard agent output',
             'type' => 'object',
-            'required' => ['v', 'ok', 'cmd', 'doctor', 'agents', 'audit', 'err', 'warn', 'trunc', 'next'],
+            'required' => ['v', 'ok', 'cmd', 'doctor', 'agents', 'audit', 'err', 'warn', 'sup', 'trunc', 'next'],
             'properties' => [
                 'v' => ['const' => 1],
                 'ok' => ['type' => 'boolean'],
@@ -319,6 +323,7 @@ final readonly class AgentOutput
                 'audit' => ['enum' => ['ok', 'fail', 'skip']],
                 'err' => ['type' => 'integer', 'minimum' => 0],
                 'warn' => ['type' => 'integer', 'minimum' => 0],
+                'sup' => $this->suppressionSchema(),
                 ...$this->findingCollectionProperties(),
                 'next' => $this->stringListSchema(),
             ],

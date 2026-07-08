@@ -2,6 +2,20 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.4 - 2026-07-08
+
+### Added
+
+- Architecture-scoped custom audit rules can now be registered under `rules.{architecture-slug}` and run only when that architecture is enabled.
+- MCP enabled architecture summaries now include scoped custom audit rule basenames.
+- Compact `guard --agent` output now includes suppression counters under `sup`, matching `audit --agent`.
+
+### Changed
+
+- PHP support metadata now requires PHP `^8.3`, matching the CI matrix.
+- MCP server metadata now reports the package release version instead of `1.0.0`.
+- `ArchitectureConfig::customRules()` is documented as a backward-compatible global custom rules accessor; scoped semantics live in `customRuleSet()`.
+
 ## v0.1.3 - 2026-07-07
 
 ### Fixed

@@ -137,7 +137,7 @@ final readonly class ArchitectureDoctor
             $checks[] = $check;
         }
 
-        foreach ($this->customRuleChecks() as $check) {
+        foreach ($this->customRuleChecks($enabled) as $check) {
             $checks[] = $check;
         }
 
@@ -291,14 +291,25 @@ final readonly class ArchitectureDoctor
     }
 
     /**
+     * @param  array<int, Architecture|string>  $enabled
      * @return array<int, ArchitectureDoctorCheck>
      */
-    private function customRuleChecks(): array
+    private function customRuleChecks(array $enabled): array
     {
         try {
-            (new RuleRegistry($this->config->customRules()))->customRules();
+            $ruleSet = $this->config->customRuleSet();
+            (new RuleRegistry($ruleSet->knownRuleClasses()))->customRules();
 
-            return [];
+            return array_map(
+                fn (string $slug): ArchitectureDoctorCheck => new ArchitectureDoctorCheck(
+                    area: 'config',
+                    status: 'warning',
+                    path: 'config/architectures.php',
+                    message: "Custom audit rules are configured for disabled architecture [{$slug}] and will not run until that architecture is enabled.",
+                ),
+                $ruleSet->inactiveScopedSlugs($enabled),
+            );
+
         } catch (Throwable $exception) {
             return [
                 new ArchitectureDoctorCheck(
@@ -326,7 +337,7 @@ final readonly class ArchitectureDoctor
                 enabled: $enabled,
                 changedOnly: false,
                 exclude: $this->config->auditExcludes(),
-                customRules: $this->config->customRules(),
+                customRules: $this->config->customRuleSet(),
                 useBaseline: false,
             );
             $orphaned = (new Baseline($this->files, $this->basePath))->orphanedCount($audit->findings);

@@ -43,6 +43,7 @@ PHP);
         $this->assertSame('guard', $payload['cmd']);
         $this->assertSame('ok', $payload['doctor']);
         $this->assertSame('fail', $payload['audit']);
+        $this->assertSame(['inline' => 0, 'baseline' => 0], $payload['sup']);
         $this->assertSame('E_THIN_CONTROLLER_MODEL_WRITE', $payload['find'][0]['m']);
 
         $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true, '--strict' => true]);
@@ -88,6 +89,94 @@ PHP);
         $this->assertStringContainsString('"audit"', $output);
     }
 
+    public function test_guard_fails_on_enabled_scoped_custom_audit_rule(): void
+    {
+        $this->writeCustomArchitecture('billing-workflows');
+        $this->writeCurrentResources(['billing-workflows']);
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Tests\Fixtures\ForbiddenWorkflowAuditRule;
+
+return [
+    'enabled' => [
+        'billing-workflows',
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            ForbiddenWorkflowAuditRule::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('"rule": "forbidden-workflow-audit-rule"', $output);
+    }
+
+    public function test_guard_passes_when_scoped_custom_audit_rule_architecture_is_disabled(): void
+    {
+        $this->writeCustomArchitecture('billing-workflows');
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Fixtures\ForbiddenWorkflowAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            ForbiddenWorkflowAuditRule::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('"ok": true', $output);
+        $this->assertStringNotContainsString('forbidden-workflow-audit-rule', $output);
+    }
+
     public function test_guard_json_includes_suppressed_counts(): void
     {
         $this->writeCurrentResources([
@@ -119,6 +208,37 @@ PHP);
         $this->assertStringContainsString('"suppressed"', $output);
         $this->assertStringContainsString('"inline": 1', $output);
         $this->assertStringContainsString('"baseline": 0', $output);
+    }
+
+    public function test_guard_agent_output_includes_suppressed_counts(): void
+    {
+        $this->writeCurrentResources([
+            Architecture::ThinControllers,
+            Architecture::Actions,
+        ]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+final class DocumentController
+{
+    public function update($document): void
+    {
+        // @architecture-kit-ignore thin-controller -- legacy endpoint accepted during migration
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertSame(['inline' => 1, 'baseline' => 0], $payload['sup']);
     }
 
     public function test_guard_json_fails_when_baseline_json_is_invalid(): void
@@ -1405,6 +1525,13 @@ PHP);
         $absolute = $this->tempPath.'/'.$path;
         $files->ensureDirectoryExists(dirname($absolute));
         $files->put($absolute, $contents);
+    }
+
+    private function writeCustomArchitecture(string $slug): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/'.$slug);
+        $files->put($this->tempPath.'/.architecture-kit/architectures/'.$slug.'/guideline.md', 'Custom architecture guideline.');
     }
 
     private function git(string $arguments): void

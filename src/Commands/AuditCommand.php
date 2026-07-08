@@ -42,7 +42,7 @@ class AuditCommand extends Command
         try {
             $enabled = $config->read();
             $exclude = $config->auditExcludes();
-            $customRules = $config->customRules();
+            $customRules = $config->customRuleSet();
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
                 $this->line($this->json($agent->error('audit', $exception->getMessage())));

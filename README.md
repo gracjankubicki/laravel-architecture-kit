@@ -301,9 +301,52 @@ Project-owned architectures live under:
 
 `guideline.md` is required. `summary.md` is optional; when it is missing, Architecture Kit uses the first non-empty guideline line as the compact index summary. `SKILL.md` is optional; when it is missing, Architecture Kit generates a skill from the guideline. Custom architecture slugs must be kebab-case and can be enabled as strings in `config/architectures.php`.
 
+This is a guidance contract for agents. It generates `.ai/guidelines`, `.ai/skills`, and MCP rule output, but Architecture Kit does not infer deterministic AST checks from prose in `guideline.md`.
+
+```php
+return [
+    'enabled' => [
+        Architecture::Actions,
+        'billing-workflows',
+    ],
+];
+```
+
 ### Custom Audit Rules
 
 Custom rules are PHP classes registered in `config/architectures.php` under `rules`. Each rule must implement `GracjanKubicki\ArchitectureKit\Audit\AuditRule`. Custom rule findings participate in inline suppression, baseline suppression, `audit`, `guard`, hooks, and MCP output.
+
+Prefer architecture-scoped rules when the rule enforces one architecture:
+
+```php
+return [
+    'enabled' => [
+        Architecture::Actions,
+        'billing-workflows',
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            App\Architecture\BillingWorkflows\Rules\NoInvoiceStateChangeOutsideBillingAction::class,
+            App\Architecture\BillingWorkflows\Rules\NoInvoiceTransitionInController::class,
+        ],
+    ],
+];
+```
+
+Scoped rules run only when their architecture is enabled. The rule class does not need to check `in_array('billing-workflows', $enabled, true)` just to bind itself to that architecture.
+
+Flat rules remain supported for global project checks that are not owned by one architecture. Programmatic callers should use `ArchitectureConfig::customRuleSet()` when scoped rule semantics matter; `ArchitectureConfig::customRules()` is a backward-compatible global-rules accessor and intentionally returns only flat rules.
+
+```php
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        App\Architecture\Rules\NoForbiddenProjectPattern::class,
+    ],
+];
+```
 
 ## Laravel Boost Integration
 

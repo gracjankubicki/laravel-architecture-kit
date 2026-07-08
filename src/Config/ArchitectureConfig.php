@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Config;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
@@ -72,14 +73,34 @@ final class ArchitectureConfig
      */
     public function customRules(): array
     {
+        return $this->customRuleSet()->globalRules();
+    }
+
+    public function customRuleSet(): CustomRuleSet
+    {
         $config = $this->config();
+
+        if ($config === []) {
+            return new CustomRuleSet;
+        }
+
         $rules = $config['rules'] ?? [];
 
         if (! is_array($rules)) {
             throw new InvalidArgumentException('config/architectures.php rules must be an array.');
         }
 
-        return array_values(array_filter($rules, 'is_string'));
+        $ruleSet = CustomRuleSet::fromConfig($rules);
+        $enabled = $this->normalizeConfig($config['enabled'] ?? []);
+        $unknown = $ruleSet->unknownScopedSlugs($this->knownArchitectureSlugs($enabled));
+
+        if ($unknown !== []) {
+            $slug = $unknown[0];
+
+            throw new InvalidArgumentException("config/architectures.php rules.{$slug} references an unknown architecture. Enable it or add .architecture-kit/architectures/{$slug}/guideline.md.");
+        }
+
+        return $ruleSet;
     }
 
     /**
@@ -719,5 +740,55 @@ final class ArchitectureConfig
         }
 
         return $value;
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<int, string>
+     */
+    private function knownArchitectureSlugs(array $enabled): array
+    {
+        $slugs = array_map(
+            fn (Architecture $architecture): string => $architecture->value,
+            Architecture::cases(),
+        );
+
+        foreach ($enabled as $architecture) {
+            if (is_string($architecture)) {
+                $slugs[] = $architecture;
+            }
+        }
+
+        foreach ($this->customArchitectureSlugs() as $slug) {
+            $slugs[] = $slug;
+        }
+
+        return array_values(array_unique($slugs));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function customArchitectureSlugs(): array
+    {
+        $path = $this->projectPath().'/.architecture-kit/architectures';
+
+        if (! $this->files->isDirectory($path)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map('basename', $this->files->directories($path)),
+            fn (string $slug): bool => preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) === 1,
+        ));
+    }
+
+    private function projectPath(): string
+    {
+        $directory = dirname($this->path);
+
+        return basename($directory) === 'config'
+            ? dirname($directory)
+            : $directory;
     }
 }

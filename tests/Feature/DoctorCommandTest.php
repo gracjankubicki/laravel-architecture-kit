@@ -424,6 +424,108 @@ PHP);
             ->assertExitCode(1);
     }
 
+    public function test_it_blocks_missing_scoped_custom_audit_rule(): void
+    {
+        $this->writeCustomArchitecture('billing-workflows');
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+return [
+    'enabled' => [
+        'billing-workflows',
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            App\Architecture\Rules\MissingBillingRule::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  config/architectures.php')
+            ->expectsOutputToContain('Architecture Kit audit rule [App\Architecture\Rules\MissingBillingRule] does not exist.')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_blocks_scoped_custom_audit_rule_that_does_not_implement_contract(): void
+    {
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        'actions' => [
+            stdClass::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  config/architectures.php')
+            ->expectsOutputToContain('Architecture Kit audit rule [stdClass] must implement GracjanKubicki\ArchitectureKit\Audit\AuditRule.')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_blocks_unknown_scoped_architecture_slug(): void
+    {
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        'billing-workfows' => [
+            stdClass::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  config/architectures.php')
+            ->expectsOutputToContain('rules.billing-workfows references an unknown architecture')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_warns_about_disabled_but_known_scoped_custom_audit_rules_without_blocking(): void
+    {
+        $this->writeCustomArchitecture('billing-workflows');
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Actions\ActionsRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            ActionsRule::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('warning  config/architectures.php')
+            ->expectsOutputToContain('Custom audit rules are configured for disabled architecture [billing-workflows]')
+            ->assertExitCode(0);
+    }
+
     public function test_every_architecture_has_source_resources(): void
     {
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath);
@@ -464,5 +566,12 @@ PHP);
         $absolute = $this->tempPath.'/'.$path;
         $files->ensureDirectoryExists(dirname($absolute));
         $files->put($absolute, $contents);
+    }
+
+    private function writeCustomArchitecture(string $slug): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/'.$slug);
+        $files->put($this->tempPath.'/.architecture-kit/architectures/'.$slug.'/guideline.md', 'Custom architecture guideline.');
     }
 }

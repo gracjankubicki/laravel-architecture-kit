@@ -35,7 +35,7 @@ final readonly class ArchitectureGuard
                 changedOnly: $changedOnly,
                 baseRef: $baseRef,
                 exclude: $config->auditExcludes(),
-                customRules: $config->customRules(),
+                customRules: $config->customRuleSet(),
             );
         }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\ArchitectureKit;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureRules;
@@ -19,6 +20,14 @@ use Laravel\Mcp\Facades\Mcp;
 
 class McpIntegrationTest extends TestCase
 {
+    public function test_mcp_server_version_matches_package_version(): void
+    {
+        $version = new \ReflectionProperty(ArchitectureKitServer::class, 'version');
+
+        $this->assertSame(ArchitectureKit::VERSION, $version->getDefaultValue());
+        $this->assertNotSame('1.0.0', $version->getDefaultValue());
+    }
+
     public function test_it_registers_local_mcp_server(): void
     {
         $this->assertNotNull(Mcp::getLocalServer('architecture-kit'));
@@ -41,6 +50,36 @@ class McpIntegrationTest extends TestCase
                 ->has('architectures', 1)
                 ->where('architectures.0.value', 'actions')
                 ->where('architectures.0.skill', 'architecture-kit-actions')
+            );
+    }
+
+    public function test_enabled_architectures_tool_returns_scoped_custom_audit_rules(): void
+    {
+        $this->writeCustomArchitecture('billing-workflows');
+        $this->writeCurrentResources(['billing-workflows']);
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Tests\Fixtures\ForbiddenWorkflowAuditRule;
+
+return [
+    'enabled' => [
+        'billing-workflows',
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            ForbiddenWorkflowAuditRule::class,
+        ],
+    ],
+];
+PHP);
+
+        ArchitectureKitServer::tool(EnabledArchitectures::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->has('architectures', 1)
+                ->where('architectures.0.value', 'billing-workflows')
+                ->where('architectures.0.rules.0', 'ForbiddenWorkflowAuditRule')
             );
     }
 
@@ -122,7 +161,7 @@ PHP);
     }
 
     /**
-     * @param  array<int, Architecture>  $enabled
+     * @param  array<int, Architecture|string>  $enabled
      */
     private function writeCurrentResources(array $enabled): void
     {
@@ -149,5 +188,12 @@ PHP);
         $absolute = $this->tempPath.'/'.$path;
         $files->ensureDirectoryExists(dirname($absolute));
         $files->put($absolute, $contents);
+    }
+
+    private function writeCustomArchitecture(string $slug): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/'.$slug);
+        $files->put($this->tempPath.'/.architecture-kit/architectures/'.$slug.'/guideline.md', 'Custom architecture guideline.');
     }
 }

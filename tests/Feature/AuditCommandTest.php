@@ -1122,6 +1122,194 @@ PHP);
             ->assertExitCode(0);
     }
 
+    public function test_scoped_custom_audit_rule_runs_when_architecture_is_enabled(): void
+    {
+        $this->writeCustomArchitecture('billing-workflows');
+        $this->writeRawConfig(<<<PHP
+<?php
+
+use GracjanKubicki\ArchitectureKit\Tests\Feature\FixtureAuditRule;
+
+return [
+    'enabled' => [
+        'billing-workflows',
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            FixtureAuditRule::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('error fixture-audit-rule')
+            ->assertExitCode(1);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+// @architecture-kit-ignore-file fixture-audit-rule -- accepted project exception
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
+            ->assertExitCode(0);
+    }
+
+    public function test_scoped_custom_audit_rule_does_not_run_when_architecture_is_disabled(): void
+    {
+        $this->writeCustomArchitecture('billing-workflows');
+        $this->writeRawConfig(<<<PHP
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Feature\FixtureAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            FixtureAuditRule::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->assertExitCode(0);
+    }
+
+    public function test_scoped_custom_audit_rule_can_be_bound_to_builtin_architecture(): void
+    {
+        $this->writeRawConfig(<<<PHP
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Feature\FixtureAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        'actions' => [
+            FixtureAuditRule::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('error fixture-audit-rule')
+            ->assertExitCode(1);
+    }
+
+    public function test_scoped_custom_audit_rule_findings_can_be_suppressed_by_baseline(): void
+    {
+        $this->writeCustomArchitecture('billing-workflows');
+        $this->writeRawConfig(<<<PHP
+<?php
+
+use GracjanKubicki\ArchitectureKit\Tests\Feature\FixtureAuditRule;
+
+return [
+    'enabled' => [
+        'billing-workflows',
+    ],
+    'rules' => [
+        'billing-workflows' => [
+            FixtureAuditRule::class,
+        ],
+    ],
+];
+PHP);
+
+        $this->writeFile('app/Actions/ForbiddenWorkflow.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class ForbiddenWorkflow
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit --update-baseline')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
+            ->assertExitCode(0);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
+            ->assertExitCode(0);
+    }
+
     public function test_invalid_baseline_json_fails_audit(): void
     {
         $this->writeConfig([Architecture::Actions]);
@@ -1200,6 +1388,13 @@ PHP);
         $absolute = $this->tempPath.'/'.$path;
         $files->ensureDirectoryExists(dirname($absolute));
         $files->put($absolute, $contents);
+    }
+
+    private function writeCustomArchitecture(string $slug): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/'.$slug);
+        $files->put($this->tempPath.'/.architecture-kit/architectures/'.$slug.'/guideline.md', 'Custom architecture guideline.');
     }
 
     private function git(string $arguments): void
