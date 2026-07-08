@@ -40,8 +40,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write
+      contents: write
 
     steps:
       - uses: actions/checkout@v5
@@ -59,10 +58,19 @@ jobs:
       - name: Test with coverage
         run: vendor/bin/phpunit --coverage-clover build/logs/clover.xml
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v7
-        with:
-          files: build/logs/clover.xml
-          fail_ci_if_error: false
-          use_oidc: true
-          verbose: true
+      - name: Generate coverage badge
+        run: php bin/generate-coverage-badge build/logs/clover.xml art/coverage.svg
+
+      - name: Commit coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet -- art/coverage.svg; then
+            echo "Coverage badge is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add art/coverage.svg
+          git commit -m "Update coverage badge [skip ci]"
+          git push

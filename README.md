@@ -6,9 +6,7 @@
     <a href="https://github.com/gracjankubicki/laravel-architecture-kit/actions/workflows/tests.yml">
         <img src="https://github.com/gracjankubicki/laravel-architecture-kit/actions/workflows/tests.yml/badge.svg?branch=main" alt="Tests">
     </a>
-    <a href="https://codecov.io/gh/gracjankubicki/laravel-architecture-kit">
-        <img src="https://codecov.io/gh/gracjankubicki/laravel-architecture-kit/branch/main/graph/badge.svg" alt="Coverage">
-    </a>
+    <img src="https://raw.githubusercontent.com/gracjankubicki/laravel-architecture-kit/main/art/coverage.svg" alt="Coverage">
     <a href="https://packagist.org/packages/gracjankubicki/laravel-architecture-kit">
         <img src="https://img.shields.io/packagist/v/gracjankubicki/laravel-architecture-kit.svg?style=flat-square" alt="Latest Version on Packagist">
     </a>

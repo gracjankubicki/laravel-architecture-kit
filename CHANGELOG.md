@@ -2,6 +2,13 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.9 - 2026-07-08
+
+### Changed
+
+- Replaced the Codecov README badge with a repository-local coverage badge generated from PHPUnit Clover output.
+- GitHub Actions now updates only `art/coverage.svg` when coverage changes on `main`.
+
 ## v0.1.8 - 2026-07-08
 
 ### Changed
