@@ -68,14 +68,6 @@ final class ArchitectureConfig
         return array_values(array_filter($exclude, 'is_string'));
     }
 
-    /**
-     * @return array<int, class-string>
-     */
-    public function customRules(): array
-    {
-        return $this->customRuleSet()->globalRules();
-    }
-
     public function customRuleSet(): CustomRuleSet
     {
         $config = $this->config();

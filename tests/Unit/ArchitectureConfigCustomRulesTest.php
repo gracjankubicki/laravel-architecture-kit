@@ -103,7 +103,6 @@ PHP);
         $rules = $this->config()->customRuleSet();
 
         $this->assertSame(['App\Architecture\Rules\GlobalProjectRule'], $rules->globalRules());
-        $this->assertSame(['App\Architecture\Rules\GlobalProjectRule'], $this->config()->customRules());
         $this->assertSame([
             'billing-workflows' => ['App\Architecture\BillingWorkflows\Rules\NoInvoiceTransitionInController'],
         ], $rules->scopedRules());

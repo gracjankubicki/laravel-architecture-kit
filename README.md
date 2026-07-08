@@ -335,7 +335,7 @@ return [
 
 Scoped rules run only when their architecture is enabled. The rule class does not need to check `in_array('billing-workflows', $enabled, true)` just to bind itself to that architecture.
 
-Flat rules remain supported for global project checks that are not owned by one architecture. Programmatic callers should use `ArchitectureConfig::customRuleSet()` when scoped rule semantics matter; `ArchitectureConfig::customRules()` is a backward-compatible global-rules accessor and intentionally returns only flat rules.
+Flat rules remain supported for global project checks that are not owned by one architecture. Programmatic callers should use `ArchitectureConfig::customRuleSet()` for all custom audit rule access; it exposes `globalRules()`, `scopedRules()`, `rulesFor($enabled)`, and `knownRuleClasses()`.
 
 ```php
 return [

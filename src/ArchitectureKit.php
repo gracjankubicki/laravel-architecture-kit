@@ -6,5 +6,5 @@ namespace GracjanKubicki\ArchitectureKit;
 
 final class ArchitectureKit
 {
-    public const VERSION = '0.1.4';
+    public const VERSION = '0.1.5';
 }

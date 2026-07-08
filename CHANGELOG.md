@@ -2,6 +2,12 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.5 - 2026-07-08
+
+### Removed
+
+- Removed the `ArchitectureConfig::customRules()` compatibility adapter. Use `ArchitectureConfig::customRuleSet()` for all custom audit rule access.
+
 ## v0.1.4 - 2026-07-08
 
 ### Added
