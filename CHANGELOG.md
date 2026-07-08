@@ -2,6 +2,12 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.8 - 2026-07-08
+
+### Changed
+
+- Codecov upload no longer fails the GitHub Actions run before the repository is activated in Codecov.
+
 ## v0.1.7 - 2026-07-08
 
 ### Fixed
