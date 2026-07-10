@@ -2,6 +2,23 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.1.10 - 2026-07-10
+
+### Changed
+
+- Ports And Adapters now requires a meaningful boundary reason in PHPDoc without imposing an EN/PL format. Projects that require bilingual documentation can enforce it with an architecture-scoped custom audit rule.
+- README and Composer metadata now distinguish generated guidance, deterministic audit rules, and the optional guard gate.
+- CI now uses read-only permissions by default, tests both latest and lowest supported dependencies, and grants write access only to the badge update job after the full test and coverage chain succeeds.
+- MCP configs, agent hook configs, the guard script, and its README are now bootstrapped once and remain developer-owned. Reinstallation and doctor preserve valid customizations instead of repairing them back to package defaults.
+
+### Distribution
+
+- Composer archives exclude repository artwork, the coverage badge generator, the package workbench, tests, plans, review artifacts, dependency installs, IDE metadata, and other development-only files.
+
+### Removed
+
+- Removed the pass-through `architecture-kit:install-hooks` compatibility command. Use `architecture-kit:install-agents --hooks` as the single hook installation interface.
+
 ## v0.1.9 - 2026-07-08
 
 ### Changed

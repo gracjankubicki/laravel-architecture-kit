@@ -44,7 +44,7 @@ final readonly class ApiResourcesRule implements AuditRule
                 $finding['line'],
                 $finding['message'],
             ),
-            $this->forbiddenCallFindings($nodes),
+            $this->forbiddenCallFindings($file, $nodes),
         );
     }
 
@@ -52,7 +52,7 @@ final readonly class ApiResourcesRule implements AuditRule
      * @param  array<int, Node>  $nodes
      * @return array<int, array{line: int, message: string}>
      */
-    private function forbiddenCallFindings(array $nodes): array
+    private function forbiddenCallFindings(FileContext $file, array $nodes): array
     {
         $state = new class
         {
@@ -62,16 +62,21 @@ final readonly class ApiResourcesRule implements AuditRule
             public array $findings = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(
+                private FileContext $file,
+                private object $state,
+            ) {}
 
             public function enterNode(Node $node): null
             {
                 if (
                     $node instanceof StaticCall
+                    && $node->class instanceof Node\Name
                     && $node->name instanceof Node\Identifier
                     && $node->name->toString() === 'query'
+                    && $this->isProjectModel($node->class)
                 ) {
                     $this->state->findings[] = [
                         'line' => $node->getStartLine(),
@@ -85,21 +90,21 @@ final readonly class ApiResourcesRule implements AuditRule
 
                 $method = $node->name->toString();
 
-                if ($method === 'where') {
+                if ($method === 'where' && $this->isModelQueryCall($node->var)) {
                     $this->state->findings[] = [
                         'line' => $node->getStartLine(),
                         'message' => 'API Resources must format loaded data, not build queries.',
                     ];
                 }
 
-                if ($method === 'load') {
+                if ($method === 'load' && $this->isResourceReceiver($node->var)) {
                     $this->state->findings[] = [
                         'line' => $node->getStartLine(),
                         'message' => 'API Resources must not trigger loading.',
                     ];
                 }
 
-                if ($method === 'loadMissing') {
+                if ($method === 'loadMissing' && $this->isResourceReceiver($node->var)) {
                     $this->state->findings[] = [
                         'line' => $node->getStartLine(),
                         'message' => 'API Resources must not trigger lazy loading.',
@@ -107,6 +112,31 @@ final readonly class ApiResourcesRule implements AuditRule
                 }
 
                 return null;
+            }
+
+            private function isProjectModel(Node\Name $name): bool
+            {
+                $class = $this->file->resolvedName($name);
+
+                return str_starts_with($class, 'App\\Models\\');
+            }
+
+            private function isModelQueryCall(Node\Expr $receiver): bool
+            {
+                return $receiver instanceof StaticCall
+                    && $receiver->name instanceof Node\Identifier
+                    && $receiver->name->toString() === 'query'
+                    && $receiver->class instanceof Node\Name
+                    && $this->isProjectModel($receiver->class);
+            }
+
+            private function isResourceReceiver(Node\Expr $receiver): bool
+            {
+                return $receiver instanceof Node\Expr\PropertyFetch
+                    && $receiver->var instanceof Node\Expr\Variable
+                    && $receiver->var->name === 'this'
+                    && $receiver->name instanceof Node\Identifier
+                    && $receiver->name->toString() === 'resource';
             }
         });
 

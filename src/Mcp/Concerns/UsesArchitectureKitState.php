@@ -4,16 +4,13 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Mcp\Concerns;
 
-use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
-use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
-use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
-use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\ProjectState;
 use Illuminate\Filesystem\Filesystem;
 
 trait UsesArchitectureKitState
@@ -28,76 +25,63 @@ trait UsesArchitectureKitState
         return dirname(__DIR__, 3);
     }
 
-    protected function config(): ArchitectureConfig
+    protected function projectState(): ProjectState
     {
-        return new ArchitectureConfig(ArchitectureConfigPath::resolve($this->files(), base_path()), $this->files());
+        return ProjectState::load($this->files(), $this->packagePath(), base_path());
     }
 
-    protected function resources(): ArchitectureResources
-    {
-        return new ArchitectureResources($this->packagePath(), base_path(), $this->files());
-    }
-
-    /**
-     * @return array<int, Architecture|string>
-     */
-    protected function enabled(): array
-    {
-        return $this->config()->read();
-    }
-
-    protected function doctor(): ArchitectureDoctorResult
+    protected function doctor(ProjectState $state): ArchitectureDoctorResult
     {
         return (new ArchitectureDoctor(
-            config: $this->config(),
-            resources: $this->resources(),
+            config: $state->config,
+            resources: $state->resources,
             files: $this->files(),
             basePath: base_path(),
             console: null,
-        ))->run();
+        ))->run(state: $state);
     }
 
-    protected function audit(bool $changedOnly, ?string $baseRef): ApplicationAuditResult
+    protected function audit(ProjectState $state, bool $changedOnly, ?string $baseRef): ApplicationAuditResult
     {
         return (new ApplicationAudit($this->files(), base_path()))->run(
-            enabled: $this->enabled(),
+            enabled: $state->enabled,
             changedOnly: $changedOnly,
             baseRef: $baseRef,
-            exclude: $this->config()->auditExcludes(),
-            customRules: $this->config()->customRuleSet(),
+            exclude: $state->exclude,
+            customRules: $state->customRules,
         );
     }
 
-    protected function guard(bool $changedOnly, ?string $baseRef, bool $strict): ArchitectureGuardResult
+    protected function guard(ProjectState $state, bool $changedOnly, ?string $baseRef, bool $strict): ArchitectureGuardResult
     {
         return (new ArchitectureGuard(
             files: $this->files(),
             packagePath: $this->packagePath(),
             basePath: base_path(),
             console: null,
-        ))->run($changedOnly, $baseRef, $strict);
+        ))->run($changedOnly, $baseRef, $strict, $state);
     }
 
     /**
      * @return array<int, array{value: string, label: string, skill: string, source: string, sum: string, rules: array<int, string>}>
      */
-    protected function architectureSummaries(): array
+    protected function architectureSummaries(ProjectState $state): array
     {
-        $enabled = $this->enabled();
-        $ruleSet = $this->config()->customRuleSet();
+        $enabled = $state->enabled;
+        $ruleSet = $state->customRules;
 
         return array_map(fn ($architecture): array => [
             'value' => $architecture->slug(),
             'label' => $architecture->label(),
             'skill' => $architecture->skillName(),
             'source' => $architecture->sourcePath(),
-            'sum' => $this->resources()->summaryFor($architecture, $enabled),
+            'sum' => $state->resources->summaryFor($architecture, $enabled),
             'rules' => $ruleSet->architectureRuleBasenames($architecture->slug()),
-        ], $this->resources()->ordered($enabled));
+        ], $state->catalog->ordered($enabled));
     }
 
-    protected function guideline(): string
+    protected function guideline(ProjectState $state): string
     {
-        return $this->resources()->fullGuideline($this->enabled());
+        return $state->resources->fullGuideline($state->enabled);
     }
 }

@@ -50,13 +50,6 @@ final readonly class McpWriter
             }
         }
 
-        if ($agents !== []) {
-            $makefile = (new MakefileMcpTargetWriter($this->files, $this->basePath, $this->runtime))->plan();
-            $creates = [...$creates, ...$makefile->creates];
-            $updates = [...$updates, ...$makefile->updates];
-            $blocked = [...$blocked, ...$makefile->blocked];
-        }
-
         return new InstallResult($creates, $updates, $blocked);
     }
 
@@ -65,15 +58,15 @@ final readonly class McpWriter
      */
     public function write(array $agents): void
     {
-        if ($agents !== []) {
-            (new MakefileMcpTargetWriter($this->files, $this->basePath, $this->runtime))->write();
-        }
-
         foreach ($agents as $agent) {
             $path = $this->absolute($agent->mcpConfigPath());
             $contents = $this->render($agent);
 
             if ($contents === null) {
+                continue;
+            }
+
+            if ($this->files->exists($path) && $this->files->get($path) === $contents) {
                 continue;
             }
 
@@ -85,7 +78,8 @@ final readonly class McpWriter
     private function render(Agent&SupportsMcp $agent): ?string
     {
         $path = $this->absolute($agent->mcpConfigPath());
-        $config = $agent->mcpServerConfig('make', [MakefileMcpTargetWriter::TARGET]);
+        $command = $this->runtime->mcpCommand();
+        $config = $agent->mcpServerConfig($command['command'], $command['args']);
         $serverKey = $this->serverKey();
 
         if (str_ends_with($path, '.toml')) {

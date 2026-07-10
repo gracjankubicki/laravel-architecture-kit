@@ -27,9 +27,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }
@@ -191,9 +193,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         // @architecture-kit-ignore thin-controller -- legacy endpoint accepted during migration
         $document->update(['name' => 'changed']);
@@ -224,9 +228,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         // @architecture-kit-ignore thin-controller -- legacy endpoint accepted during migration
         $document->update(['name' => 'changed']);
@@ -283,9 +289,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }
@@ -801,8 +809,8 @@ PHP);
         $this->assertStringContainsString('app/Data/** must contain Data Objects', $output);
         $this->assertStringContainsString('must not extend Eloquent Model', $output);
         $this->assertStringContainsString('must not expose setters', $output);
-        $this->assertStringContainsString('must not orchestrate infrastructure or workflow side effects', $output);
         $this->assertStringContainsString('must not mutate domain state', $output);
+        $this->assertStringContainsString('must not orchestrate infrastructure or workflow side effects', $output);
         $this->assertStringContainsString('must not dispatch workflow side effects', $output);
     }
 
@@ -1080,9 +1088,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }

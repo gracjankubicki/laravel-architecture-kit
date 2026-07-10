@@ -182,7 +182,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
         }
 
         if (! $this->hasBoundaryPhpDoc($interface)) {
-            $findings[] = $this->finding('warn', $file->path, $interface->getStartLine(), 'Port interface must document its boundary reason in bilingual EN/PL PHPDoc.');
+            $findings[] = $this->finding('warn', $file->path, $interface->getStartLine(), 'Port interface must document the real boundary reason in PHPDoc.');
         }
 
         if ($this->hasMirrorImplementation($interface)) {
@@ -206,9 +206,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
     {
         $doc = $interface->getDocComment()?->getText() ?? '';
 
-        return str_contains($doc, 'EN:')
-            && str_contains($doc, 'PL:')
-            && preg_match('/provider|infrastructure|package|legacy|runtime|testability|AI|OCR|SDK|API/i', $doc) === 1;
+        return preg_match('/provider|infrastructure|package|legacy|runtime|testability|AI|OCR|SDK|API/i', $doc) === 1;
     }
 
     private function hasMirrorImplementation(Stmt\Interface_ $interface): bool

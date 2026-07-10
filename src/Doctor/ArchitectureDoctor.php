@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Doctor;
 
+use Composer\InstalledVersions;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
+use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\RuleRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
@@ -15,6 +17,7 @@ use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\SaloonRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\ServicesRequirement;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
+use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
 use Illuminate\Filesystem\Filesystem;
@@ -31,14 +34,14 @@ final readonly class ArchitectureDoctor
         private ?ConsoleApplication $console = null,
     ) {}
 
-    public function run(): ArchitectureDoctorResult
+    public function run(bool $deep = false, ?ProjectState $state = null): ArchitectureDoctorResult
     {
         $checks = [];
         $enabled = [];
 
         try {
-            $enabled = $this->config->read();
-            $runtime = $this->config->runtime();
+            $enabled = $state?->enabled ?? $this->config->read();
+            $runtime = $state?->runtime ?? $this->config->runtime();
             $this->resources->assertSourcesExist($enabled);
             $checks[] = new ArchitectureDoctorCheck('config', 'current', 'config/architectures.php');
         } catch (Throwable $exception) {
@@ -137,11 +140,11 @@ final readonly class ArchitectureDoctor
             $checks[] = $check;
         }
 
-        foreach ($this->customRuleChecks($enabled) as $check) {
+        foreach ($this->customRuleChecks($enabled, $state?->customRules) as $check) {
             $checks[] = $check;
         }
 
-        foreach ($this->baselineChecks($enabled) as $check) {
+        foreach ($this->baselineChecks($enabled, $deep, $state?->exclude, $state?->customRules) as $check) {
             $checks[] = $check;
         }
 
@@ -182,7 +185,7 @@ final readonly class ArchitectureDoctor
 
         $checks = array_merge(
             $checks,
-            (new AgentConfigDoctor($this->files, $this->basePath, $this->console))->checks(),
+            (new AgentConfigDoctor($this->files, $this->basePath, $runtime, $this->console))->checks(),
         );
 
         return new ArchitectureDoctorResult(
@@ -211,7 +214,8 @@ final readonly class ArchitectureDoctor
 
     private function boostInstalled(): bool
     {
-        return $this->console?->has('boost:update') === true;
+        return $this->console?->has('boost:update') === true
+            || class_exists(InstalledVersions::class) && InstalledVersions::isInstalled('laravel/boost');
     }
 
     /**
@@ -294,10 +298,10 @@ final readonly class ArchitectureDoctor
      * @param  array<int, Architecture|string>  $enabled
      * @return array<int, ArchitectureDoctorCheck>
      */
-    private function customRuleChecks(array $enabled): array
+    private function customRuleChecks(array $enabled, ?CustomRuleSet $customRules): array
     {
         try {
-            $ruleSet = $this->config->customRuleSet();
+            $ruleSet = $customRules ?? $this->config->customRuleSet();
             (new RuleRegistry($ruleSet->knownRuleClasses()))->customRules();
 
             return array_map(
@@ -326,21 +330,32 @@ final readonly class ArchitectureDoctor
      * @param  array<int, Architecture|string>  $enabled
      * @return array<int, ArchitectureDoctorCheck>
      */
-    private function baselineChecks(array $enabled): array
+    private function baselineChecks(array $enabled, bool $deep, ?array $exclude, ?CustomRuleSet $customRules): array
     {
         if (! $this->files->exists($this->basePath.'/.architecture-kit/baseline.json')) {
             return [];
         }
 
         try {
+            $baseline = new Baseline($this->files, $this->basePath);
+            $baseline->validate();
+
+            if (! $deep) {
+                return [new ArchitectureDoctorCheck(
+                    area: 'baseline',
+                    status: 'current',
+                    path: '.architecture-kit/baseline.json',
+                )];
+            }
+
             $audit = (new ApplicationAudit($this->files, $this->basePath))->run(
                 enabled: $enabled,
                 changedOnly: false,
-                exclude: $this->config->auditExcludes(),
-                customRules: $this->config->customRuleSet(),
+                exclude: $exclude ?? $this->config->auditExcludes(),
+                customRules: $customRules ?? $this->config->customRuleSet(),
                 useBaseline: false,
             );
-            $orphaned = (new Baseline($this->files, $this->basePath))->orphanedCount($audit->findings);
+            $orphaned = $baseline->orphanedCount($audit->findings);
         } catch (Throwable $exception) {
             return [
                 new ArchitectureDoctorCheck(

@@ -59,4 +59,75 @@ PHP);
 
         $this->assertDoesNotHaveFinding($findings, 'eloquent-lifecycle', 'After-save observers should');
     }
+
+    public function test_it_reports_single_job_dispatch_instead_of_treating_it_as_an_event(): void
+    {
+        $contents = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Observers;
+
+final class DocumentObserver
+{
+    public function updated(Document $document): void
+    {
+        ProcessDocument::dispatch($document);
+    }
+}
+PHP;
+
+        $findings = $this->eloquentLifecycleFindings('app/Observers/DocumentObserver.php', $contents);
+
+        $this->assertHasFinding($findings, 'eloquent-lifecycle', 'warn', $this->lineOf($contents, 'ProcessDocument::dispatch'), 'After-save observers should dispatch one named event');
+    }
+
+    public function test_it_allows_a_single_static_dispatch_of_an_imported_app_event(): void
+    {
+        $findings = $this->eloquentLifecycleFindings('app/Observers/DocumentObserver.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Observers;
+
+use App\Events\DocumentUploaded;
+
+final class DocumentObserver
+{
+    public function updated(Document $document): void
+    {
+        DocumentUploaded::dispatch($document);
+    }
+}
+PHP);
+
+        $this->assertDoesNotHaveFinding($findings, 'eloquent-lifecycle', 'After-save observers should');
+    }
+
+    public function test_it_does_not_treat_an_app_job_ending_in_event_as_an_event(): void
+    {
+        $contents = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Observers;
+
+use App\Jobs\ProcessDocumentEvent;
+
+final class DocumentObserver
+{
+    public function updated(Document $document): void
+    {
+        ProcessDocumentEvent::dispatch($document);
+    }
+}
+PHP;
+
+        $findings = $this->eloquentLifecycleFindings('app/Observers/DocumentObserver.php', $contents);
+
+        $this->assertHasFinding($findings, 'eloquent-lifecycle', 'warn', $this->lineOf($contents, 'ProcessDocumentEvent::dispatch'), 'After-save observers should dispatch one named event');
+    }
 }

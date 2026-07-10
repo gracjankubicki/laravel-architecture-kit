@@ -28,7 +28,7 @@ If the protected boundary, typed payloads, test strategy, and binding/resolution
 1. Check existing Laravel abstractions, project interfaces, service provider bindings, adapters, package contracts, and enabled Architecture Kit patterns.
 2. Name the application capability first.
 3. Add a small Port interface only when a real boundary exists.
-4. Add short bilingual EN/PL PHPDoc to the Port explaining why it exists and which boundary it protects.
+4. Add short PHPDoc to the Port explaining why it exists and which boundary it protects. A project may enforce a bilingual policy through a custom audit rule.
 5. Use project-owned immutable inputs and outputs: Data objects, Value Objects, enums, result objects, or explicit scalars.
 6. Implement the Port with a named Adapter near the provider, SDK, integration, or infrastructure it wraps.
 7. Bind or resolve the Adapter explicitly only when runtime/test wiring needs the abstraction.
@@ -44,7 +44,7 @@ If the protected boundary, typed payloads, test strategy, and binding/resolution
 - Do not create one interface per class by default.
 - A Port is application-owned. It must not expose provider-shaped arrays, SDK classes, HTTP responses, vendor exceptions, or framework request/response types.
 - Name Ports by application capability. Name Adapters by implementation, provider, SDK, or integration.
-- Every Port interface must include bilingual EN/PL PHPDoc explaining why the Port exists and naming the protected boundary.
+- Every Port interface must include PHPDoc explaining why the Port exists and naming the protected boundary. Bilingual wording is a project policy, not a public core rule.
 - When Data Objects are enabled, Port methods must not use raw arrays as boundary payloads.
 - Port boundaries should use immutable inputs and outputs.
 - Adapter classes should be `final readonly` by default.
@@ -72,11 +72,8 @@ Good:
 /**
  * Port boundary for document type detection.
  *
- * EN: Exists to keep document workflows independent from the AI/OCR provider
+ * Exists to keep document workflows independent from the AI/OCR provider
  * and to allow tests to replace provider calls with a fake detector.
- *
- * PL: Istnieje po to, żeby workflow dokumentów był niezależny od providera AI/OCR
- * i żeby testy mogły zastąpić wywołania providera fake detektorem.
  */
 interface DocumentTypeDetector
 {

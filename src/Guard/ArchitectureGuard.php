@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Guard;
 
+use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
+use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Application as ConsoleApplication;
@@ -22,11 +24,19 @@ final readonly class ArchitectureGuard
         private ?ConsoleApplication $console = null,
     ) {}
 
-    public function run(bool $changedOnly, ?string $baseRef, bool $strict): ArchitectureGuardResult
+    public function run(bool $changedOnly, ?string $baseRef, bool $strict, ?ProjectState $state = null): ArchitectureGuardResult
     {
-        $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($this->files, $this->basePath), $this->files);
-        $resources = new ArchitectureResources($this->packagePath, $this->basePath, $this->files);
-        $doctor = (new ArchitectureDoctor($config, $resources, $this->files, $this->basePath, $this->console))->run();
+        try {
+            $state ??= ProjectState::load($this->files, $this->packagePath, $this->basePath);
+            $config = $state->config;
+            $resources = $state->resources;
+        } catch (\Throwable) {
+            $state = null;
+            $catalog = new ArchitectureCatalog($this->files, $this->basePath);
+            $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($this->files, $this->basePath), $this->files, $catalog);
+            $resources = new ArchitectureResources($this->packagePath, $this->basePath, $this->files, $catalog);
+        }
+        $doctor = (new ArchitectureDoctor($config, $resources, $this->files, $this->basePath, $this->console))->run(state: $state);
         $audit = null;
 
         if ($this->auditCanRun($doctor)) {
@@ -34,8 +44,8 @@ final readonly class ArchitectureGuard
                 enabled: $doctor->enabled,
                 changedOnly: $changedOnly,
                 baseRef: $baseRef,
-                exclude: $config->auditExcludes(),
-                customRules: $config->customRuleSet(),
+                exclude: $state?->exclude ?? $config->auditExcludes(),
+                customRules: $state?->customRules ?? $config->customRuleSet(),
             );
         }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Config;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use Illuminate\Filesystem\Filesystem;
@@ -12,10 +13,20 @@ use InvalidArgumentException;
 
 final class ArchitectureConfig
 {
+    private readonly ArchitectureCatalog $catalog;
+
+    /** @var array<string, mixed>|null */
+    private ?array $loadedConfig = null;
+
+    private bool $configLoaded = false;
+
     public function __construct(
         private readonly string $path,
         private readonly Filesystem $files = new Filesystem,
-    ) {}
+        ?ArchitectureCatalog $catalog = null,
+    ) {
+        $this->catalog = $catalog ?? new ArchitectureCatalog($this->files, $this->projectPath());
+    }
 
     /**
      * @return array<int, Architecture|string>
@@ -26,11 +37,7 @@ final class ArchitectureConfig
             return Architecture::defaultSelection();
         }
 
-        $config = require $this->path;
-
-        if (! is_array($config)) {
-            throw new InvalidArgumentException('config/architectures.php must return an array.');
-        }
+        $config = $this->config();
 
         return $this->normalizeConfig($config['enabled'] ?? []);
     }
@@ -44,11 +51,7 @@ final class ArchitectureConfig
             throw new InvalidArgumentException('config/architectures.php does not exist.');
         }
 
-        $config = require $this->path;
-
-        if (! is_array($config)) {
-            throw new InvalidArgumentException('config/architectures.php must return an array.');
-        }
+        $config = $this->config();
 
         return $this->normalizeConfig($config['enabled'] ?? []);
     }
@@ -84,7 +87,7 @@ final class ArchitectureConfig
 
         $ruleSet = CustomRuleSet::fromConfig($rules);
         $enabled = $this->normalizeConfig($config['enabled'] ?? []);
-        $unknown = $ruleSet->unknownScopedSlugs($this->knownArchitectureSlugs($enabled));
+        $unknown = $ruleSet->unknownScopedSlugs($this->catalog->slugs($enabled));
 
         if ($unknown !== []) {
             $slug = $unknown[0];
@@ -118,8 +121,14 @@ final class ArchitectureConfig
      */
     private function config(): array
     {
+        if ($this->configLoaded) {
+            return $this->loadedConfig ?? [];
+        }
+
         if (! $this->files->exists($this->path)) {
-            return [];
+            $this->configLoaded = true;
+
+            return $this->loadedConfig = [];
         }
 
         $config = require $this->path;
@@ -128,7 +137,9 @@ final class ArchitectureConfig
             throw new InvalidArgumentException('config/architectures.php must return an array.');
         }
 
-        return $config;
+        $this->configLoaded = true;
+
+        return $this->loadedConfig = $config;
     }
 
     /**
@@ -140,9 +151,21 @@ final class ArchitectureConfig
             $contents = $this->files->get($this->path);
             $updated = $this->replaceEnabledBlock($contents, $enabled);
 
-            if ($updated !== null) {
-                return $runtime === null ? $updated : $this->replaceOrInsertRuntimeBlock($this->removeTopLevelArrayBlock($updated, 'agents'), $runtime);
+            if ($updated === null) {
+                throw new InvalidArgumentException('Architecture Kit cannot safely update config/architectures.php because its top-level enabled entry is not a short array. Update the file manually, then run the installer again.');
             }
+
+            if ($runtime === null) {
+                return $updated;
+            }
+
+            $updated = $this->replaceOrInsertRuntimeBlock($this->removeTopLevelArrayBlock($updated, 'agents'), $runtime);
+
+            if ($updated === null) {
+                throw new InvalidArgumentException('Architecture Kit cannot safely update config/architectures.php because its top-level runtime entry is not a short array. Update the file manually, then run the installer again.');
+            }
+
+            return $updated;
         }
 
         return $this->renderFresh($enabled, $runtime);
@@ -184,52 +207,39 @@ final class ArchitectureConfig
      */
     private function replaceEnabledBlock(string $contents, array $enabled): ?string
     {
-        $matched = preg_match(
-            '/^(?<indent>\s*)[\'"]enabled[\'"]\s*=>\s*\[\R.*?^\k<indent>\],/ms',
-            $contents,
-            $match,
-            PREG_OFFSET_CAPTURE,
-        );
-
-        if ($matched !== 1) {
-            return $this->replaceEnabledBlockUsingTokens($contents, $enabled);
-        }
-
-        $replacement = $this->renderEnabledBlock($enabled, $match['indent'][0]);
-
-        return substr_replace(
-            $contents,
-            $replacement,
-            $match[0][1],
-            strlen($match[0][0]),
-        );
+        return $this->replaceEnabledBlockUsingTokens($contents, $enabled);
     }
 
     /**
      * @param  array<string, mixed>  $runtime
      */
-    private function replaceOrInsertRuntimeBlock(string $contents, array $runtime): string
+    private function replaceOrInsertRuntimeBlock(string $contents, array $runtime): ?string
     {
         $normalized = (new RuntimeResolver($runtime))->runtime();
-        $replacement = $this->renderRuntimeBlock($normalized, '    ');
+        $range = $this->topLevelArrayBlockRange($contents, 'runtime');
 
-        $matched = preg_match(
-            '/^(?<indent>\s*)[\'"]runtime[\'"]\s*=>\s*\[\R.*?^\k<indent>\],/ms',
-            $contents,
-            $match,
-            PREG_OFFSET_CAPTURE,
-        );
-
-        if ($matched === 1) {
+        if ($range !== null) {
             return substr_replace(
                 $contents,
-                $this->renderRuntimeBlock($normalized, $match['indent'][0]),
-                $match[0][1],
-                strlen($match[0][0]),
+                $this->renderRuntimeBlock($normalized, $this->indentForOffset($contents, $range['start'])),
+                $range['start'],
+                $range['end'] - $range['start'],
             );
         }
 
-        return preg_replace('/^\s*\];\s*$/m', $replacement."\n];", $contents, 1) ?? $contents;
+        if ($this->topLevelKeyExists($contents, 'runtime')) {
+            return null;
+        }
+
+        $returnArrayEnd = $this->returnArrayEndOffset($contents);
+
+        if ($returnArrayEnd === null) {
+            return null;
+        }
+
+        return rtrim(substr($contents, 0, $returnArrayEnd))
+            ."\n".$this->renderRuntimeBlock($normalized, '    ')."\n"
+            .substr($contents, $returnArrayEnd);
     }
 
     private function removeTopLevelArrayBlock(string $contents, string $key): string
@@ -413,6 +423,81 @@ final class ArchitectureConfig
                     $returnArrayDepth = null;
                 }
             }
+        }
+
+        return null;
+    }
+
+    private function topLevelKeyExists(string $contents, string $key): bool
+    {
+        $tokens = $this->tokensWithOffsets($contents);
+        $arrayDepth = 0;
+        $waitingForReturnArray = false;
+        $returnArrayDepth = null;
+
+        foreach ($tokens as $index => $token) {
+            $text = $token['text'];
+
+            if ($token['id'] === T_RETURN) {
+                $waitingForReturnArray = true;
+
+                continue;
+            }
+
+            if ($waitingForReturnArray && ! $this->isIgnorableToken($token)) {
+                $waitingForReturnArray = $text === '[';
+            }
+
+            if (
+                $returnArrayDepth !== null
+                && $arrayDepth === $returnArrayDepth
+                && $this->isStringKeyToken($token, $key)
+                && $this->nextSignificantTokenText($tokens, $index) === '=>'
+            ) {
+                return true;
+            }
+
+            if ($text === '[') {
+                $arrayDepth++;
+
+                if ($waitingForReturnArray) {
+                    $returnArrayDepth = $arrayDepth;
+                    $waitingForReturnArray = false;
+                }
+
+                continue;
+            }
+
+            if ($text === ']') {
+                $arrayDepth--;
+
+                if ($returnArrayDepth !== null && $arrayDepth < $returnArrayDepth) {
+                    $returnArrayDepth = null;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function returnArrayEndOffset(string $contents): ?int
+    {
+        $tokens = $this->tokensWithOffsets($contents);
+
+        foreach ($tokens as $index => $token) {
+            if ($token['id'] !== T_RETURN) {
+                continue;
+            }
+
+            $arrayIndex = $this->nextSignificantTokenIndex($tokens, $index);
+
+            if ($arrayIndex === null || $tokens[$arrayIndex]['text'] !== '[') {
+                continue;
+            }
+
+            $end = $this->matchingShortArrayEnd($tokens, $arrayIndex);
+
+            return $end === null ? null : $end - 1;
         }
 
         return null;
@@ -651,6 +736,8 @@ final class ArchitectureConfig
     {
         $this->files->ensureDirectoryExists(dirname($this->path));
         $this->files->put($this->path, $this->render($enabled, $runtime));
+        $this->loadedConfig = null;
+        $this->configLoaded = false;
     }
 
     /**
@@ -703,15 +790,10 @@ final class ArchitectureConfig
      */
     private function order(array $enabled): array
     {
-        $ordered = array_values(array_filter(
-            Architecture::guidelineOrder(),
-            fn (Architecture $architecture): bool => in_array($architecture, $enabled, true),
-        ));
-
-        $custom = array_values(array_filter($enabled, 'is_string'));
-        sort($custom);
-
-        return array_merge($ordered, $custom);
+        return array_map(
+            fn ($architecture): Architecture|string => $architecture->value,
+            $this->catalog->ordered($enabled),
+        );
     }
 
     private function renderArchitectureEntry(Architecture|string $architecture): string
@@ -732,47 +814,6 @@ final class ArchitectureConfig
         }
 
         return $value;
-    }
-
-    /**
-     * @param  array<int, Architecture|string>  $enabled
-     * @return array<int, string>
-     */
-    private function knownArchitectureSlugs(array $enabled): array
-    {
-        $slugs = array_map(
-            fn (Architecture $architecture): string => $architecture->value,
-            Architecture::cases(),
-        );
-
-        foreach ($enabled as $architecture) {
-            if (is_string($architecture)) {
-                $slugs[] = $architecture;
-            }
-        }
-
-        foreach ($this->customArchitectureSlugs() as $slug) {
-            $slugs[] = $slug;
-        }
-
-        return array_values(array_unique($slugs));
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function customArchitectureSlugs(): array
-    {
-        $path = $this->projectPath().'/.architecture-kit/architectures';
-
-        if (! $this->files->isDirectory($path)) {
-            return [];
-        }
-
-        return array_values(array_filter(
-            array_map('basename', $this->files->directories($path)),
-            fn (string $slug): bool => preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug) === 1,
-        ));
     }
 
     private function projectPath(): string

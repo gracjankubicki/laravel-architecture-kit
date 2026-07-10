@@ -16,15 +16,13 @@ final readonly class TomlConfigWriter
 
     /**
      * @param  array<string, mixed>  $serverConfig
+     * @param  array<int, string>  $existingKeys
      */
-    /**
-     * @param  array<int, string>  $replaceKeys
-     */
-    public function render(string $serverKey, array $serverConfig, array $replaceKeys = []): ?string
+    public function render(string $serverKey, array $serverConfig, array $existingKeys = []): ?string
     {
         $section = $this->buildSection($serverKey, $serverConfig);
 
-        if (! $this->files->exists($this->path) || $this->files->size($this->path) < 3) {
+        if (! $this->files->exists($this->path)) {
             return $section."\n";
         }
 
@@ -34,29 +32,13 @@ final readonly class TomlConfigWriter
             return null;
         }
 
-        $targetKey = $this->firstExistingKey($content, [$serverKey, ...$replaceKeys]);
+        $targetKey = $this->firstExistingKey($content, [$serverKey, ...$existingKeys]);
 
-        if ($targetKey === null) {
-            return rtrim($content)."\n\n".$section."\n";
+        if ($targetKey !== null) {
+            return $content;
         }
 
-        $range = $this->sectionRange($content, $targetKey);
-
-        if ($range === null || ! str_contains($range['contents'], 'architecture-kit')) {
-            return null;
-        }
-
-        $content = substr_replace($content, $section."\n", $range['start'], $range['end'] - $range['start']);
-
-        foreach ($replaceKeys as $replaceKey) {
-            if ($replaceKey !== $targetKey) {
-                $content = $this->removeSection($content, $replaceKey);
-            }
-
-            $content = $this->removeSection($content, $replaceKey.'.env');
-        }
-
-        return rtrim($content)."\n";
+        return rtrim($content)."\n\n".$section."\n";
     }
 
     /**
@@ -95,17 +77,6 @@ final readonly class TomlConfigWriter
             'end' => $end,
             'contents' => substr($content, $start, $end - $start),
         ];
-    }
-
-    private function removeSection(string $content, string $serverKey): string
-    {
-        $range = $this->sectionRange($content, $serverKey);
-
-        if ($range === null) {
-            return $content;
-        }
-
-        return substr_replace($content, '', $range['start'], $range['end'] - $range['start']);
     }
 
     /**

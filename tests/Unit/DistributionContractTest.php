@@ -1,0 +1,85 @@
+<?php
+
+declare(strict_types=1);
+
+namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
+
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Yaml\Yaml;
+
+final class DistributionContractTest extends TestCase
+{
+    public function test_ci_keeps_write_access_out_of_validation_jobs_and_gates_badge_updates(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $contents = file_get_contents($root.'/.github/workflows/tests.yml');
+
+        $this->assertIsString($contents);
+        $this->assertStringNotContainsString('\\${{', $contents);
+
+        $workflow = Yaml::parse($contents);
+
+        $this->assertIsArray($workflow);
+        $this->assertSame(['contents' => 'read'], $workflow['permissions']);
+
+        $jobs = $workflow['jobs'];
+        $this->assertArrayNotHasKey('permissions', $jobs['lint']);
+        $this->assertArrayNotHasKey('permissions', $jobs['tests']);
+        $this->assertArrayNotHasKey('permissions', $jobs['coverage']);
+        $this->assertSame(['lint', 'tests'], $jobs['coverage']['needs']);
+
+        $lowest = array_values(array_filter(
+            $jobs['tests']['strategy']['matrix']['include'],
+            fn (array $entry): bool => ($entry['dependencies'] ?? null) === 'lowest',
+        ));
+
+        $this->assertCount(1, $lowest);
+        $this->assertStringContainsString('--prefer-lowest --prefer-stable', $contents);
+
+        $badge = $jobs['update-coverage-badge'];
+        $this->assertSame(['coverage'], $badge['needs']);
+        $this->assertSame("github.event_name == 'push' && github.ref == 'refs/heads/main'", $badge['if']);
+        $this->assertSame(['contents' => 'write'], $badge['permissions']);
+
+        $writeJobCommands = implode("\n", array_map(
+            fn (array $step): string => (string) ($step['run'] ?? ''),
+            $badge['steps'],
+        ));
+
+        $this->assertStringNotContainsString('composer ', $writeJobCommands);
+        $this->assertStringNotContainsString('phpunit', $writeJobCommands);
+    }
+
+    public function test_public_metadata_and_archive_rules_match_the_product_contract(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $composer = json_decode((string) file_get_contents($root.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $readme = file_get_contents($root.'/README.md');
+        $attributes = file_get_contents($root.'/.gitattributes');
+
+        $this->assertSame(
+            'Laravel architecture guidance, application audit, and guard tooling for AI coding agents.',
+            $composer['description'],
+        );
+        $this->assertIsString($readme);
+        $this->assertStringContainsString('## Capabilities and enforcement', $readme);
+        $this->assertStringContainsString('Guidance is intentionally broader than the rules that can be verified deterministically.', $readme);
+        $this->assertIsString($attributes);
+
+        foreach ([
+            '/.idea',
+            '/art',
+            '/bin/generate-coverage-badge',
+            '/composer.lock',
+            '/docs',
+            '/implementation-plans',
+            '/REPO-REVIEW.md',
+            '/testbench.yaml',
+            '/tests',
+            '/vendor',
+            '/workbench',
+        ] as $developmentPath) {
+            $this->assertStringContainsString($developmentPath.' export-ignore', $attributes);
+        }
+    }
+}

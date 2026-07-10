@@ -22,10 +22,19 @@ use Illuminate\Filesystem\Filesystem;
 
 final readonly class SaloonRule implements AuditRule
 {
+    /** @var array<int, FileCheck> */
+    private array $checks;
+
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {}
+    ) {
+        $paths = new IntegrationPaths;
+        $this->checks = [
+            new RawHttpCheck($paths), new AdapterBoundaryCheck($paths), new IntegrationFolderCheck($paths), new ConnectorCheck($paths),
+            new RequestCheck($paths), new SecurityCheck, new RawSaloonResponseCheck($paths), new IntegrationDtoLeakCheck($paths), new SaloonInsideTransactionCheck,
+        ];
+    }
 
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -42,30 +51,10 @@ final readonly class SaloonRule implements AuditRule
     {
         $findings = [];
 
-        foreach ($this->checks() as $check) {
+        foreach ($this->checks as $check) {
             array_push($findings, ...$check->findings($file));
         }
 
         return $findings;
-    }
-
-    /**
-     * @return array<int, FileCheck>
-     */
-    private function checks(): array
-    {
-        $paths = new IntegrationPaths;
-
-        return [
-            new RawHttpCheck($paths),
-            new AdapterBoundaryCheck($paths),
-            new IntegrationFolderCheck($paths),
-            new ConnectorCheck($paths),
-            new RequestCheck($paths),
-            new SecurityCheck,
-            new RawSaloonResponseCheck($paths),
-            new IntegrationDtoLeakCheck($paths),
-            new SaloonInsideTransactionCheck,
-        ];
     }
 }

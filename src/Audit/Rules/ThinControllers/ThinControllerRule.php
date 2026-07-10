@@ -21,10 +21,17 @@ final readonly class ThinControllerRule implements AuditRule
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
+    public function __construct(
+        private array $enabled,
+    ) {}
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     */
     public function supports(string $path, array $enabled): bool
     {
         return str_starts_with($path, 'app/Http/Controllers/')
-            && in_array(Architecture::Actions, $enabled, true);
+            && in_array(Architecture::ThinControllers, $enabled, true);
     }
 
     /**
@@ -40,26 +47,30 @@ final readonly class ThinControllerRule implements AuditRule
 
         $findings = [];
 
-        foreach ($this->workflowCallLines($nodes) as $call) {
-            $findings[] = $this->finding('error', $file->path, $call['line'], $call['message']);
+        foreach ($this->workflowCallLines($file, $nodes) as $call) {
+            $findings[] = $this->finding('error', $file->path, $call['line'], $call['message'], $call['code'] ?? null);
         }
 
-        foreach ($this->serviceUseLines($nodes) as $line) {
-            $findings[] = $this->finding(
-                'warn',
-                $file->path,
-                $line,
-                'Controller depends on an App\\Services class while Actions are enabled; prefer routing write use cases through an Action.',
-            );
-        }
+        if (in_array(Architecture::Actions, $this->enabled, true)) {
+            foreach ($this->serviceUseLines($nodes) as $line) {
+                $findings[] = $this->finding(
+                    'warn',
+                    $file->path,
+                    $line,
+                    'Controller depends on an App\\Services class while Actions are enabled; prefer routing write use cases through an Action.',
+                    'W_THIN_CONTROLLER_SERVICE_DEPENDENCY',
+                );
+            }
 
-        foreach ($this->serviceInjectionLines($nodes) as $line) {
-            $findings[] = $this->finding(
-                'warn',
-                $file->path,
-                $line,
-                'Controller injects a Service while Actions are enabled; prefer routing write use cases through an Action.',
-            );
+            foreach ($this->serviceInjectionLines($nodes) as $line) {
+                $findings[] = $this->finding(
+                    'warn',
+                    $file->path,
+                    $line,
+                    'Controller injects a Service while Actions are enabled; prefer routing write use cases through an Action.',
+                    'W_THIN_CONTROLLER_SERVICE_DEPENDENCY',
+                );
+            }
         }
 
         return $findings;
@@ -67,9 +78,9 @@ final readonly class ThinControllerRule implements AuditRule
 
     /**
      * @param  array<int, Node>  $nodes
-     * @return array<int, array{line: int, message: string}>
+     * @return array<int, array{line: int, message: string, code?: string}>
      */
-    private function workflowCallLines(array $nodes): array
+    private function workflowCallLines(FileContext $file, array $nodes): array
     {
         $state = new class
         {
@@ -79,12 +90,24 @@ final readonly class ThinControllerRule implements AuditRule
             public array $calls = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            /** @var array<int, array<string, true>> */
+            private array $modelParameterScopes = [];
+
+            public function __construct(
+                private FileContext $file,
+                private object $state,
+            ) {}
 
             public function enterNode(Node $node): null
             {
+                if ($node instanceof Stmt\ClassMethod) {
+                    $this->modelParameterScopes[] = $this->modelParameters($node);
+
+                    return null;
+                }
+
                 if ($node instanceof MethodCall && $node->name instanceof Node\Identifier) {
                     $method = $node->name->toString();
 
@@ -92,51 +115,102 @@ final readonly class ThinControllerRule implements AuditRule
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller performs inline validation; use a FormRequest.',
+                            'code' => 'E_THIN_CONTROLLER_INLINE_VALIDATION',
                         ];
                     }
 
-                    if ($method === 'update') {
+                    if ($method === 'update' && $this->isModelParameter($node->var)) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller mutates a model directly; move the write use case to an Action.',
+                            'code' => 'E_THIN_CONTROLLER_MODEL_WRITE',
                         ];
                     }
 
-                    if ($method === 'delete') {
+                    if ($method === 'delete' && $this->isModelParameter($node->var)) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller deletes a model directly; move the write use case to an Action.',
+                            'code' => 'E_THIN_CONTROLLER_MODEL_WRITE',
                         ];
                     }
                 }
 
                 if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
-                    $class = $node->class instanceof Name ? $node->class->toString() : null;
+                    $class = $node->class instanceof Name ? $this->file->resolvedName($node->class) : null;
                     $method = $node->name->toString();
 
-                    if ($class === 'DB' && $method === 'transaction') {
+                    if ($class === 'Illuminate\\Support\\Facades\\DB' && $method === 'transaction') {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller owns a transaction; move the workflow to an Action.',
+                            'code' => 'E_THIN_CONTROLLER_TRANSACTION',
                         ];
                     }
 
-                    if ($method === 'dispatch') {
+                    if ($method === 'dispatch' && $class !== null && $this->isWorkflowDispatchTarget($class)) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller dispatches work directly; move the workflow to an Action.',
+                            'code' => 'E_THIN_CONTROLLER_DISPATCH',
                         ];
                     }
 
-                    if ($method === 'create') {
+                    if ($method === 'create' && $class !== null && str_starts_with($class, 'App\\Models\\')) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller creates a model directly; move the write use case to an Action.',
+                            'code' => 'E_THIN_CONTROLLER_MODEL_WRITE',
                         ];
                     }
                 }
 
                 return null;
+            }
+
+            public function leaveNode(Node $node): null
+            {
+                if ($node instanceof Stmt\ClassMethod) {
+                    array_pop($this->modelParameterScopes);
+                }
+
+                return null;
+            }
+
+            /** @return array<string, true> */
+            private function modelParameters(Stmt\ClassMethod $method): array
+            {
+                $parameters = [];
+
+                foreach ($method->params as $parameter) {
+                    if (
+                        ! $parameter->type instanceof Name
+                        || ! is_string($parameter->var->name)
+                        || ! str_starts_with($this->file->resolvedName($parameter->type), 'App\\Models\\')
+                    ) {
+                        continue;
+                    }
+
+                    $parameters[$parameter->var->name] = true;
+                }
+
+                return $parameters;
+            }
+
+            private function isModelParameter(Node\Expr $receiver): bool
+            {
+                if (! $receiver instanceof Node\Expr\Variable || ! is_string($receiver->name)) {
+                    return false;
+                }
+
+                $scope = $this->modelParameterScopes[array_key_last($this->modelParameterScopes)] ?? [];
+
+                return isset($scope[$receiver->name]);
+            }
+
+            private function isWorkflowDispatchTarget(string $class): bool
+            {
+                return str_starts_with($class, 'App\\Jobs\\') || str_starts_with($class, 'App\\Events\\');
             }
         });
 
@@ -199,7 +273,7 @@ final readonly class ThinControllerRule implements AuditRule
                 }
 
                 foreach ($this->typeNames($node->type) as $name) {
-                    if (str_ends_with($this->shortTypeName($name), 'Service')) {
+                    if (str_starts_with($name, 'App\\Services\\')) {
                         $this->state->lines[] = $node->getStartLine();
 
                         break;
@@ -222,7 +296,13 @@ final readonly class ThinControllerRule implements AuditRule
                     return [$type];
                 }
 
-                if ($type instanceof Name || $type instanceof Node\Identifier) {
+                if ($type instanceof Name) {
+                    $resolved = $type->getAttribute('resolvedName');
+
+                    return [$resolved instanceof Name ? $resolved->toString() : $type->toString()];
+                }
+
+                if ($type instanceof Node\Identifier) {
                     return [$type->toString()];
                 }
 
@@ -242,20 +322,13 @@ final readonly class ThinControllerRule implements AuditRule
 
                 return [];
             }
-
-            private function shortTypeName(string $name): string
-            {
-                $parts = explode('\\', $name);
-
-                return $parts[count($parts) - 1];
-            }
         });
 
         return $state->lines;
     }
 
-    private function finding(string $severity, string $path, int $line, string $message): AuditFinding
+    private function finding(string $severity, string $path, int $line, string $message, ?string $code = null): AuditFinding
     {
-        return new AuditFinding($severity, 'thin-controller', $path, $line, $message);
+        return new AuditFinding($severity, 'thin-controller', $path, $line, $message, code: $code);
     }
 }

@@ -91,7 +91,7 @@ class GuidelinesCommandTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertSame('Architecture Kit guidelines agent output', $schema['title']);
-        $this->assertCount(3, $schema['oneOf']);
+        $this->assertCount(4, $schema['oneOf']);
     }
 
     public function test_it_fails_when_config_is_missing(): void

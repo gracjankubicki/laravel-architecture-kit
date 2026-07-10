@@ -40,7 +40,7 @@ final readonly class LaravelAiRule implements AuditRule
 
         $findings = [];
 
-        foreach ($this->directAgentPromptLines($nodes) as $line) {
+        foreach ($this->directAgentPromptLines($file, $nodes) as $line) {
             if (! $this->isForbiddenAdapterPath($file->path)) {
                 continue;
             }
@@ -53,7 +53,7 @@ final readonly class LaravelAiRule implements AuditRule
             );
         }
 
-        foreach ($this->directPromptLines($nodes) as $line) {
+        foreach ($this->directPromptLines($file, $nodes) as $line) {
             if (! $this->isForbiddenAdapterPath($file->path)) {
                 continue;
             }
@@ -66,7 +66,7 @@ final readonly class LaravelAiRule implements AuditRule
             );
         }
 
-        foreach ($this->mediaCallLines($nodes) as $line) {
+        foreach ($this->mediaCallLines($file, $nodes) as $line) {
             if ($this->isBoundaryPath($file->path)) {
                 continue;
             }
@@ -152,7 +152,7 @@ final readonly class LaravelAiRule implements AuditRule
      * @param  array<int, Node>  $nodes
      * @return array<int, int>
      */
-    private function directAgentPromptLines(array $nodes): array
+    private function directAgentPromptLines(FileContext $file, array $nodes): array
     {
         $state = new class
         {
@@ -162,9 +162,12 @@ final readonly class LaravelAiRule implements AuditRule
             public array $lines = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(
+                private FileContext $file,
+                private object $state,
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -176,12 +179,20 @@ final readonly class LaravelAiRule implements AuditRule
                     && $node->var->name instanceof Node\Identifier
                     && $node->var->name->toString() === 'make'
                     && $node->var->class instanceof Name
-                    && str_ends_with($this->shortTypeName($node->var->class->toString()), 'Agent')
+                    && $this->isLaravelAiAgent($node->var->class)
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }
 
                 return null;
+            }
+
+            private function isLaravelAiAgent(Name $name): bool
+            {
+                $class = $this->file->resolvedName($name);
+
+                return (str_starts_with($class, 'Laravel\\Ai\\') || str_starts_with($class, 'App\\Ai\\Agents\\'))
+                    && str_ends_with($class, 'Agent');
             }
 
             private function shortTypeName(string $name): string
@@ -199,12 +210,8 @@ final readonly class LaravelAiRule implements AuditRule
      * @param  array<int, Node>  $nodes
      * @return array<int, int>
      */
-    private function directPromptLines(array $nodes): array
+    private function directPromptLines(FileContext $file, array $nodes): array
     {
-        if (! $this->containsLaravelAiReference($nodes)) {
-            return [];
-        }
-
         $state = new class
         {
             /**
@@ -213,16 +220,21 @@ final readonly class LaravelAiRule implements AuditRule
             public array $lines = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(
+                private FileContext $file,
+                private object $state,
+            ) {}
 
             public function enterNode(Node $node): null
             {
                 if (
-                    ($node instanceof MethodCall || $node instanceof StaticCall)
+                    $node instanceof StaticCall
+                    && $node->class instanceof Name
                     && $node->name instanceof Node\Identifier
                     && $node->name->toString() === 'prompt'
+                    && str_starts_with($this->file->resolvedName($node->class), 'Laravel\\Ai\\')
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }
@@ -236,21 +248,9 @@ final readonly class LaravelAiRule implements AuditRule
 
     /**
      * @param  array<int, Node>  $nodes
-     */
-    private function containsLaravelAiReference(array $nodes): bool
-    {
-        return PhpAst::contains(
-            new Stmt\Namespace_(null, $nodes),
-            fn (Node $node): bool => $node instanceof Stmt\UseUse
-                && str_starts_with($node->name->toString(), 'Laravel\\Ai\\')
-        );
-    }
-
-    /**
-     * @param  array<int, Node>  $nodes
      * @return array<int, int>
      */
-    private function mediaCallLines(array $nodes): array
+    private function mediaCallLines(FileContext $file, array $nodes): array
     {
         $state = new class
         {
@@ -260,9 +260,12 @@ final readonly class LaravelAiRule implements AuditRule
             public array $lines = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(
+                private FileContext $file,
+                private object $state,
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -270,24 +273,25 @@ final readonly class LaravelAiRule implements AuditRule
                     return null;
                 }
 
-                $class = $this->shortTypeName($node->class->toString());
+                $class = $this->file->resolvedName($node->class);
                 $method = $node->name->toString();
 
                 if (
-                    in_array($class, ['Embeddings', 'Image', 'Audio', 'Transcription', 'Reranking', 'Files', 'Stores'], true)
+                    in_array($class, [
+                        'Laravel\\Ai\\Embeddings',
+                        'Laravel\\Ai\\Image',
+                        'Laravel\\Ai\\Audio',
+                        'Laravel\\Ai\\Transcription',
+                        'Laravel\\Ai\\Reranking',
+                        'Laravel\\Ai\\Files',
+                        'Laravel\\Ai\\Stores',
+                    ], true)
                     && in_array($method, ['for', 'of', 'fromBase64', 'fromPath', 'fromStorage', 'fromUpload', 'get', 'create', 'delete'], true)
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }
 
                 return null;
-            }
-
-            private function shortTypeName(string $name): string
-            {
-                $parts = explode('\\', $name);
-
-                return $parts[count($parts) - 1];
             }
         });
 

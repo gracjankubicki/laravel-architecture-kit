@@ -59,6 +59,7 @@ final class ApplicationAudit
             : CustomRuleSet::fromGlobal($customRules);
         $customAuditRules = (new RuleRegistry($customRuleSet->rulesFor($enabled)))->customRules();
         $knownRules = $this->knownRules($customRuleSet);
+        $rules = array_merge($this->builtInRules($enabled), $customAuditRules);
 
         foreach ($paths as $path) {
             $contents = $this->files->get($this->absolute($path));
@@ -75,7 +76,7 @@ final class ApplicationAudit
 
             $fileFindings = [];
 
-            foreach (array_merge($this->builtInRules($enabled), $customAuditRules) as $rule) {
+            foreach ($rules as $rule) {
                 if ($rule->supports($path, $enabled)) {
                     array_push($fileFindings, ...$rule->check($file));
                 }
@@ -166,7 +167,7 @@ final class ApplicationAudit
     {
         return [
             new FolderPurityRule($enabled),
-            new ThinControllerRule,
+            new ThinControllerRule($enabled),
             new ServicesRule,
             new ActionsRule,
             new QueryObjectsRule,
@@ -192,30 +193,7 @@ final class ApplicationAudit
      */
     private function knownRules(CustomRuleSet $customRules): array
     {
-        $rules = [
-            'actions',
-            'api-resource',
-            'custom-eloquent-builders',
-            'data-objects',
-            'eloquent-lifecycle',
-            'enums',
-            'folder-purity',
-            'form-request',
-            'invalid-suppression',
-            'laravel-ai',
-            'modern-php-85',
-            'ports-and-adapters',
-            'query-objects',
-            'saloon',
-            'service-locator',
-            'services',
-            'testability',
-            'thin-controller',
-            'transaction-side-effects',
-            'unenabled-pattern',
-            'unparseable-file',
-            'value-objects',
-        ];
+        $rules = FindingCodeRegistry::ruleIds();
 
         foreach ($customRules->knownRuleClasses() as $rule) {
             if (! class_exists($rule)) {
@@ -247,6 +225,7 @@ final class ApplicationAudit
                 line: $finding->line,
                 message: $finding->message,
                 occurrence: $counts[$key],
+                code: $finding->code,
             );
         }, $findings);
     }
@@ -312,6 +291,7 @@ final class ApplicationAudit
             }
 
             $commands[] = 'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB '.escapeshellarg($mergeBase).'...HEAD -- app';
+            $commands[] = 'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB HEAD -- app';
         } else {
             $commands[] = 'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB HEAD -- app';
         }

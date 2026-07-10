@@ -18,6 +18,12 @@ final class InlineIgnores
         $inline = $this->inlineRules($comments);
         $fileRules = $this->fileRules($comments);
         $invalid = $this->invalidFindings($path, $inline, $fileRules, $knownRules);
+        $known = array_fill_keys($knownRules, true);
+        $inline = array_map(
+            fn (array $rules): array => array_values(array_filter($rules, fn (string $rule): bool => isset($known[$rule]))),
+            $inline,
+        );
+        $fileRules = array_values(array_filter($fileRules, fn (string $rule): bool => isset($known[$rule])));
         $suppressed = 0;
         $remaining = [];
 

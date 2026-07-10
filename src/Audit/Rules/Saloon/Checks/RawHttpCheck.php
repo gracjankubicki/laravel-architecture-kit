@@ -15,7 +15,6 @@ use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
-use PhpParser\Node\Stmt;
 use PhpParser\NodeVisitorAbstract;
 
 final readonly class RawHttpCheck implements FileCheck
@@ -36,28 +35,26 @@ final readonly class RawHttpCheck implements FileCheck
 
         $state = new class
         {
-            public bool $importsGuzzleClient = false;
-
             /**
              * @var array<int, AuditFinding>
              */
             public array $findings = [];
         };
 
-        PhpAst::traverse($nodes, new class($file->path, $state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
         {
             public function __construct(
-                private string $path,
+                private FileContext $file,
                 private object $state,
             ) {}
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Stmt\UseUse && $node->name->toString() === 'GuzzleHttp\\Client') {
-                    $this->state->importsGuzzleClient = true;
-                }
-
-                if ($node instanceof StaticCall && $node->class instanceof Name && $node->class->toString() === 'Http') {
+                if (
+                    $node instanceof StaticCall
+                    && $node->class instanceof Name
+                    && $this->file->resolvedClassName($node) === 'Illuminate\\Support\\Facades\\Http'
+                ) {
                     $this->state->findings[] = $this->finding($node, 'Raw Laravel Http:: calls are forbidden when Saloon is enabled; create a Saloon integration under app/Http/Integrations/**.');
                 }
 
@@ -78,7 +75,7 @@ final readonly class RawHttpCheck implements FileCheck
 
             private function finding(Node $node, string $message): AuditFinding
             {
-                return new AuditFinding('error', 'raw-http', $this->path, $node->getStartLine(), $message);
+                return new AuditFinding('error', 'raw-http', $this->file->path, $node->getStartLine(), $message);
             }
 
             private function isDirectGuzzleClient(Node $node): bool
@@ -87,10 +84,9 @@ final readonly class RawHttpCheck implements FileCheck
                     return false;
                 }
 
-                $class = $node->class->toString();
+                $class = $this->file->resolvedName($node->class);
 
-                return $class === 'GuzzleHttp\\Client'
-                    || ($class === 'Client' && $this->state->importsGuzzleClient);
+                return $class === 'GuzzleHttp\\Client';
             }
 
             private function isOutboundFileGetContents(Node $node): bool

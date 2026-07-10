@@ -152,10 +152,19 @@ final readonly class LifecycleAst
             return true;
         }
 
-        return $expr instanceof StaticCall
-            && $expr->class instanceof Name
-            && $expr->name instanceof Node\Identifier
-            && $expr->name->toString() === 'dispatch';
+        if (
+            ! $expr instanceof StaticCall
+            || ! $expr->class instanceof Name
+            || ! $expr->name instanceof Node\Identifier
+            || $expr->name->toString() !== 'dispatch'
+        ) {
+            return false;
+        }
+
+        $resolved = $expr->class->getAttribute('resolvedName');
+        $class = $resolved instanceof Name ? $resolved->toString() : $expr->class->toString();
+
+        return str_starts_with($class, 'App\\Events\\');
     }
 
     public function isTechnicalLifecycleCondition(Node $condition): bool

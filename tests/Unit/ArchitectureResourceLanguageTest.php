@@ -25,10 +25,6 @@ class ArchitectureResourceLanguageTest extends TestCase
 
             $this->assertIsString($contents);
 
-            if (str_contains($file->getPathname(), '/ports-and-adapters/')) {
-                continue;
-            }
-
             $this->assertStringNotContainsString('PL:', $contents, $file->getPathname());
             $this->assertStringNotContainsString('Reguły PL:', $contents, $file->getPathname());
             $this->assertDoesNotMatchRegularExpression('/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/u', $contents, $file->getPathname());

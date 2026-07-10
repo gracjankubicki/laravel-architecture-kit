@@ -189,17 +189,14 @@ class InstallCommandTest extends TestCase
         $files = new Filesystem;
         $codexMcp = $files->get($this->tempPath.'/.codex/config.toml');
         $claudeMcp = $files->get($this->tempPath.'/.mcp.json');
-        $makefile = $files->get($this->tempPath.'/Makefile');
 
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-actions/SKILL.md');
         $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $codexMcp);
-        $this->assertStringContainsString('command = "make"', $codexMcp);
-        $this->assertStringContainsString('args = ["mcp-architecture-kit"]', $codexMcp);
+        $this->assertStringContainsString('command = "php"', $codexMcp);
+        $this->assertStringContainsString('args = ["artisan", "architecture-kit:mcp"]', $codexMcp);
         $this->assertStringContainsString('"'.$this->mcpServerKey().'"', $claudeMcp);
-        $this->assertStringContainsString('"command": "make"', $claudeMcp);
-        $this->assertStringContainsString('"mcp-architecture-kit"', $claudeMcp);
-        $this->assertStringContainsString('mcp-architecture-kit:', $makefile);
-        $this->assertStringContainsString("'php' 'artisan' 'architecture-kit:mcp'", $makefile);
+        $this->assertStringContainsString('"command": "php"', $claudeMcp);
+        $this->assertStringContainsString('"architecture-kit:mcp"', $claudeMcp);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $files->get($this->tempPath.'/.codex/hooks.json'));
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh claude', $files->get($this->tempPath.'/.claude/settings.json'));
         $this->assertStringContainsString('"claude_code"', $files->get($this->tempPath.'/.architecture-kit/install.json'));
@@ -237,15 +234,13 @@ YAML);
 
         $config = $files->get($this->tempPath.'/config/architectures.php');
         $codexMcp = $files->get($this->tempPath.'/.codex/config.toml');
-        $makefile = $files->get($this->tempPath.'/Makefile');
         $guard = $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh');
 
         $this->assertStringContainsString("'driver' => 'docker'", $config);
         $this->assertStringContainsString("'service' => 'api'", $config);
         $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $codexMcp);
-        $this->assertStringContainsString('command = "make"', $codexMcp);
-        $this->assertStringContainsString('args = ["mcp-architecture-kit"]', $codexMcp);
-        $this->assertStringContainsString("'docker' 'compose' 'exec' '-T' 'api' 'php' 'artisan' 'architecture-kit:mcp'", $makefile);
+        $this->assertStringContainsString('command = "docker"', $codexMcp);
+        $this->assertStringContainsString('"architecture-kit:mcp"', $codexMcp);
         $this->assertStringContainsString("RUNNER=('docker' 'compose' 'exec' '-T' 'api' 'php')", $guard);
         $this->assertStringContainsString('architecture-kit: runtime unavailable', $guard);
     }
@@ -391,19 +386,19 @@ MARKDOWN);
         $this->assertStringContainsString('name: architecture-kit-billing-workflows', $skill);
     }
 
-    public function test_it_blocks_custom_project_architecture_without_guideline_source(): void
+    public function test_it_does_not_discover_custom_project_architecture_without_guideline_source(): void
     {
         $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/billing-workflows');
 
-        $options = array_merge(Architecture::promptOptions(), [
-            'billing-workflows' => 'Billing Workflows (custom)',
-        ]);
-
         $this->artisan('architecture-kit:install')
-            ->expectsChoice('Which architecture patterns does this project use?', ['billing-workflows'], $options)
-            ->expectsOutputToContain('Missing Architecture Kit source resource: '.$this->tempPath.'/.architecture-kit/architectures/billing-workflows/guideline.md')
-            ->assertExitCode(1);
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $this->assertStringNotContainsString('billing-workflows', $files->get($this->tempPath.'/config/architectures.php'));
     }
 
     public function test_it_blocks_unmanaged_generated_targets_before_writing_config(): void
@@ -439,6 +434,95 @@ MARKDOWN);
             ->assertExitCode(1);
 
         $this->assertSame('manual skill', $files->get($this->tempPath.'/.ai/skills/architecture-kit-actions/SKILL.md'));
+    }
+
+    public function test_it_updates_only_the_top_level_enabled_block_and_preserves_project_configuration(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+
+return [
+    'metadata' => [
+        'enabled' => [Architecture::Enums],
+    ],
+    // Keep this project setting.
+    'enabled' => [Architecture::Actions],
+    'audit' => ['exclude' => ['app/Legacy/*']],
+    'rules' => [App\Architecture\Rules\NoLegacyWrites::class],
+];
+PHP);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions', 'api-resources'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $config = $files->get($this->tempPath.'/config/architectures.php');
+
+        $this->assertStringContainsString("'metadata' => [", $config);
+        $this->assertStringContainsString('Architecture::Enums', $config);
+        $this->assertStringContainsString('// Keep this project setting.', $config);
+        $this->assertStringContainsString("'audit' => ['exclude' => ['app/Legacy/*']]", $config);
+        $this->assertStringContainsString('App\\Architecture\\Rules\\NoLegacyWrites::class', $config);
+        $this->assertStringContainsString('Architecture::ApiResources', $config);
+    }
+
+    public function test_it_blocks_dynamic_enabled_config_without_changing_it(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $path = $this->tempPath.'/config/architectures.php';
+        $contents = <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+
+return [
+    'enabled' => array_filter([Architecture::Actions]),
+    'audit' => ['exclude' => ['app/Legacy/*']],
+];
+PHP;
+        $files->put($path, $contents);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsOutputToContain('Architecture Kit cannot safely update config/architectures.php because its top-level enabled entry is not a short array.')
+            ->assertExitCode(1);
+
+        $this->assertSame($contents, $files->get($path));
+    }
+
+    public function test_it_blocks_dynamic_runtime_config_without_changing_it(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $path = $this->tempPath.'/config/architectures.php';
+        $contents = <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+
+return [
+    'enabled' => [Architecture::Actions],
+    'runtime' => array_filter(['driver' => 'local', 'php' => 'php']),
+];
+PHP;
+        $files->put($path, $contents);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsOutputToContain('Architecture Kit cannot safely update config/architectures.php because its top-level runtime entry is not a short array.')
+            ->assertExitCode(1);
+
+        $this->assertSame($contents, $files->get($path));
     }
 
     public function test_it_requires_at_least_one_architecture(): void
@@ -648,12 +732,11 @@ MARKDOWN);
         $this->artisan('architecture-kit:install')
             ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
             ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
-            ->expectsOutputToContain('Saloon is enabled, but required Saloon packages are missing.')
-            ->expectsOutputToContain('composer require saloonphp/saloon:^4.0 saloonphp/laravel-plugin:^4.0 saloonphp/rate-limit-plugin:^2.5')
-            ->expectsOutputToContain('Required Saloon packages installed.')
             ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
             ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsOutputToContain('require  composer saloonphp/saloon:^4.0 saloonphp/laravel-plugin:^4.0 saloonphp/rate-limit-plugin:^2.5 --no-interaction --no-progress')
             ->expectsConfirmation('Continue?', 'yes')
+            ->expectsOutputToContain('Required Saloon packages installed.')
             ->assertExitCode(0);
 
         $this->assertSame([[
@@ -665,6 +748,98 @@ MARKDOWN);
             'workingDirectory' => $this->tempPath,
         ]], $composer->calls);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
+    }
+
+    public function test_it_does_not_install_saloon_packages_when_final_confirmation_is_declined(): void
+    {
+        $files = new Filesystem;
+        $composerJson = json_encode(['require' => ['php' => '^8.2']], JSON_PRETTY_PRINT);
+        $composerLock = '{"content-hash":"original"}';
+        $files->put($this->tempPath.'/composer.json', $composerJson);
+        $files->put($this->tempPath.'/composer.lock', $composerLock);
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
+
+        $composer = new FakeComposerPackageInstaller;
+        $this->app->instance(ComposerPackageInstaller::class, $composer);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
+            ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'no')
+            ->assertExitCode(0);
+
+        $this->assertSame([], $composer->calls);
+        $this->assertSame($composerJson, $files->get($this->tempPath.'/composer.json'));
+        $this->assertSame($composerLock, $files->get($this->tempPath.'/composer.lock'));
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
+    }
+
+    public function test_it_does_not_install_saloon_packages_when_a_generated_target_is_blocked(): void
+    {
+        $files = new Filesystem;
+        $composerJson = json_encode(['require' => ['php' => '^8.2']], JSON_PRETTY_PRINT);
+        $composerLock = '{"content-hash":"original"}';
+        $files->put($this->tempPath.'/composer.json', $composerJson);
+        $files->put($this->tempPath.'/composer.lock', $composerLock);
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
+        $files->ensureDirectoryExists($this->tempPath.'/.ai/guidelines');
+        $files->put($this->tempPath.'/.ai/guidelines/architecture-kit.md', 'manual guideline');
+
+        $composer = new FakeComposerPackageInstaller;
+        $this->app->instance(ComposerPackageInstaller::class, $composer);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
+            ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsOutputToContain('blocked  .ai/guidelines/architecture-kit.md')
+            ->assertExitCode(1);
+
+        $this->assertSame([], $composer->calls);
+        $this->assertSame($composerJson, $files->get($this->tempPath.'/composer.json'));
+        $this->assertSame($composerLock, $files->get($this->tempPath.'/composer.lock'));
+    }
+
+    public function test_it_does_not_install_saloon_packages_when_an_agent_target_is_blocked(): void
+    {
+        $files = new Filesystem;
+        $composerJson = json_encode(['require' => ['php' => '^8.2']], JSON_PRETTY_PRINT);
+        $composerLock = '{"content-hash":"original"}';
+        $files->put($this->tempPath.'/composer.json', $composerJson);
+        $files->put($this->tempPath.'/composer.lock', $composerLock);
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::Saloon]));
+        $files->ensureDirectoryExists($this->tempPath.'/.codex');
+        $files->put($this->tempPath.'/.codex/hooks.json', '{broken');
+
+        $composer = new FakeComposerPackageInstaller;
+        $this->app->instance(ComposerPackageInstaller::class, $composer);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
+            ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'yes')
+            ->expectsChoice('Which AI agents should Architecture Kit configure?', ['codex'], [
+                'codex' => 'Codex',
+                'claude_code' => 'Claude Code',
+            ])
+            ->expectsChoice('Which agent integrations should Architecture Kit install?', ['mcp', 'hooks'], [
+                'mcp' => 'MCP server config',
+                'hooks' => 'Guard hooks',
+            ])
+            ->expectsOutputToContain('blocked  .codex/hooks.json')
+            ->assertExitCode(1);
+
+        $this->assertSame([], $composer->calls);
+        $this->assertSame($composerJson, $files->get($this->tempPath.'/composer.json'));
+        $this->assertSame($composerLock, $files->get($this->tempPath.'/composer.lock'));
+        $this->assertFileDoesNotExist($this->tempPath.'/.architecture-kit/install.json');
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
     }
 
     public function test_it_fails_when_composer_cannot_install_missing_saloon_packages(): void
@@ -684,6 +859,9 @@ MARKDOWN);
         $this->artisan('architecture-kit:install')
             ->expectsChoice('Which architecture patterns does this project use?', ['saloon'], Architecture::promptOptions())
             ->expectsConfirmation('Continue with Saloon without Actions?', 'yes')
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
             ->expectsOutputToContain('Composer could not install required Saloon packages.')
             ->expectsOutputToContain('dependency conflict')
             ->assertExitCode(1);

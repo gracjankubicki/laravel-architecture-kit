@@ -24,7 +24,7 @@ class InstallAgentsCommand extends Command
         {--mcp : Install MCP configuration}
         {--hooks : Install hook configuration}';
 
-    protected $description = 'Install or repair Architecture Kit MCP and hook configuration for AI coding agents.';
+    protected $description = 'Bootstrap Architecture Kit MCP and hook configuration for AI coding agents.';
 
     public function handle(Filesystem $files): int
     {
@@ -45,7 +45,7 @@ class InstallAgentsCommand extends Command
         $plan = $installer->plan($agents, $features['mcp'], $features['hooks']);
 
         if ($this->blocked($plan) !== []) {
-            $this->error('Architecture Kit cannot install agent integration because invalid or incompatible files block generated targets.');
+            $this->error('Architecture Kit cannot bootstrap agent integration because invalid or incompatible files block target configuration.');
             $this->newLine();
 
             foreach ($this->blocked($plan) as $path) {
@@ -72,7 +72,7 @@ class InstallAgentsCommand extends Command
 
         $installer->write($agents, $features['mcp'], $features['hooks']);
 
-        $this->info('Architecture Kit agent integration installed.');
+        $this->info('Architecture Kit agent integration bootstrapped.');
 
         return self::SUCCESS;
     }

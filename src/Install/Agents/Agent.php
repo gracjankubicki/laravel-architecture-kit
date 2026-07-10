@@ -42,16 +42,6 @@ abstract class Agent
         return false;
     }
 
-    public function getPhpPath(): string
-    {
-        return 'php';
-    }
-
-    public function getArtisanPath(): string
-    {
-        return 'artisan';
-    }
-
     /**
      * @param  array<int, string>  $args
      * @return array{command: string, args: array<int, string>}
