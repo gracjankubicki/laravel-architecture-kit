@@ -2,7 +2,7 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
-## Unreleased
+## v0.1.10 - 2026-07-10
 
 ### Changed
 
