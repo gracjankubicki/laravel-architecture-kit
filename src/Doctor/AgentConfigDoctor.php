@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Doctor;
 
+use GracjanKubicki\ArchitectureKit\Install\AgentInstaller;
 use GracjanKubicki\ArchitectureKit\Install\AgentsDetector;
+use GracjanKubicki\ArchitectureKit\Install\InstallResult;
 use GracjanKubicki\ArchitectureKit\Install\InstallState;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Facades\Mcp;
@@ -15,6 +17,7 @@ final readonly class AgentConfigDoctor
     public function __construct(
         private Filesystem $files,
         private string $basePath,
+        private array $runtime,
         private ?ConsoleApplication $console = null,
     ) {}
 
@@ -62,6 +65,40 @@ final readonly class AgentConfigDoctor
 
                 continue;
             }
+        }
+
+        $plan = (new AgentInstaller($this->files, $this->basePath, $this->runtime))->plan(
+            $detector->resolve($stored['agents']),
+            $stored['install']['mcp'],
+            $stored['install']['hooks'],
+        );
+
+        foreach ($plan as $result) {
+            foreach ($this->planChecks($result) as $check) {
+                $checks[] = $check;
+            }
+        }
+
+        return $checks;
+    }
+
+    /**
+     * @return array<int, ArchitectureDoctorCheck>
+     */
+    private function planChecks(InstallResult $result): array
+    {
+        $checks = [];
+
+        foreach ($result->creates as $path) {
+            $checks[] = new ArchitectureDoctorCheck('agents', 'missing', $path);
+        }
+
+        foreach ($result->updates as $path) {
+            $checks[] = new ArchitectureDoctorCheck('agents', 'outdated', $path);
+        }
+
+        foreach ($result->blocked as $path) {
+            $checks[] = new ArchitectureDoctorCheck('agents', 'blocked', $path);
         }
 
         return $checks;

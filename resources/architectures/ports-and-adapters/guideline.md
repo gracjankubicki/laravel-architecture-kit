@@ -19,7 +19,7 @@ Rules:
 - A Port is an application-owned contract. It describes what the application needs, not provider-specific request arrays, SDK classes, HTTP responses, or vendor exceptions.
 - Name Ports by application capability, not vendors or technologies.
 - Name Adapters by the provider, implementation, SDK, or integration they wrap.
-- Every Port interface must include short bilingual EN/PL PHPDoc that explains why the Port exists and names the protected boundary.
+- Every Port interface must include short PHPDoc that explains why the Port exists and names the protected boundary. A project may add a bilingual policy as a custom audit rule.
 - Port boundaries should use immutable inputs and outputs: readonly Data objects, Value Objects, enums, result objects, or explicit scalars.
 - When Data Objects are enabled, Port methods must not use raw arrays as boundary payloads.
 - Adapters translate provider-specific APIs, SDKs, payloads, exceptions, and response shapes into project-owned Data objects, Value Objects, enums, results, or domain exceptions.
@@ -65,11 +65,8 @@ Good example:
 /**
  * Port boundary for document type detection.
  *
- * EN: Exists to keep document workflows independent from the AI/OCR provider
+ * Exists to keep document workflows independent from the AI/OCR provider
  * and to allow tests to replace provider calls with a fake detector.
- *
- * PL: Istnieje po to, żeby workflow dokumentów był niezależny od providera AI/OCR
- * i żeby testy mogły zastąpić wywołania providera fake detektorem.
  */
 interface DocumentTypeDetector
 {

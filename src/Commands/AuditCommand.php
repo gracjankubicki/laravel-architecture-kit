@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
-use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
-use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\ProjectState;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -37,12 +36,8 @@ class AuditCommand extends Command
             return self::SUCCESS;
         }
 
-        $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($files, base_path()), $files);
-
         try {
-            $enabled = $config->read();
-            $exclude = $config->auditExcludes();
-            $customRules = $config->customRuleSet();
+            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
                 $this->line($this->json($agent->error('audit', $exception->getMessage())));
@@ -58,11 +53,11 @@ class AuditCommand extends Command
         $audit = new ApplicationAudit($files, base_path());
         try {
             $result = $audit->run(
-                enabled: $enabled,
+                enabled: $state->enabled,
                 changedOnly: (bool) $this->option('changed'),
                 baseRef: $this->option('base') !== null ? (string) $this->option('base') : null,
-                exclude: $exclude,
-                customRules: $customRules,
+                exclude: $state->exclude,
+                customRules: $state->customRules,
                 useBaseline: ! (bool) $this->option('no-baseline'),
                 updateBaseline: (bool) $this->option('update-baseline'),
             );

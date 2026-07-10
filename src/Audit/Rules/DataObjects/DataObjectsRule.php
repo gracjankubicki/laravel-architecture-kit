@@ -42,7 +42,9 @@ final readonly class DataObjectsRule implements AuditRule
         $findings = [];
         $class = $this->firstClass($nodes);
 
-        if ($class instanceof Stmt\Class_ && $this->classExtendsAny($class, ['Model'])) {
+        $isEloquentModel = $class instanceof Stmt\Class_ && $this->classExtendsEloquentModel($file, $class);
+
+        if ($isEloquentModel) {
             $findings[] = $this->finding('error', $file->path, $class->getStartLine(), 'Data Objects must not extend Eloquent Model.');
         }
 
@@ -50,7 +52,7 @@ final readonly class DataObjectsRule implements AuditRule
             $findings[] = $this->finding('error', $file->path, $line, 'Data Objects must not expose setters.');
         }
 
-        foreach ($this->workflowCallLines($nodes) as $call) {
+        foreach ($this->workflowCallLines($file, $nodes, $isEloquentModel) as $call) {
             $findings[] = $this->finding('error', $file->path, $call['line'], $call['message']);
         }
 
@@ -79,24 +81,16 @@ final readonly class DataObjectsRule implements AuditRule
         return null;
     }
 
-    /**
-     * @param  array<int, string>  $expected
-     */
-    private function classExtendsAny(Stmt\Class_ $class, array $expected): bool
+    private function classExtendsEloquentModel(FileContext $file, Stmt\Class_ $class): bool
     {
         if (! $class->extends instanceof Name) {
             return false;
         }
 
-        $extends = $class->extends->toString();
+        $extends = $file->resolvedName($class->extends);
 
-        foreach ($expected as $name) {
-            if ($extends === $name || str_ends_with($extends, '\\'.$name)) {
-                return true;
-            }
-        }
-
-        return false;
+        return $extends === 'Illuminate\\Database\\Eloquent\\Model'
+            || str_starts_with($extends, 'App\\Models\\');
     }
 
     /**
@@ -138,7 +132,7 @@ final readonly class DataObjectsRule implements AuditRule
      * @param  array<int, Node>  $nodes
      * @return array<int, array{line: int, message: string}>
      */
-    private function workflowCallLines(array $nodes): array
+    private function workflowCallLines(FileContext $file, array $nodes, bool $isEloquentModel): array
     {
         $state = new class
         {
@@ -148,9 +142,13 @@ final readonly class DataObjectsRule implements AuditRule
             public array $calls = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $state, $isEloquentModel) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(
+                private FileContext $file,
+                private object $state,
+                private bool $isEloquentModel,
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -162,24 +160,38 @@ final readonly class DataObjectsRule implements AuditRule
                 }
 
                 if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
-                    $class = $node->class instanceof Name ? $node->class->toString() : null;
+                    $class = $node->class instanceof Name ? $this->file->resolvedName($node->class) : null;
                     $method = $node->name->toString();
 
-                    if (in_array($class, ['DB', 'Http', 'Mail', 'Notification', 'Bus', 'Event'], true)) {
+                    if (in_array($class, [
+                        'Illuminate\\Support\\Facades\\DB',
+                        'Illuminate\\Support\\Facades\\Http',
+                        'Illuminate\\Support\\Facades\\Mail',
+                        'Illuminate\\Support\\Facades\\Notification',
+                        'Illuminate\\Support\\Facades\\Bus',
+                        'Illuminate\\Support\\Facades\\Event',
+                    ], true)) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Data Objects must not orchestrate infrastructure or workflow side effects.',
                         ];
                     }
 
-                    if ($method === 'dispatch') {
+                    if (
+                        $method === 'dispatch'
+                        && str_starts_with($this->file->resolvedClassName($node) ?? '', 'App\\Events\\')
+                    ) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Data Objects must not dispatch workflow side effects.',
                         ];
                     }
 
-                    if (in_array($method, ['create', 'update', 'delete', 'forceDelete', 'restore', 'insert', 'upsert'], true)) {
+                    if (
+                        $class !== null
+                        && str_starts_with($this->file->resolvedClassName($node) ?? '', 'App\\Models\\')
+                        && in_array($method, ['create', 'update', 'delete', 'forceDelete', 'restore', 'insert', 'upsert'], true)
+                    ) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Data Objects must not mutate domain state.',
@@ -190,6 +202,7 @@ final readonly class DataObjectsRule implements AuditRule
                 if (
                     $node instanceof MethodCall
                     && $node->name instanceof Node\Identifier
+                    && $this->isEloquentModel
                     && in_array($node->name->toString(), ['create', 'update', 'delete', 'forceDelete', 'restore', 'save', 'insert', 'upsert'], true)
                 ) {
                     $this->state->calls[] = [

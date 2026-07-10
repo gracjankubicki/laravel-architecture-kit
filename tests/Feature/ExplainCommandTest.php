@@ -47,6 +47,6 @@ class ExplainCommandTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertSame('Architecture Kit explain agent output', $payload['title']);
-        $this->assertSame('explain', $payload['properties']['cmd']['const']);
+        $this->assertSame('explain', $payload['oneOf'][0]['properties']['cmd']['const']);
     }
 }

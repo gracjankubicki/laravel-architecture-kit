@@ -1,6 +1,6 @@
 {
     "name": "gracjankubicki/laravel-architecture-kit",
-    "description": "Opinionated Laravel architecture guidance and Boost resources for AI coding agents.",
+    "description": "Laravel architecture guidance, application audit, and guard tooling for AI coding agents.",
     "type": "library",
     "license": "MIT",
     "keywords": [

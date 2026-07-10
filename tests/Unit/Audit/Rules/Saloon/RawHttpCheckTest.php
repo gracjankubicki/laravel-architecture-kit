@@ -18,12 +18,14 @@ declare(strict_types=1);
 namespace App\Actions;
 
 use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Http as ClientHttp;
 
 final class SyncDocument
 {
     public function handle(): void
     {
-        Http::get('https://example.test');
+        ClientHttp::get('https://example.test');
+        \Illuminate\Support\Facades\Http::post('https://example.test');
         new Client();
         curl_init('https://example.test');
         file_get_contents('https://example.test');
@@ -33,7 +35,8 @@ PHP;
 
         $findings = $this->saloonFindings('app/Actions/SyncDocument.php', $contents);
 
-        $this->assertHasFinding($findings, 'raw-http', 'error', $this->lineOf($contents, 'Http::get'), 'Raw Laravel Http:: calls are forbidden');
+        $this->assertHasFinding($findings, 'raw-http', 'error', $this->lineOf($contents, 'ClientHttp::get'), 'Raw Laravel Http:: calls are forbidden');
+        $this->assertHasFinding($findings, 'raw-http', 'error', $this->lineOf($contents, 'Facades\Http::post'), 'Raw Laravel Http:: calls are forbidden');
         $this->assertHasFinding($findings, 'raw-http', 'error', $this->lineOf($contents, 'new Client'), 'Direct Guzzle clients are forbidden');
         $this->assertHasFinding($findings, 'raw-http', 'error', $this->lineOf($contents, 'curl_init'), 'curl_* calls are forbidden');
         $this->assertHasFinding($findings, 'raw-http', 'error', $this->lineOf($contents, 'file_get_contents'), 'Outbound file_get_contents(http...) is forbidden');

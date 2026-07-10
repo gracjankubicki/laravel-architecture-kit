@@ -21,9 +21,11 @@ class ArchitectureRules extends Tool
 
     public function handle(): ResponseFactory
     {
+        $state = $this->projectState();
+
         return Response::structured([
-            'guideline' => $this->guideline(),
-            'architectures' => $this->architectureSummaries(),
+            'guideline' => $this->guideline($state),
+            'architectures' => $this->architectureSummaries($state),
         ]);
     }
 }

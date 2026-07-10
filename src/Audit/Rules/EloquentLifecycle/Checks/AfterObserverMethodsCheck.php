@@ -78,6 +78,14 @@ final readonly class AfterObserverMethodsCheck implements FileCheck
                     $this->state->findings[] = $this->finding($node, 'After-save observers should not dispatch jobs directly; dispatch one named event and let listeners own async work.');
                 }
 
+                if (
+                    $node instanceof StaticCall
+                    && $node->name instanceof Node\Identifier
+                    && $node->name->toString() === 'dispatch'
+                ) {
+                    $this->state->findings[] = $this->finding($node, 'After-save observers should dispatch one named event; do not dispatch jobs directly from the observer.');
+                }
+
                 if ($this->isModelWriteCall($node)) {
                     $this->state->findings[] = $this->finding($node, 'After-save observers should not write models directly; move reactions to named listeners or Actions.');
                 }

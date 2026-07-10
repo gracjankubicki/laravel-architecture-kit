@@ -21,8 +21,10 @@ class EnabledArchitectures extends Tool
 
     public function handle(): ResponseFactory
     {
+        $state = $this->projectState();
+
         return Response::structured([
-            'architectures' => $this->architectureSummaries(),
+            'architectures' => $this->architectureSummaries($state),
         ]);
     }
 }

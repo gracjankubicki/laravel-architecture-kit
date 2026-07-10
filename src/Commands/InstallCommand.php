@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Install\AgentInstaller;
 use GracjanKubicki\ArchitectureKit\Install\Agents\Agent;
@@ -35,8 +36,9 @@ class InstallCommand extends Command
 
     public function handle(Filesystem $files, ComposerPackageInstaller $composer): int
     {
-        $config = new ArchitectureConfig(config_path('architectures.php'), $files);
-        $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files);
+        $catalog = new ArchitectureCatalog($files, base_path());
+        $config = new ArchitectureConfig(config_path('architectures.php'), $files, $catalog);
+        $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files, $catalog);
 
         try {
             $current = $config->readOrDefault();
@@ -63,7 +65,7 @@ class InstallCommand extends Command
             return self::FAILURE;
         }
 
-        $options = array_merge(Architecture::promptOptions(), $this->customPromptOptions($files));
+        $options = $catalog->promptOptions();
 
         $selected = multiselect(
             label: 'Which architecture patterns does this project use?',
@@ -146,8 +148,12 @@ class InstallCommand extends Command
             return self::FAILURE;
         }
 
+        $saloonPackages = [];
+
         if (in_array(Architecture::Saloon, $enabled, true)) {
-            if (! $this->ensureSaloonPackages($files, $composer)) {
+            $saloonPackages = $this->plannedSaloonPackages($files);
+
+            if ($saloonPackages === null) {
                 return self::FAILURE;
             }
         }
@@ -163,7 +169,15 @@ class InstallCommand extends Command
         }
 
         $runtime = $this->runtime($files, $currentRuntime);
-        $expected = $this->expectedFiles($config, $resources, $enabled, $runtime);
+
+        try {
+            $expected = $this->expectedFiles($config, $resources, $enabled, $runtime);
+        } catch (Throwable $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
         $removals = $this->staleSkills($resources, $enabled);
         $plan = $this->plan($files, $resources, $expected, $removals);
 
@@ -207,11 +221,12 @@ class InstallCommand extends Command
             $this->agentChangePaths($agentPlan),
         );
 
-        if ($changes === []) {
+        if ($changes === [] && $saloonPackages === []) {
             $this->info('No file changes needed.');
         } else {
             $this->line('Planned changes:');
 
+            $this->showComposerPlan($saloonPackages);
             $this->showResourcePlan($plan);
             $this->showAgentPlan($agentPlan);
 
@@ -219,6 +234,10 @@ class InstallCommand extends Command
                 $this->info('No changes were made.');
 
                 return self::SUCCESS;
+            }
+
+            if (! $this->installSaloonPackages($saloonPackages, $files, $composer)) {
+                return self::FAILURE;
             }
 
             $this->writeFiles($files, $expected);
@@ -253,12 +272,12 @@ class InstallCommand extends Command
         return self::SUCCESS;
     }
 
-    private function ensureSaloonPackages(Filesystem $files, ComposerPackageInstaller $composer): bool
+    private function plannedSaloonPackages(Filesystem $files): ?array
     {
         $violations = SaloonRequirement::violations($files, base_path());
 
         if ($violations === []) {
-            return true;
+            return [];
         }
 
         $packages = SaloonRequirement::missingInstallPackages($files, base_path());
@@ -266,12 +285,20 @@ class InstallCommand extends Command
         if ($packages === []) {
             $this->showSaloonRequirementFailure($violations);
 
-            return false;
+            return null;
         }
 
-        $this->warn('Saloon is enabled, but required Saloon packages are missing.');
-        $this->line('Architecture Kit will run:');
-        $this->line('  composer require '.implode(' ', $packages).' --no-interaction --no-progress');
+        return $packages;
+    }
+
+    /**
+     * @param  array<int, string>  $packages
+     */
+    private function installSaloonPackages(array $packages, Filesystem $files, ComposerPackageInstaller $composer): bool
+    {
+        if ($packages === []) {
+            return true;
+        }
 
         $result = $composer->requirePackages($packages, base_path());
 
@@ -434,34 +461,6 @@ class InstallCommand extends Command
         return str_starts_with($path, base_path().'/')
             ? str_replace(base_path().'/', '', $path)
             : $path;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function customPromptOptions(Filesystem $files): array
-    {
-        $basePath = base_path('.architecture-kit/architectures');
-
-        if (! $files->isDirectory($basePath)) {
-            return [];
-        }
-
-        $options = [];
-
-        foreach ($files->directories($basePath) as $directory) {
-            $slug = basename($directory);
-
-            if (! preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $slug)) {
-                continue;
-            }
-
-            $options[$slug] = str($slug)->replace('-', ' ')->title()->append(' (custom)')->toString();
-        }
-
-        ksort($options);
-
-        return $options;
     }
 
     /**
@@ -669,6 +668,18 @@ class InstallCommand extends Command
                 $this->line(sprintf('  %-7s resources %s', $status, $this->relative($path)));
             }
         }
+    }
+
+    /**
+     * @param  array<int, string>  $packages
+     */
+    private function showComposerPlan(array $packages): void
+    {
+        if ($packages === []) {
+            return;
+        }
+
+        $this->line('  require  composer '.implode(' ', $packages).' --no-interaction --no-progress');
     }
 
     /**

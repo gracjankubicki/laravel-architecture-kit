@@ -25,6 +25,7 @@ final class Baseline
         foreach ($findings as $finding) {
             $key = $this->key($finding);
             $entries[$key] ??= [
+                'severity' => $finding->severity,
                 'rule' => $finding->rule,
                 'path' => $finding->path,
                 'hash' => sha1($finding->message),
@@ -36,7 +37,7 @@ final class Baseline
         $path = $this->path();
         $this->files->ensureDirectoryExists(dirname($path));
         $this->files->put($path, json_encode([
-            'version' => 1,
+            'version' => 2,
             'findings' => array_values($entries),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n");
     }
@@ -86,6 +87,11 @@ final class Baseline
         ));
     }
 
+    public function validate(): void
+    {
+        $this->read();
+    }
+
     /**
      * @return array<string, int>
      */
@@ -99,7 +105,15 @@ final class Baseline
 
         $decoded = json_decode($this->files->get($path), true);
 
-        if (! is_array($decoded) || ($decoded['version'] ?? null) !== 1 || ! is_array($decoded['findings'] ?? null)) {
+        if (! is_array($decoded) || ! is_int($decoded['version'] ?? null) || ! is_array($decoded['findings'] ?? null)) {
+            throw new InvalidArgumentException('.architecture-kit/baseline.json is invalid or uses an unsupported version.');
+        }
+
+        if ($decoded['version'] === 1) {
+            throw new InvalidArgumentException('.architecture-kit/baseline.json uses legacy version 1 and does not record severity. Run php artisan architecture-kit:audit --update-baseline to recreate it.');
+        }
+
+        if ($decoded['version'] !== 2) {
             throw new InvalidArgumentException('.architecture-kit/baseline.json is invalid or uses an unsupported version.');
         }
 
@@ -108,6 +122,7 @@ final class Baseline
         foreach ($decoded['findings'] as $entry) {
             if (
                 ! is_array($entry)
+                || ! in_array($entry['severity'] ?? null, ['error', 'warn'], true)
                 || ! is_string($entry['rule'] ?? null)
                 || ! is_string($entry['path'] ?? null)
                 || ! is_string($entry['hash'] ?? null)
@@ -116,7 +131,7 @@ final class Baseline
                 throw new InvalidArgumentException('.architecture-kit/baseline.json contains an invalid finding entry.');
             }
 
-            $entries[$entry['rule'].'|'.$entry['path'].'|'.$entry['hash']] = $entry['count'];
+            $entries[$entry['severity'].'|'.$entry['rule'].'|'.$entry['path'].'|'.$entry['hash']] = $entry['count'];
         }
 
         return $entries;
@@ -124,7 +139,7 @@ final class Baseline
 
     private function key(AuditFinding $finding): string
     {
-        return $finding->rule.'|'.$finding->path.'|'.sha1($finding->message);
+        return $finding->severity.'|'.$finding->rule.'|'.$finding->path.'|'.sha1($finding->message);
     }
 
     private function path(): string

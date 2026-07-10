@@ -13,6 +13,7 @@ use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name;
+use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 
 final readonly class TransactionSideEffectCheck implements FileCheck
@@ -33,10 +34,10 @@ final readonly class TransactionSideEffectCheck implements FileCheck
             public array $findings = [];
         };
 
-        PhpAst::traverse($nodes, new class($file->path, $state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
         {
             public function __construct(
-                private string $path,
+                private FileContext $file,
                 private object $state,
             ) {}
 
@@ -52,24 +53,24 @@ final readonly class TransactionSideEffectCheck implements FileCheck
                     return null;
                 }
 
-                PhpAst::traverse([$callback], new class($this->path, $this->state) extends NodeVisitorAbstract
+                PhpAst::traverse([$callback], new class($this->file, $this->state) extends NodeVisitorAbstract
                 {
                     public function __construct(
-                        private string $path,
+                        private FileContext $file,
                         private object $state,
                     ) {}
 
-                    public function enterNode(Node $node): null
+                    public function enterNode(Node $node): ?int
                     {
                         if ($this->isAfterCommitCall($node)) {
-                            return null;
+                            return NodeTraverser::DONT_TRAVERSE_CHILDREN;
                         }
 
                         if ($this->isTransactionSideEffect($node)) {
                             $this->state->findings[] = new AuditFinding(
                                 'warn',
                                 'transaction-side-effects',
-                                $this->path,
+                                $this->file->path,
                                 $node->getStartLine(),
                                 'Do not dispatch events, jobs, notifications, mail, HTTP, or external API calls inside an open DB transaction; move the side effect after commit.',
                             );
@@ -82,7 +83,7 @@ final readonly class TransactionSideEffectCheck implements FileCheck
                     {
                         return $node instanceof StaticCall
                             && $node->class instanceof Name
-                            && $node->class->toString() === 'DB'
+                            && $this->file->resolvedClassName($node) === 'Illuminate\\Support\\Facades\\DB'
                             && $node->name instanceof Node\Identifier
                             && $node->name->toString() === 'afterCommit';
                     }
@@ -94,14 +95,22 @@ final readonly class TransactionSideEffectCheck implements FileCheck
                         }
 
                         if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
-                            $class = $node->class instanceof Name ? $node->class->toString() : null;
+                            $class = $node->class instanceof Name ? $this->file->resolvedClassName($node) : null;
                             $method = $node->name->toString();
 
-                            if ($class !== null && in_array($class, ['Event', 'Bus', 'Mail', 'Notification', 'Http'], true)) {
+                            if ($class !== null && in_array($class, [
+                                'Illuminate\\Support\\Facades\\Event',
+                                'Illuminate\\Support\\Facades\\Bus',
+                                'Illuminate\\Support\\Facades\\Mail',
+                                'Illuminate\\Support\\Facades\\Notification',
+                                'Illuminate\\Support\\Facades\\Http',
+                            ], true)) {
                                 return true;
                             }
 
-                            return $method === 'dispatch' && $class !== 'DB';
+                            return $method === 'dispatch'
+                                && $class !== null
+                                && (str_starts_with($class, 'App\\Events\\') || str_starts_with($class, 'App\\Jobs\\'));
                         }
 
                         if ($node instanceof MethodCall && $node->name instanceof Node\Identifier) {
@@ -119,7 +128,7 @@ final readonly class TransactionSideEffectCheck implements FileCheck
             {
                 return $node instanceof StaticCall
                     && $node->class instanceof Name
-                    && $node->class->toString() === 'DB'
+                    && $this->file->resolvedClassName($node) === 'Illuminate\\Support\\Facades\\DB'
                     && $node->name instanceof Node\Identifier
                     && $node->name->toString() === 'transaction';
             }

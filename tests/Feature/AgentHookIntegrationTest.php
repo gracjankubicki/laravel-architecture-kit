@@ -4,14 +4,25 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Install\Hooks\HookWriter;
+use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
+use Symfony\Component\Process\Process;
 
-class InstallHooksCommandTest extends TestCase
+class AgentHookIntegrationTest extends TestCase
 {
+    public function test_it_exposes_one_agent_installation_command(): void
+    {
+        $this->artisan('list')
+            ->expectsOutputToContain('architecture-kit:install-agents')
+            ->doesntExpectOutputToContain('architecture-kit:install-hooks')
+            ->assertExitCode(0);
+    }
+
     public function test_it_generates_codex_and_claude_hooks(): void
     {
-        $this->artisan('architecture-kit:install-hooks --codex --claude')
+        $this->artisan('architecture-kit:install-agents --codex --claude --hooks')
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
@@ -34,11 +45,11 @@ class InstallHooksCommandTest extends TestCase
 
     public function test_it_is_idempotent_for_generated_hooks(): void
     {
-        $this->artisan('architecture-kit:install-hooks --codex')
+        $this->artisan('architecture-kit:install-agents --codex --hooks')
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
-        $this->artisan('architecture-kit:install-hooks --codex')
+        $this->artisan('architecture-kit:install-agents --codex --hooks')
             ->expectsOutputToContain('No agent integration changes needed.')
             ->assertExitCode(0);
     }
@@ -49,7 +60,7 @@ class InstallHooksCommandTest extends TestCase
         $files->ensureDirectoryExists($this->tempPath.'/.codex');
         $files->put($this->tempPath.'/.codex/hooks.json', '{not json');
 
-        $this->artisan('architecture-kit:install-hooks --codex')
+        $this->artisan('architecture-kit:install-agents --codex --hooks')
             ->expectsOutputToContain('blocked  .codex/hooks.json')
             ->assertExitCode(1);
 
@@ -75,7 +86,7 @@ class InstallHooksCommandTest extends TestCase
             ],
         ], JSON_PRETTY_PRINT));
 
-        $this->artisan('architecture-kit:install-hooks --codex')
+        $this->artisan('architecture-kit:install-agents --codex --hooks')
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
@@ -108,7 +119,7 @@ class InstallHooksCommandTest extends TestCase
             ],
         ], JSON_PRETTY_PRINT));
 
-        $this->artisan('architecture-kit:install-hooks --codex')
+        $this->artisan('architecture-kit:install-agents --codex --hooks')
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
@@ -116,5 +127,39 @@ class InstallHooksCommandTest extends TestCase
 
         $this->assertStringContainsString('"hooks"', $contents);
         $this->assertStringNotContainsString('_architectureKit', $contents);
+    }
+
+    public function test_generated_hook_allows_a_valid_gate_and_fails_closed_when_runtime_is_unavailable(): void
+    {
+        $files = new Filesystem;
+        $runner = $this->tempPath.'/fake-runtime.sh';
+        $files->put($runner, <<<'SH'
+#!/usr/bin/env sh
+if [ "${ARCHITECTURE_KIT_FAKE_FAILURE:-0}" = "1" ]; then
+    exit 9
+fi
+
+printf '%s\n' '{"ok":true}'
+SH);
+        $files->chmod($runner, 0755);
+
+        (new HookWriter(
+            $files,
+            $this->tempPath,
+            new RuntimeResolver(['driver' => 'custom', 'command' => [$runner]]),
+        ))->write([]);
+
+        $hook = new Process([$this->tempPath.'/.architecture-kit/hooks/guard.sh', 'codex'], $this->tempPath);
+        $hook->run();
+
+        $this->assertSame(0, $hook->getExitCode());
+
+        $failedHook = new Process([$this->tempPath.'/.architecture-kit/hooks/guard.sh', 'codex'], $this->tempPath, [
+            'ARCHITECTURE_KIT_FAKE_FAILURE' => '1',
+        ]);
+        $failedHook->run();
+
+        $this->assertSame(9, $failedHook->getExitCode());
+        $this->assertStringContainsString('runtime unavailable', $failedHook->getErrorOutput());
     }
 }

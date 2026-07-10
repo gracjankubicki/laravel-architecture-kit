@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
@@ -30,9 +31,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }
@@ -71,9 +74,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }
@@ -101,9 +106,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }
@@ -134,9 +141,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
         $document->delete();
@@ -189,7 +198,44 @@ PHP);
         $this->assertSame(0, $exitCode);
         $this->assertSame('https://json-schema.org/draft/2020-12/schema', $payload['$schema']);
         $this->assertSame('Architecture Kit audit agent output', $payload['title']);
-        $this->assertSame('audit', $payload['properties']['cmd']['const']);
+        $this->assertSame('audit', $payload['oneOf'][0]['properties']['cmd']['const']);
+    }
+
+    public function test_invalid_custom_finding_fails_strict_agent_audit(): void
+    {
+        $this->writeRawConfig(<<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Fixtures\InvalidFindingAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        InvalidFindingAuditRule::class,
+    ],
+];
+PHP);
+        $this->writeFile('app/Actions/InvalidFinding.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+final class InvalidFinding
+{
+}
+PHP);
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--strict' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame('E_COMMAND_FAILED', $payload['m']);
+        $this->assertStringContainsString('severity must be error or warn', $payload['msg']);
     }
 
     public function test_agent_output_is_shorter_than_human_text_output_for_same_fixture(): void
@@ -206,9 +252,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+use Illuminate\Support\Facades\DB;
+use App\Jobs\ProcessDocument;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $this->validate([], []);
         $document->update(['name' => 'changed']);
@@ -386,7 +436,7 @@ PHP);
 
         $this->assertTrue(collect($result->findings)->contains(
             fn ($finding): bool => $finding->rule === 'ports-and-adapters'
-                && str_contains($finding->message, 'bilingual EN/PL PHPDoc')
+                && str_contains($finding->message, 'document the real boundary reason')
         ));
         $this->assertTrue(collect($result->findings)->contains(
             fn ($finding): bool => $finding->rule === 'ports-and-adapters'
@@ -407,7 +457,7 @@ PHP);
             ->assertExitCode(1);
     }
 
-    public function test_ports_and_adapters_accepts_documented_provider_boundary(): void
+    public function test_ports_and_adapters_accepts_english_only_documented_provider_boundary(): void
     {
         $this->writeConfig([
             Architecture::PortsAndAdapters,
@@ -424,11 +474,8 @@ namespace App\Documents\Ports;
 /**
  * Port boundary for document type detection.
  *
- * EN: Exists to keep document workflows independent from the AI/OCR provider
+ * Exists to keep document workflows independent from the AI/OCR provider
  * and to allow tests to replace provider calls with a fake detector.
- *
- * PL: Istnieje po to, żeby workflow dokumentów był niezależny od providera AI/OCR
- * i żeby testy mogły zastąpić wywołania providera fake detektorem.
  */
 interface DocumentTypeDetector
 {
@@ -491,11 +538,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
 use Laravel\Ai\Facades\Ai;
 
 final class AstController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['status' => 'ready']);
         app(AstPortInterface::class);
@@ -884,9 +932,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document)
+    public function update(Document $document)
     {
         $document->update(['name' => 'changed']);
     }
@@ -900,6 +950,221 @@ PHP);
             ->expectsOutputToContain('Scope: changed application files since main')
             ->expectsOutputToContain('error thin-controller')
             ->assertExitCode(1);
+    }
+
+    public function test_changed_audit_with_base_ref_includes_tracked_working_tree_diff(): void
+    {
+        $this->writeConfig([
+            Architecture::ThinControllers,
+        ]);
+
+        $this->git('init -b main');
+        $this->git('config user.email architecture-kit@example.test');
+        $this->git('config user.name "Architecture Kit"');
+        $this->git('add config/architectures.php');
+        $this->git('commit -m base');
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Document;
+
+final class DocumentController
+{
+    public function update(Document $document): void
+    {
+    }
+}
+PHP);
+        $this->git('add app/Http/Controllers/DocumentController.php');
+        $this->git('commit -m controller');
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Document;
+
+final class DocumentController
+{
+    public function update(Document $document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit --changed --base=main')
+            ->expectsOutputToContain('error thin-controller')
+            ->assertExitCode(1);
+
+        $this->git('add app/Http/Controllers/DocumentController.php');
+
+        $this->artisan('architecture-kit:audit --changed --base=main')
+            ->expectsOutputToContain('error thin-controller')
+            ->assertExitCode(1);
+
+        $this->writeFile('app/Http/Controllers/UntrackedController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Document;
+
+final class UntrackedController
+{
+    public function update(Document $document): void
+    {
+        $document->update(['name' => 'untracked']);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit --changed --base=main')
+            ->expectsOutputToContain('app/Http/Controllers/UntrackedController.php')
+            ->assertExitCode(1);
+    }
+
+    public function test_changed_audit_with_base_ref_is_relative_to_a_nested_project_and_deduplicates_paths(): void
+    {
+        $files = new Filesystem;
+        $projectPath = $this->tempPath.'/packages/project';
+        $controller = 'packages/project/app/Http/Controllers/DocumentController.php';
+
+        $this->writeFile($controller, <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Document;
+
+final class DocumentController
+{
+    public function update(Document $document): void
+    {
+    }
+}
+PHP);
+
+        $this->git('init -b main');
+        $this->git('config user.email architecture-kit@example.test');
+        $this->git('config user.name "Architecture Kit"');
+        $this->git('add packages/project/app/Http/Controllers/DocumentController.php');
+        $this->git('commit -m base');
+        $this->git('checkout -b feature');
+
+        $this->writeFile($controller, <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Document;
+
+final class DocumentController
+{
+    public function update(Document $document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+        $this->git('add packages/project/app/Http/Controllers/DocumentController.php');
+        $this->git('commit -m feature');
+
+        $files->append($projectPath.'/app/Http/Controllers/DocumentController.php', "\n");
+
+        $result = (new ApplicationAudit($files, $projectPath))->run(
+            [Architecture::ThinControllers],
+            changedOnly: true,
+            baseRef: 'main',
+        );
+        $findings = array_values(array_filter(
+            $result->findings,
+            fn (AuditFinding $finding): bool => $finding->rule === 'thin-controller',
+        ));
+
+        $this->assertSame('changed application files since main', $result->scope);
+        $this->assertCount(1, $findings);
+        $this->assertSame('app/Http/Controllers/DocumentController.php', $findings[0]->path);
+    }
+
+    public function test_thin_controller_rule_requires_thin_controllers_architecture(): void
+    {
+        $contents = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Document;
+
+final class DocumentController
+{
+    public function update(Document $document): void
+    {
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP;
+        $this->writeFile('app/Http/Controllers/DocumentController.php', $contents);
+
+        $thinControllers = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
+            [Architecture::ThinControllers],
+            changedOnly: false,
+        );
+        $actionsOnly = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
+            [Architecture::Actions],
+            changedOnly: false,
+        );
+
+        $this->assertTrue(collect($thinControllers->findings)->contains(fn (AuditFinding $finding): bool => $finding->rule === 'thin-controller'));
+        $this->assertFalse(collect($actionsOnly->findings)->contains(fn (AuditFinding $finding): bool => $finding->rule === 'thin-controller'));
+    }
+
+    public function test_thin_controller_service_dependency_warning_requires_actions(): void
+    {
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Services\DocumentService;
+
+final class DocumentController
+{
+    public function __construct(private DocumentService $service)
+    {
+    }
+}
+PHP);
+
+        $thinOnly = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
+            [Architecture::ThinControllers],
+            changedOnly: false,
+        );
+        $withActions = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
+            [Architecture::ThinControllers, Architecture::Actions],
+            changedOnly: false,
+        );
+
+        $this->assertFalse(collect($thinOnly->findings)->contains(fn (AuditFinding $finding): bool => $finding->severity === 'warn'));
+        $this->assertTrue(collect($withActions->findings)->contains(fn (AuditFinding $finding): bool => $finding->severity === 'warn'));
     }
 
     public function test_inline_ignore_suppresses_specific_finding(): void
@@ -916,9 +1181,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         // @architecture-kit-ignore thin-controller -- legacy endpoint accepted during migration
         $document->update(['name' => 'changed']);
@@ -946,11 +1213,71 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         // @architecture-kit-ignore unknown-rule -- typo
+        $document->update(['name' => 'changed']);
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit --strict')
+            ->expectsOutputToContain('error thin-controller')
+            ->expectsOutputToContain('warn  invalid-suppression')
+            ->assertExitCode(1);
+    }
+
+    public function test_raw_http_inline_ignore_suppresses_known_raw_http_finding(): void
+    {
+        $this->writeConfig([Architecture::Saloon]);
+
+        $this->writeFile('app/Actions/FetchDocument.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions;
+
+use Illuminate\Support\Facades\Http;
+
+final class FetchDocument
+{
+    public function handle(): void
+    {
+        // @architecture-kit-ignore raw-http -- legacy integration migration
+        Http::get('https://example.test');
+    }
+}
+PHP);
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('No architecture violations found.')
+            ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
+            ->assertExitCode(0);
+    }
+
+    public function test_invalid_file_ignore_does_not_suppress_original_finding(): void
+    {
+        $this->writeConfig([Architecture::ThinControllers]);
+
+        $this->writeFile('app/Http/Controllers/DocumentController.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Document;
+
+// @architecture-kit-ignore-file unknown-rule -- typo
+final class DocumentController
+{
+    public function update(Document $document): void
+    {
         $document->update(['name' => 'changed']);
     }
 }
@@ -976,9 +1303,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }
@@ -999,9 +1328,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class OtherController
 {
-    public function destroy($document): void
+    public function destroy(Document $document): void
     {
         $document->delete();
     }
@@ -1011,6 +1342,39 @@ PHP);
         $this->artisan('architecture-kit:audit')
             ->expectsOutputToContain('error thin-controller')
             ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
+            ->assertExitCode(1);
+    }
+
+    public function test_baseline_fingerprint_includes_severity(): void
+    {
+        $files = new Filesystem;
+        $baseline = new Baseline($files, $this->tempPath);
+        $warning = new AuditFinding('warn', 'thin-controller', 'app/Http/Controllers/DocumentController.php', 12, 'Controller mutates a model directly.');
+        $error = new AuditFinding('error', 'thin-controller', 'app/Http/Controllers/DocumentController.php', 12, 'Controller mutates a model directly.');
+
+        $baseline->write([$warning]);
+        $result = $baseline->apply([$error]);
+        $contents = json_decode($files->get($this->tempPath.'/.architecture-kit/baseline.json'), true);
+
+        $this->assertSame([$error], $result->findings);
+        $this->assertSame(0, $result->baseline);
+        $this->assertSame(2, $contents['version']);
+        $this->assertSame('warn', $contents['findings'][0]['severity']);
+    }
+
+    public function test_legacy_baseline_requires_deliberate_refresh(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit');
+        $files->put($this->tempPath.'/.architecture-kit/baseline.json', json_encode([
+            'version' => 1,
+            'findings' => [],
+        ]));
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('uses legacy version 1 and does not record severity')
             ->assertExitCode(1);
     }
 
@@ -1369,6 +1733,32 @@ PHP);
             ->assertExitCode(1);
     }
 
+    public function test_audit_builds_the_custom_rule_graph_once_for_multiple_files(): void
+    {
+        CountingFixtureAuditRule::$instances = 0;
+        $this->writeRawConfig(<<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Feature\CountingFixtureAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        CountingFixtureAuditRule::class,
+    ],
+];
+PHP);
+        $this->writeFile('app/First.php', "<?php\n\nfinal class First {}\n");
+        $this->writeFile('app/Second.php', "<?php\n\nfinal class Second {}\n");
+
+        $this->artisan('architecture-kit:audit --no-baseline')->assertExitCode(0);
+
+        $this->assertSame(1, CountingFixtureAuditRule::$instances);
+    }
+
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
@@ -1424,3 +1814,23 @@ final class FixtureAuditRule implements AuditRule
 }
 
 final class FixtureNotAuditRule {}
+
+final class CountingFixtureAuditRule implements AuditRule
+{
+    public static int $instances = 0;
+
+    public function __construct()
+    {
+        self::$instances++;
+    }
+
+    public function supports(string $path, array $enabled): bool
+    {
+        return true;
+    }
+
+    public function check(FileContext $file): array
+    {
+        return [];
+    }
+}

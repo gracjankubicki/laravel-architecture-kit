@@ -22,6 +22,6 @@ class ArchitectureGuidelineResource extends Resource
 
     public function handle(): Response
     {
-        return Response::text($this->guideline());
+        return Response::text($this->guideline($this->projectState()));
     }
 }

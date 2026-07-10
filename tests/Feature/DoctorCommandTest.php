@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
@@ -51,7 +52,7 @@ class DoctorCommandTest extends TestCase
     {
         $this->writeCurrentResources([Architecture::Actions]);
 
-        $this->artisan('architecture-kit:doctor')
+        $this->artisan('architecture-kit:doctor --deep')
             ->expectsOutputToContain('current  config/architectures.php')
             ->expectsOutputToContain('current  .ai/guidelines/architecture-kit.md')
             ->assertExitCode(0);
@@ -350,9 +351,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }
@@ -377,7 +380,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:doctor')
+        $this->artisan('architecture-kit:doctor --deep')
             ->expectsOutputToContain('Baseline:')
             ->expectsOutputToContain('warning  .architecture-kit/baseline.json')
             ->expectsOutputToContain('1 baseline entry is orphaned')
@@ -389,6 +392,36 @@ PHP);
         $this->artisan('architecture-kit:doctor')
             ->expectsOutputToContain('current  .architecture-kit/baseline.json')
             ->assertExitCode(0);
+    }
+
+    public function test_standard_doctor_validates_baseline_without_running_application_rules(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Tests\Fixtures\InvalidFindingAuditRule;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+    ],
+    'rules' => [
+        InvalidFindingAuditRule::class,
+    ],
+];
+PHP);
+        $this->writeFile('app/InvalidFinding.php', "<?php\n\nfinal class InvalidFinding {}\n");
+        (new Baseline(new Filesystem, $this->tempPath))->write([]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('current  .architecture-kit/baseline.json')
+            ->assertExitCode(0);
+
+        $this->artisan('architecture-kit:doctor --deep')
+            ->expectsOutputToContain('blocked  .architecture-kit/baseline.json')
+            ->assertExitCode(1);
     }
 
     public function test_it_blocks_when_baseline_json_is_invalid(): void

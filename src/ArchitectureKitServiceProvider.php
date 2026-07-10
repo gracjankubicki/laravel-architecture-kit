@@ -11,7 +11,6 @@ use GracjanKubicki\ArchitectureKit\Commands\GuardCommand;
 use GracjanKubicki\ArchitectureKit\Commands\GuidelinesCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallAgentsCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallCommand;
-use GracjanKubicki\ArchitectureKit\Commands\InstallHooksCommand;
 use GracjanKubicki\ArchitectureKit\Commands\McpCommand;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use Illuminate\Support\ServiceProvider;
@@ -42,7 +41,6 @@ class ArchitectureKitServiceProvider extends ServiceProvider
             GuidelinesCommand::class,
             InstallAgentsCommand::class,
             InstallCommand::class,
-            InstallHooksCommand::class,
             McpCommand::class,
         ]);
 

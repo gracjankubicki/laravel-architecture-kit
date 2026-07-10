@@ -8,7 +8,7 @@ Before coding, your first Architecture Kit MCP call MUST be `enabled-architectur
 
 If MCP is unavailable, read `.ai/guidelines/architecture-kit.md` or run `php artisan architecture-kit:guidelines --agent` before coding.
 
-For full details, expand one architecture with `php artisan architecture-kit:guidelines {slug} --agent` or use the Architecture Kit MCP `architecture-rules` resource.
+For full details, expand one architecture with `php artisan architecture-kit:guidelines {slug} --agent`, call the Architecture Kit MCP tool `architecture-rules`, or read the MCP resource `architecture-kit://guideline`.
 
 Architecture Kit includes a package-first rule. Before implementing custom infrastructure, you MUST check existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party PHP packages, then use the existing option when it fits the project constraints.
 

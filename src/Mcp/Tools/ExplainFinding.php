@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
-use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
+use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -15,64 +16,48 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('explain-finding')]
-#[Description('Explain an Architecture Kit audit rule and point to relevant generated guidance.')]
+#[Description('Explain an Architecture Kit finding code.')]
 #[IsReadOnly]
 class ExplainFinding extends Tool
 {
-    use UsesArchitectureKitState;
+    use ValidatesMcpInput;
+
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            'code' => $schema->string()->required(),
+        ];
+    }
 
     public function handle(Request $request): ResponseFactory
     {
-        $code = strtoupper((string) $request->get('code', ''));
-
-        if ($code !== '') {
-            $explanation = (new FindingCodeRegistry)->explain($code);
-
-            return Response::structured($explanation === null
-                ? [
-                    'v' => 1,
-                    'ok' => false,
-                    'cmd' => 'explain',
-                    'code' => $code,
-                    'm' => 'E_UNKNOWN_FINDING_CODE',
-                    'next' => ['rerun:audit --agent', 'use_known_finding_code'],
-                ]
-                : [
-                    'v' => 1,
-                    'ok' => true,
-                    'cmd' => 'explain',
-                    ...$explanation,
-                ]);
+        if (($message = $this->invalidInput($request, ['code' => 'string'])) !== null) {
+            return $this->inputError('explain', $message);
         }
 
-        $rule = (string) $request->get('rule', '');
+        $code = $request->get('code');
 
-        return Response::structured([
-            'rule' => $rule,
-            'guideline' => '.ai/guidelines/architecture-kit.md',
-            'skills' => array_map(
-                fn (array $architecture): string => '.ai/skills/'.$architecture['skill'].'/SKILL.md',
-                $this->architectureSummaries(),
-            ),
-            'message' => $this->messageFor($rule),
-        ]);
-    }
+        if ($code === null || trim($code) === '') {
+            return $this->inputError('explain', 'Provide a finding code.', 'E_MISSING_TOOL_INPUT');
+        }
 
-    private function messageFor(string $rule): string
-    {
-        return match ($rule) {
-            'thin-controller' => 'Keep controllers as HTTP adapters. Move write orchestration and business behavior to enabled application boundaries such as Actions.',
-            'actions' => 'Actions represent named application use cases and must not accept HTTP request/response objects.',
-            'query-objects' => 'Query Objects represent named read use cases and must not mutate data or depend on HTTP request classes.',
-            'form-request' => 'Form Requests own validation and request authorization. When Data Objects are enabled, expose toData().',
-            'enums' => 'Finite states, types, and categories should be backed enums with validation, casts, and API value+label formatting where relevant.',
-            'api-resource' => 'API Resources format already-loaded response data. They must not query, lazy load, or make business decisions.',
-            'folder-purity' => 'Architecture folders must stay type-pure; do not put supporting classes inside another architecture folder.',
-            'modern-php-85' => 'Use the project PHP 8.5 contract for strict typing and modern language features when they improve readability.',
-            'saloon' => 'Outbound HTTP integrations must use Saloon Connectors, Requests, DTOs, resilience defaults, and Action/Job boundaries.',
-            'raw-http' => 'Raw outbound HTTP clients are forbidden when Saloon is enabled. Create a Saloon integration under app/Http/Integrations/**.',
-            'service-locator' => 'Avoid app(...) service locator calls in adapters and payload helpers. Prefer explicit dependencies or enabled architecture boundaries.',
-            default => 'Read the generated Architecture Kit guideline and the relevant enabled architecture skill before changing this code.',
-        };
+        $code = strtoupper($code);
+        $explanation = (new FindingCodeRegistry)->explain($code);
+
+        return Response::structured($explanation === null
+            ? [
+                'v' => 1,
+                'ok' => false,
+                'cmd' => 'explain',
+                'code' => $code,
+                'm' => 'E_UNKNOWN_FINDING_CODE',
+                'next' => ['rerun:audit --agent', 'use_known_finding_code'],
+            ]
+            : [
+                'v' => 1,
+                'ok' => true,
+                'cmd' => 'explain',
+                ...$explanation,
+            ]);
     }
 }

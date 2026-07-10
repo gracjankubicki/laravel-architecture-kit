@@ -23,10 +23,20 @@ use Illuminate\Filesystem\Filesystem;
 
 final readonly class EloquentLifecycleRule implements AuditRule
 {
+    /** @var array<int, FileCheck> */
+    private array $checks;
+
     public function __construct(
         private Filesystem $files,
         private string $basePath,
-    ) {}
+    ) {
+        $lifecycle = new LifecycleAst($this->files, $this->basePath);
+        $this->checks = [
+            new LifecycleFolderPurityCheck($lifecycle), new BeforeObserverMethodsCheck($lifecycle), new AfterObserverMethodsCheck($lifecycle),
+            new ObserverCallBudgetCheck($lifecycle), new ObserverBranchingCheck($lifecycle), new ObserverAfterCommitCheck($lifecycle),
+            new QuietSaveCheck($lifecycle), new ProviderObserverRegistrationCheck($lifecycle), new InlineModelEventCheck($lifecycle), new TransactionSideEffectCheck,
+        ];
+    }
 
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -43,31 +53,10 @@ final readonly class EloquentLifecycleRule implements AuditRule
     {
         $findings = [];
 
-        foreach ($this->checks() as $check) {
+        foreach ($this->checks as $check) {
             array_push($findings, ...$check->findings($file));
         }
 
         return $findings;
-    }
-
-    /**
-     * @return array<int, FileCheck>
-     */
-    private function checks(): array
-    {
-        $lifecycle = new LifecycleAst($this->files, $this->basePath);
-
-        return [
-            new LifecycleFolderPurityCheck($lifecycle),
-            new BeforeObserverMethodsCheck($lifecycle),
-            new AfterObserverMethodsCheck($lifecycle),
-            new ObserverCallBudgetCheck($lifecycle),
-            new ObserverBranchingCheck($lifecycle),
-            new ObserverAfterCommitCheck($lifecycle),
-            new QuietSaveCheck($lifecycle),
-            new ProviderObserverRegistrationCheck($lifecycle),
-            new InlineModelEventCheck($lifecycle),
-            new TransactionSideEffectCheck,
-        ];
     }
 }

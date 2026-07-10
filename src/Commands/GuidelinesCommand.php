@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
-use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
-use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
@@ -33,12 +32,11 @@ class GuidelinesCommand extends Command
             return self::SUCCESS;
         }
 
-        $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($files, base_path()), $files);
-        $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files);
-
         try {
-            $enabled = $config->read();
-            $known = $this->knownArchitectures($files, $resources);
+            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
+            $enabled = $state->enabled;
+            $resources = $state->resources;
+            $known = $state->catalog->known();
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
                 $this->line($this->json($agent->error('guidelines', $exception->getMessage())));
@@ -123,33 +121,6 @@ class GuidelinesCommand extends Command
     }
 
     /**
-     * @return array<string, EnabledArchitecture>
-     */
-    private function knownArchitectures(Filesystem $files, ArchitectureResources $resources): array
-    {
-        $architectures = [];
-
-        foreach (Architecture::guidelineOrder() as $architecture) {
-            $architectures[$architecture->value] = new EnabledArchitecture($architecture, base_path());
-        }
-
-        $customPath = base_path().'/.architecture-kit/architectures';
-
-        if ($files->isDirectory($customPath)) {
-            foreach ($files->directories($customPath) as $directory) {
-                $slug = basename($directory);
-                $architecture = new EnabledArchitecture($slug, base_path());
-
-                if ($this->sourceExists($files, $resources->guidelineSource($architecture))) {
-                    $architectures[$slug] = $architecture;
-                }
-            }
-        }
-
-        return $architectures;
-    }
-
-    /**
      * @param  array<string, EnabledArchitecture>  $known
      * @param  array<int, Architecture|string>  $enabled
      * @return array<string, mixed>
@@ -183,25 +154,6 @@ class GuidelinesCommand extends Command
             fn (Architecture|string $architecture): string => $architecture instanceof Architecture ? $architecture->value : $architecture,
             $enabled,
         );
-    }
-
-    private function sourceExists(Filesystem $files, string $source): bool
-    {
-        if ($files->isFile($source)) {
-            return true;
-        }
-
-        if (! $files->isDirectory($source)) {
-            return false;
-        }
-
-        foreach ($files->files($source) as $file) {
-            if ($file->getExtension() === 'md') {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

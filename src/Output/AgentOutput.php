@@ -88,6 +88,10 @@ final readonly class AgentOutput
                 fn ($architecture): string => $architecture instanceof Architecture ? $architecture->value : $architecture,
                 $result->enabled,
             ),
+            'boost' => [
+                'installed' => $result->boostInstalled,
+                ...($result->boostInstalled ? ['sync' => 'php artisan boost:update --discover'] : []),
+            ],
             'checks' => $this->checks($result->checks),
             'trunc' => count($visibleIssues) < count($issues),
             ...($limit > 0 ? [
@@ -283,7 +287,7 @@ final readonly class AgentOutput
      */
     private function auditSchema(): array
     {
-        return [
+        $success = [
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit audit agent output',
             'type' => 'object',
@@ -302,6 +306,8 @@ final readonly class AgentOutput
             ],
             'additionalProperties' => false,
         ];
+
+        return $this->successOrCommandErrorSchema('Architecture Kit audit agent output', 'audit', $success);
     }
 
     /**
@@ -309,7 +315,7 @@ final readonly class AgentOutput
      */
     private function guardSchema(): array
     {
-        return [
+        $success = [
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit guard agent output',
             'type' => 'object',
@@ -329,6 +335,8 @@ final readonly class AgentOutput
             ],
             'additionalProperties' => false,
         ];
+
+        return $this->successOrCommandErrorSchema('Architecture Kit guard agent output', 'guard', $success);
     }
 
     /**
@@ -336,16 +344,25 @@ final readonly class AgentOutput
      */
     private function doctorSchema(): array
     {
-        return [
+        $success = [
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit doctor agent output',
             'type' => 'object',
-            'required' => ['v', 'ok', 'cmd', 'enabled', 'checks', 'trunc', 'next'],
+            'required' => ['v', 'ok', 'cmd', 'enabled', 'boost', 'checks', 'trunc', 'next'],
             'properties' => [
                 'v' => ['const' => 1],
                 'ok' => ['type' => 'boolean'],
                 'cmd' => ['const' => 'doctor'],
                 'enabled' => $this->stringListSchema(),
+                'boost' => [
+                    'type' => 'object',
+                    'required' => ['installed'],
+                    'properties' => [
+                        'installed' => ['type' => 'boolean'],
+                        'sync' => ['type' => 'string'],
+                    ],
+                    'additionalProperties' => false,
+                ],
                 'checks' => [
                     'type' => 'object',
                     'additionalProperties' => ['enum' => ['ok', 'warn', 'fail']],
@@ -372,6 +389,8 @@ final readonly class AgentOutput
             ],
             'additionalProperties' => false,
         ];
+
+        return $this->successOrCommandErrorSchema('Architecture Kit doctor agent output', 'doctor', $success);
     }
 
     /**
@@ -382,21 +401,50 @@ final readonly class AgentOutput
         return [
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit explain agent output',
-            'type' => 'object',
-            'required' => ['v', 'ok', 'cmd', 'code'],
-            'properties' => [
-                'v' => ['const' => 1],
-                'ok' => ['type' => 'boolean'],
-                'cmd' => ['const' => 'explain'],
-                'code' => ['type' => 'string'],
-                'rule' => ['type' => 'string'],
-                'title' => ['type' => 'string'],
-                'why' => ['type' => 'string'],
-                'fix' => ['type' => 'string'],
-                'm' => ['type' => 'string'],
-                'next' => $this->stringListSchema(),
+            'oneOf' => [
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'code', 'rule', 'severity', 'title', 'why', 'fix'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => true],
+                        'cmd' => ['const' => 'explain'],
+                        'code' => ['type' => 'string'],
+                        'rule' => ['type' => 'string'],
+                        'severity' => ['enum' => ['error', 'warn']],
+                        'title' => ['type' => 'string'],
+                        'why' => ['type' => 'string'],
+                        'fix' => ['type' => 'string'],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'code', 'm', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => false],
+                        'cmd' => ['const' => 'explain'],
+                        'code' => ['type' => 'string'],
+                        'm' => ['type' => 'string'],
+                        'next' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'm', 'msg', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => false],
+                        'cmd' => ['const' => 'explain'],
+                        'm' => ['const' => 'E_COMMAND_FAILED'],
+                        'msg' => ['type' => 'string'],
+                        'next' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
             ],
-            'additionalProperties' => false,
         ];
     }
 
@@ -464,6 +512,19 @@ final readonly class AgentOutput
                     ],
                     'additionalProperties' => false,
                 ],
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'm', 'msg', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => false],
+                        'cmd' => ['const' => 'guidelines'],
+                        'm' => ['const' => 'E_COMMAND_FAILED'],
+                        'msg' => ['type' => 'string'],
+                        'next' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
             ],
         ];
     }
@@ -490,6 +551,34 @@ final readonly class AgentOutput
                         'm' => ['type' => 'string'],
                         'n' => ['type' => 'integer', 'minimum' => 1],
                         'msg' => ['type' => 'string'],
+                    ],
+                    'additionalProperties' => false,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $success
+     * @return array<string, mixed>
+     */
+    private function successOrCommandErrorSchema(string $title, string $command, array $success): array
+    {
+        return [
+            '$schema' => 'https://json-schema.org/draft/2020-12/schema',
+            'title' => $title,
+            'oneOf' => [
+                $success,
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'm', 'msg', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => false],
+                        'cmd' => ['const' => $command],
+                        'm' => ['type' => 'string'],
+                        'msg' => ['type' => 'string'],
+                        'next' => $this->stringListSchema(),
                     ],
                     'additionalProperties' => false,
                 ],

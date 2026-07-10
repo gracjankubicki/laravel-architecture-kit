@@ -4,28 +4,34 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use Composer\InstalledVersions;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureKit;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureRules;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\AuditChanged;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\Doctor;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ExplainFinding;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Guard;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
+use Laravel\Mcp\Enums\ProtocolVersion;
 use Laravel\Mcp\Facades\Mcp;
+use Laravel\Mcp\Server\Contracts\Transport;
+use Laravel\Mcp\Server\Transport\FakeTransporter;
+use Symfony\Component\Process\Process;
 
 class McpIntegrationTest extends TestCase
 {
-    public function test_mcp_server_version_matches_package_version(): void
+    public function test_mcp_server_version_is_read_from_composer_metadata(): void
     {
-        $version = new \ReflectionProperty(ArchitectureKitServer::class, 'version');
+        $server = new ArchitectureKitServer(new FakeTransporter);
+        $context = $server->createContext();
 
-        $this->assertSame(ArchitectureKit::VERSION, $version->getDefaultValue());
-        $this->assertNotSame('1.0.0', $version->getDefaultValue());
+        $this->assertSame(ArchitectureKit::version(), $context->implementation->version);
     }
 
     public function test_mcp_server_instructions_require_enabled_architectures_preflight(): void
@@ -105,6 +111,55 @@ PHP);
             );
     }
 
+    public function test_architecture_rules_tool_reads_one_config_snapshot_per_request(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $files = new Filesystem;
+        $path = $this->tempPath.'/config/architectures.php';
+        $contents = $files->get($path);
+        $files->put($path, str_replace(
+            '<?php',
+            "<?php\n\n\$GLOBALS['architecture_kit_config_reads'] = (\$GLOBALS['architecture_kit_config_reads'] ?? 0) + 1;",
+            $contents,
+        ));
+        $GLOBALS['architecture_kit_config_reads'] = 0;
+
+        ArchitectureKitServer::tool(ArchitectureRules::class)->assertOk();
+
+        $this->assertSame(1, $GLOBALS['architecture_kit_config_reads']);
+        unset($GLOBALS['architecture_kit_config_reads']);
+    }
+
+    public function test_doctor_tool_detects_boost_from_composer_without_a_console_application(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $installedPath = dirname(__DIR__, 2).'/vendor/composer/installed.php';
+        $installed = require $installedPath;
+        $withBoost = $installed;
+        $withBoost['versions']['laravel/boost'] = [
+            'pretty_version' => 'v1.0.0',
+            'version' => '1.0.0.0',
+            'reference' => null,
+            'type' => 'library',
+            'install_path' => $this->tempPath.'/vendor/laravel/boost',
+            'aliases' => [],
+            'dev_requirement' => true,
+        ];
+        InstalledVersions::reload($withBoost);
+
+        try {
+            ArchitectureKitServer::tool(Doctor::class)
+                ->assertOk()
+                ->assertStructuredContent(fn ($json) => $json
+                    ->where('boost.installed', true)
+                    ->where('boost.sync', 'php artisan boost:update --discover')
+                    ->etc()
+                );
+        } finally {
+            InstalledVersions::reload($installed);
+        }
+    }
+
     public function test_guard_tool_returns_guard_state(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
@@ -135,9 +190,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+
 final class DocumentController
 {
-    public function update($document): void
+    public function update(Document $document): void
     {
         $document->update(['name' => 'changed']);
     }
@@ -153,6 +210,175 @@ PHP);
                 ->etc()
             )
             ->assertSee('E_THIN_CONTROLLER_MODEL_WRITE');
+    }
+
+    public function test_tools_publish_typed_input_schemas(): void
+    {
+        $tools = (new ArchitectureKitServer(new FakeTransporter))
+            ->createContext()
+            ->tools()
+            ->mapWithKeys(fn ($tool): array => [$tool->name() => $tool->toArray()]);
+
+        $this->assertSame('boolean', $tools['audit-changed']['inputSchema']['properties']['changed']['type']);
+        $this->assertSame('integer', $tools['guard']['inputSchema']['properties']['limit']['type']);
+        $this->assertSame('string', $tools['explain-finding']['inputSchema']['properties']['code']['type']);
+        $this->assertContains('code', $tools['explain-finding']['inputSchema']['required']);
+        $this->assertArrayNotHasKey('rule', $tools['explain-finding']['inputSchema']['properties']);
+        $this->assertSame('integer', $tools['doctor']['inputSchema']['properties']['limit']['type']);
+    }
+
+    public function test_json_rpc_initialize_and_tools_list_publish_the_real_contract(): void
+    {
+        $transport = new class implements Transport
+        {
+            /** @var array<int, string> */
+            public array $messages = [];
+
+            public function onReceive(\Closure $handler): void {}
+
+            public function run(): never
+            {
+                throw new \LogicException('The test drives JSON-RPC messages directly.');
+            }
+
+            public function send(string $message, ?string $sessionId = null): void
+            {
+                $this->messages[] = $message;
+            }
+
+            public function sessionId(): string
+            {
+                return 'test-session';
+            }
+
+            public function stream(\Closure $stream): void
+            {
+                $stream();
+            }
+        };
+
+        $server = new ArchitectureKitServer($transport);
+        $protocol = ProtocolVersion::supported()[0];
+
+        $server->handle(json_encode([
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'initialize',
+            'params' => ['protocolVersion' => $protocol, 'capabilities' => []],
+        ], JSON_THROW_ON_ERROR));
+        $server->handle(json_encode([
+            'jsonrpc' => '2.0',
+            'id' => 2,
+            'method' => 'tools/list',
+            'params' => [],
+        ], JSON_THROW_ON_ERROR));
+
+        $initialize = json_decode($transport->messages[0], true, flags: JSON_THROW_ON_ERROR);
+        $tools = json_decode($transport->messages[1], true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(ArchitectureKit::version(), $initialize['result']['serverInfo']['version']);
+        $this->assertTrue(collect($tools['result']['tools'])->contains(fn (array $tool): bool => $tool['name'] === 'audit-changed' && isset($tool['inputSchema']['properties']['changed'])));
+    }
+
+    public function test_stdio_server_completes_initialize_and_tools_list(): void
+    {
+        $files = new Filesystem;
+        $bootstrap = $this->tempPath.'/mcp-stdio.php';
+        $root = dirname(__DIR__, 2);
+
+        $script = <<<'PHP'
+<?php
+
+ini_set('display_errors', 'stderr');
+
+require __ROOT__ . '/vendor/autoload.php';
+
+$app = new Illuminate\Foundation\Application(getcwd());
+$app->instance('config', new Illuminate\Config\Repository(['app' => ['debug' => false]]));
+$app->instance('events', new Illuminate\Events\Dispatcher($app));
+Illuminate\Container\Container::setInstance($app);
+
+$transport = new Laravel\Mcp\Server\Transport\StdioTransport('test-session');
+$server = new GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer($transport);
+$server->start();
+$transport->run();
+PHP;
+        $files->put($bootstrap, str_replace('__ROOT__', var_export($root, true), $script));
+
+        $protocol = ProtocolVersion::supported()[0];
+        $initialize = json_encode([
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'initialize',
+            'params' => ['protocolVersion' => $protocol, 'capabilities' => []],
+        ], JSON_THROW_ON_ERROR);
+        $toolsList = json_encode([
+            'jsonrpc' => '2.0',
+            'id' => 2,
+            'method' => 'tools/list',
+            'params' => [],
+        ], JSON_THROW_ON_ERROR);
+        $command = sprintf(
+            "{ printf '%%s\\n%%s\\n' %s %s; sleep 1; } | %s %s",
+            escapeshellarg($initialize),
+            escapeshellarg($toolsList),
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg($bootstrap),
+        );
+
+        $process = Process::fromShellCommandline($command, $this->tempPath);
+        $process->run();
+
+        $this->assertSame(0, $process->getExitCode(), 'stderr: '.$process->getErrorOutput().' stdout: '.$process->getOutput());
+        $responses = array_map(
+            fn (string $line): array => json_decode($line, true, flags: JSON_THROW_ON_ERROR),
+            array_values(array_filter(explode("\n", trim($process->getOutput())))),
+        );
+
+        $this->assertSame(ArchitectureKit::version(), $responses[0]['result']['serverInfo']['version']);
+        $this->assertTrue(collect($responses[1]['result']['tools'])->contains(fn (array $tool): bool => $tool['name'] === 'architecture-rules'));
+    }
+
+    public function test_tools_reject_invalid_input_types_without_casting(): void
+    {
+        ArchitectureKitServer::tool(AuditChanged::class, ['changed' => 'yes'])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', false)
+                ->where('cmd', 'audit')
+                ->where('m', 'E_INVALID_TOOL_INPUT')
+                ->etc()
+            );
+
+        ArchitectureKitServer::tool(Doctor::class, ['limit' => '20'])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', false)
+                ->where('cmd', 'doctor')
+                ->where('m', 'E_INVALID_TOOL_INPUT')
+                ->etc()
+            );
+
+        ArchitectureKitServer::tool(ExplainFinding::class, ['code' => 123])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', false)
+                ->where('cmd', 'explain')
+                ->where('m', 'E_INVALID_TOOL_INPUT')
+                ->etc()
+            );
+    }
+
+    public function test_explain_finding_requires_a_code(): void
+    {
+        ArchitectureKitServer::tool(ExplainFinding::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', false)
+                ->where('cmd', 'explain')
+                ->where('m', 'E_MISSING_TOOL_INPUT')
+                ->etc()
+            );
     }
 
     public function test_explain_finding_tool_returns_agent_explanation_for_codes(): void

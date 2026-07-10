@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
@@ -20,6 +22,7 @@ class DoctorCommand extends Command
         {--agent : Output token-efficient JSON for AI agents}
         {--limit=20 : Maximum issues shown in --agent output}
         {--full : Include full issue messages in --agent output}
+        {--deep : Scan application findings to report orphaned baseline entries}
         {--schema : Output the JSON Schema for --agent output}';
 
     protected $description = 'Inspect Architecture Kit configuration and generated AI resources.';
@@ -34,9 +37,20 @@ class DoctorCommand extends Command
             return self::SUCCESS;
         }
 
-        $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($files, base_path()), $files);
-        $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files);
-        $result = (new ArchitectureDoctor($config, $resources, $files, base_path(), $this->getApplication()))->run();
+        try {
+            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
+            $config = $state->config;
+            $resources = $state->resources;
+        } catch (\Throwable) {
+            $state = null;
+            $catalog = new ArchitectureCatalog($files, base_path());
+            $config = new ArchitectureConfig(ArchitectureConfigPath::resolve($files, base_path()), $files, $catalog);
+            $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files, $catalog);
+        }
+        $result = (new ArchitectureDoctor($config, $resources, $files, base_path(), $this->getApplication()))->run(
+            deep: (bool) $this->option('deep'),
+            state: $state,
+        );
 
         if ((bool) $this->option('agent')) {
             $this->line($this->json($agent->doctor(

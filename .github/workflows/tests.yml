@@ -5,70 +5,82 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - run: composer validate --strict
+      - run: vendor/bin/pint --test
+
   tests:
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       matrix:
         php: ['8.3', '8.4', '8.5']
         laravel: ['12.*', '13.*']
-
+        dependencies: [latest]
+        include:
+          - php: '8.3'
+            laravel: '12.*'
+            dependencies: lowest
     steps:
       - uses: actions/checkout@v5
-
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
           coverage: none
-
       - name: Install dependencies
         run: |
           composer require "laravel/framework:${{ matrix.laravel }}" --no-interaction --no-update
-          composer update --prefer-dist --no-interaction --no-progress
-
-      - name: Validate composer
-        run: composer validate --strict
-
-      - name: Lint
-        run: vendor/bin/pint --test
-
-      - name: Test
-        run: vendor/bin/phpunit
+          composer update --prefer-dist --no-interaction --no-progress ${{ matrix.dependencies == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
+      - run: vendor/bin/phpunit
 
   coverage:
+    needs: [lint, tests]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
       - uses: actions/checkout@v5
-
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
           coverage: xdebug
-
-      - name: Install dependencies
-        run: |
+      - run: |
           composer require "laravel/framework:13.*" --no-interaction --no-update
           composer update --prefer-dist --no-interaction --no-progress
+      - run: vendor/bin/phpunit --coverage-clover build/logs/clover.xml
+      - run: php bin/generate-coverage-badge build/logs/clover.xml art/coverage.svg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-badge
+          path: art/coverage.svg
 
-      - name: Test with coverage
-        run: vendor/bin/phpunit --coverage-clover build/logs/clover.xml
-
-      - name: Generate coverage badge
-        run: php bin/generate-coverage-badge build/logs/clover.xml art/coverage.svg
-
+  update-coverage-badge:
+    needs: [coverage]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-badge
+          path: art
       - name: Commit coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           if git diff --quiet -- art/coverage.svg; then
-            echo "Coverage badge is already up to date."
             exit 0
           fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add art/coverage.svg
