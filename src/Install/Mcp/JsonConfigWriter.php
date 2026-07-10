@@ -16,13 +16,11 @@ final readonly class JsonConfigWriter
 
     /**
      * @param  array<string, mixed>  $serverConfig
+     * @param  array<int, string>  $existingKeys
      */
-    /**
-     * @param  array<int, string>  $replaceKeys
-     */
-    public function render(string $serverKey, array $serverConfig, array $replaceKeys = []): ?string
+    public function render(string $serverKey, array $serverConfig, array $existingKeys = []): ?string
     {
-        if (! $this->files->exists($this->path) || $this->files->size($this->path) < 3) {
+        if (! $this->files->exists($this->path)) {
             return $this->encode([
                 $this->configKey => [
                     $serverKey => $serverConfig,
@@ -42,23 +40,23 @@ final readonly class JsonConfigWriter
             return null;
         }
 
-        foreach ($replaceKeys as $replaceKey) {
-            if (! array_key_exists($replaceKey, $servers)) {
+        $managedKeys = array_values(array_unique([$serverKey, ...$existingKeys]));
+        $hasExistingIntegration = false;
+
+        foreach ($managedKeys as $managedKey) {
+            if (! array_key_exists($managedKey, $servers)) {
                 continue;
             }
 
-            if (! is_array($servers[$replaceKey]) || ! $this->isUpdateable($servers[$replaceKey])) {
+            if (! is_array($servers[$managedKey])) {
                 return null;
             }
 
-            unset($servers[$replaceKey]);
+            $hasExistingIntegration = true;
         }
 
-        if (
-            array_key_exists($serverKey, $servers)
-            && (! is_array($servers[$serverKey]) || ! $this->isUpdateable($servers[$serverKey]))
-        ) {
-            return null;
+        if ($hasExistingIntegration) {
+            return $this->files->get($this->path);
         }
 
         $servers[$serverKey] = $serverConfig;
@@ -73,22 +71,5 @@ final readonly class JsonConfigWriter
     private function encode(array $payload): string
     {
         return (json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}')."\n";
-    }
-
-    /**
-     * @param  array<string, mixed>  $server
-     */
-    private function isUpdateable(array $server): bool
-    {
-        $command = $server['command'] ?? null;
-        $args = $server['args'] ?? [];
-
-        if ($command === null && $args === []) {
-            return true;
-        }
-
-        return is_string($command)
-            && is_array($args)
-            && str_contains($command.' '.implode(' ', array_filter($args, is_string(...))), 'architecture-kit');
     }
 }

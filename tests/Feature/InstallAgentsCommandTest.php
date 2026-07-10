@@ -98,7 +98,7 @@ class InstallAgentsCommandTest extends TestCase
         $this->assertStringContainsString('vendor/bin/phpunit', $files->get($this->tempPath.'/.codex/hooks.json'));
     }
 
-    public function test_it_replaces_legacy_architecture_kit_mcp_server_key(): void
+    public function test_it_preserves_developer_owned_legacy_architecture_kit_mcp_server_key(): void
     {
         $this->writeCurrentResources(runtime: [
             'driver' => 'docker',
@@ -109,7 +109,7 @@ class InstallAgentsCommandTest extends TestCase
 
         $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/.codex');
-        $files->put($this->tempPath.'/.codex/config.toml', <<<'TOML'
+        $codexMcp = <<<'TOML'
 [mcp_servers.architecture-kit]
 command = "docker"
 args = ["compose", "exec", "-T", "app", "php", "artisan", "architecture-kit:mcp"]
@@ -117,28 +117,56 @@ required = true
 
 [mcp_servers.architecture-kit.env]
 OLD = "1"
-TOML);
-        $files->put($this->tempPath.'/.mcp.json', json_encode([
+TOML;
+        $claudeMcp = json_encode([
             'mcpServers' => [
                 'architecture-kit' => [
                     'command' => 'docker',
                     'args' => ['compose', 'exec', '-T', 'app', 'php', 'artisan', 'architecture-kit:mcp'],
                 ],
             ],
-        ], JSON_PRETTY_PRINT));
+        ], JSON_PRETTY_PRINT);
+        $files->put($this->tempPath.'/.codex/config.toml', $codexMcp);
+        $files->put($this->tempPath.'/.mcp.json', $claudeMcp);
 
         $this->artisan('architecture-kit:install-agents --codex --claude --mcp')
             ->expectsConfirmation('Continue?', 'yes')
             ->assertExitCode(0);
 
-        $codexMcp = $files->get($this->tempPath.'/.codex/config.toml');
-        $claudeMcp = json_decode($files->get($this->tempPath.'/.mcp.json'), true);
+        $this->assertSame($codexMcp, $files->get($this->tempPath.'/.codex/config.toml'));
+        $this->assertSame($claudeMcp, $files->get($this->tempPath.'/.mcp.json'));
+    }
 
-        $this->assertStringNotContainsString('[mcp_servers.architecture-kit]'."\n", $codexMcp);
-        $this->assertStringNotContainsString('[mcp_servers.architecture-kit.env]'."\n", $codexMcp);
-        $this->assertStringContainsString('[mcp_servers.'.$this->mcpServerKey().']', $codexMcp);
-        $this->assertArrayNotHasKey('architecture-kit', $claudeMcp['mcpServers']);
-        $this->assertSame('docker', $claudeMcp['mcpServers'][$this->mcpServerKey()]['command']);
+    public function test_reinstall_preserves_developer_owned_mcp_configuration_byte_for_byte(): void
+    {
+        $this->writeCurrentResources();
+
+        $this->artisan('architecture-kit:install-agents --codex --claude --mcp')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $files = new Filesystem;
+        $codexPath = $this->tempPath.'/.codex/config.toml';
+        $claudePath = $this->tempPath.'/.mcp.json';
+        $codexMcp = str_replace(
+            'required = true',
+            "required = false\ncustom = \"developer-owned\"",
+            $files->get($codexPath),
+        );
+        $claudeMcp = str_replace(
+            '"command": "php"',
+            '"command": "./bin/custom-mcp"',
+            $files->get($claudePath),
+        );
+        $files->put($codexPath, $codexMcp);
+        $files->put($claudePath, $claudeMcp);
+
+        $this->artisan('architecture-kit:install-agents --codex --claude --mcp')
+            ->expectsOutputToContain('No agent integration changes needed.')
+            ->assertExitCode(0);
+
+        $this->assertSame($codexMcp, $files->get($codexPath));
+        $this->assertSame($claudeMcp, $files->get($claudePath));
     }
 
     public function test_it_preserves_existing_makefile_mcp_target(): void
@@ -224,7 +252,7 @@ TOML);
             ->assertExitCode(1);
     }
 
-    public function test_doctor_reports_outdated_and_blocked_managed_agent_artifacts(): void
+    public function test_doctor_accepts_developer_owned_configuration_and_reports_invalid_json(): void
     {
         $this->writeCurrentResources();
 
@@ -243,7 +271,7 @@ TOML);
         $codexHooks = $files->get($this->tempPath.'/.codex/hooks.json');
 
         $this->artisan('architecture-kit:doctor')
-            ->expectsOutputToContain('outdated .codex/config.toml')
+            ->doesntExpectOutputToContain('outdated .codex/config.toml')
             ->expectsOutputToContain('blocked  .codex/hooks.json')
             ->assertExitCode(1);
 

@@ -66,6 +66,10 @@ final readonly class McpWriter
                 continue;
             }
 
+            if ($this->files->exists($path) && $this->files->get($path) === $contents) {
+                continue;
+            }
+
             $this->files->ensureDirectoryExists(dirname($path));
             $this->files->put($path, $contents);
         }
