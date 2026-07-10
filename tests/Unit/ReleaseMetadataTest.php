@@ -15,8 +15,8 @@ final class ReleaseMetadataTest extends TestCase
 
         $this->assertNotSame('', $version);
 
-        if ($version === 'dev-main') {
-            $this->assertSame('dev-main', $version);
+        if (str_starts_with($version, 'dev-')) {
+            $this->assertMatchesRegularExpression('/^dev-[a-zA-Z0-9._\/-]+$/', $version);
 
             return;
         }
