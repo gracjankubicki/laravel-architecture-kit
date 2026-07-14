@@ -45,8 +45,46 @@ jobs:
           composer update --prefer-dist --no-interaction --no-progress ${{ matrix.dependencies == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
       - run: vendor/bin/phpunit
 
+  laravel-ai-contract:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ai: ['0.8.0', '^0.8', '0.9.0', '^0.9']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Install real Laravel AI contract
+        run: |
+          composer require "laravel/ai:${{ matrix.ai }}" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --no-progress
+      - run: vendor/bin/phpunit tests/Unit/LaravelAi tests/Unit/ArchitectureResourcesTest.php
+
+  runtime-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - run: bash tests/Smoke/runtime-install.sh
+
+  boost-composition:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - run: bash tests/Smoke/boost-composition.sh
+
   coverage:
-    needs: [lint, tests]
+    needs: [lint, tests, laravel-ai-contract, runtime-install, boost-composition]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

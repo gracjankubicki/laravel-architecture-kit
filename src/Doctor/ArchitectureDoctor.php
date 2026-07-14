@@ -10,8 +10,10 @@ use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\RuleRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectPackageInventory;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\ArchitectureKitRuntimeRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\SaloonRequirement;
@@ -38,11 +40,12 @@ final readonly class ArchitectureDoctor
     {
         $checks = [];
         $enabled = [];
+        $laravelAi = $state?->laravelAi;
+        $canGenerate = true;
 
         try {
             $enabled = $state?->enabled ?? $this->config->read();
             $runtime = $state?->runtime ?? $this->config->runtime();
-            $this->resources->assertSourcesExist($enabled);
             $checks[] = new ArchitectureDoctorCheck('config', 'current', 'config/architectures.php');
         } catch (Throwable $exception) {
             $checks[] = new ArchitectureDoctorCheck(
@@ -56,6 +59,18 @@ final readonly class ArchitectureDoctor
                 enabled: [],
                 checks: $checks,
                 boostInstalled: $this->boostInstalled(),
+                laravelAi: $laravelAi,
+            );
+        }
+
+        $architectureKitRuntime = (new ArchitectureKitRuntimeRequirement(new ProjectPackageInventory($this->files, $this->basePath)))->check();
+
+        if (! $architectureKitRuntime->satisfied) {
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'config',
+                status: 'blocked',
+                path: 'composer.json',
+                message: $architectureKitRuntime->message.' '.$architectureKitRuntime->remediation,
             );
         }
 
@@ -73,16 +88,18 @@ final readonly class ArchitectureDoctor
 
         $projectRequiresLaravelAi = LaravelAiRequirement::projectRequiresLaravelAi($this->files, $this->basePath);
 
-        if (
-            in_array(Architecture::LaravelAi, $enabled, true)
-            && ! $projectRequiresLaravelAi
-        ) {
-            $checks[] = new ArchitectureDoctorCheck(
-                area: 'config',
-                status: 'blocked',
-                path: 'composer.json',
-                message: 'Laravel AI is enabled but composer.json does not require laravel/ai.',
-            );
+        if (in_array(Architecture::LaravelAi, $enabled, true)) {
+            $laravelAi ??= LaravelAiRequirement::resolve($this->files, $this->basePath);
+
+            if (! $laravelAi->supported()) {
+                $checks[] = new ArchitectureDoctorCheck(
+                    area: 'config',
+                    status: 'blocked',
+                    path: 'composer.json',
+                    message: $laravelAi->message.' '.$laravelAi->remediation,
+                );
+                $canGenerate = false;
+            }
         }
 
         if (in_array(Architecture::Saloon, $enabled, true)) {
@@ -100,12 +117,27 @@ final readonly class ArchitectureDoctor
             ! in_array(Architecture::LaravelAi, $enabled, true)
             && $projectRequiresLaravelAi
         ) {
+            $laravelAi ??= LaravelAiRequirement::resolve($this->files, $this->basePath);
             $checks[] = new ArchitectureDoctorCheck(
                 area: 'config',
                 status: 'warning',
                 path: 'composer.json',
-                message: 'laravel/ai is installed but Architecture::LaravelAi is not enabled.',
+                message: 'laravel/ai is declared but Architecture::LaravelAi is not enabled. Detected status: '.$laravelAi->status->value.'.',
             );
+        }
+
+        if ($canGenerate) {
+            try {
+                $this->resources->assertSourcesExist($enabled);
+            } catch (Throwable $exception) {
+                $checks[] = new ArchitectureDoctorCheck(
+                    area: 'config',
+                    status: 'blocked',
+                    path: 'config/architectures.php',
+                    message: $exception->getMessage(),
+                );
+                $canGenerate = false;
+            }
         }
 
         if (
@@ -148,20 +180,22 @@ final readonly class ArchitectureDoctor
             $checks[] = $check;
         }
 
-        $expected = [
-            'guideline' => $this->resources->guideline($enabled),
-        ];
+        if ($canGenerate) {
+            $expected = [
+                'guideline' => $this->resources->guideline($enabled),
+            ];
 
-        foreach ($this->resources->skills($enabled) as $key => $skill) {
-            $expected['skill:'.$key] = $skill;
-        }
+            foreach ($this->resources->skills($enabled) as $key => $skill) {
+                $expected['skill:'.$key] = $skill;
+            }
 
-        foreach ($expected as $file) {
-            $checks[] = new ArchitectureDoctorCheck(
-                area: 'generated',
-                status: $this->status($file),
-                path: $this->relative($file->path),
-            );
+            foreach ($expected as $file) {
+                $checks[] = new ArchitectureDoctorCheck(
+                    area: 'generated',
+                    status: $this->status($file),
+                    path: $this->relative($file->path),
+                );
+            }
         }
 
         $expectedSkillNames = array_map(
@@ -192,6 +226,7 @@ final readonly class ArchitectureDoctor
             enabled: $enabled,
             checks: $checks,
             boostInstalled: $this->boostInstalled(),
+            laravelAi: $laravelAi,
         );
     }
 

@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
@@ -162,6 +163,7 @@ class DoctorCommandTest extends TestCase
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'php' => '^8.5',
+                'gracjankubicki/laravel-architecture-kit' => '^0.2',
             ],
         ], JSON_PRETTY_PRINT));
 
@@ -174,11 +176,11 @@ class DoctorCommandTest extends TestCase
 
     public function test_it_fails_when_laravel_ai_is_enabled_without_laravel_ai_requirement(): void
     {
-        $this->writeCurrentResources([Architecture::LaravelAi]);
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::LaravelAi]);
 
         $this->artisan('architecture-kit:doctor')
             ->expectsOutputToContain('blocked  composer.json')
-            ->expectsOutputToContain('Laravel AI is enabled but composer.json does not require laravel/ai.')
+            ->expectsOutputToContain('Laravel AI is not declared directly in root composer.json.')
             ->assertExitCode(1);
     }
 
@@ -186,6 +188,7 @@ class DoctorCommandTest extends TestCase
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
+                'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'laravel/ai' => '^0.8',
             ],
         ], JSON_PRETTY_PRINT));
@@ -194,8 +197,40 @@ class DoctorCommandTest extends TestCase
 
         $this->artisan('architecture-kit:doctor')
             ->expectsOutputToContain('warning  composer.json')
-            ->expectsOutputToContain('laravel/ai is installed but Architecture::LaravelAi is not enabled.')
+            ->expectsOutputToContain('laravel/ai is declared but Architecture::LaravelAi is not enabled.')
             ->assertExitCode(0);
+    }
+
+    public function test_it_reports_the_resolved_laravel_ai_profile_and_runtime_contract(): void
+    {
+        $this->writeLaravelAiFixture('^0.9', '0.9.0');
+        $this->writeCurrentResources([Architecture::LaravelAi]);
+
+        $exit = Artisan::call('architecture-kit:doctor', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('supported', $payload['laravel_ai']['status']);
+        $this->assertSame('laravel-ai@0.9', $payload['laravel_ai']['profile']);
+        $this->assertSame('0.9.0', $payload['laravel_ai']['installed_version']);
+    }
+
+    public function test_it_blocks_dev_only_architecture_kit_placement(): void
+    {
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'require-dev' => [
+                'gracjankubicki/laravel-architecture-kit' => '^0.2',
+            ],
+        ], JSON_THROW_ON_ERROR));
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $exit = Artisan::call('architecture-kit:doctor', ['--agent' => true, '--full' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exit);
+        $this->assertSame('fail', $payload['checks']['config']);
+        $this->assertStringContainsString('installed only in require-dev', $payload['issues'][0]['msg']);
+        $this->assertStringContainsString('composer remove --dev gracjankubicki/laravel-architecture-kit', $payload['issues'][0]['msg']);
     }
 
     public function test_it_fails_when_saloon_is_enabled_without_required_packages(): void
@@ -204,7 +239,7 @@ class DoctorCommandTest extends TestCase
 
         $this->artisan('architecture-kit:doctor')
             ->expectsOutputToContain('blocked  composer.json')
-            ->expectsOutputToContain('composer.json is missing or invalid.')
+            ->expectsOutputToContain('composer.json does not require saloonphp/saloon ^4.0.')
             ->assertExitCode(1);
     }
 
@@ -212,6 +247,7 @@ class DoctorCommandTest extends TestCase
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
+                'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'saloonphp/saloon' => '^3.0',
                 'saloonphp/laravel-plugin' => '^4.0',
                 'saloonphp/rate-limit-plugin' => '^2.5',
@@ -230,6 +266,7 @@ class DoctorCommandTest extends TestCase
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
+                'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'saloonphp/saloon' => '^4.0',
                 'saloonphp/laravel-plugin' => '^4.0',
                 'saloonphp/rate-limit-plugin' => '^2.5',
@@ -564,6 +601,12 @@ PHP);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath);
 
         foreach (Architecture::cases() as $architecture) {
+            if ($architecture === Architecture::LaravelAi) {
+                $this->assertFileExists($resources->summarySource($architecture));
+
+                continue;
+            }
+
             $this->assertFileExists($resources->guidelineSource($architecture));
             $this->assertFileExists($resources->skillSource($architecture));
             $this->assertTrue($resources->summarySource($architecture) !== '');
@@ -578,7 +621,10 @@ PHP);
     {
         $files = new Filesystem;
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
-        $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
+        $laravelAi = in_array(Architecture::LaravelAi, $enabled, true)
+            ? LaravelAiRequirement::resolve($files, $this->tempPath)
+            : null;
+        $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files, laravelAi: $laravelAi);
 
         $config->write($enabled, $runtime);
 
@@ -606,5 +652,26 @@ PHP);
         $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/'.$slug);
         $files->put($this->tempPath.'/.architecture-kit/architectures/'.$slug.'/guideline.md', 'Custom architecture guideline.');
+    }
+
+    private function writeLaravelAiFixture(string $constraint, string $version): void
+    {
+        $files = new Filesystem;
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'gracjankubicki/laravel-architecture-kit' => '^0.2',
+                'laravel/ai' => $constraint,
+            ],
+        ], JSON_THROW_ON_ERROR));
+        $files->put($this->tempPath.'/composer.lock', json_encode([
+            'packages' => [['name' => 'laravel/ai', 'version' => $version]],
+            'packages-dev' => [],
+        ], JSON_THROW_ON_ERROR));
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');
+        $files->put($this->tempPath.'/vendor/composer/installed.php', "<?php\nreturn ['versions' => ['laravel/ai' => ['pretty_version' => '{$version}']]];\n");
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Responses');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Responses/StructuredAgentResponse.php', '<?php class StructuredAgentResponse implements ArrayAccess { public function toArray(): array {} }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Concerns');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Concerns/ProviderOptions.php', '<?php trait ProviderOptions { public function withProviderOptions(array $options): static {} }');
     }
 }

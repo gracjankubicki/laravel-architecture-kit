@@ -25,6 +25,7 @@ class EnabledArchitectures extends Tool
 
         return Response::structured([
             'architectures' => $this->architectureSummaries($state),
+            ...($state->laravelAi !== null ? ['laravel_ai' => $state->laravelAi->toArray()] : []),
         ]);
     }
 }

@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
@@ -1513,8 +1514,34 @@ PHP);
     private function writeCurrentResources(array $enabled): void
     {
         $files = new Filesystem;
+        $composer = json_decode($files->get($this->tempPath.'/composer.json'), true);
+        $composer = is_array($composer) ? $composer : [];
+        $composer['require'] ??= [];
+        $composer['require']['gracjankubicki/laravel-architecture-kit'] = '^0.2';
+        $files->put($this->tempPath.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+
+        $laravelAi = null;
+
+        if (in_array(Architecture::LaravelAi, $enabled, true)) {
+            $constraint = is_string($composer['require']['laravel/ai'] ?? null) ? $composer['require']['laravel/ai'] : '^0.8';
+            $version = str_contains($constraint, '0.9') ? '0.9.0' : '0.8.1';
+            $composer['require']['laravel/ai'] = $constraint;
+            $files->put($this->tempPath.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+            $files->put($this->tempPath.'/composer.lock', json_encode([
+                'packages' => [['name' => 'laravel/ai', 'version' => $version]],
+                'packages-dev' => [],
+            ], JSON_THROW_ON_ERROR));
+            $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');
+            $files->put($this->tempPath.'/vendor/composer/installed.php', "<?php\nreturn ['versions' => ['laravel/ai' => ['pretty_version' => '{$version}']]];\n");
+            $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Responses');
+            $files->put($this->tempPath.'/vendor/laravel/ai/src/Responses/StructuredAgentResponse.php', '<?php class StructuredAgentResponse implements ArrayAccess { public function toArray(): array {} }');
+            $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Concerns');
+            $files->put($this->tempPath.'/vendor/laravel/ai/src/Concerns/ProviderOptions.php', '<?php trait ProviderOptions { public function withProviderOptions(array $options): static {} }');
+            $laravelAi = LaravelAiRequirement::resolve($files, $this->tempPath);
+        }
+
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
-        $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
+        $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files, laravelAi: $laravelAi);
 
         $config->write($enabled);
 

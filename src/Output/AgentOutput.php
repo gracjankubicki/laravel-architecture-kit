@@ -90,8 +90,9 @@ final readonly class AgentOutput
             ),
             'boost' => [
                 'installed' => $result->boostInstalled,
-                ...($result->boostInstalled ? ['sync' => 'php artisan boost:update --discover'] : []),
+                ...($result->boostInstalled ? ['sync' => 'php artisan boost:update --no-interaction'] : []),
             ],
+            ...($result->laravelAi !== null ? ['laravel_ai' => $result->laravelAi->toArray()] : []),
             'checks' => $this->checks($result->checks),
             'trunc' => count($visibleIssues) < count($issues),
             ...($limit > 0 ? [
@@ -126,6 +127,38 @@ final readonly class AgentOutput
         ];
     }
 
+    /**
+     * @param  array<string, array<int, string>>  $changes
+     * @param  array<string, mixed>|null  $profile
+     * @return array<string, mixed>
+     */
+    public function sync(array $changes, bool $dryRun, ?array $profile = null): array
+    {
+        return [
+            'v' => 1,
+            'ok' => true,
+            'cmd' => 'sync',
+            'dry_run' => $dryRun,
+            ...($profile !== null ? ['laravel_ai' => $profile] : []),
+            'changes' => $changes,
+            'next' => $dryRun ? ['rerun:sync --no-interaction'] : ['run:boost:update --no-interaction'],
+        ];
+    }
+
+    /** @param array<string, mixed>|null $profile @return array<string, mixed> */
+    public function syncError(string $message, ?array $profile = null): array
+    {
+        return [
+            'v' => 1,
+            'ok' => false,
+            'cmd' => 'sync',
+            'm' => 'E_SYNC_PREFLIGHT',
+            'msg' => $message,
+            ...($profile !== null ? ['laravel_ai' => $profile] : []),
+            'next' => ['fix_preflight', 'rerun:sync --no-interaction'],
+        ];
+    }
+
     public function limit(mixed $value): int
     {
         return max(0, (int) $value);
@@ -142,6 +175,7 @@ final readonly class AgentOutput
             'doctor' => $this->doctorSchema(),
             'explain' => $this->explainSchema(),
             'guidelines' => $this->guidelinesSchema(),
+            'sync' => $this->syncSchema(),
             default => [
                 '$schema' => 'https://json-schema.org/draft/2020-12/schema',
                 'type' => 'object',
@@ -363,6 +397,10 @@ final readonly class AgentOutput
                     ],
                     'additionalProperties' => false,
                 ],
+                'laravel_ai' => [
+                    'type' => ['object', 'null'],
+                    'additionalProperties' => true,
+                ],
                 'checks' => [
                     'type' => 'object',
                     'additionalProperties' => ['enum' => ['ok', 'warn', 'fail']],
@@ -464,6 +502,7 @@ final readonly class AgentOutput
                         'v' => ['const' => 1],
                         'ok' => ['const' => true],
                         'cmd' => ['const' => 'guidelines'],
+                        'laravel_ai' => ['type' => 'object', 'additionalProperties' => true],
                         'arch' => [
                             'type' => 'array',
                             'items' => [
@@ -490,6 +529,7 @@ final readonly class AgentOutput
                         'v' => ['const' => 1],
                         'ok' => ['const' => true],
                         'cmd' => ['const' => 'guidelines'],
+                        'laravel_ai' => ['type' => 'object', 'additionalProperties' => true],
                         'slug' => ['type' => 'string'],
                         'label' => ['type' => 'string'],
                         'enabled' => ['type' => 'boolean'],
@@ -521,6 +561,60 @@ final readonly class AgentOutput
                         'cmd' => ['const' => 'guidelines'],
                         'm' => ['const' => 'E_COMMAND_FAILED'],
                         'msg' => ['type' => 'string'],
+                        'next' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function syncSchema(): array
+    {
+        $laravelAi = [
+            'type' => 'object',
+            'additionalProperties' => true,
+        ];
+        $changes = [
+            'type' => 'object',
+            'required' => ['create', 'update', 'remove'],
+            'properties' => [
+                'create' => $this->stringListSchema(),
+                'update' => $this->stringListSchema(),
+                'remove' => $this->stringListSchema(),
+            ],
+            'additionalProperties' => false,
+        ];
+
+        return [
+            '$schema' => 'https://json-schema.org/draft/2020-12/schema',
+            'title' => 'Architecture Kit sync agent output',
+            'oneOf' => [
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'dry_run', 'changes', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => true],
+                        'cmd' => ['const' => 'sync'],
+                        'dry_run' => ['type' => 'boolean'],
+                        'laravel_ai' => $laravelAi,
+                        'changes' => $changes,
+                        'next' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'm', 'msg', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => false],
+                        'cmd' => ['const' => 'sync'],
+                        'm' => ['const' => 'E_SYNC_PREFLIGHT'],
+                        'msg' => ['type' => 'string'],
+                        'laravel_ai' => $laravelAi,
                         'next' => $this->stringListSchema(),
                     ],
                     'additionalProperties' => false,

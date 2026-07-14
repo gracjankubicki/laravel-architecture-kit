@@ -33,7 +33,7 @@ class AgentOutputSchemaTest extends TestCase
     {
         $agent = new AgentOutput;
 
-        foreach (['audit', 'guard', 'doctor', 'explain'] as $command) {
+        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'sync'] as $command) {
             $schema = $agent->schema($command);
 
             $this->assertSame(1, $schema['oneOf'][0]['properties']['v']['const']);
@@ -75,6 +75,22 @@ class AgentOutputSchemaTest extends TestCase
         $this->assertSame('guidelines', $schema['oneOf'][0]['properties']['cmd']['const']);
         $this->assertSame('guidelines', $schema['oneOf'][1]['properties']['cmd']['const']);
         $this->assertSame('E_UNKNOWN_ARCHITECTURE', $schema['oneOf'][2]['properties']['m']['const']);
+    }
+
+    public function test_it_exposes_sync_payload_and_schema(): void
+    {
+        $agent = new AgentOutput;
+        $payload = $agent->sync([
+            'create' => ['.ai/guidelines/architecture-kit.md'],
+            'update' => [],
+            'remove' => [],
+        ], true, ['profile' => 'laravel-ai@0.9']);
+
+        $this->assertSame('sync', $payload['cmd']);
+        $this->assertTrue($payload['dry_run']);
+        $this->assertSame('laravel-ai@0.9', $payload['laravel_ai']['profile']);
+        $this->assertTrue($this->matchesSchema($payload, $agent->schema('sync')));
+        $this->assertTrue($this->matchesSchema($agent->syncError('blocked'), $agent->schema('sync')));
     }
 
     public function test_generated_success_and_error_payloads_match_their_published_schemas(): void

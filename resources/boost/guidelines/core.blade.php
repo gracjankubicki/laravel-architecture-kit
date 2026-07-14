@@ -10,6 +10,8 @@ If MCP is unavailable, read `.ai/guidelines/architecture-kit.md` or run `php art
 
 For full details, expand one architecture with `php artisan architecture-kit:guidelines {slug} --agent`, call the Architecture Kit MCP tool `architecture-rules`, or read the MCP resource `architecture-kit://guideline`.
 
+When Laravel AI is enabled, load exactly one generated `architecture-kit-laravel-ai` skill for project architecture policy and the official `ai-sdk-development` skill shipped by the installed `laravel/ai` package for SDK details. Do not duplicate either skill's rules in this bootstrap guideline.
+
 Architecture Kit includes a package-first rule. Before implementing custom infrastructure, you MUST check existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party PHP packages, then use the existing option when it fits the project constraints.
 
 If `.ai/guidelines/architecture-kit.md` does not exist, ask the user to configure Architecture Kit or run:
@@ -17,3 +19,5 @@ If `.ai/guidelines/architecture-kit.md` does not exist, ask the user to configur
 ```bash
 php artisan architecture-kit:install
 ```
+
+After Composer updates, regenerate managed resources explicitly with `php artisan architecture-kit:sync --no-interaction`, then run normal `php artisan boost:update --no-interaction`.

@@ -26,6 +26,7 @@ class ArchitectureRules extends Tool
         return Response::structured([
             'guideline' => $this->guideline($state),
             'architectures' => $this->architectureSummaries($state),
+            ...($state->laravelAi !== null ? ['laravel_ai' => $state->laravelAi->toArray()] : []),
         ]);
     }
 }
