@@ -38,6 +38,7 @@ file_put_contents("config/architectures.php", $config);
 '
 
 php artisan architecture-kit:sync --no-interaction
+mkdir -p .codex
 php artisan boost:install --no-interaction
 php artisan boost:update --no-interaction
 
