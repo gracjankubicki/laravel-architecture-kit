@@ -67,6 +67,22 @@ class McpIntegrationTest extends TestCase
             );
     }
 
+    public function test_enabled_architectures_tool_reports_the_resolved_laravel_ai_profile(): void
+    {
+        $this->writeLaravelAiFixture('^0.9', '0.9.0');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::LaravelAi]);
+
+        ArchitectureKitServer::tool(EnabledArchitectures::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('architectures.0.value', 'laravel-ai')
+                ->where('laravel_ai.status', 'supported')
+                ->where('laravel_ai.profile', 'laravel-ai@0.9')
+                ->where('laravel_ai.installed_version', '0.9.0')
+                ->etc()
+            );
+    }
+
     public function test_enabled_architectures_tool_returns_scoped_custom_audit_rules(): void
     {
         $this->writeCustomArchitecture('billing-workflows');
@@ -152,7 +168,7 @@ PHP);
                 ->assertOk()
                 ->assertStructuredContent(fn ($json) => $json
                     ->where('boost.installed', true)
-                    ->where('boost.sync', 'php artisan boost:update --discover')
+                    ->where('boost.sync', 'php artisan boost:update --no-interaction')
                     ->etc()
                 );
         } finally {
@@ -429,5 +445,26 @@ PHP;
         $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/architectures/'.$slug);
         $files->put($this->tempPath.'/.architecture-kit/architectures/'.$slug.'/guideline.md', 'Custom architecture guideline.');
+    }
+
+    private function writeLaravelAiFixture(string $constraint, string $version): void
+    {
+        $files = new Filesystem;
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'gracjankubicki/laravel-architecture-kit' => '^0.2',
+                'laravel/ai' => $constraint,
+            ],
+        ], JSON_THROW_ON_ERROR));
+        $files->put($this->tempPath.'/composer.lock', json_encode([
+            'packages' => [['name' => 'laravel/ai', 'version' => $version]],
+            'packages-dev' => [],
+        ], JSON_THROW_ON_ERROR));
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');
+        $files->put($this->tempPath.'/vendor/composer/installed.php', "<?php\nreturn ['versions' => ['laravel/ai' => ['pretty_version' => '{$version}']]];\n");
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Responses');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Responses/StructuredAgentResponse.php', '<?php class StructuredAgentResponse implements ArrayAccess { public function toArray(): array {} }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Concerns');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Concerns/ProviderOptions.php', '<?php trait ProviderOptions { public function withProviderOptions(array $options): static {} }');
     }
 }

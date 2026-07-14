@@ -2,6 +2,26 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.2.0 - 2026-07-14
+
+### Added
+
+- Explicit, independently tested Laravel AI `0.8` and `0.9` compatibility profiles with stable generated paths and profile/version provenance.
+- `architecture-kit:sync` for deterministic non-interactive regeneration, dry-run planning, agent JSON/schema output, managed-file cleanup, and preflight-before-write behavior.
+- Composer inventory diagnostics covering root dependency placement, declared constraints, installed metadata, lock consistency, unsupported versions, and referenced capabilities.
+- CI contract jobs for real Laravel AI boundaries, a consuming Laravel application installed with `--no-dev`, and Boost exact-once skill composition.
+
+### Changed
+
+- Architecture Kit must be installed in the consuming application's root runtime `require`; dev-only placement now blocks install, doctor, and sync with migration instructions.
+- Laravel AI must be a direct runtime dependency whose complete constraint fits `>=0.8.0 <0.10.0`. Unknown or future lines fail closed.
+- Structured response guidance uses `toArray()` or ArrayAccess. The Laravel AI 0.9 profile uses the renamed `withProviderOptions()` API where provider options are shown.
+- Recurring Boost synchronization now uses normal `boost:update --no-interaction`; third-party discovery is reserved for one-time enrolment.
+
+### Upgrade
+
+- See `UPGRADE.md` for the runtime dependency migration, Laravel AI support matrix, profile regeneration, and Boost flows.
+
 ## v0.1.10 - 2026-07-10
 
 ### Changed

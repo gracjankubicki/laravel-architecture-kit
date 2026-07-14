@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Doctor;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
 
 final readonly class ArchitectureDoctorResult
 {
@@ -16,6 +17,7 @@ final readonly class ArchitectureDoctorResult
         public array $enabled,
         public array $checks,
         public bool $boostInstalled,
+        public ?LaravelAiCompatibilityResult $laravelAi = null,
     ) {}
 
     public function ok(): bool
@@ -62,8 +64,9 @@ final readonly class ArchitectureDoctorResult
             ),
             'boost' => [
                 'installed' => $this->boostInstalled,
-                'sync_command' => $this->boostInstalled ? 'php artisan boost:update --discover' : null,
+                'sync_command' => $this->boostInstalled ? 'php artisan boost:update --no-interaction' : null,
             ],
+            'laravel_ai' => $this->laravelAi?->toArray(),
         ];
     }
 }

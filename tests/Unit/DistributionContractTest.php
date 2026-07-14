@@ -26,7 +26,15 @@ final class DistributionContractTest extends TestCase
         $this->assertArrayNotHasKey('permissions', $jobs['lint']);
         $this->assertArrayNotHasKey('permissions', $jobs['tests']);
         $this->assertArrayNotHasKey('permissions', $jobs['coverage']);
-        $this->assertSame(['lint', 'tests'], $jobs['coverage']['needs']);
+        $this->assertSame(['lint', 'tests', 'laravel-ai-contract', 'runtime-install', 'boost-composition'], $jobs['coverage']['needs']);
+        $this->assertSame(['0.8.0', '^0.8', '0.9.0', '^0.9'], $jobs['laravel-ai-contract']['strategy']['matrix']['ai']);
+        $runtimeSmoke = file_get_contents($root.'/tests/Smoke/runtime-install.sh');
+        $boostSmoke = file_get_contents($root.'/tests/Smoke/boost-composition.sh');
+        $this->assertIsString($runtimeSmoke);
+        $this->assertStringContainsString('composer install --no-dev', $runtimeSmoke);
+        $this->assertIsString($boostSmoke);
+        $this->assertStringContainsString('architecture-kit-laravel-ai/SKILL.md', $boostSmoke);
+        $this->assertStringContainsString('ai-sdk-development/SKILL.md', $boostSmoke);
 
         $lowest = array_values(array_filter(
             $jobs['tests']['strategy']['matrix']['include'],

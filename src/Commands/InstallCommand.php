@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectPackageInventory;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Install\AgentInstaller;
 use GracjanKubicki\ArchitectureKit\Install\Agents\Agent;
@@ -13,12 +14,16 @@ use GracjanKubicki\ArchitectureKit\Install\AgentsDetector;
 use GracjanKubicki\ArchitectureKit\Install\ComposerPackageInstaller;
 use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
 use GracjanKubicki\ArchitectureKit\Install\InstallResult;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\ArchitectureKitRuntimeRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\SaloonRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\ServicesRequirement;
+use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResourceManifest;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
+use GracjanKubicki\ArchitectureKit\Resources\ManagedResourceDeployment;
+use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -36,6 +41,15 @@ class InstallCommand extends Command
 
     public function handle(Filesystem $files, ComposerPackageInstaller $composer): int
     {
+        $runtimeRequirement = (new ArchitectureKitRuntimeRequirement(new ProjectPackageInventory($files, base_path())))->check();
+
+        if (! $runtimeRequirement->satisfied) {
+            $this->error($runtimeRequirement->message);
+            $this->line($runtimeRequirement->remediation);
+
+            return self::FAILURE;
+        }
+
         $catalog = new ArchitectureCatalog($files, base_path());
         $config = new ArchitectureConfig(config_path('architectures.php'), $files, $catalog);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files, $catalog);
@@ -46,7 +60,7 @@ class InstallCommand extends Command
 
             if (
                 ! $files->exists(config_path('architectures.php'))
-                && LaravelAiRequirement::projectRequiresLaravelAi($files, base_path())
+                && LaravelAiRequirement::resolve($files, base_path())->supported()
                 && ! in_array(Architecture::LaravelAi, $current, true)
             ) {
                 $current[] = Architecture::LaravelAi;
@@ -77,6 +91,15 @@ class InstallCommand extends Command
 
         try {
             $enabled = $config->normalize($selected);
+            $laravelAi = in_array(Architecture::LaravelAi, $enabled, true)
+                ? LaravelAiRequirement::resolve($files, base_path())
+                : null;
+
+            if ($laravelAi !== null && ! $laravelAi->supported()) {
+                throw new \RuntimeException($laravelAi->message.' '.$laravelAi->remediation);
+            }
+
+            $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files, $catalog, $laravelAi);
             $resources->assertSourcesExist($enabled);
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
@@ -158,16 +181,6 @@ class InstallCommand extends Command
             }
         }
 
-        if (
-            in_array(Architecture::LaravelAi, $enabled, true)
-            && ! LaravelAiRequirement::projectRequiresLaravelAi($files, base_path())
-        ) {
-            $this->error('Laravel AI is enabled, but composer.json does not require laravel/ai.');
-            $this->line('Install laravel/ai or disable Architecture::LaravelAi, then run php artisan architecture-kit:install again.');
-
-            return self::FAILURE;
-        }
-
         $runtime = $this->runtime($files, $currentRuntime);
 
         try {
@@ -179,13 +192,14 @@ class InstallCommand extends Command
         }
 
         $removals = $this->staleSkills($resources, $enabled);
-        $plan = $this->plan($files, $resources, $expected, $removals);
+        $deployment = new ManagedResourceDeployment($files, $resources);
+        $plan = $deployment->plan($expected, $removals, ['config']);
 
-        if ($plan['blocked'] !== []) {
+        if ($plan->blocked !== []) {
             $this->error('Architecture Kit cannot continue because unmanaged files block generated targets.');
             $this->newLine();
 
-            foreach ($plan['blocked'] as $path) {
+            foreach ($plan->blocked as $path) {
                 $this->line("  blocked  {$this->relative($path)}");
             }
 
@@ -215,9 +229,9 @@ class InstallCommand extends Command
         }
 
         $changes = array_merge(
-            $plan['create'],
-            $plan['update'],
-            $plan['remove'],
+            $plan->create,
+            $plan->update,
+            $plan->remove,
             $this->agentChangePaths($agentPlan),
         );
 
@@ -240,8 +254,7 @@ class InstallCommand extends Command
                 return self::FAILURE;
             }
 
-            $this->writeFiles($files, $expected);
-            $this->removeStaleSkills($files, $removals);
+            $deployment->apply($expected, $removals);
 
             if ($agentInstall !== null) {
                 $agentInstall['installer']->write($agentInstall['agents'], $agentInstall['mcp'], $agentInstall['hooks']);
@@ -251,7 +264,7 @@ class InstallCommand extends Command
         }
 
         if ($this->getApplication()?->has('boost:update') === true) {
-            if (confirm('Run php artisan boost:update --discover now?', default: false)) {
+            if (confirm('Run one-time php artisan boost:update --discover to enrol Architecture Kit now?', default: false)) {
                 $this->call('boost:update', ['--discover' => true]);
             }
         } else {
@@ -265,9 +278,10 @@ class InstallCommand extends Command
         $this->newLine();
         $this->line('Next:');
         $this->line('  php artisan architecture-kit:doctor');
+        $this->line('  php artisan architecture-kit:sync --no-interaction');
         $this->line('  php artisan architecture-kit:install-agents');
         $this->line('  php artisan architecture-kit:guard --changed --strict');
-        $this->line('  php artisan boost:update --discover');
+        $this->line('  php artisan boost:update --no-interaction');
 
         return self::SUCCESS;
     }
@@ -347,19 +361,13 @@ class InstallCommand extends Command
      */
     private function expectedFiles(ArchitectureConfig $config, ArchitectureResources $resources, array $enabled, array $runtime): array
     {
-        $files = [
+        return [
             'config' => new GeneratedFile(
                 path: config_path('architectures.php'),
                 contents: $config->render($enabled, $runtime),
             ),
-            'guideline' => $resources->guideline($enabled),
+            ...(new ArchitectureResourceManifest($resources))->expected($enabled),
         ];
-
-        foreach ($resources->skills($enabled) as $key => $file) {
-            $files['skill:'.$key] = $file;
-        }
-
-        return $files;
     }
 
     /**
@@ -368,92 +376,7 @@ class InstallCommand extends Command
      */
     private function staleSkills(ArchitectureResources $resources, array $enabled): array
     {
-        $expectedNames = array_map(
-            fn (Architecture|string $architecture): string => $architecture instanceof Architecture
-                ? $architecture->skillName()
-                : 'architecture-kit-'.$architecture,
-            $enabled,
-        );
-
-        return array_filter(
-            $resources->existingGeneratedSkillPaths(),
-            fn (string $path, string $name): bool => ! in_array($name, $expectedNames, true),
-            ARRAY_FILTER_USE_BOTH,
-        );
-    }
-
-    /**
-     * @param  array<string, GeneratedFile>  $expected
-     * @param  array<string, string>  $removals
-     * @return array{create: array<int, string>, update: array<int, string>, remove: array<int, string>, blocked: array<int, string>}
-     */
-    private function plan(Filesystem $files, ArchitectureResources $resources, array $expected, array $removals): array
-    {
-        $plan = [
-            'create' => [],
-            'update' => [],
-            'remove' => [],
-            'blocked' => [],
-        ];
-
-        foreach ($expected as $key => $file) {
-            if (! $files->exists($file->path)) {
-                $plan['create'][] = $file->path;
-
-                continue;
-            }
-
-            if ($files->get($file->path) === $file->contents) {
-                continue;
-            }
-
-            if ($key !== 'config' && ! $resources->isGenerated($file->path)) {
-                $plan['blocked'][] = $file->path;
-
-                continue;
-            }
-
-            $plan['update'][] = $file->path;
-        }
-
-        foreach ($removals as $path) {
-            $directory = dirname($path);
-            $extraFiles = array_filter(
-                $files->allFiles($directory),
-                fn ($file): bool => $file->getPathname() !== $path,
-            );
-
-            if ($extraFiles !== []) {
-                $plan['blocked'][] = $directory;
-
-                continue;
-            }
-
-            $plan['remove'][] = $directory;
-        }
-
-        return $plan;
-    }
-
-    /**
-     * @param  array<string, GeneratedFile>  $expected
-     */
-    private function writeFiles(Filesystem $files, array $expected): void
-    {
-        foreach ($expected as $file) {
-            $files->ensureDirectoryExists(dirname($file->path));
-            $files->put($file->path, $file->contents);
-        }
-    }
-
-    /**
-     * @param  array<string, string>  $removals
-     */
-    private function removeStaleSkills(Filesystem $files, array $removals): void
-    {
-        foreach ($removals as $path) {
-            $files->deleteDirectory(dirname($path));
-        }
+        return (new ArchitectureResourceManifest($resources))->stale($enabled);
     }
 
     private function relative(string $path): string
@@ -658,13 +581,10 @@ class InstallCommand extends Command
         )));
     }
 
-    /**
-     * @param  array{create: array<int, string>, update: array<int, string>, remove: array<int, string>, blocked: array<int, string>}  $plan
-     */
-    private function showResourcePlan(array $plan): void
+    private function showResourcePlan(ManagedResourcePlan $plan): void
     {
         foreach (['create', 'update', 'remove'] as $status) {
-            foreach ($plan[$status] as $path) {
+            foreach ($plan->{$status} as $path) {
                 $this->line(sprintf('  %-7s resources %s', $status, $this->relative($path)));
             }
         }

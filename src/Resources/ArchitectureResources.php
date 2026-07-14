@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Resources;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
+use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
 use SplFileInfo;
@@ -22,6 +23,7 @@ final class ArchitectureResources
         private readonly string $projectPath,
         private readonly Filesystem $files = new Filesystem,
         ?ArchitectureCatalog $catalog = null,
+        private readonly ?LaravelAiCompatibilityResult $laravelAi = null,
     ) {
         $this->catalog = $catalog ?? new ArchitectureCatalog($this->files, $this->projectPath);
     }
@@ -113,17 +115,35 @@ final class ArchitectureResources
 
     public function guidelineSource(EnabledArchitecture|Architecture|string $architecture): string
     {
-        return $this->resolvedSource($this->enabledArchitecture($architecture)->guidelineSource($this->packagePath), 'guideline');
+        $architecture = $this->enabledArchitecture($architecture);
+
+        if ($architecture->value === Architecture::LaravelAi) {
+            return $this->laravelAiSource('guideline');
+        }
+
+        return $this->resolvedSource($architecture->guidelineSource($this->packagePath), 'guideline');
     }
 
     public function skillSource(EnabledArchitecture|Architecture|string $architecture): string
     {
-        return $this->resolvedSource($this->enabledArchitecture($architecture)->skillSource($this->packagePath), 'skill');
+        $architecture = $this->enabledArchitecture($architecture);
+
+        if ($architecture->value === Architecture::LaravelAi) {
+            return $this->laravelAiSource('skill');
+        }
+
+        return $this->resolvedSource($architecture->skillSource($this->packagePath), 'skill');
     }
 
     public function summarySource(EnabledArchitecture|Architecture|string $architecture): string
     {
-        return $this->resolvedSource($this->enabledArchitecture($architecture)->summarySource($this->packagePath), 'summary');
+        $architecture = $this->enabledArchitecture($architecture);
+
+        if ($architecture->value === Architecture::LaravelAi) {
+            return $this->laravelAiSource('summary');
+        }
+
+        return $this->resolvedSource($architecture->summarySource($this->packagePath), 'summary');
     }
 
     /**
@@ -505,10 +525,59 @@ MARKDOWN;
                 throw new RuntimeException("Architecture Kit skill fragment directory [{$source}] must start with a frontmatter fragment.");
             }
 
+            return $this->profiledContents($architecture, $kind, $contents);
+        }
+
+        return $this->profiledContents($architecture, $kind, $this->files->get($source));
+    }
+
+    private function laravelAiSource(string $kind): string
+    {
+        if ($kind === 'summary' && ($this->laravelAi === null || ! $this->laravelAi->supported())) {
+            return $this->packagePath.'/resources/architectures/laravel-ai/shared/summary.md';
+        }
+
+        if ($this->laravelAi === null || ! $this->laravelAi->supported() || $this->laravelAi->profile === null) {
+            throw new RuntimeException('Laravel AI resources require a supported compatibility profile. Run php artisan architecture-kit:doctor for diagnostics.');
+        }
+
+        $filename = match ($kind) {
+            'skill' => 'SKILL.md',
+            'summary' => 'summary.md',
+            default => 'guideline.md',
+        };
+
+        return $this->packagePath.'/resources/architectures/laravel-ai/profiles/'.$this->laravelAi->profile->value.'/'.$filename;
+    }
+
+    private function profiledContents(EnabledArchitecture $architecture, string $kind, string $contents): string
+    {
+        if ($architecture->value !== Architecture::LaravelAi || $kind === 'summary' || $this->laravelAi?->profile === null) {
             return $contents;
         }
 
-        return $this->files->get($source);
+        $provenance = implode("\n", [
+            '## Compatibility Provenance',
+            '',
+            'Profile: `'.$this->laravelAi->profile->key().'`',
+            'Supported constraint: `'.$this->laravelAi->profile->constraint().'`',
+            'Installed version: `'.$this->laravelAi->installedVersion.'`',
+        ]);
+
+        if ($kind !== 'skill' || ! str_starts_with(trim($contents), "---\n")) {
+            return $provenance."\n\n".ltrim($contents);
+        }
+
+        $contents = trim($contents);
+        $end = strpos($contents, "\n---", 4);
+
+        if ($end === false) {
+            return $provenance."\n\n".$contents;
+        }
+
+        $frontmatterEnd = $end + 4;
+
+        return substr($contents, 0, $frontmatterEnd)."\n\n{$provenance}\n\n".ltrim(substr($contents, $frontmatterEnd));
     }
 
     /**

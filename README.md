@@ -40,9 +40,11 @@ Guidance is intentionally broader than the rules that can be verified determinis
 ## Installation
 
 ```bash
-composer require --dev gracjankubicki/laravel-architecture-kit
+composer require gracjankubicki/laravel-architecture-kit
 php artisan architecture-kit:install
 ```
+
+Architecture Kit is a runtime dependency because the committed `config/architectures.php` references its `Architecture` enum while the application boots and caches configuration. Installing it only with `--dev` is unsupported and is blocked by install, doctor, and sync. Existing projects should follow [UPGRADE.md](UPGRADE.md) before updating to v0.2.0.
 
 The install command is interactive. It asks which architecture patterns the project uses, writes `config/architectures.php`, and generates:
 
@@ -61,13 +63,22 @@ It can also install agent integration without manual file editing:
 .architecture-kit/hooks/guard.sh
 ```
 
-If Laravel Boost is installed, the command can also run:
+If Architecture Kit is newly added to a project that already uses Laravel Boost, the installer can run one-time third-party discovery:
 
 ```bash
 php artisan boost:update --discover
 ```
 
 Boost then syncs the generated `.ai` resources into agent files such as `AGENTS.md`, `CLAUDE.md`, and other configured AI instructions.
+
+For a fresh Boost project, generate Architecture Kit resources and then run `php artisan boost:install`. For recurring Composer or Laravel AI profile updates, do not rediscover packages; run:
+
+```bash
+php artisan architecture-kit:sync --no-interaction
+php artisan boost:update --no-interaction
+```
+
+Architecture Kit remains usable without Boost through `.ai/**`, CLI commands, and MCP resources.
 
 The generated `.ai/guidelines/architecture-kit.md` file is a compact index, not the full rulebook. It lists enabled architectures, folders, hard rules, global rules, and the guard command. Agents should expand details only when needed through:
 
@@ -85,6 +96,8 @@ php artisan architecture-kit:install-agents
 php artisan architecture-kit:install-agents --hooks
 php artisan architecture-kit:mcp
 php artisan architecture-kit:doctor
+php artisan architecture-kit:sync --no-interaction
+php artisan architecture-kit:sync --dry-run --agent
 php artisan architecture-kit:guidelines
 php artisan architecture-kit:guidelines actions --agent
 php artisan architecture-kit:guard --changed --strict
@@ -99,6 +112,8 @@ php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE --agent
 ```
 
 `architecture-kit:install` is idempotent. Re-run it to change the selected architectures, the PHP runtime, or regenerate outdated `.ai` resources.
+
+`architecture-kit:sync` is the non-interactive recurring path. It reads the existing config, validates every enabled requirement and compatibility profile before writes, regenerates only marker-owned `.ai/**`, removes only stale marker-owned Architecture Kit skills, preserves unmanaged files, and never changes architecture selection. Use `--dry-run` for CI/agent preflight and `--schema` to inspect its JSON contract.
 
 `architecture-kit:install-agents` bootstraps MCP and hook configuration for selected AI agents. It writes Codex MCP config to `.codex/config.toml` and Claude Code MCP config to `.mcp.json`, using the runtime from `config/architectures.php` as the initial wrapper command.
 
@@ -252,9 +267,22 @@ Some patterns have hard requirements, validated by `architecture-kit:install` an
 
 - `Modern PHP 8.5` is a strict runtime contract. The consuming project must require PHP 8.5 or newer in `composer.json`; otherwise the configuration is reported as invalid.
 - `Saloon` requires `saloonphp/saloon` `^4.0`, `saloonphp/laravel-plugin`, and `saloonphp/rate-limit-plugin`. The install command offers to `composer require` the missing packages. Constraints that still allow Saloon 3 are reported as invalid because Saloon 4 fixes security issues in v3.
-- `Laravel AI` requires `laravel/ai` in `composer.json`.
+- `Laravel AI` requires `laravel/ai` directly in root runtime `require`, an installed version consistent with `composer.lock`, and a declared constraint fully contained in the verified support ranges.
 
-On the first install (before `config/architectures.php` exists), `Services` is preselected when the project already has an `app/Services` folder, and `Laravel AI` is preselected when `composer.json` already requires `laravel/ai`.
+Laravel AI compatibility:
+
+| Architecture Kit profile | Supported `laravel/ai` versions | Structured response | Provider options |
+| --- | --- | --- | --- |
+| `laravel-ai@0.8` | `>=0.8.0 <0.9.0` | `toArray()` or ArrayAccess | Laravel AI 0.8 contracts |
+| `laravel-ai@0.9` | `>=0.9.0 <0.10.0` | `toArray()` or ArrayAccess | `withProviderOptions()` where applicable |
+
+Constraints such as `^0.8`, `^0.9`, `^0.8 || ^0.9`, and `>=0.8 <0.10` are supported. Constraints that also permit `0.10`, `1.x`, or development branches fail closed. Architecture Kit never guesses that the newest known profile is compatible with an unknown Laravel AI release.
+
+Only the profile selected from the actually installed Laravel AI version is generated at `.ai/skills/architecture-kit-laravel-ai/SKILL.md`. Architecture Kit owns the application architecture overlay; exact SDK features remain in the official `ai-sdk-development` skill shipped by the installed `laravel/ai` package.
+
+On the first install (before `config/architectures.php` exists), `Services` is preselected when the project already has an `app/Services` folder, and `Laravel AI` is preselected only when a valid supported runtime `laravel/ai` installation is detected.
+
+Architecture Kit does not add Composer post-update hooks. After dependency updates, run the explicit sync commands shown above so validation failures remain visible and cannot silently rewrite project files.
 
 The install command also warns about weak pattern combinations, for example Thin Controllers, Eloquent Lifecycle, or Saloon enabled without Actions as the application boundary.
 
@@ -324,9 +352,9 @@ Unknown suppression rules are reported as `invalid-suppression` warnings and do 
 
 Baseline files use schema version 2, which fingerprints severity as well as rule, path, and message. A legacy version 1 baseline is rejected because it cannot distinguish a warning from a later error; recreate it deliberately with `php artisan architecture-kit:audit --update-baseline`.
 
-### Composer Update Check
+### Optional Project-Owned Composer Update Check
 
-Use a read-only Composer hook to detect stale generated resources after package updates:
+Architecture Kit does not install Composer hooks. If the project deliberately owns one, it may use this read-only hook to detect stale generated resources after package updates:
 
 ```json
 {

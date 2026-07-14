@@ -82,6 +82,21 @@ class DoctorCommand extends Command
             )));
         }
 
+        if ($result->laravelAi !== null) {
+            $this->newLine();
+            $this->line('Laravel AI:');
+            $this->line('  status     '.$result->laravelAi->status->value);
+            $this->line('  section    '.($result->laravelAi->section ?? 'none'));
+            $this->line('  constraint '.($result->laravelAi->declaredConstraint ?? 'none'));
+            $this->line('  installed  '.($result->laravelAi->installedVersion ?? 'none'));
+            $this->line('  locked     '.($result->laravelAi->lockedVersion ?? 'none'));
+            $this->line('  profile    '.($result->laravelAi->profile?->key() ?? 'none'));
+
+            if (! $result->laravelAi->supported()) {
+                $this->line('  next       '.$result->laravelAi->remediation);
+            }
+        }
+
         $this->newLine();
         $this->line('Generated resources:');
 
@@ -139,10 +154,10 @@ class DoctorCommand extends Command
 
         if ($result->boostInstalled) {
             $this->line('  installed yes');
-            $this->line('  sync      php artisan boost:update --discover');
+            $this->line('  sync      php artisan boost:update --no-interaction');
         } else {
             $this->line('  installed no');
-            $this->line('  warning   Install laravel/boost and run php artisan boost:install or boost:update --discover to sync agent files.');
+            $this->line('  warning   Install laravel/boost and run php artisan boost:install for fresh configuration.');
         }
 
         foreach ($this->checksFor($result->checks, 'boost') as $check) {
@@ -155,7 +170,7 @@ class DoctorCommand extends Command
 
         if (! $result->ok()) {
             $this->newLine();
-            $this->line('Run php artisan architecture-kit:install to regenerate Architecture Kit resources.');
+            $this->line('Run php artisan architecture-kit:doctor after applying the remediation above.');
 
             return self::FAILURE;
         }

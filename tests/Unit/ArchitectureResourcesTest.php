@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
+use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityStatus;
+use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiProfile;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
@@ -105,6 +108,37 @@ class ArchitectureResourcesTest extends TestCase
         $this->expectExceptionMessage('Missing Architecture Kit source resource');
 
         (new ArchitectureResources($packagePath, $this->tempPath, $files))->assertSourcesExist([Architecture::Actions]);
+    }
+
+    public function test_laravel_ai_uses_exactly_one_resolved_profile_at_stable_paths(): void
+    {
+        $compatibility = new LaravelAiCompatibilityResult(
+            status: LaravelAiCompatibilityStatus::Supported,
+            section: 'require',
+            declaredConstraint: '^0.9',
+            installedVersion: '0.9.0',
+            lockedVersion: '0.9.0',
+            profile: LaravelAiProfile::V09,
+        );
+        $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, new Filesystem, laravelAi: $compatibility);
+
+        $skill = $resources->skills([Architecture::LaravelAi])['laravel-ai'];
+
+        $this->assertSame($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md', $skill->path);
+        $this->assertStringContainsString('Profile: `laravel-ai@0.9`', $skill->contents);
+        $this->assertStringContainsString('Installed version: `0.9.0`', $skill->contents);
+        $this->assertStringContainsString('withProviderOptions(', $skill->contents);
+        $this->assertStringNotContainsString('structuredOutput()', $skill->contents);
+        $this->assertStringNotContainsString('laravel-ai@0.8', $skill->contents);
+    }
+
+    public function test_disabled_laravel_ai_has_a_neutral_summary_without_resolving_a_profile(): void
+    {
+        $summary = $this->resources()->summaryFor(Architecture::LaravelAi, [Architecture::Actions]);
+
+        $this->assertStringContainsString('project-owned Gateways', $summary);
+        $this->assertStringNotContainsString('0.8', $summary);
+        $this->assertStringNotContainsString('0.9', $summary);
     }
 
     private function resources(): ArchitectureResources

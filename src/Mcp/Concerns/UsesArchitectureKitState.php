@@ -67,6 +67,8 @@ trait UsesArchitectureKitState
      */
     protected function architectureSummaries(ProjectState $state): array
     {
+        $state->assertCompatibility();
+
         $enabled = $state->enabled;
         $ruleSet = $state->customRules;
 
@@ -82,6 +84,8 @@ trait UsesArchitectureKitState
 
     protected function guideline(ProjectState $state): string
     {
+        $state->assertCompatibility();
+
         return $state->resources->fullGuideline($state->enabled);
     }
 }

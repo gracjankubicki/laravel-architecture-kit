@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Commands\GuidelinesCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallAgentsCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallCommand;
 use GracjanKubicki\ArchitectureKit\Commands\McpCommand;
+use GracjanKubicki\ArchitectureKit\Commands\SyncCommand;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Mcp\Facades\Mcp;
@@ -42,6 +43,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
             InstallAgentsCommand::class,
             InstallCommand::class,
             McpCommand::class,
+            SyncCommand::class,
         ]);
 
         $this->app->booted(function (): void {

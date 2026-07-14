@@ -12,6 +12,7 @@ final class SaloonRequirementTest extends TestCase
 {
     public function test_it_reports_missing_or_invalid_composer_json(): void
     {
+        (new Filesystem)->delete($this->tempPath.'/composer.json');
         $this->assertSame(['composer.json is missing or invalid.'], SaloonRequirement::violations(new Filesystem, $this->tempPath));
 
         (new Filesystem)->put($this->tempPath.'/composer.json', '{');

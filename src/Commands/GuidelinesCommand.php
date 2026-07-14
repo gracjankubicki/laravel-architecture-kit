@@ -34,6 +34,7 @@ class GuidelinesCommand extends Command
 
         try {
             $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
+            $state->assertCompatibility();
             $enabled = $state->enabled;
             $resources = $state->resources;
             $known = $state->catalog->known();
@@ -52,7 +53,7 @@ class GuidelinesCommand extends Command
         $slug = (string) ($this->argument('architecture') ?? '');
 
         if ($slug === '') {
-            $payload = $this->listPayload($resources, $known, $enabled);
+            $payload = $this->listPayload($resources, $known, $enabled, $state->laravelAi?->toArray());
 
             if ((bool) $this->option('agent')) {
                 $this->line($this->json($payload));
@@ -102,6 +103,7 @@ class GuidelinesCommand extends Command
             'v' => 1,
             'ok' => true,
             'cmd' => 'guidelines',
+            ...($state->laravelAi !== null ? ['laravel_ai' => $state->laravelAi->toArray()] : []),
             'slug' => $architecture->slug(),
             'label' => $architecture->label(),
             'enabled' => in_array($architecture->slug(), $this->enabledSlugs($enabled), true),
@@ -125,7 +127,7 @@ class GuidelinesCommand extends Command
      * @param  array<int, Architecture|string>  $enabled
      * @return array<string, mixed>
      */
-    private function listPayload(ArchitectureResources $resources, array $known, array $enabled): array
+    private function listPayload(ArchitectureResources $resources, array $known, array $enabled, ?array $laravelAi = null): array
     {
         $enabledSlugs = $this->enabledSlugs($enabled);
 
@@ -133,6 +135,7 @@ class GuidelinesCommand extends Command
             'v' => 1,
             'ok' => true,
             'cmd' => 'guidelines',
+            ...($laravelAi !== null ? ['laravel_ai' => $laravelAi] : []),
             'arch' => array_map(fn (EnabledArchitecture $architecture): array => [
                 'slug' => $architecture->slug(),
                 'label' => $architecture->label(),
