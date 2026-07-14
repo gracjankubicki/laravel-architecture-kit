@@ -12,5 +12,7 @@ final readonly class ProjectPackage
         public ?string $declaredConstraint,
         public ?string $installedVersion,
         public ?string $lockedVersion,
+        public bool $lockFilePresent = false,
+        public ?string $lockedSection = null,
     ) {}
 }

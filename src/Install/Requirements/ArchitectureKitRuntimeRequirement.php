@@ -21,6 +21,24 @@ final readonly class ArchitectureKitRuntimeRequirement
             return new ArchitectureKitRuntimeRequirementResult(false, null, $exception->getMessage(), $this->installCommand());
         }
 
+        if ($package->section === 'require' && $package->lockFilePresent && $package->lockedSection === 'packages-dev') {
+            return new ArchitectureKitRuntimeRequirementResult(
+                false,
+                'require',
+                'Architecture Kit is declared as a runtime dependency, but composer.lock places it in packages-dev.',
+                'Run composer update '.self::PACKAGE.' to refresh its runtime lock placement.',
+            );
+        }
+
+        if ($package->section === 'require' && $package->lockFilePresent && $package->lockedSection === null) {
+            return new ArchitectureKitRuntimeRequirementResult(
+                false,
+                'require',
+                'Architecture Kit is declared as a runtime dependency, but is missing from composer.lock.',
+                'Run composer update '.self::PACKAGE.' to refresh the lockfile.',
+            );
+        }
+
         if ($package->section === 'require') {
             return new ArchitectureKitRuntimeRequirementResult(true, 'require', 'Architecture Kit is a root runtime dependency.', '');
         }

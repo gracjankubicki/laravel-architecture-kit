@@ -41,6 +41,24 @@ final readonly class LaravelAiCompatibility
             );
         }
 
+        if ($package->lockFilePresent && $package->lockedSection === 'packages-dev') {
+            return $this->fromPackage(
+                $package,
+                LaravelAiCompatibilityStatus::StaleLock,
+                'laravel/ai is declared as a runtime dependency, but composer.lock places it in packages-dev.',
+                'Run composer update laravel/ai to refresh its runtime lock placement.',
+            );
+        }
+
+        if ($package->lockFilePresent && $package->lockedSection === null) {
+            return $this->fromPackage(
+                $package,
+                LaravelAiCompatibilityStatus::StaleLock,
+                'laravel/ai is declared as a runtime dependency, but is missing from composer.lock.',
+                'Run composer update laravel/ai to refresh the lockfile.',
+            );
+        }
+
         try {
             $parser = new VersionParser;
             $candidate = $parser->parseConstraints($package->declaredConstraint);

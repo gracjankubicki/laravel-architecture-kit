@@ -49,6 +49,8 @@ PHP);
         $this->assertSame('^0.9', $package->declaredConstraint);
         $this->assertSame('0.9.0', $package->installedVersion);
         $this->assertSame('0.9.0', $package->lockedVersion);
+        $this->assertTrue($package->lockFilePresent);
+        $this->assertSame('packages', $package->lockedSection);
     }
 
     public function test_it_reports_a_dev_only_root_dependency(): void
@@ -62,5 +64,25 @@ PHP);
         $this->assertSame('require-dev', $package->section);
         $this->assertSame('^0.8', $package->declaredConstraint);
         $this->assertNull($package->installedVersion);
+        $this->assertFalse($package->lockFilePresent);
+        $this->assertNull($package->lockedSection);
+    }
+
+    public function test_it_preserves_the_section_of_a_locked_package(): void
+    {
+        $files = new Filesystem;
+        $files->put($this->path.'/composer.json', json_encode([
+            'require' => ['laravel/ai' => '^0.9'],
+        ], JSON_THROW_ON_ERROR));
+        $files->put($this->path.'/composer.lock', json_encode([
+            'packages' => [],
+            'packages-dev' => [['name' => 'laravel/ai', 'version' => '0.9.0']],
+        ], JSON_THROW_ON_ERROR));
+
+        $package = (new ProjectPackageInventory($files, $this->path))->package('laravel/ai');
+
+        $this->assertTrue($package->lockFilePresent);
+        $this->assertSame('packages-dev', $package->lockedSection);
+        $this->assertSame('0.9.0', $package->lockedVersion);
     }
 }

@@ -754,7 +754,11 @@ PHP;
     {
         $files = new Filesystem;
         $composerJson = json_encode(['require' => ['php' => '^8.2', 'gracjankubicki/laravel-architecture-kit' => '^0.2']], JSON_PRETTY_PRINT);
-        $composerLock = '{"content-hash":"original"}';
+        $composerLock = json_encode([
+            'content-hash' => 'original',
+            'packages' => [['name' => 'gracjankubicki/laravel-architecture-kit', 'version' => '0.2.0']],
+            'packages-dev' => [],
+        ], JSON_THROW_ON_ERROR);
         $files->put($this->tempPath.'/composer.json', $composerJson);
         $files->put($this->tempPath.'/composer.lock', $composerLock);
         $files->ensureDirectoryExists($this->tempPath.'/config');
@@ -781,7 +785,11 @@ PHP;
     {
         $files = new Filesystem;
         $composerJson = json_encode(['require' => ['php' => '^8.2', 'gracjankubicki/laravel-architecture-kit' => '^0.2']], JSON_PRETTY_PRINT);
-        $composerLock = '{"content-hash":"original"}';
+        $composerLock = json_encode([
+            'content-hash' => 'original',
+            'packages' => [['name' => 'gracjankubicki/laravel-architecture-kit', 'version' => '0.2.0']],
+            'packages-dev' => [],
+        ], JSON_THROW_ON_ERROR);
         $files->put($this->tempPath.'/composer.json', $composerJson);
         $files->put($this->tempPath.'/composer.lock', $composerLock);
         $files->ensureDirectoryExists($this->tempPath.'/config');
@@ -808,7 +816,11 @@ PHP;
     {
         $files = new Filesystem;
         $composerJson = json_encode(['require' => ['php' => '^8.2', 'gracjankubicki/laravel-architecture-kit' => '^0.2']], JSON_PRETTY_PRINT);
-        $composerLock = '{"content-hash":"original"}';
+        $composerLock = json_encode([
+            'content-hash' => 'original',
+            'packages' => [['name' => 'gracjankubicki/laravel-architecture-kit', 'version' => '0.2.0']],
+            'packages-dev' => [],
+        ], JSON_THROW_ON_ERROR);
         $files->put($this->tempPath.'/composer.json', $composerJson);
         $files->put($this->tempPath.'/composer.lock', $composerLock);
         $files->ensureDirectoryExists($this->tempPath.'/config');
@@ -1172,7 +1184,10 @@ PHP);
             ],
         ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
         $files->put($this->tempPath.'/composer.lock', json_encode([
-            'packages' => [['name' => 'laravel/ai', 'version' => $version]],
+            'packages' => [
+                ['name' => 'gracjankubicki/laravel-architecture-kit', 'version' => '0.2.0'],
+                ['name' => 'laravel/ai', 'version' => $version],
+            ],
             'packages-dev' => [],
         ], JSON_THROW_ON_ERROR));
         $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');

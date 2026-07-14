@@ -61,16 +61,14 @@ final class SyncCommand extends Command
             return $this->failure($agent, 'Unmanaged files block generated Architecture Kit targets: '.implode(', ', $this->relativePaths($plan->blocked)).'.');
         }
 
-        if ((bool) $this->option('agent')) {
+        if ((bool) $this->option('dry-run') && (bool) $this->option('agent')) {
             $this->line($this->json($agent->sync(
                 changes: $this->relativePlan($plan),
-                dryRun: (bool) $this->option('dry-run'),
+                dryRun: true,
                 profile: $state->laravelAi?->toArray(),
             )));
 
-            if ((bool) $this->option('dry-run')) {
-                return self::SUCCESS;
-            }
+            return self::SUCCESS;
         } elseif ((bool) $this->option('dry-run')) {
             $this->showPlan($plan);
             $this->info('Dry run only. No files were changed.');
@@ -78,8 +76,18 @@ final class SyncCommand extends Command
             return self::SUCCESS;
         }
 
-        if (! (bool) $this->option('dry-run')) {
+        try {
             $deployment->apply($expected, $stale);
+        } catch (Throwable $exception) {
+            return $this->applyFailure($agent, $exception->getMessage(), $state->laravelAi?->toArray());
+        }
+
+        if ((bool) $this->option('agent')) {
+            $this->line($this->json($agent->sync(
+                changes: $this->relativePlan($plan),
+                dryRun: false,
+                profile: $state->laravelAi?->toArray(),
+            )));
         }
 
         if (! (bool) $this->option('agent')) {
@@ -96,6 +104,18 @@ final class SyncCommand extends Command
     {
         if ((bool) $this->option('agent')) {
             $this->line($this->json($agent->syncError($message, $profile)));
+        } else {
+            $this->error($message);
+        }
+
+        return self::FAILURE;
+    }
+
+    /** @param array<string, mixed>|null $profile */
+    private function applyFailure(AgentOutput $agent, string $message, ?array $profile = null): int
+    {
+        if ((bool) $this->option('agent')) {
+            $this->line($this->json($agent->syncApplyError($message, $profile)));
         } else {
             $this->error($message);
         }

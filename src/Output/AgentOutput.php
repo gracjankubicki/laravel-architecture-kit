@@ -159,6 +159,20 @@ final readonly class AgentOutput
         ];
     }
 
+    /** @param array<string, mixed>|null $profile @return array<string, mixed> */
+    public function syncApplyError(string $message, ?array $profile = null): array
+    {
+        return [
+            'v' => 1,
+            'ok' => false,
+            'cmd' => 'sync',
+            'm' => 'E_SYNC_APPLY',
+            'msg' => $message,
+            ...($profile !== null ? ['laravel_ai' => $profile] : []),
+            'next' => ['fix_filesystem', 'rerun:sync --no-interaction'],
+        ];
+    }
+
     public function limit(mixed $value): int
     {
         return max(0, (int) $value);
@@ -613,6 +627,20 @@ final readonly class AgentOutput
                         'ok' => ['const' => false],
                         'cmd' => ['const' => 'sync'],
                         'm' => ['const' => 'E_SYNC_PREFLIGHT'],
+                        'msg' => ['type' => 'string'],
+                        'laravel_ai' => $laravelAi,
+                        'next' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
+                [
+                    'type' => 'object',
+                    'required' => ['v', 'ok', 'cmd', 'm', 'msg', 'next'],
+                    'properties' => [
+                        'v' => ['const' => 1],
+                        'ok' => ['const' => false],
+                        'cmd' => ['const' => 'sync'],
+                        'm' => ['const' => 'E_SYNC_APPLY'],
                         'msg' => ['type' => 'string'],
                         'laravel_ai' => $laravelAi,
                         'next' => $this->stringListSchema(),

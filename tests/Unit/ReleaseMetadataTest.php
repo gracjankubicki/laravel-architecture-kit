@@ -24,13 +24,13 @@ final class ReleaseMetadataTest extends TestCase
         $this->assertMatchesRegularExpression('/^v?\d+\.\d+\.\d+/', $version);
     }
 
-    public function test_current_release_tag_matches_the_latest_changelog_entry(): void
+    public function test_current_release_tag_matches_the_latest_released_changelog_entry(): void
     {
         $changelog = file_get_contents(dirname(__DIR__, 2).'/CHANGELOG.md');
 
         $this->assertIsString($changelog);
-        $this->assertMatchesRegularExpression('/^## v(\d+\.\d+\.\d+) - /m', $changelog);
-        preg_match('/^## v(\d+\.\d+\.\d+) - /m', $changelog, $matches);
+        $this->assertMatchesRegularExpression('/^## v(\d+\.\d+\.\d+) - (?!Unreleased$).+$/m', $changelog);
+        preg_match('/^## v(\d+\.\d+\.\d+) - (?!Unreleased$).+$/m', $changelog, $matches);
 
         exec('git -C '.escapeshellarg(dirname(__DIR__, 2)).' tag --points-at HEAD', $tags, $exitCode);
 

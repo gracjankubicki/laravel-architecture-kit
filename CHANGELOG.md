@@ -2,6 +2,13 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.2.1 - 2026-07-14
+
+### Fixed
+
+- Agent-mode sync now reports success only after managed resource writes complete and returns a deterministic `E_SYNC_APPLY` payload when filesystem mutation fails.
+- Runtime dependency validation now rejects Architecture Kit or Laravel AI when an existing Composer lockfile places the package only in `packages-dev` or omits it from runtime `packages`.
+
 ## v0.2.0 - 2026-07-14
 
 ### Added

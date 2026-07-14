@@ -142,7 +142,10 @@ class GuidelinesCommandTest extends TestCase
             ],
         ], JSON_THROW_ON_ERROR));
         $files->put($this->tempPath.'/composer.lock', json_encode([
-            'packages' => [['name' => 'laravel/ai', 'version' => $version]],
+            'packages' => [
+                ['name' => 'gracjankubicki/laravel-architecture-kit', 'version' => '0.2.0'],
+                ['name' => 'laravel/ai', 'version' => $version],
+            ],
             'packages-dev' => [],
         ], JSON_THROW_ON_ERROR));
         $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');

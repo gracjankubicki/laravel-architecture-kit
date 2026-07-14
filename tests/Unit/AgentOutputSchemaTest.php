@@ -91,6 +91,7 @@ class AgentOutputSchemaTest extends TestCase
         $this->assertSame('laravel-ai@0.9', $payload['laravel_ai']['profile']);
         $this->assertTrue($this->matchesSchema($payload, $agent->schema('sync')));
         $this->assertTrue($this->matchesSchema($agent->syncError('blocked'), $agent->schema('sync')));
+        $this->assertTrue($this->matchesSchema($agent->syncApplyError('write failed'), $agent->schema('sync')));
     }
 
     public function test_generated_success_and_error_payloads_match_their_published_schemas(): void

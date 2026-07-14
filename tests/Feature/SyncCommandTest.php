@@ -51,6 +51,32 @@ final class SyncCommandTest extends TestCase
         $this->assertFileDoesNotExist($this->tempPath.'/.ai/guidelines/architecture-kit.md');
     }
 
+    public function test_agent_reports_apply_failure_without_emitting_success_first(): void
+    {
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Actions]);
+        $this->app->instance(Filesystem::class, new class extends Filesystem
+        {
+            public function put($path, $contents, $lock = false)
+            {
+                if (str_contains((string) $path, '/.ai/')) {
+                    throw new \RuntimeException('Managed resource write failed.');
+                }
+
+                return parent::put($path, $contents, $lock);
+            }
+        });
+
+        $exit = Artisan::call('architecture-kit:sync', ['--agent' => true]);
+        $lines = array_values(array_filter(explode(PHP_EOL, trim(Artisan::output()))));
+
+        $this->assertSame(1, $exit);
+        $this->assertCount(1, $lines);
+        $payload = json_decode($lines[0], true, flags: JSON_THROW_ON_ERROR);
+        $this->assertFalse($payload['ok']);
+        $this->assertSame('E_SYNC_APPLY', $payload['m']);
+        $this->assertSame('Managed resource write failed.', $payload['msg']);
+    }
+
     public function test_it_blocks_before_writes_when_laravel_ai_is_incompatible(): void
     {
         $files = new Filesystem;
@@ -111,7 +137,10 @@ final class SyncCommandTest extends TestCase
             ],
         ], JSON_THROW_ON_ERROR));
         $files->put($this->tempPath.'/composer.lock', json_encode([
-            'packages' => [['name' => 'laravel/ai', 'version' => $version]],
+            'packages' => [
+                ['name' => 'gracjankubicki/laravel-architecture-kit', 'version' => '0.2.0'],
+                ['name' => 'laravel/ai', 'version' => $version],
+            ],
             'packages-dev' => [],
         ], JSON_THROW_ON_ERROR));
         $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');
