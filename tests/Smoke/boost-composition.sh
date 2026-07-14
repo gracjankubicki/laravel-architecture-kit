@@ -43,5 +43,6 @@ php artisan boost:install --no-interaction
 php artisan boost:update --no-interaction
 
 test "$(find .ai/skills -path '*/architecture-kit-laravel-ai/SKILL.md' | wc -l | tr -d ' ')" -eq 1
-test "$(find .ai/skills -path '*/ai-sdk-development/SKILL.md' | wc -l | tr -d ' ')" -eq 1
+test "$(find .agents/skills -path '*/architecture-kit-laravel-ai/SKILL.md' | wc -l | tr -d ' ')" -eq 1
+test "$(find .agents/skills -path '*/ai-sdk-development/SKILL.md' | wc -l | tr -d ' ')" -eq 1
 ! grep -Eq 'structuredOutput\(\)' .ai/skills/architecture-kit-laravel-ai/SKILL.md
