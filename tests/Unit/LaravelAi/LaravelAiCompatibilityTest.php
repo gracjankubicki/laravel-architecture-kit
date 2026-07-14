@@ -94,6 +94,46 @@ final class LaravelAiCompatibilityTest extends TestCase
         $this->assertSame(LaravelAiCompatibilityStatus::StaleLock, $result->status);
     }
 
+    public function test_it_rejects_a_runtime_dependency_locked_only_for_development(): void
+    {
+        $this->writeProject('^0.9', '0.9.0', '0.9.0');
+        (new Filesystem)->put($this->path.'/composer.lock', json_encode([
+            'packages' => [],
+            'packages-dev' => [['name' => 'laravel/ai', 'version' => '0.9.0']],
+        ], JSON_THROW_ON_ERROR));
+
+        $result = $this->resolver()->resolve();
+
+        $this->assertSame(LaravelAiCompatibilityStatus::StaleLock, $result->status);
+        $this->assertStringContainsString('packages-dev', $result->message);
+        $this->assertStringContainsString('composer update laravel/ai', $result->remediation);
+    }
+
+    public function test_it_rejects_a_runtime_dependency_missing_from_an_existing_lockfile(): void
+    {
+        $this->writeProject('^0.9', '0.9.0', '0.9.0');
+        (new Filesystem)->put($this->path.'/composer.lock', json_encode([
+            'packages' => [],
+            'packages-dev' => [],
+        ], JSON_THROW_ON_ERROR));
+
+        $result = $this->resolver()->resolve();
+
+        $this->assertSame(LaravelAiCompatibilityStatus::StaleLock, $result->status);
+        $this->assertStringContainsString('missing from composer.lock', $result->message);
+    }
+
+    public function test_it_uses_installed_metadata_when_no_lockfile_exists(): void
+    {
+        $this->writeProject('^0.9', '0.9.0', '0.9.0');
+        (new Filesystem)->delete($this->path.'/composer.lock');
+
+        $result = $this->resolver()->resolve();
+
+        $this->assertTrue($result->supported());
+        $this->assertNull($result->lockedVersion);
+    }
+
     public function test_it_rejects_missing_referenced_capability(): void
     {
         $this->writeProject('^0.9', '0.9.0', '0.9.0', withCapabilities: false);

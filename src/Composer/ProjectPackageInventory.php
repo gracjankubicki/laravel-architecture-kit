@@ -17,6 +17,7 @@ final readonly class ProjectPackageInventory
     public function package(string $name): ProjectPackage
     {
         $composer = $this->composerJson();
+        $locked = $this->lockedPackage($name);
         $section = null;
         $constraint = null;
 
@@ -33,7 +34,9 @@ final readonly class ProjectPackageInventory
             section: $section,
             declaredConstraint: $constraint,
             installedVersion: $this->installedVersion($name),
-            lockedVersion: $this->lockedVersion($name),
+            lockedVersion: $locked['version'],
+            lockFilePresent: $locked['file_present'],
+            lockedSection: $locked['section'],
         );
     }
 
@@ -92,12 +95,13 @@ final readonly class ProjectPackageInventory
         return null;
     }
 
-    private function lockedVersion(string $name): ?string
+    /** @return array{file_present: bool, section: ?string, version: ?string} */
+    private function lockedPackage(string $name): array
     {
         $path = $this->basePath.'/composer.lock';
 
         if (! $this->files->isFile($path)) {
-            return null;
+            return ['file_present' => false, 'section' => null, 'version' => null];
         }
 
         $lock = json_decode($this->files->get($path), true);
@@ -109,12 +113,16 @@ final readonly class ProjectPackageInventory
         foreach (['packages', 'packages-dev'] as $section) {
             foreach (($lock[$section] ?? []) as $package) {
                 if (is_array($package) && ($package['name'] ?? null) === $name && is_string($package['version'] ?? null)) {
-                    return $this->normalizeVersion($package['version']);
+                    return [
+                        'file_present' => true,
+                        'section' => $section,
+                        'version' => $this->normalizeVersion($package['version']),
+                    ];
                 }
             }
         }
 
-        return null;
+        return ['file_present' => true, 'section' => null, 'version' => null];
     }
 
     private function normalizeVersion(string $version): string
