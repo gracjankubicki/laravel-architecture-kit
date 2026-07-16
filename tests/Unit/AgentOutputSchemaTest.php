@@ -12,6 +12,9 @@ use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
+use GracjanKubicki\ArchitectureKit\Planning\ArchitectureRecommendation;
+use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
 use PHPUnit\Framework\TestCase;
 
 class AgentOutputSchemaTest extends TestCase
@@ -33,7 +36,7 @@ class AgentOutputSchemaTest extends TestCase
     {
         $agent = new AgentOutput;
 
-        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'sync'] as $command) {
+        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'plan', 'sync'] as $command) {
             $schema = $agent->schema($command);
 
             $this->assertSame(1, $schema['oneOf'][0]['properties']['v']['const']);
@@ -92,6 +95,30 @@ class AgentOutputSchemaTest extends TestCase
         $this->assertTrue($this->matchesSchema($payload, $agent->schema('sync')));
         $this->assertTrue($this->matchesSchema($agent->syncError('blocked'), $agent->schema('sync')));
         $this->assertTrue($this->matchesSchema($agent->syncApplyError('write failed'), $agent->schema('sync')));
+    }
+
+    public function test_it_exposes_plan_payload_and_schema(): void
+    {
+        $agent = new AgentOutput;
+        $plan = new ArchitecturePlan(
+            configured: false,
+            recommendations: [new ArchitectureRecommendation(
+                slug: 'actions',
+                label: 'Actions',
+                confidence: 'high',
+                evidence: ['app/Actions/CreateInvoice.php'],
+            )],
+            requirements: [[
+                'name' => 'architecture-kit-runtime',
+                'satisfied' => true,
+                'message' => 'Architecture Kit is a root runtime dependency.',
+                'remediation' => '',
+            ]],
+            changes: new ManagedResourcePlan(create: ['config/architectures.php']),
+        );
+
+        $this->assertTrue($this->matchesSchema($agent->plan($plan), $agent->schema('plan')));
+        $this->assertTrue($this->matchesSchema($agent->error('plan', 'Planning failed.'), $agent->schema('plan')));
     }
 
     public function test_generated_success_and_error_payloads_match_their_published_schemas(): void
@@ -169,6 +196,15 @@ class AgentOutputSchemaTest extends TestCase
                     'next' => ['use_known_architecture'],
                 ],
                 $agent->error('guidelines', 'Guidelines failed.'),
+            ],
+            'plan' => [
+                $agent->plan(new ArchitecturePlan(
+                    configured: false,
+                    recommendations: [],
+                    requirements: [],
+                    changes: new ManagedResourcePlan,
+                )),
+                $agent->error('plan', 'Planning failed.'),
             ],
         ];
 

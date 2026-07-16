@@ -11,6 +11,7 @@ use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
+use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 
 final readonly class AgentOutput
 {
@@ -173,6 +174,24 @@ final readonly class AgentOutput
         ];
     }
 
+    /** @return array<string, mixed> */
+    public function plan(ArchitecturePlan $plan): array
+    {
+        return [
+            'v' => 1,
+            'ok' => true,
+            'cmd' => 'plan',
+            'configured' => $plan->configured,
+            'recommendations' => array_map(
+                fn ($recommendation): array => $recommendation->toArray(),
+                $plan->recommendations,
+            ),
+            'requirements' => $plan->requirements,
+            'changes' => $plan->changes->toArray(),
+            'next' => ['review_recommendations', 'run:architecture-kit:install'],
+        ];
+    }
+
     public function limit(mixed $value): int
     {
         return max(0, (int) $value);
@@ -189,6 +208,7 @@ final readonly class AgentOutput
             'doctor' => $this->doctorSchema(),
             'explain' => $this->explainSchema(),
             'guidelines' => $this->guidelinesSchema(),
+            'plan' => $this->planSchema(),
             'sync' => $this->syncSchema(),
             default => [
                 '$schema' => 'https://json-schema.org/draft/2020-12/schema',
@@ -649,6 +669,65 @@ final readonly class AgentOutput
                 ],
             ],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function planSchema(): array
+    {
+        $success = [
+            'type' => 'object',
+            'required' => ['v', 'ok', 'cmd', 'configured', 'recommendations', 'requirements', 'changes', 'next'],
+            'properties' => [
+                'v' => ['const' => 1],
+                'ok' => ['const' => true],
+                'cmd' => ['const' => 'plan'],
+                'configured' => ['type' => 'boolean'],
+                'recommendations' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'required' => ['slug', 'label', 'confidence', 'evidence', 'configured'],
+                        'properties' => [
+                            'slug' => ['type' => 'string'],
+                            'label' => ['type' => 'string'],
+                            'confidence' => ['enum' => ['high']],
+                            'evidence' => $this->stringListSchema(),
+                            'configured' => ['type' => 'boolean'],
+                        ],
+                        'additionalProperties' => false,
+                    ],
+                ],
+                'requirements' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'required' => ['name', 'satisfied', 'message', 'remediation'],
+                        'properties' => [
+                            'name' => ['type' => 'string'],
+                            'satisfied' => ['type' => 'boolean'],
+                            'message' => ['type' => 'string'],
+                            'remediation' => ['type' => 'string'],
+                        ],
+                        'additionalProperties' => false,
+                    ],
+                ],
+                'changes' => [
+                    'type' => 'object',
+                    'required' => ['create', 'update', 'remove', 'blocked'],
+                    'properties' => [
+                        'create' => $this->stringListSchema(),
+                        'update' => $this->stringListSchema(),
+                        'remove' => $this->stringListSchema(),
+                        'blocked' => $this->stringListSchema(),
+                    ],
+                    'additionalProperties' => false,
+                ],
+                'next' => $this->stringListSchema(),
+            ],
+            'additionalProperties' => false,
+        ];
+
+        return $this->successOrCommandErrorSchema('Architecture Kit plan agent output', 'plan', $success);
     }
 
     /**

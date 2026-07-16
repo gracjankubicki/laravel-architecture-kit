@@ -83,8 +83,26 @@ jobs:
           coverage: none
       - run: bash tests/Smoke/boost-composition.sh
 
+  workbench-commands:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        laravel: ['12.*', '13.*']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - name: Install dependencies
+        run: |
+          composer require "laravel/framework:${{ matrix.laravel }}" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --no-progress
+      - run: bash tests/Smoke/workbench-commands.sh
+
   coverage:
-    needs: [lint, tests, laravel-ai-contract, runtime-install, boost-composition]
+    needs: [lint, tests, laravel-ai-contract, runtime-install, boost-composition, workbench-commands]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

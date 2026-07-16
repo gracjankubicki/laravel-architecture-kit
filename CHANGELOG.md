@@ -2,6 +2,18 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.2.2 - 2026-07-16
+
+### Added
+
+- Added read-only `architecture-kit:plan` with evidence-backed architecture recommendations, requirement diagnostics, predicted managed-resource changes, human output, and a versioned `--agent` JSON schema.
+- Added black-box Testbench smoke coverage for the package's real `doctor`, `audit`, and `plan` commands.
+
+### Fixed
+
+- Corrected the README installation contract to consistently describe Architecture Kit as a runtime dependency.
+- Registered the Architecture Kit and Laravel MCP providers in the package workbench so public commands are available from the repository checkout.
+
 ## v0.2.1 - 2026-07-14
 
 ### Fixed
