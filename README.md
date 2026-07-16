@@ -25,7 +25,7 @@
 
 Laravel tooling for three explicit capabilities: generated architecture guidance, AST-backed audit, and an optional guard for selected enforceable rules.
 
-This package is meant to be installed as a development dependency. It lets a project choose the architecture patterns it uses, then generates commit-ready Laravel Boost guidelines and skills so AI agents code closer to the project's conventions.
+This package is installed as a runtime dependency because the committed architecture configuration references its enum classes while the application boots. It lets a project choose the architecture patterns it uses, then generates commit-ready Laravel Boost guidelines and skills so AI agents code closer to the project's conventions.
 
 ## Capabilities and enforcement
 
@@ -52,6 +52,15 @@ The install command is interactive. It asks which architecture patterns the proj
 .ai/guidelines/architecture-kit.md
 .ai/skills/architecture-kit-{architecture}/SKILL.md
 ```
+
+Before installing, inspect evidence-backed recommendations and the complete generated-file plan without changing the project:
+
+```bash
+php artisan architecture-kit:plan
+php artisan architecture-kit:plan --agent
+```
+
+The planner recommends a pattern only when it finds explicit evidence such as an existing PHP file in the pattern's conventional folder, a relevant Composer dependency or a repo-local custom architecture guideline. Existing `config/architectures.php` selections remain authoritative. Missing evidence produces no recommendation, and the command never enables patterns or writes files.
 
 It can also install agent integration without manual file editing:
 
@@ -95,6 +104,8 @@ php artisan architecture-kit:install
 php artisan architecture-kit:install-agents
 php artisan architecture-kit:install-agents --hooks
 php artisan architecture-kit:mcp
+php artisan architecture-kit:plan
+php artisan architecture-kit:plan --agent
 php artisan architecture-kit:doctor
 php artisan architecture-kit:sync --no-interaction
 php artisan architecture-kit:sync --dry-run --agent
@@ -112,6 +123,8 @@ php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE --agent
 ```
 
 `architecture-kit:install` is idempotent. Re-run it to change the selected architectures, the PHP runtime, or regenerate outdated `.ai` resources.
+
+`architecture-kit:plan` is read-only. Before first install it recommends architectures from explicit project evidence; after installation it reports the configured selection. Both flows include requirement diagnostics and the predicted `create`, `update`, `remove`, and `blocked` resource changes. Use `--agent` for versioned JSON and `--schema` to inspect its contract.
 
 `architecture-kit:sync` is the non-interactive recurring path. It reads the existing config, validates every enabled requirement and compatibility profile before writes, regenerates only marker-owned `.ai/**`, removes only stale marker-owned Architecture Kit skills, preserves unmanaged files, and never changes architecture selection. Use `--dry-run` for CI/agent preflight and `--schema` to inspect its JSON contract.
 
@@ -157,6 +170,7 @@ Agents can inspect the contract without running the audit:
 
 ```bash
 php artisan architecture-kit:audit --agent --schema
+php artisan architecture-kit:plan --schema
 ```
 
 For cheap on-demand rule expansion:
@@ -481,4 +495,5 @@ The MCP server exposes read-only tools for enabled architectures, generated rule
 composer install
 composer test
 composer lint
+bash tests/Smoke/workbench-commands.sh
 ```
