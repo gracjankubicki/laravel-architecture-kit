@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Resources;
 
-use GracjanKubicki\ArchitectureKit\Architecture;
-
 final readonly class ArchitectureResourceManifest
 {
     public function __construct(private ArchitectureResources $resources) {}
@@ -31,12 +29,10 @@ final readonly class ArchitectureResourceManifest
      */
     public function stale(array $enabled): array
     {
-        $expectedNames = array_map(
-            fn (Architecture|string $architecture): string => $architecture instanceof Architecture
-                ? $architecture->skillName()
-                : 'architecture-kit-'.$architecture,
-            $enabled,
-        );
+        $expectedNames = array_values(array_map(
+            fn (GeneratedFile $file): string => basename(dirname($file->path)),
+            $this->resources->skills($enabled),
+        ));
 
         return array_filter(
             $this->resources->existingGeneratedSkillPaths(),

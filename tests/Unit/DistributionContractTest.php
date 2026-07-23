@@ -23,11 +23,16 @@ final class DistributionContractTest extends TestCase
         $this->assertSame(['contents' => 'read'], $workflow['permissions']);
 
         $jobs = $workflow['jobs'];
+        $lintCommands = array_column($jobs['lint']['steps'], 'run');
         $this->assertArrayNotHasKey('permissions', $jobs['lint']);
         $this->assertArrayNotHasKey('permissions', $jobs['tests']);
         $this->assertArrayNotHasKey('permissions', $jobs['coverage']);
+        $this->assertContains('composer audit --locked --no-interaction', $lintCommands);
         $this->assertSame(['lint', 'tests', 'laravel-ai-contract', 'runtime-install', 'boost-composition', 'workbench-commands'], $jobs['coverage']['needs']);
-        $this->assertSame(['0.8.0', '^0.8', '0.9.0', '^0.9'], $jobs['laravel-ai-contract']['strategy']['matrix']['ai']);
+        $this->assertSame(
+            ['0.8.0', '^0.8', '0.9.0', '^0.9', '0.10.0', '^0.10'],
+            $jobs['laravel-ai-contract']['strategy']['matrix']['ai'],
+        );
         $runtimeSmoke = file_get_contents($root.'/tests/Smoke/runtime-install.sh');
         $boostSmoke = file_get_contents($root.'/tests/Smoke/boost-composition.sh');
         $workbenchSmoke = file_get_contents($root.'/tests/Smoke/workbench-commands.sh');
@@ -35,7 +40,10 @@ final class DistributionContractTest extends TestCase
         $this->assertStringContainsString('composer install --no-dev', $runtimeSmoke);
         $this->assertIsString($boostSmoke);
         $this->assertStringContainsString('architecture-kit-laravel-ai/SKILL.md', $boostSmoke);
+        $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md', $boostSmoke);
+        $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md', $boostSmoke);
         $this->assertStringContainsString('ai-sdk-development/SKILL.md', $boostSmoke);
+        $this->assertStringContainsString('laravel/ai:^0.10', $boostSmoke);
         $this->assertIsString($workbenchSmoke);
         $this->assertStringContainsString('architecture-kit:doctor --agent', $workbenchSmoke);
         $this->assertStringContainsString('architecture-kit:audit --agent', $workbenchSmoke);
@@ -84,6 +92,10 @@ final class DistributionContractTest extends TestCase
         $this->assertStringNotContainsString('installed as a development dependency', $readme);
         $this->assertStringContainsString('`architecture-kit:plan` is read-only.', $readme);
         $this->assertStringContainsString('php artisan architecture-kit:plan --schema', $readme);
+        $this->assertStringContainsString('## Versioned package upgrade guides', $readme);
+        $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-8-to-0-9', $readme);
+        $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-9-to-0-10', $readme);
+        $this->assertStringContainsString('`0.8 -> 0.9 -> 0.10`', $readme);
         $this->assertIsString($attributes);
 
         foreach ([

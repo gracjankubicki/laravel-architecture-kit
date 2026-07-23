@@ -22,16 +22,17 @@ When `Architecture::LaravelAi` is enabled, `laravel/ai` must be a direct root ru
 ```text
 laravel-ai@0.8  >=0.8.0 <0.9.0
 laravel-ai@0.9  >=0.9.0 <0.10.0
+laravel-ai@0.10 >=0.10.0 <0.11.0
 ```
 
 Move a dev-only dependency and select a supported line, for example:
 
 ```bash
 composer remove --dev laravel/ai
-composer require laravel/ai:^0.9
+composer require laravel/ai:^0.10
 ```
 
-The declared constraint must be fully contained in the supported union. A broad constraint that also permits `0.10`, `1.x`, or a development branch is rejected even when the currently installed version happens to be `0.9.x`.
+The declared constraint must be fully contained in the supported union. A broad constraint that also permits `0.11`, `1.x`, or a development branch is rejected even when the currently installed version happens to be `0.10.x`.
 
 ### Regenerate the selected profile
 
@@ -45,7 +46,16 @@ php artisan boost:update --no-interaction
 
 Use `architecture-kit:sync --dry-run --agent` before writing in CI. Sync keeps architecture selection unchanged, preserves unmanaged files, and aborts before writes for unsupported, missing, dev-only, stale-lock, or missing-capability states.
 
-Laravel AI 0.8 and 0.9 use separate generated profiles. An upgrade from 0.8 to 0.9 makes the previous generated resources outdated. Structured response examples now use `toArray()` or ArrayAccess; 0.9 provider-option guidance uses `withProviderOptions()`.
+Laravel AI 0.8, 0.9, and 0.10 use separate generated profiles. A version change makes the previous generated resources outdated. Structured response examples use `toArray()` or ArrayAccess; 0.9+ provider-option guidance uses `withProviderOptions()`, while 0.10 adds participant authorization and approval-resumption rules.
+
+When Laravel AI architecture is enabled, Architecture Kit also generates atomic AI upgrade skills:
+
+```text
+architecture-kit-upgrade-laravel-ai-0-8-to-0-9
+architecture-kit-upgrade-laravel-ai-0-9-to-0-10
+```
+
+These skills instruct an AI agent to inspect the consuming application, classify each upstream change by applicability, follow the project's implementation gates, update only the accepted scope, and attach concrete verification evidence. They are not codemods and Architecture Kit does not mutate application code or data automatically. A `0.8 -> 0.10` upgrade must apply and verify both skills in order.
 
 ### Laravel Boost flows
 

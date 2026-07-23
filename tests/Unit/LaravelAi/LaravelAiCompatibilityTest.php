@@ -36,8 +36,9 @@ final class LaravelAiCompatibilityTest extends TestCase
         return [
             '0.8 caret' => ['^0.8', '0.8.1', 'laravel-ai@0.8'],
             '0.9 caret' => ['^0.9', '0.9.0', 'laravel-ai@0.9'],
-            'supported union' => ['^0.8 || ^0.9', '0.9.0', 'laravel-ai@0.9'],
-            'supported interval' => ['>=0.8 <0.10', '0.8.0', 'laravel-ai@0.8'],
+            '0.10 caret' => ['^0.10', '0.10.1', 'laravel-ai@0.10'],
+            'supported union' => ['^0.8 || ^0.9 || ^0.10', '0.10.1', 'laravel-ai@0.10'],
+            'supported interval' => ['>=0.8 <0.11', '0.8.0', 'laravel-ai@0.8'],
         ];
     }
 
@@ -57,7 +58,7 @@ final class LaravelAiCompatibilityTest extends TestCase
     public static function unsupportedConstraints(): array
     {
         return [
-            'future minor' => ['^0.9 || ^0.10'],
+            'future minor' => ['^0.10 || ^0.11'],
             'future major' => ['>=0.8 <2.0'],
             'wildcard' => ['*'],
             'development branch' => ['dev-main'],
@@ -144,6 +145,17 @@ final class LaravelAiCompatibilityTest extends TestCase
         $this->assertNotEmpty($result->missingCapabilities);
     }
 
+    public function test_010_requires_the_approval_resumption_contract(): void
+    {
+        $this->writeProject('^0.10', '0.10.1', '0.10.1');
+        (new Filesystem)->delete($this->path.'/vendor/laravel/ai/src/Contracts/ConversationStore.php');
+
+        $result = $this->resolver()->resolve();
+
+        $this->assertSame(LaravelAiCompatibilityStatus::MissingCapability, $result->status);
+        $this->assertSame(['approval-resumption-contract'], $result->missingCapabilities);
+    }
+
     private function resolver(): LaravelAiCompatibility
     {
         $files = new Filesystem;
@@ -186,6 +198,16 @@ final class LaravelAiCompatibilityTest extends TestCase
         $files->put(
             $this->path.'/vendor/laravel/ai/src/Concerns/Promptable.php',
             '<?php trait Promptable { public function withProviderOptions(array $options): static {} }',
+        );
+        $files->ensureDirectoryExists($this->path.'/vendor/laravel/ai/src/Approvals');
+        $files->put(
+            $this->path.'/vendor/laravel/ai/src/Approvals/Decisions.php',
+            '<?php class Decisions {}',
+        );
+        $files->ensureDirectoryExists($this->path.'/vendor/laravel/ai/src/Contracts');
+        $files->put(
+            $this->path.'/vendor/laravel/ai/src/Contracts/ConversationStore.php',
+            '<?php interface ConversationStore { public function storeApprovalResults(): void; }',
         );
     }
 }

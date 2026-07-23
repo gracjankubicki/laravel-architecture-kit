@@ -83,7 +83,7 @@ final class SyncCommandTest extends TestCase
         $files->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
-                'laravel/ai' => '^0.10',
+                'laravel/ai' => '^0.11',
             ],
         ], JSON_THROW_ON_ERROR));
         (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))->write([Architecture::LaravelAi]);
@@ -127,6 +127,100 @@ final class SyncCommandTest extends TestCase
         $this->assertStringNotContainsString('laravel-ai@0.8', $updated);
     }
 
+    public function test_it_keeps_atomic_upgrade_skills_in_the_managed_manifest(): void
+    {
+        $this->writeLaravelAiFixture('^0.9', '0.9.1');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::LaravelAi]);
+
+        $this->artisan('architecture-kit:sync --no-interaction')->assertExitCode(0);
+
+        $this->assertFileExists(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md',
+        );
+        $this->assertFileExists(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md',
+        );
+        $exit = Artisan::call('architecture-kit:doctor');
+
+        $this->assertSame(0, $exit, Artisan::output());
+    }
+
+    public function test_dry_run_reports_both_atomic_upgrade_skills_without_writing(): void
+    {
+        $this->writeLaravelAiFixture('^0.9', '0.9.1');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::LaravelAi]);
+
+        $exit = Artisan::call('architecture-kit:sync', ['--dry-run' => true, '--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertContains(
+            '.ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md',
+            $payload['changes']['create'],
+        );
+        $this->assertContains(
+            '.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md',
+            $payload['changes']['create'],
+        );
+        $this->assertFileDoesNotExist(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md',
+        );
+    }
+
+    public function test_it_upgrades_generated_resources_from_profile_09_to_010(): void
+    {
+        $files = new Filesystem;
+        $this->writeLaravelAiFixture('^0.9', '0.9.1');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))
+            ->write([Architecture::LaravelAi]);
+        $this->artisan('architecture-kit:sync --no-interaction')->assertExitCode(0);
+
+        $this->writeLaravelAiFixture('^0.10', '0.10.1');
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('profile    laravel-ai@0.10')
+            ->expectsOutputToContain('outdated .ai/skills/architecture-kit-laravel-ai/SKILL.md')
+            ->assertExitCode(1);
+
+        $this->artisan('architecture-kit:sync --no-interaction')->assertExitCode(0);
+
+        $updated = $files->get($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
+        $this->assertStringContainsString('Profile: `laravel-ai@0.10`', $updated);
+        $this->assertStringContainsString('human-in-the-loop', $updated);
+        $this->assertStringNotContainsString('laravel-ai@0.9`', $updated);
+        $this->assertFileExists(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md',
+        );
+        $this->assertFileExists(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md',
+        );
+    }
+
+    public function test_it_removes_only_marker_owned_upgrade_skills_when_laravel_ai_is_disabled(): void
+    {
+        $files = new Filesystem;
+        $this->writeLaravelAiFixture('^0.9', '0.9.1');
+        $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
+        $config->write([Architecture::LaravelAi]);
+        $this->artisan('architecture-kit:sync --no-interaction')->assertExitCode(0);
+        $files->ensureDirectoryExists($this->tempPath.'/.ai/skills/project-upgrade-notes');
+        $files->put($this->tempPath.'/.ai/skills/project-upgrade-notes/SKILL.md', 'keep me');
+
+        $config->write([Architecture::Actions]);
+        $this->artisan('architecture-kit:sync --no-interaction')->assertExitCode(0);
+
+        $this->assertDirectoryDoesNotExist(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9',
+        );
+        $this->assertDirectoryDoesNotExist(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10',
+        );
+        $this->assertSame(
+            'keep me',
+            $files->get($this->tempPath.'/.ai/skills/project-upgrade-notes/SKILL.md'),
+        );
+    }
+
     private function writeLaravelAiFixture(string $constraint, string $version): void
     {
         $files = new Filesystem;
@@ -149,5 +243,9 @@ final class SyncCommandTest extends TestCase
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Responses/StructuredAgentResponse.php', '<?php class StructuredAgentResponse implements ArrayAccess { public function toArray(): array {} }');
         $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Concerns');
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Concerns/ProviderOptions.php', '<?php trait ProviderOptions { public function withProviderOptions(array $options): static {} }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Approvals');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Approvals/Decisions.php', '<?php class Decisions {}');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Contracts');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Contracts/ConversationStore.php', '<?php interface ConversationStore { public function storeApprovalResults(): void; }');
     }
 }

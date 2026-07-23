@@ -19,6 +19,7 @@ jobs:
           coverage: none
       - run: composer install --prefer-dist --no-interaction --no-progress
       - run: composer validate --strict
+      - run: composer audit --locked --no-interaction
       - run: vendor/bin/pint --test
 
   tests:
@@ -50,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ai: ['0.8.0', '^0.8', '0.9.0', '^0.9']
+        ai: ['0.8.0', '^0.8', '0.9.0', '^0.9', '0.10.0', '^0.10']
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2

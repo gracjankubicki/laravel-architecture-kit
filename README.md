@@ -51,6 +51,7 @@ The install command is interactive. It asks which architecture patterns the proj
 ```text
 .ai/guidelines/architecture-kit.md
 .ai/skills/architecture-kit-{architecture}/SKILL.md
+.ai/skills/architecture-kit-upgrade-{package}-{from}-to-{to}/SKILL.md
 ```
 
 Before installing, inspect evidence-backed recommendations and the complete generated-file plan without changing the project:
@@ -289,10 +290,26 @@ Laravel AI compatibility:
 | --- | --- | --- | --- |
 | `laravel-ai@0.8` | `>=0.8.0 <0.9.0` | `toArray()` or ArrayAccess | Laravel AI 0.8 contracts |
 | `laravel-ai@0.9` | `>=0.9.0 <0.10.0` | `toArray()` or ArrayAccess | `withProviderOptions()` where applicable |
+| `laravel-ai@0.10` | `>=0.10.0 <0.11.0` | `toArray()` or ArrayAccess | `withProviderOptions()` plus approval resumption |
 
-Constraints such as `^0.8`, `^0.9`, `^0.8 || ^0.9`, and `>=0.8 <0.10` are supported. Constraints that also permit `0.10`, `1.x`, or development branches fail closed. Architecture Kit never guesses that the newest known profile is compatible with an unknown Laravel AI release.
+Constraints such as `^0.8`, `^0.9`, `^0.10`, `^0.8 || ^0.9 || ^0.10`, and `>=0.8 <0.11` are supported. Constraints that also permit `0.11`, `1.x`, or development branches fail closed. Architecture Kit never guesses that the newest known profile is compatible with an unknown Laravel AI release.
 
 Only the profile selected from the actually installed Laravel AI version is generated at `.ai/skills/architecture-kit-laravel-ai/SKILL.md`. Architecture Kit owns the application architecture overlay; exact SDK features remain in the official `ai-sdk-development` skill shipped by the installed `laravel/ai` package.
+
+## Versioned package upgrade guides
+
+Architecture Kit can ship atomic, evidence-first upgrade guides as generated AI skills. These are instructions for an agent working in the consuming repository, not deterministic codemods: the agent must inspect the real dependency state, classify each breaking change by applicability, follow the repository's Target State and plan gates, make only approved changes, run the project's verification, and return a requirement-evidence handoff.
+
+The Laravel AI architecture currently generates:
+
+```text
+.ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md
+.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md
+```
+
+Each guide represents one atomic version edge. A request to upgrade `0.8 -> 0.9 -> 0.10` must complete and verify the first guide before loading the second. The guides distinguish mandatory, conditional, informational, and blocked work so an agent does not apply an application migration or contract change without evidence that the project uses it.
+
+Future package transitions follow `resources/upgrades/{package}/{from}-to-{to}/SKILL.md`. The source skill declares its package, architecture and version edge in frontmatter. Install, plan, sync and doctor then reuse the same marker-owned resource lifecycle as architecture skills; no new mutation command or remote recipe execution is introduced.
 
 On the first install (before `config/architectures.php` exists), `Services` is preselected when the project already has an `app/Services` folder, and `Laravel AI` is preselected only when a valid supported runtime `laravel/ai` installation is detected.
 

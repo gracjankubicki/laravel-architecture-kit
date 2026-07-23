@@ -132,6 +132,116 @@ class ArchitectureResourcesTest extends TestCase
         $this->assertStringNotContainsString('laravel-ai@0.8', $skill->contents);
     }
 
+    public function test_laravel_ai_architecture_exposes_both_atomic_upgrade_skills(): void
+    {
+        $compatibility = new LaravelAiCompatibilityResult(
+            status: LaravelAiCompatibilityStatus::Supported,
+            section: 'require',
+            declaredConstraint: '^0.8',
+            installedVersion: '0.8.1',
+            lockedVersion: '0.8.1',
+            profile: LaravelAiProfile::V08,
+        );
+        $skills = (new ArchitectureResources(
+            dirname(__DIR__, 2),
+            $this->tempPath,
+            new Filesystem,
+            laravelAi: $compatibility,
+        ))->skills([Architecture::LaravelAi]);
+
+        $this->assertArrayHasKey('upgrade:laravel-ai:0.8-to-0.9', $skills);
+        $this->assertArrayHasKey('upgrade:laravel-ai:0.9-to-0.10', $skills);
+        $this->assertSame(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md',
+            $skills['upgrade:laravel-ai:0.8-to-0.9']->path,
+        );
+        $this->assertSame(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md',
+            $skills['upgrade:laravel-ai:0.9-to-0.10']->path,
+        );
+    }
+
+    public function test_laravel_ai_08_to_09_upgrade_skill_publishes_an_evidence_first_contract(): void
+    {
+        $compatibility = new LaravelAiCompatibilityResult(
+            status: LaravelAiCompatibilityStatus::Supported,
+            section: 'require',
+            declaredConstraint: '^0.8',
+            installedVersion: '0.8.1',
+            lockedVersion: '0.8.1',
+            profile: LaravelAiProfile::V08,
+        );
+        $skill = (new ArchitectureResources(
+            dirname(__DIR__, 2),
+            $this->tempPath,
+            new Filesystem,
+            laravelAi: $compatibility,
+        ))->skills([Architecture::LaravelAi])['upgrade:laravel-ai:0.8-to-0.9']->contents;
+
+        $this->assertStringContainsString('## Evidence-first workflow', $skill);
+        $this->assertStringContainsString('providerOptions()', $skill);
+        $this->assertStringContainsString('TextGateway', $skill);
+        $this->assertStringContainsString('Faked responses', $skill);
+        $this->assertStringContainsString('native Anthropic structured outputs', $skill);
+        $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-9-to-0-10', $skill);
+        $this->assertStringContainsString('## Requirement-evidence handoff', $skill);
+    }
+
+    public function test_laravel_ai_09_to_010_upgrade_skill_covers_breaking_and_optional_changes(): void
+    {
+        $compatibility = new LaravelAiCompatibilityResult(
+            status: LaravelAiCompatibilityStatus::Supported,
+            section: 'require',
+            declaredConstraint: '^0.9',
+            installedVersion: '0.9.1',
+            lockedVersion: '0.9.1',
+            profile: LaravelAiProfile::V09,
+        );
+        $skill = (new ArchitectureResources(
+            dirname(__DIR__, 2),
+            $this->tempPath,
+            new Filesystem,
+            laravelAi: $compatibility,
+        ))->skills([Architecture::LaravelAi])['upgrade:laravel-ai:0.9-to-0.10']->contents;
+
+        $this->assertStringContainsString('## Evidence-first workflow', $skill);
+        $this->assertStringContainsString('participant_type', $skill);
+        $this->assertStringContainsString('approval_state', $skill);
+        $this->assertStringContainsString('Decisions|string', $skill);
+        $this->assertStringContainsString('storeApprovalResults()', $skill);
+        $this->assertStringContainsString('Multimodal embeddings', $skill);
+        $this->assertStringContainsString('Bedrock AssumeRole', $skill);
+        $this->assertStringContainsString('Gemini default models', $skill);
+        $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-8-to-0-9', $skill);
+        $this->assertStringContainsString('## Requirement-evidence handoff', $skill);
+    }
+
+    public function test_laravel_ai_010_uses_its_verified_profile_resources(): void
+    {
+        $compatibility = new LaravelAiCompatibilityResult(
+            status: LaravelAiCompatibilityStatus::Supported,
+            section: 'require',
+            declaredConstraint: '^0.10',
+            installedVersion: '0.10.1',
+            lockedVersion: '0.10.1',
+            profile: LaravelAiProfile::V010,
+        );
+        $resources = new ArchitectureResources(
+            dirname(__DIR__, 2),
+            $this->tempPath,
+            new Filesystem,
+            laravelAi: $compatibility,
+        );
+
+        $skill = $resources->skills([Architecture::LaravelAi])['laravel-ai']->contents;
+        $guideline = $resources->architectureGuideline(Architecture::LaravelAi, [Architecture::LaravelAi]);
+
+        $this->assertStringContainsString('Profile: `laravel-ai@0.10`', $skill);
+        $this->assertStringContainsString('human-in-the-loop', $skill);
+        $this->assertStringContainsString('approval_state', $guideline);
+        $this->assertStringNotContainsString('laravel-ai@0.9', $skill);
+    }
+
     public function test_disabled_laravel_ai_has_a_neutral_summary_without_resolving_a_profile(): void
     {
         $summary = $this->resources()->summaryFor(Architecture::LaravelAi, [Architecture::Actions]);

@@ -2,6 +2,20 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.2.3 - 2026-07-23
+
+### Added
+
+- Added versioned, evidence-first AI upgrade skills for `laravel/ai 0.8 -> 0.9` and `0.9 -> 0.10`, including sequential routing for `0.8 -> 0.10`, applicability checks, verification requirements, and requirement-evidence handoffs.
+- Added a content-first upgrade-guide resource module that validates package/version metadata and distributes future package transitions through the existing marker-owned skill lifecycle.
+- Added the verified `laravel-ai@0.10` architecture profile with participant authorization, approval resumption, and human-in-the-loop Tool guidance.
+
+### Changed
+
+- Laravel AI compatibility now supports `>=0.8.0 <0.11.0`; `0.11`, `1.x`, and development branches remain fail-closed.
+- Install, plan, sync, doctor, Boost composition, and CI contract coverage now include versioned upgrade skills and real Laravel AI `0.10.0`/`^0.10` packages.
+- CI now fails when Composer reports a security advisory for the resolved dependency set.
+
 ## v0.2.2 - 2026-07-16
 
 ### Added
