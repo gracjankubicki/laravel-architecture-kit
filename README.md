@@ -107,6 +107,8 @@ php artisan architecture-kit:install-agents --hooks
 php artisan architecture-kit:mcp
 php artisan architecture-kit:plan
 php artisan architecture-kit:plan --agent
+php artisan architecture-kit:upgrade-plan laravel/ai --to=0.10
+php artisan architecture-kit:upgrade-plan laravel/ai --to=0.10 --agent
 php artisan architecture-kit:doctor
 php artisan architecture-kit:sync --no-interaction
 php artisan architecture-kit:sync --dry-run --agent
@@ -126,6 +128,8 @@ php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE --agent
 `architecture-kit:install` is idempotent. Re-run it to change the selected architectures, the PHP runtime, or regenerate outdated `.ai` resources.
 
 `architecture-kit:plan` is read-only. Before first install it recommends architectures from explicit project evidence; after installation it reports the configured selection. Both flows include requirement diagnostics and the predicted `create`, `update`, `remove`, and `blocked` resource changes. Use `--agent` for versioned JSON and `--schema` to inspect its contract.
+
+`architecture-kit:upgrade-plan` is read-only. It requires a direct Composer package and an explicit target major.minor line, compares the declared constraint with locked and installed versions, then resolves a unique route through local atomic upgrade guides. The full route is visible, but only its first step is active. After completing and verifying that step, rerun the planner so it can derive the next step from the new project state. Use `--agent` for versioned JSON, `--schema` for its contract, or the MCP tool `plan-upgrade` from an AI agent.
 
 `architecture-kit:sync` is the non-interactive recurring path. It reads the existing config, validates every enabled requirement and compatibility profile before writes, regenerates only marker-owned `.ai/**`, removes only stale marker-owned Architecture Kit skills, preserves unmanaged files, and never changes architecture selection. Use `--dry-run` for CI/agent preflight and `--schema` to inspect its JSON contract.
 
@@ -172,6 +176,7 @@ Agents can inspect the contract without running the audit:
 ```bash
 php artisan architecture-kit:audit --agent --schema
 php artisan architecture-kit:plan --schema
+php artisan architecture-kit:upgrade-plan --schema
 ```
 
 For cheap on-demand rule expansion:
@@ -308,6 +313,14 @@ The Laravel AI architecture currently generates:
 ```
 
 Each guide represents one atomic version edge. A request to upgrade `0.8 -> 0.9 -> 0.10` must complete and verify the first guide before loading the second. The guides distinguish mandatory, conditional, informational, and blocked work so an agent does not apply an application migration or contract change without evidence that the project uses it.
+
+Before loading a guide, resolve the route from the real project state:
+
+```bash
+php artisan architecture-kit:upgrade-plan laravel/ai --to=0.10
+```
+
+The planner accepts only a direct dependency with a valid constraint, matching locked and installed stable versions, an enabled guide architecture, and a current marker-owned skill for the active edge. Missing state returns `blocked`, a route gap returns `unsupported`, and multiple complete routes return `ambiguous`; none of these outcomes changes project files. Target versions are explicit and local—Architecture Kit does not query for or infer the latest release.
 
 Future package transitions follow `resources/upgrades/{package}/{from}-to-{to}/SKILL.md`. The source skill declares its package, architecture and version edge in frontmatter. Install, plan, sync and doctor then reuse the same marker-owned resource lifecycle as architecture skills; no new mutation command or remote recipe execution is introduced.
 

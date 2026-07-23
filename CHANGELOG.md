@@ -2,6 +2,12 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.2.4 - 2026-07-23
+
+### Added
+
+- Added read-only package upgrade planning across local atomic guides, with Composer state validation, unique multi-step route resolution, one active AI step, human CLI output, versioned agent JSON Schema, and an MCP tool.
+
 ## v0.2.3 - 2026-07-23
 
 ### Added

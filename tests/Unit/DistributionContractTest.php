@@ -92,6 +92,8 @@ final class DistributionContractTest extends TestCase
         $this->assertStringNotContainsString('installed as a development dependency', $readme);
         $this->assertStringContainsString('`architecture-kit:plan` is read-only.', $readme);
         $this->assertStringContainsString('php artisan architecture-kit:plan --schema', $readme);
+        $this->assertStringContainsString('php artisan architecture-kit:upgrade-plan --schema', $readme);
+        $this->assertStringContainsString('MCP tool `plan-upgrade`', $readme);
         $this->assertStringContainsString('## Versioned package upgrade guides', $readme);
         $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-8-to-0-9', $readme);
         $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-9-to-0-10', $readme);

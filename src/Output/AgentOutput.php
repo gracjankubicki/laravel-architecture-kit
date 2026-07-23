@@ -12,6 +12,8 @@ use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
+use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlan;
+use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlanStep;
 
 final readonly class AgentOutput
 {
@@ -192,6 +194,34 @@ final readonly class AgentOutput
         ];
     }
 
+    /** @return array<string, mixed> */
+    public function upgradePlan(UpgradePlan $plan): array
+    {
+        $active = $plan->activeStep();
+
+        return [
+            'v' => 1,
+            'ok' => $plan->ok(),
+            'cmd' => 'upgrade-plan',
+            'package' => $plan->package->name,
+            'state' => [
+                'section' => $plan->package->section,
+                'declared' => $plan->package->declaredConstraint,
+                'locked' => $plan->package->lockedVersion,
+                'installed' => $plan->package->installedVersion,
+            ],
+            'target' => $plan->target,
+            'status' => $plan->status,
+            'message' => $plan->message,
+            'route' => array_map(
+                fn (UpgradePlanStep $step): array => $step->toArray(),
+                $plan->route,
+            ),
+            ...($active !== null ? ['active' => $active->toArray()] : []),
+            'next' => $plan->next,
+        ];
+    }
+
     public function limit(mixed $value): int
     {
         return max(0, (int) $value);
@@ -210,6 +240,7 @@ final readonly class AgentOutput
             'guidelines' => $this->guidelinesSchema(),
             'plan' => $this->planSchema(),
             'sync' => $this->syncSchema(),
+            'upgrade-plan' => $this->upgradePlanSchema(),
             default => [
                 '$schema' => 'https://json-schema.org/draft/2020-12/schema',
                 'type' => 'object',
@@ -728,6 +759,62 @@ final readonly class AgentOutput
         ];
 
         return $this->successOrCommandErrorSchema('Architecture Kit plan agent output', 'plan', $success);
+    }
+
+    /** @return array<string, mixed> */
+    private function upgradePlanSchema(): array
+    {
+        $nullableString = ['type' => ['string', 'null']];
+        $step = [
+            'type' => 'object',
+            'required' => ['from', 'to', 'status', 'architecture', 'skill', 'path'],
+            'properties' => [
+                'from' => ['type' => 'string'],
+                'to' => ['type' => 'string'],
+                'status' => ['enum' => ['ready', 'pending']],
+                'architecture' => ['type' => 'string'],
+                'skill' => ['type' => 'string'],
+                'path' => ['type' => 'string'],
+            ],
+            'additionalProperties' => false,
+        ];
+        $plan = [
+            'type' => 'object',
+            'required' => ['v', 'ok', 'cmd', 'package', 'state', 'target', 'status', 'message', 'route', 'next'],
+            'properties' => [
+                'v' => ['const' => 1],
+                'ok' => ['type' => 'boolean'],
+                'cmd' => ['const' => 'upgrade-plan'],
+                'package' => ['type' => 'string'],
+                'state' => [
+                    'type' => 'object',
+                    'required' => ['section', 'declared', 'locked', 'installed'],
+                    'properties' => [
+                        'section' => $nullableString,
+                        'declared' => $nullableString,
+                        'locked' => $nullableString,
+                        'installed' => $nullableString,
+                    ],
+                    'additionalProperties' => false,
+                ],
+                'target' => ['type' => 'string'],
+                'status' => ['enum' => ['ready', 'complete', 'blocked', 'unsupported', 'ambiguous']],
+                'message' => ['type' => 'string'],
+                'route' => [
+                    'type' => 'array',
+                    'items' => $step,
+                ],
+                'active' => $step,
+                'next' => $this->stringListSchema(),
+            ],
+            'additionalProperties' => false,
+        ];
+
+        return $this->successOrCommandErrorSchema(
+            'Architecture Kit upgrade plan agent output',
+            'upgrade-plan',
+            $plan,
+        );
     }
 
     /**

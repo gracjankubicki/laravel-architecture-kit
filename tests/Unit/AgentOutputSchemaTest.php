@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectPackage;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
@@ -15,6 +16,10 @@ use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitectureRecommendation;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
+use GracjanKubicki\ArchitectureKit\Upgrades\UpgradeGuide;
+use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlan;
+use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlanStep;
+use GracjanKubicki\ArchitectureKit\Upgrades\VersionLine;
 use PHPUnit\Framework\TestCase;
 
 class AgentOutputSchemaTest extends TestCase
@@ -36,7 +41,7 @@ class AgentOutputSchemaTest extends TestCase
     {
         $agent = new AgentOutput;
 
-        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'plan', 'sync'] as $command) {
+        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'plan', 'sync', 'upgrade-plan'] as $command) {
             $schema = $agent->schema($command);
 
             $this->assertSame(1, $schema['oneOf'][0]['properties']['v']['const']);
@@ -119,6 +124,41 @@ class AgentOutputSchemaTest extends TestCase
 
         $this->assertTrue($this->matchesSchema($agent->plan($plan), $agent->schema('plan')));
         $this->assertTrue($this->matchesSchema($agent->error('plan', 'Planning failed.'), $agent->schema('plan')));
+    }
+
+    public function test_it_exposes_upgrade_plan_payload_and_schema_for_ready_and_blocked_results(): void
+    {
+        $agent = new AgentOutput;
+        $package = new ProjectPackage('laravel/ai', 'require', '^0.8', '0.8.1', '0.8.1', true, 'packages');
+        $guide = new UpgradeGuide(
+            'architecture-kit-upgrade-laravel-ai-0-8-to-0-9',
+            'Upgrade Laravel AI.',
+            'laravel-ai',
+            'laravel/ai',
+            VersionLine::from('0.8'),
+            VersionLine::from('0.9'),
+            '# Upgrade',
+        );
+        $ready = new UpgradePlan(
+            package: $package,
+            target: '0.10',
+            status: 'ready',
+            message: 'Ready.',
+            route: [new UpgradePlanStep($guide, 'ready', '.ai/skills/upgrade/SKILL.md')],
+            next: ['load:upgrade'],
+        );
+        $blocked = new UpgradePlan(
+            package: $package,
+            target: '0.10',
+            status: 'blocked',
+            message: 'Blocked.',
+            next: ['fix_state'],
+        );
+        $schema = $agent->schema('upgrade-plan');
+
+        $this->assertTrue($this->matchesSchema($agent->upgradePlan($ready), $schema));
+        $this->assertTrue($this->matchesSchema($agent->upgradePlan($blocked), $schema));
+        $this->assertTrue($this->matchesSchema($agent->error('upgrade-plan', 'Failed.'), $schema));
     }
 
     public function test_generated_success_and_error_payloads_match_their_published_schemas(): void
@@ -205,6 +245,16 @@ class AgentOutputSchemaTest extends TestCase
                     changes: new ManagedResourcePlan,
                 )),
                 $agent->error('plan', 'Planning failed.'),
+            ],
+            'upgrade-plan' => [
+                $agent->upgradePlan(new UpgradePlan(
+                    package: new ProjectPackage('laravel/ai', 'require', '^0.10', '0.10.1', '0.10.1', true, 'packages'),
+                    target: '0.10',
+                    status: 'complete',
+                    message: 'Already complete.',
+                    next: ['continue'],
+                )),
+                $agent->error('upgrade-plan', 'Planning failed.'),
             ],
         ];
 

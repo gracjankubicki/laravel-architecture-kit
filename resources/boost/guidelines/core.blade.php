@@ -12,6 +12,8 @@ For full details, expand one architecture with `php artisan architecture-kit:gui
 
 When Laravel AI is enabled, load exactly one generated `architecture-kit-laravel-ai` skill for project architecture policy and the official `ai-sdk-development` skill shipped by the installed `laravel/ai` package for SDK details. Do not duplicate either skill's rules in this bootstrap guideline.
 
+Before upgrading a direct Composer package, call the MCP tool `plan-upgrade` or run `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`. Load only the active atomic upgrade skill, complete and verify that edge, then rerun the planner from the new installed state.
+
 Architecture Kit includes a package-first rule. Before implementing custom infrastructure, you MUST check existing Laravel features, maintained Laravel ecosystem packages, and maintained third-party PHP packages, then use the existing option when it fits the project constraints.
 
 If `.ai/guidelines/architecture-kit.md` does not exist, ask the user to configure Architecture Kit or run:
