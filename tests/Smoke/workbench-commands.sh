@@ -32,3 +32,11 @@ if (($payload["cmd"] ?? null) !== "plan" || ($payload["ok"] ?? null) !== true) {
     throw new RuntimeException("Workbench plan did not return a successful structured contract.");
 }
 '
+
+upgrade_schema="$(php vendor/bin/testbench architecture-kit:upgrade-plan --schema 2>&1)"
+printf '%s' "${upgrade_schema}" | php -r '
+$schema = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
+if (($schema["title"] ?? null) !== "Architecture Kit upgrade plan agent output") {
+    throw new RuntimeException("Workbench upgrade planner did not publish its structured contract.");
+}
+'

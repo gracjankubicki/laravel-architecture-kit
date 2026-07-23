@@ -38,6 +38,16 @@ file_put_contents("config/architectures.php", $config);
 '
 
 php artisan architecture-kit:sync --no-interaction
+upgrade_plan="$(php artisan architecture-kit:upgrade-plan laravel/ai --to=0.10 --agent)"
+printf '%s' "${upgrade_plan}" | php -r '
+$payload = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
+if (($payload["cmd"] ?? null) !== "upgrade-plan"
+    || ($payload["ok"] ?? null) !== true
+    || ($payload["status"] ?? null) !== "complete"
+    || ! str_starts_with($payload["state"]["installed"] ?? "", "0.10.")) {
+    throw new RuntimeException("Packed consumer upgrade planner did not confirm the installed target line.");
+}
+'
 mkdir -p .codex
 php artisan boost:install --no-interaction
 php artisan boost:update --no-interaction

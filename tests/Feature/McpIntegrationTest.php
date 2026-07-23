@@ -15,7 +15,9 @@ use GracjanKubicki\ArchitectureKit\Mcp\Tools\Doctor;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ExplainFinding;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Guard;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\PlanUpgrade;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Resources\UpgradeGuideResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Enums\ProtocolVersion;
@@ -241,6 +243,41 @@ PHP);
         $this->assertContains('code', $tools['explain-finding']['inputSchema']['required']);
         $this->assertArrayNotHasKey('rule', $tools['explain-finding']['inputSchema']['properties']);
         $this->assertSame('integer', $tools['doctor']['inputSchema']['properties']['limit']['type']);
+        $this->assertSame('string', $tools['plan-upgrade']['inputSchema']['properties']['package']['type']);
+        $this->assertSame('string', $tools['plan-upgrade']['inputSchema']['properties']['target']['type']);
+        $this->assertContains('package', $tools['plan-upgrade']['inputSchema']['required']);
+        $this->assertContains('target', $tools['plan-upgrade']['inputSchema']['required']);
+    }
+
+    public function test_plan_upgrade_tool_returns_the_same_atomic_route_as_the_cli_without_writing(): void
+    {
+        $this->writeLaravelAiFixture('^0.8', '0.8.1');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::LaravelAi]);
+        $files = new Filesystem;
+
+        foreach ((new UpgradeGuideResources(dirname(__DIR__, 2), $this->tempPath, $files))->skills([Architecture::LaravelAi]) as $skill) {
+            $files->ensureDirectoryExists(dirname($skill->path));
+            $files->put($skill->path, $skill->contents);
+        }
+
+        $before = $this->snapshotProject($files);
+
+        ArchitectureKitServer::tool(PlanUpgrade::class, [
+            'package' => 'laravel/ai',
+            'target' => '0.10',
+        ])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', true)
+                ->where('cmd', 'upgrade-plan')
+                ->where('status', 'ready')
+                ->where('route.0.status', 'ready')
+                ->where('route.1.status', 'pending')
+                ->where('active.skill', 'architecture-kit-upgrade-laravel-ai-0-8-to-0-9')
+                ->etc()
+            );
+
+        $this->assertSame($before, $this->snapshotProject($files));
     }
 
     public function test_json_rpc_initialize_and_tools_list_publish_the_real_contract(): void
@@ -383,6 +420,15 @@ PHP;
                 ->where('m', 'E_INVALID_TOOL_INPUT')
                 ->etc()
             );
+
+        ArchitectureKitServer::tool(PlanUpgrade::class, ['package' => 123, 'target' => '0.10'])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', false)
+                ->where('cmd', 'upgrade-plan')
+                ->where('m', 'E_INVALID_TOOL_INPUT')
+                ->etc()
+            );
     }
 
     public function test_explain_finding_requires_a_code(): void
@@ -469,5 +515,20 @@ PHP;
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Responses/StructuredAgentResponse.php', '<?php class StructuredAgentResponse implements ArrayAccess { public function toArray(): array {} }');
         $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Concerns');
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Concerns/ProviderOptions.php', '<?php trait ProviderOptions { public function withProviderOptions(array $options): static {} }');
+    }
+
+    /** @return array<string, string> */
+    private function snapshotProject(Filesystem $files): array
+    {
+        $snapshot = [];
+
+        foreach ($files->allFiles($this->tempPath) as $file) {
+            $path = str_replace($this->tempPath.'/', '', $file->getPathname());
+            $snapshot[$path] = hash_file('sha256', $file->getPathname());
+        }
+
+        ksort($snapshot);
+
+        return $snapshot;
     }
 }
