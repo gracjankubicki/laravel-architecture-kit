@@ -111,6 +111,23 @@ class GuidelinesCommandTest extends TestCase
         $this->assertStringContainsString('Installed version: `0.9.0`', $payload['md']);
     }
 
+    public function test_it_expands_the_laravel_ai_010_profile_for_agents(): void
+    {
+        $this->writeLaravelAiFixture('^0.10', '0.10.1');
+        $this->writeConfig([Architecture::LaravelAi]);
+
+        $exit = Artisan::call('architecture-kit:guidelines', [
+            'architecture' => 'laravel-ai',
+            '--agent' => true,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('laravel-ai@0.10', $payload['laravel_ai']['profile']);
+        $this->assertStringContainsString('human-in-the-loop approval', $payload['md']);
+        $this->assertStringContainsString('approval_state', $payload['md']);
+    }
+
     public function test_it_fails_when_config_is_missing(): void
     {
         (new Filesystem)->delete($this->tempPath.'/config/architectures.php');
@@ -154,5 +171,9 @@ class GuidelinesCommandTest extends TestCase
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Responses/StructuredAgentResponse.php', '<?php class StructuredAgentResponse implements ArrayAccess { public function toArray(): array {} }');
         $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Concerns');
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Concerns/ProviderOptions.php', '<?php trait ProviderOptions { public function withProviderOptions(array $options): static {} }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Approvals');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Approvals/Decisions.php', '<?php class Decisions {}');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Contracts');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Contracts/ConversationStore.php', '<?php interface ConversationStore { public function storeApprovalResults(): void; }');
     }
 }

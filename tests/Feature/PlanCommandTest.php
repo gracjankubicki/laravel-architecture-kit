@@ -179,7 +179,7 @@ final class PlanCommandTest extends TestCase
         $files->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
-                'laravel/ai' => '^0.10',
+                'laravel/ai' => '^0.11',
             ],
         ], JSON_THROW_ON_ERROR));
         (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))->write([Architecture::LaravelAi]);

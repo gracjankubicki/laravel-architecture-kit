@@ -697,6 +697,12 @@ PHP;
         $this->assertStringContainsString('response->toArray()', $skill);
         $this->assertStringNotContainsString('structuredOutput()', $skill);
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
+        $this->assertFileExists(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md',
+        );
+        $this->assertFileExists(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md',
+        );
     }
 
     public function test_it_blocks_before_config_when_architecture_kit_is_not_a_runtime_dependency(): void

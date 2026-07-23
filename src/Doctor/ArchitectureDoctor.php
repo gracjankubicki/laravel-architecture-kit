@@ -180,14 +180,27 @@ final readonly class ArchitectureDoctor
             $checks[] = $check;
         }
 
+        $expectedSkillNames = array_map(
+            fn (Architecture|string $architecture): string => $architecture instanceof Architecture
+                ? $architecture->skillName()
+                : 'architecture-kit-'.$architecture,
+            $enabled,
+        );
+
         if ($canGenerate) {
+            $skills = $this->resources->skills($enabled);
             $expected = [
                 'guideline' => $this->resources->guideline($enabled),
             ];
 
-            foreach ($this->resources->skills($enabled) as $key => $skill) {
+            foreach ($skills as $key => $skill) {
                 $expected['skill:'.$key] = $skill;
             }
+
+            $expectedSkillNames = array_values(array_map(
+                fn (GeneratedFile $file): string => basename(dirname($file->path)),
+                $skills,
+            ));
 
             foreach ($expected as $file) {
                 $checks[] = new ArchitectureDoctorCheck(
@@ -197,13 +210,6 @@ final readonly class ArchitectureDoctor
                 );
             }
         }
-
-        $expectedSkillNames = array_map(
-            fn (Architecture|string $architecture): string => $architecture instanceof Architecture
-                ? $architecture->skillName()
-                : 'architecture-kit-'.$architecture,
-            $enabled,
-        );
 
         foreach ($this->resources->existingGeneratedSkillPaths() as $name => $path) {
             if (in_array($name, $expectedSkillNames, true)) {
