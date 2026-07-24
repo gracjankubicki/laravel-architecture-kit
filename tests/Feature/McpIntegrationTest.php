@@ -247,6 +247,9 @@ PHP);
         $this->assertSame('string', $tools['plan-upgrade']['inputSchema']['properties']['target']['type']);
         $this->assertContains('package', $tools['plan-upgrade']['inputSchema']['required']);
         $this->assertContains('target', $tools['plan-upgrade']['inputSchema']['required']);
+        $this->assertSame('string', $tools['architecture-context']['inputSchema']['properties']['subject']['type']);
+        $this->assertSame('integer', $tools['architecture-context']['inputSchema']['properties']['limit']['type']);
+        $this->assertContains('subject', $tools['architecture-context']['inputSchema']['required']);
     }
 
     public function test_plan_upgrade_tool_returns_the_same_atomic_route_as_the_cli_without_writing(): void

@@ -23,7 +23,7 @@
 
 # Laravel Architecture Kit
 
-Laravel tooling for three explicit capabilities: generated architecture guidance, AST-backed audit, and an optional guard for selected enforceable rules.
+Laravel tooling for four explicit capabilities: generated architecture guidance, bounded project context for AI agents, AST-backed audit, and an optional guard for selected enforceable rules.
 
 This package is installed as a runtime dependency because the committed architecture configuration references its enum classes while the application boots. It lets a project choose the architecture patterns it uses, then generates commit-ready Laravel Boost guidelines and skills so AI agents code closer to the project's conventions.
 
@@ -32,6 +32,7 @@ This package is installed as a runtime dependency because the committed architec
 | Capability | What it provides | Enforced by guard? |
 | --- | --- | --- |
 | Guidance | Generated guidelines, skills, and MCP resources | No — prose is advice for agents and reviewers. |
+| Project context | Static dependencies, dependents, roles, violations, and inspect paths for one PHP symbol | No — it informs the change before coding. |
 | Audit | Deterministic AST and filesystem findings | Yes, for implemented audit rules. |
 | Guard | Doctor plus audit as a CI/hook gate | Yes, according to selected architectures and strict mode. |
 
@@ -114,6 +115,8 @@ php artisan architecture-kit:sync --no-interaction
 php artisan architecture-kit:sync --dry-run --agent
 php artisan architecture-kit:guidelines
 php artisan architecture-kit:guidelines actions --agent
+php artisan architecture-kit:context 'App\Actions\CreateInvoice' --agent
+php artisan architecture-kit:context app/Actions/CreateInvoice.php
 php artisan architecture-kit:guard --changed --strict
 php artisan architecture-kit:guard --changed --base=origin/main --strict
 php artisan architecture-kit:audit --changed --strict
@@ -143,11 +146,39 @@ In contrast, `.ai/guidelines/**` and `.ai/skills/**` are package-generated resou
 
 `architecture-kit:guidelines` is read-only. Without an argument it lists known architectures with a one-line summary. With a slug it returns the full guideline for one architecture, even when that architecture is available but not enabled.
 
-`architecture-kit:audit` is read-only. It scans application code against the enabled architecture rules. Use `--changed --strict` before finishing AI-generated code so warnings and errors block the final handoff. In CI or after committing, pass `--base=origin/main` or another base ref to audit the committed diff.
+`architecture-kit:context` is read-only. It resolves one exact project FQCN or app-relative PHP path and returns a bounded static context: the subject role, direct dependencies and dependents with source evidence, current graph violations, files to inspect, and the next guard command. A path containing multiple symbols is rejected as ambiguous; use an exact FQCN. Use `--agent` for versioned JSON, `--schema` for its contract, or the MCP tool `architecture-context`.
+
+`architecture-kit:audit` is read-only. It scans application code against the enabled file rules and the static project graph. Use `--changed --strict` before finishing AI-generated code so warnings and errors block the final handoff. In CI or after committing, pass `--base=origin/main` or another base ref to audit the committed diff.
 
 Use `architecture-kit:audit --update-baseline` when adopting Architecture Kit in a legacy project. It writes the current findings to `.architecture-kit/baseline.json`; future audits suppress only the matching existing findings and still report new violations. Use `--no-baseline` to ignore the baseline for one run.
 
 `architecture-kit:guard` is read-only. It combines `doctor`-equivalent generated-resource checks with the deterministic audit rules that are actually implemented. Guidance without a corresponding audit rule remains reviewer- and agent-enforced. Use `--json` for hooks and MCP tools.
+
+### Project Architecture Graph
+
+Architecture Kit parses every non-excluded `app/**/*.php` file into one deterministic graph. It records project classes, interfaces, traits and enums plus evidenced dependencies such as constructor and method types, inheritance, implementations, instantiation, static calls and traits. Imports alone are not dependencies.
+
+The graph distinguishes strong executable/type dependencies from weak context-only references. `SomeClass::class` and Eloquent relationship targets are visible to context, but do not independently trigger layer errors or namespace-cycle warnings. The graph is static: dynamic service-container bindings, runtime reflection and dependencies assembled from strings cannot be guaranteed.
+
+Three graph-aware findings are available:
+
+- `E_PORT_BYPASS` when application code depends on a concrete infrastructure adapter that implements an available port. Provider bindings remain valid composition-root code.
+- `E_LAYER_DEPENDENCY` for a statically confirmed dependency from an inner domain/application/port role to an outer application, HTTP adapter or infrastructure role.
+- `W_NAMESPACE_CYCLE` for a deterministic strongly connected component between project namespaces.
+
+`audit.exclude`, inline ignores and the baseline apply to graph findings as they do to file findings. Changed-only audit still builds the full graph so an edited edge can reveal a cycle through unchanged files; reporting remains focused on findings anchored in changed source files.
+
+Recommended agent flow:
+
+```bash
+php artisan architecture-kit:context 'App\Actions\CreateInvoice' --agent
+# inspect returned files and implement the approved change
+php artisan architecture-kit:guard --changed --strict --agent
+```
+
+For example, when context classifies `App\Actions\FetchDocument` as `application` and returns `App\Documents\Ports\DocumentGateway` as a strong, allowed `port` dependency, the agent should inspect the Action and contract, preserve port injection, and avoid loading or depending on the concrete HTTP adapter unless the approved change reaches that boundary. If the Action points directly to the adapter, context reports `allowed: false` together with `E_PORT_BYPASS` and `E_LAYER_DEPENDENCY`.
+
+This flow proves that the CLI/MCP payload carries the boundary, relevant files and next guard needed for the maintenance decision. It is not an independent benchmark across LLM providers or a guarantee about dependencies assembled dynamically by Laravel's runtime container.
 
 ### Agent Output
 
@@ -177,6 +208,7 @@ Agents can inspect the contract without running the audit:
 php artisan architecture-kit:audit --agent --schema
 php artisan architecture-kit:plan --schema
 php artisan architecture-kit:upgrade-plan --schema
+php artisan architecture-kit:context --schema
 ```
 
 For cheap on-demand rule expansion:
@@ -517,7 +549,7 @@ required = true
 
 For Docker and Sail runtimes, `command` becomes `docker` and `args` include `compose exec -T {service} php artisan architecture-kit:mcp`. Claude Code receives the same server under `.mcp.json` / `mcpServers`.
 
-The MCP server exposes read-only tools for enabled architectures, generated rules, doctor state, changed-file audit, guard state, and finding explanations. It does not regenerate files, install hooks, run migrations, write code, or mutate application data.
+The MCP server exposes read-only tools for enabled architectures, generated rules, project architecture context, package upgrade plans, doctor state, changed-file audit, guard state, and finding explanations. It does not regenerate files, install hooks, run migrations, write code, or mutate application data.
 
 ## Development
 

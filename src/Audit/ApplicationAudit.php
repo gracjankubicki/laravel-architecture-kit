@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Actions\ActionsRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ApiResources\ApiResourcesRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\CustomEloquentBuilders\CustomEloquentBuildersRule;
@@ -50,8 +53,8 @@ final class ApplicationAudit
         bool $useBaseline = true,
         bool $updateBaseline = false,
     ): ApplicationAuditResult {
-        [$scope, $paths] = $this->applicationFiles($changedOnly, $baseRef);
-        $paths = $this->excludePaths($paths, $exclude);
+        [$scope, $focusPaths] = $this->applicationFiles($changedOnly, $baseRef);
+        $focusPaths = $this->excludePaths($focusPaths, $exclude);
         $findings = [];
         $suppressedInline = 0;
         $customRuleSet = $customRules instanceof CustomRuleSet
@@ -60,16 +63,29 @@ final class ApplicationAudit
         $customAuditRules = (new RuleRegistry($customRuleSet->rulesFor($enabled)))->customRules();
         $knownRules = $this->knownRules($customRuleSet);
         $rules = array_merge($this->builtInRules($enabled), $customAuditRules);
+        $files = (new ProjectGraphLoader($this->files, $this->basePath))->files($exclude);
+        $changedFocusAvailable = $changedOnly && str_starts_with($scope, 'changed application files');
 
-        foreach ($paths as $path) {
-            $contents = $this->files->get($this->absolute($path));
-            $file = new FileContext($path, $contents);
+        if (! $changedFocusAvailable) {
+            $focusPaths = array_keys($files);
+        } else {
+            $focusPaths = array_values(array_intersect($focusPaths, array_keys($files)));
+        }
+
+        /** @var array<string, array<int, AuditFinding>> $findingsByPath */
+        $findingsByPath = [];
+
+        foreach ($focusPaths as $path) {
+            $file = $files[$path] ?? null;
+
+            if (! $file instanceof FileContext) {
+                continue;
+            }
+
             $parseFindings = $this->unparseableFileFindings($file);
 
             if ($parseFindings !== []) {
-                $inlineResult = (new InlineIgnores)->apply($path, $contents, $parseFindings, $knownRules);
-                $suppressedInline += $inlineResult->inline;
-                array_push($findings, ...$inlineResult->findings);
+                $findingsByPath[$path] = $parseFindings;
 
                 continue;
             }
@@ -82,7 +98,25 @@ final class ApplicationAudit
                 }
             }
 
-            $inlineResult = (new InlineIgnores)->apply($path, $contents, $fileFindings, $knownRules);
+            $findingsByPath[$path] = $fileFindings;
+        }
+
+        $graph = (new ProjectGraphBuilder)->build(array_values($files));
+
+        foreach ((new ProjectRuleSet)->rules() as $rule) {
+            foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
+                $findingsByPath[$finding->path][] = $finding;
+            }
+        }
+
+        foreach ($focusPaths as $path) {
+            $file = $files[$path] ?? null;
+
+            if (! $file instanceof FileContext) {
+                continue;
+            }
+
+            $inlineResult = (new InlineIgnores)->apply($path, $file->contents, $findingsByPath[$path] ?? [], $knownRules);
             $suppressedInline += $inlineResult->inline;
             array_push($findings, ...$inlineResult->findings);
         }

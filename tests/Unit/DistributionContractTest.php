@@ -28,7 +28,7 @@ final class DistributionContractTest extends TestCase
         $this->assertArrayNotHasKey('permissions', $jobs['tests']);
         $this->assertArrayNotHasKey('permissions', $jobs['coverage']);
         $this->assertContains('composer audit --locked --no-interaction', $lintCommands);
-        $this->assertSame(['lint', 'tests', 'laravel-ai-contract', 'runtime-install', 'boost-composition', 'workbench-commands'], $jobs['coverage']['needs']);
+        $this->assertSame(['lint', 'tests', 'laravel-ai-contract', 'runtime-install', 'boost-composition', 'workbench-commands', 'project-graph-consumer'], $jobs['coverage']['needs']);
         $this->assertSame(
             ['0.8.0', '^0.8', '0.9.0', '^0.9', '0.10.0', '^0.10'],
             $jobs['laravel-ai-contract']['strategy']['matrix']['ai'],
@@ -36,6 +36,7 @@ final class DistributionContractTest extends TestCase
         $runtimeSmoke = file_get_contents($root.'/tests/Smoke/runtime-install.sh');
         $boostSmoke = file_get_contents($root.'/tests/Smoke/boost-composition.sh');
         $workbenchSmoke = file_get_contents($root.'/tests/Smoke/workbench-commands.sh');
+        $projectGraphSmoke = file_get_contents($root.'/tests/Smoke/project-graph-consumer.sh');
         $this->assertIsString($runtimeSmoke);
         $this->assertStringContainsString('composer install --no-dev', $runtimeSmoke);
         $this->assertIsString($boostSmoke);
@@ -51,6 +52,10 @@ final class DistributionContractTest extends TestCase
         $this->assertSame(['12.*', '13.*'], $jobs['workbench-commands']['strategy']['matrix']['laravel']);
         $this->assertStringContainsString('laravel/framework:${{ matrix.laravel }}', $jobs['workbench-commands']['steps'][2]['run']);
         $this->assertSame('bash tests/Smoke/workbench-commands.sh', $jobs['workbench-commands']['steps'][3]['run']);
+        $this->assertIsString($projectGraphSmoke);
+        $this->assertStringContainsString('laravel/laravel:^${laravel}.0', $projectGraphSmoke);
+        $this->assertStringContainsString('architecture-kit:context', $projectGraphSmoke);
+        $this->assertSame('bash tests/Smoke/project-graph-consumer.sh', $jobs['project-graph-consumer']['steps'][2]['run']);
 
         $lowest = array_values(array_filter(
             $jobs['tests']['strategy']['matrix']['include'],
@@ -93,6 +98,8 @@ final class DistributionContractTest extends TestCase
         $this->assertStringContainsString('`architecture-kit:plan` is read-only.', $readme);
         $this->assertStringContainsString('php artisan architecture-kit:plan --schema', $readme);
         $this->assertStringContainsString('php artisan architecture-kit:upgrade-plan --schema', $readme);
+        $this->assertStringContainsString('php artisan architecture-kit:context --schema', $readme);
+        $this->assertStringContainsString('MCP tool `architecture-context`', $readme);
         $this->assertStringContainsString('MCP tool `plan-upgrade`', $readme);
         $this->assertStringContainsString('## Versioned package upgrade guides', $readme);
         $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-8-to-0-9', $readme);

@@ -40,3 +40,11 @@ if (($schema["title"] ?? null) !== "Architecture Kit upgrade plan agent output")
     throw new RuntimeException("Workbench upgrade planner did not publish its structured contract.");
 }
 '
+
+context_schema="$(php vendor/bin/testbench architecture-kit:context --schema 2>&1)"
+printf '%s' "${context_schema}" | php -r '
+$schema = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
+if (($schema["title"] ?? null) !== "Architecture Kit architecture context agent output") {
+    throw new RuntimeException("Workbench architecture context did not publish its structured contract.");
+}
+'

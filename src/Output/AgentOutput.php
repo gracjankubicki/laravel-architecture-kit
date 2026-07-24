@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextResult;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
@@ -222,6 +223,42 @@ final readonly class AgentOutput
         ];
     }
 
+    /** @return array<string, mixed> */
+    public function architectureContext(ArchitectureContextResult $context): array
+    {
+        return [
+            'v' => 1,
+            'ok' => true,
+            'cmd' => 'architecture-context',
+            'subject' => [
+                'name' => $context->subject->name,
+                'path' => $context->subject->path,
+                'line' => $context->subject->line,
+                'kind' => $context->subject->kind,
+                'role' => $context->subject->role,
+            ],
+            'dependencies' => $context->dependencies,
+            'dependents' => $context->dependents,
+            'violations' => $context->violations,
+            'inspect' => $context->inspect,
+            'trunc' => $context->truncated,
+            'next' => $context->next,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function architectureContextError(string $code, string $message): array
+    {
+        return [
+            'v' => 1,
+            'ok' => false,
+            'cmd' => 'architecture-context',
+            'm' => $code,
+            'msg' => $message,
+            'next' => ['use_exact_fqcn_or_app_path', 'rerun:architecture-context'],
+        ];
+    }
+
     public function limit(mixed $value): int
     {
         return max(0, (int) $value);
@@ -241,6 +278,7 @@ final readonly class AgentOutput
             'plan' => $this->planSchema(),
             'sync' => $this->syncSchema(),
             'upgrade-plan' => $this->upgradePlanSchema(),
+            'architecture-context' => $this->architectureContextSchema(),
             default => [
                 '$schema' => 'https://json-schema.org/draft/2020-12/schema',
                 'type' => 'object',
@@ -814,6 +852,83 @@ final readonly class AgentOutput
             'Architecture Kit upgrade plan agent output',
             'upgrade-plan',
             $plan,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function architectureContextSchema(): array
+    {
+        $relationship = [
+            'type' => 'object',
+            'required' => ['symbol', 'path', 'role', 'kind', 'strength', 'allowed', 'evidence'],
+            'properties' => [
+                'symbol' => ['type' => 'string'],
+                'path' => ['type' => ['string', 'null']],
+                'role' => ['type' => 'string'],
+                'kind' => ['type' => 'string'],
+                'strength' => ['enum' => ['strong', 'weak']],
+                'allowed' => ['type' => 'boolean'],
+                'evidence' => [
+                    'type' => 'object',
+                    'required' => ['path', 'line'],
+                    'properties' => [
+                        'path' => ['type' => 'string'],
+                        'line' => ['type' => 'integer', 'minimum' => 1],
+                    ],
+                    'additionalProperties' => false,
+                ],
+            ],
+            'additionalProperties' => false,
+        ];
+        $success = [
+            'type' => 'object',
+            'required' => ['v', 'ok', 'cmd', 'subject', 'dependencies', 'dependents', 'violations', 'inspect', 'trunc', 'next'],
+            'properties' => [
+                'v' => ['const' => 1],
+                'ok' => ['const' => true],
+                'cmd' => ['const' => 'architecture-context'],
+                'subject' => [
+                    'type' => 'object',
+                    'required' => ['name', 'path', 'line', 'kind', 'role'],
+                    'properties' => [
+                        'name' => ['type' => 'string'],
+                        'path' => ['type' => 'string'],
+                        'line' => ['type' => 'integer', 'minimum' => 1],
+                        'kind' => ['enum' => ['class', 'interface', 'trait', 'enum']],
+                        'role' => ['type' => 'string'],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                'dependencies' => ['type' => 'array', 'items' => $relationship],
+                'dependents' => ['type' => 'array', 'items' => $relationship],
+                'violations' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'required' => ['code', 'severity', 'path', 'line', 'message'],
+                        'properties' => [
+                            'code' => ['type' => 'string'],
+                            'severity' => ['enum' => ['error', 'warn']],
+                            'path' => ['type' => 'string'],
+                            'line' => ['type' => 'integer', 'minimum' => 1],
+                            'message' => ['type' => 'string'],
+                        ],
+                        'additionalProperties' => false,
+                    ],
+                ],
+                'inspect' => $this->stringListSchema(),
+                'trunc' => ['type' => 'boolean'],
+                'next' => $this->stringListSchema(),
+            ],
+            'additionalProperties' => false,
+        ];
+
+        return $this->successOrCommandErrorSchema(
+            'Architecture Kit architecture context agent output',
+            'architecture-context',
+            $success,
         );
     }
 

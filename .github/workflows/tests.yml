@@ -102,8 +102,18 @@ jobs:
           composer update --prefer-dist --no-interaction --no-progress
       - run: bash tests/Smoke/workbench-commands.sh
 
+  project-graph-consumer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - run: bash tests/Smoke/project-graph-consumer.sh
+
   coverage:
-    needs: [lint, tests, laravel-ai-contract, runtime-install, boost-composition, workbench-commands]
+    needs: [lint, tests, laravel-ai-contract, runtime-install, boost-composition, workbench-commands, project-graph-consumer]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
