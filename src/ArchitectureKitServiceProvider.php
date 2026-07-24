@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit;
 
+use GracjanKubicki\ArchitectureKit\Commands\ArchitectureContextCommand;
 use GracjanKubicki\ArchitectureKit\Commands\AuditCommand;
 use GracjanKubicki\ArchitectureKit\Commands\DoctorCommand;
 use GracjanKubicki\ArchitectureKit\Commands\ExplainCommand;
@@ -37,6 +38,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
         ], 'architectures-config');
 
         $this->commands([
+            ArchitectureContextCommand::class,
             AuditCommand::class,
             DoctorCommand::class,
             ExplainCommand::class,

@@ -18,7 +18,9 @@ final readonly class FindingCodeRegistry
         'form-request' => ['title' => 'Form Request violation', 'why' => 'HTTP validation and authorization belong in Form Requests.', 'fix' => 'Move request validation and authorization into a typed Form Request.'],
         'invalid-suppression' => ['title' => 'Suppression comment does not target a known rule', 'why' => 'Unknown suppressions are ignored so Architecture Kit does not silently hide real findings.', 'fix' => 'Use an existing rule slug in the suppression comment and include a short reason.'],
         'laravel-ai' => ['title' => 'Laravel AI boundary violation', 'why' => 'AI provider access must remain behind a dedicated application boundary.', 'fix' => 'Move the call behind an AI Gateway, Action, or Job.'],
+        'layer-dependency' => ['title' => 'Layer dependency violation', 'why' => 'Dependencies must point toward stable application and domain boundaries, not back into adapters or infrastructure.', 'fix' => 'Invert the dependency or move the contract to a stable inner boundary.'],
         'modern-php-85' => ['title' => 'Modern PHP contract violation', 'why' => 'The project declares a modern PHP language contract for application code.', 'fix' => 'Apply the required PHP declaration or language feature.'],
+        'namespace-cycle' => ['title' => 'Namespace dependency cycle', 'why' => 'Cycles couple namespaces in both directions and make changes harder for humans and agents to isolate.', 'fix' => 'Extract a stable contract or move shared behavior so dependencies point in one direction.'],
         'ports-and-adapters' => ['title' => 'Ports and Adapters violation', 'why' => 'Ports isolate application workflows from infrastructure details.', 'fix' => 'Move the infrastructure dependency behind a port and adapter.'],
         'query-objects' => ['title' => 'Query Object violation', 'why' => 'Query Objects represent read use cases and must not mutate domain state.', 'fix' => 'Keep the object read-only and move writes to an Action.'],
         'raw-http' => ['title' => 'Raw HTTP call', 'why' => 'Outbound HTTP must use the configured Saloon integration boundary.', 'fix' => 'Create a Saloon Connector and Request under app/Http/Integrations.'],
@@ -64,6 +66,24 @@ final readonly class FindingCodeRegistry
             'title' => 'Controller depends on a Service while Actions are enabled',
             'why' => 'When Actions are enabled, write use cases should enter through Actions so the boundary is consistent for agents and tests.',
             'fix' => 'Inject an Action into the controller or move the workflow behind the enabled application boundary.',
+        ],
+        'E_PORT_BYPASS' => [
+            'rule' => 'ports-and-adapters',
+            'title' => 'Application code bypasses an available port',
+            'why' => 'Depending on the concrete adapter couples the application workflow to infrastructure despite an existing port boundary.',
+            'fix' => 'Inject the implemented port and keep the concrete adapter binding in the composition root.',
+        ],
+        'E_LAYER_DEPENDENCY' => [
+            'rule' => 'layer-dependency',
+            'title' => 'Dependency points toward an outer layer',
+            'why' => 'Inner application and domain code should not depend directly on HTTP adapters or infrastructure details.',
+            'fix' => 'Invert the dependency through an inner contract or move the behavior to the owning layer.',
+        ],
+        'W_NAMESPACE_CYCLE' => [
+            'rule' => 'namespace-cycle',
+            'title' => 'Namespaces form a dependency cycle',
+            'why' => 'A namespace cycle prevents either side from changing independently and expands the context an agent must load.',
+            'fix' => 'Break the cycle by extracting a stable contract or moving shared behavior to a lower-level namespace.',
         ],
     ];
 

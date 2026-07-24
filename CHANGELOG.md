@@ -2,6 +2,19 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.2.5 - 2026-07-25
+
+### Added
+
+- Added a deterministic static project architecture graph with evidenced strong and weak PHP dependencies across non-excluded `app/**/*.php` files.
+- Added `architecture-kit:context` and the read-only MCP `architecture-context` tool so AI agents can inspect one exact symbol's role, direct dependencies, dependents, violations, files, and next guard before changing code.
+- Added graph-aware `E_PORT_BYPASS`, `E_LAYER_DEPENDENCY`, and `W_NAMESPACE_CYCLE` findings with finding explanations, changed-scope support, inline suppression, baseline suppression, and agent output.
+
+### Changed
+
+- Changed-only audit now builds the full application graph for cross-file correctness while keeping file rules and reported graph evidence focused on changed source files.
+- Ports and Adapters audit and graph rules now share one conservative role and port classifier.
+
 ## v0.2.4 - 2026-07-23
 
 ### Added

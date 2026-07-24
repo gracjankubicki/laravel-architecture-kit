@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\PortsAndAdapters;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
@@ -20,12 +21,17 @@ use SplFileInfo;
 
 final readonly class PortsAndAdaptersRule implements AuditRule
 {
+    private RoleClassifier $roles;
+
     public function __construct(
         private Filesystem $files,
         private string $basePath,
         /** @var array<int, Architecture|string> */
         private array $enabled,
-    ) {}
+        ?RoleClassifier $roles = null,
+    ) {
+        $this->roles = $roles ?? new RoleClassifier;
+    }
 
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -134,39 +140,11 @@ final readonly class PortsAndAdaptersRule implements AuditRule
 
     private function looksLikeApplicationPort(string $path, Stmt\Interface_ $interface): bool
     {
-        if ($this->isIgnoredInterface($path, $interface)) {
-            return false;
-        }
-
-        $name = $interface->name->toString();
-
-        return str_contains($path, '/Contracts/')
-            || str_contains($path, '/Ports/')
-            || str_contains($path, '/Gateways/')
-            || str_ends_with($name, 'Interface')
-            || preg_match('/(Detector|Issuer|Fetcher|Gateway|Client|Provider|Resolver|Archive|Directory|Scorer)$/', $name) === 1;
-    }
-
-    private function isIgnoredInterface(string $path, Stmt\Interface_ $interface): bool
-    {
-        if (str_contains($path, '/Tests/') || str_starts_with($path, 'tests/')) {
-            return true;
-        }
-
-        if ($interface->getMethods() === [] && ! str_contains($path, '/Contracts/') && ! str_contains($path, '/Ports/')) {
-            return true;
-        }
-
-        $name = $interface->name->toString();
-
-        return in_array($name, [
-            'ShouldQueue',
-            'Arrayable',
-            'Jsonable',
-            'Responsable',
-            'CastsAttributes',
-            'CastsInboundAttributes',
-        ], true);
+        return $this->roles->isPort(
+            path: $path,
+            name: $interface->name->toString(),
+            hasMethods: $interface->getMethods() !== [],
+        );
     }
 
     /**

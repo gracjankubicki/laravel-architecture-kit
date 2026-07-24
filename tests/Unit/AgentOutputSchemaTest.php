@@ -41,7 +41,7 @@ class AgentOutputSchemaTest extends TestCase
     {
         $agent = new AgentOutput;
 
-        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'plan', 'sync', 'upgrade-plan'] as $command) {
+        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'plan', 'sync', 'upgrade-plan', 'architecture-context'] as $command) {
             $schema = $agent->schema($command);
 
             $this->assertSame(1, $schema['oneOf'][0]['properties']['v']['const']);

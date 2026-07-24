@@ -256,6 +256,7 @@ final class ArchitectureResources
         return implode("\n", [
             'This file is a compact index of enabled Architecture Kit rules. Full rules are available on demand through skills, the MCP tool `architecture-rules`, the MCP resource `architecture-kit://guideline`, or `php artisan architecture-kit:guidelines {slug} --agent`.',
             'Before coding, the first Architecture Kit MCP call MUST be `enabled-architectures`. If MCP is unavailable, read this file or run `php artisan architecture-kit:guidelines --agent` before coding.',
+            'Before changing an existing PHP symbol, call MCP `architecture-context` or run `php artisan architecture-kit:context {FQCN-or-path} --agent`, then inspect the returned dependencies, dependents, violations, and files.',
             'Before upgrading a direct Composer package, call MCP `plan-upgrade` or run `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`, then load only the active atomic upgrade skill.',
             'Violations are blocked by deterministic audit rules. Load the relevant skill or expanded guideline before implementing or refactoring that architecture.',
         ]);
@@ -270,6 +271,7 @@ Before changing application architecture:
 
 - Follow the enabled architecture sections in this file.
 - Before coding, call MCP `enabled-architectures` first. Use it to identify enabled patterns and relevant `architecture-kit-*` skills.
+- Before changing an existing PHP symbol, call MCP `architecture-context` or run `php artisan architecture-kit:context {FQCN-or-path} --agent`; inspect its dependencies, dependents, violations, and files before editing.
 - Before upgrading a direct Composer package, call MCP `plan-upgrade` or run `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`; load only the active atomic upgrade skill and rerun the planner after verifying it.
 - If MCP is unavailable, read `.ai/guidelines/architecture-kit.md` or run `php artisan architecture-kit:guidelines --agent` before coding.
 - Do not introduce architecture patterns that are not listed here.
@@ -398,6 +400,7 @@ MARKDOWN;
 - Follow the existing project structure when it is more specific than these defaults.
 - Keep framework adapters thin and business decisions inside the enabled architecture boundary.
 - Before coding, call MCP `enabled-architectures` first; if MCP is unavailable, read this generated guideline or run `php artisan architecture-kit:guidelines --agent`.
+- Before changing an existing PHP symbol, call MCP `architecture-context` or run `php artisan architecture-kit:context {FQCN-or-path} --agent`.
 - Load the relevant `architecture-kit-*` skill or expanded guideline before changing that pattern.
 MARKDOWN;
     }
