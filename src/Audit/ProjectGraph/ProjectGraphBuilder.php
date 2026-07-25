@@ -170,9 +170,15 @@ final readonly class ProjectGraphBuilder
                 $eloquentRelationNodes[spl_object_id($argument->value)] = true;
                 $this->addName($file, $edges, $source, $argument->value->class, $argument->value->getStartLine(), 'eloquent-relation', false);
             }
-        } elseif ($node instanceof Expr\ClassConstFetch && $node->class instanceof Name && strtolower($node->name instanceof Node\Identifier ? $node->name->toString() : '') === 'class') {
-            if (! isset($eloquentRelationNodes[spl_object_id($node)])) {
-                $this->addName($file, $edges, $source, $node->class, $node->getStartLine(), 'class-reference', false);
+        } elseif ($node instanceof Expr\ClassConstFetch && $node->class instanceof Name) {
+            $constant = strtolower($node->name instanceof Node\Identifier ? $node->name->toString() : '');
+
+            if ($constant === 'class') {
+                if (! isset($eloquentRelationNodes[spl_object_id($node)])) {
+                    $this->addName($file, $edges, $source, $node->class, $node->getStartLine(), 'class-reference', false);
+                }
+            } else {
+                $this->addName($file, $edges, $source, $node->class, $node->getStartLine(), 'class-constant', true);
             }
         }
     }

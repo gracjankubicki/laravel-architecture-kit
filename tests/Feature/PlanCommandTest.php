@@ -35,6 +35,46 @@ final class PlanCommandTest extends TestCase
         $this->assertSame($before, $this->snapshot($files));
     }
 
+    public function test_enum_recommendation_requires_a_real_parseable_enum_declaration(): void
+    {
+        $files = new Filesystem;
+        $files->delete($this->tempPath.'/config/architectures.php');
+        $files->ensureDirectoryExists($this->tempPath.'/app/Support');
+        $files->put($this->tempPath.'/app/Support/EnumNotes.php', <<<'PHP'
+<?php
+
+// enum CommentStatus is not a declaration.
+/** Future example: enum DocblockStatus */
+$example = 'enum StringStatus';
+PHP);
+        $files->put($this->tempPath.'/app/Support/BrokenEnum.php', '<?php enum BrokenStatus {');
+
+        $exit = Artisan::call('architecture-kit:plan', ['--agent' => true]);
+        $withoutEnum = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertNotContains('enums', array_column($withoutEnum['recommendations'], 'slug'));
+
+        $files->put($this->tempPath.'/app/Support/DocumentStatus.php', <<<'PHP'
+<?php
+
+namespace App\Support;
+
+enum DocumentStatus
+{
+    case Draft;
+}
+PHP);
+
+        $exit = Artisan::call('architecture-kit:plan', ['--agent' => true]);
+        $withEnum = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $recommendations = array_column($withEnum['recommendations'], null, 'slug');
+        $this->assertArrayHasKey('enums', $recommendations);
+        $this->assertSame(['app/Support/DocumentStatus.php'], $recommendations['enums']['evidence']);
+    }
+
     public function test_it_plans_from_existing_configuration_and_reports_runtime_requirement_without_writing(): void
     {
         $files = new Filesystem;

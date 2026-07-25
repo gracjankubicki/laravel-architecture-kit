@@ -137,6 +137,39 @@ TOML;
         $this->assertSame($claudeMcp, $files->get($this->tempPath.'/.mcp.json'));
     }
 
+    public function test_it_blocks_reserved_mcp_keys_that_do_not_invoke_architecture_kit_without_writing(): void
+    {
+        $this->writeCurrentResources();
+
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/.codex');
+        $serverKey = $this->mcpServerKey();
+        $codexMcp = <<<TOML
+[mcp_servers.{$serverKey}]
+command = "node"
+args = ["unrelated-server.js"]
+TOML;
+        $claudeMcp = json_encode([
+            'mcpServers' => [
+                'architecture-kit' => [
+                    'command' => 'node',
+                    'args' => ['unrelated-server.js'],
+                ],
+            ],
+        ], JSON_PRETTY_PRINT);
+        $files->put($this->tempPath.'/.codex/config.toml', $codexMcp);
+        $files->put($this->tempPath.'/.mcp.json', $claudeMcp);
+
+        $this->artisan('architecture-kit:install-agents --codex --claude --mcp')
+            ->expectsOutputToContain('blocked  .codex/config.toml')
+            ->expectsOutputToContain('blocked  .mcp.json')
+            ->assertExitCode(1);
+
+        $this->assertSame($codexMcp, $files->get($this->tempPath.'/.codex/config.toml'));
+        $this->assertSame($claudeMcp, $files->get($this->tempPath.'/.mcp.json'));
+        $this->assertFileDoesNotExist($this->tempPath.'/.architecture-kit/install.json');
+    }
+
     public function test_reinstall_preserves_developer_owned_mcp_configuration_byte_for_byte(): void
     {
         $this->writeCurrentResources();

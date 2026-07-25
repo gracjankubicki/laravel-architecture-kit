@@ -84,6 +84,105 @@ PHP);
         $this->assertStringContainsString('DocumentGateway', $bypasses[0]->message);
     }
 
+    public function test_domain_first_action_still_detects_port_bypass_and_layer_dependency(): void
+    {
+        $this->writeFile('app/Documents/Ports/DocumentGateway.php', <<<'PHP'
+<?php
+
+namespace App\Documents\Ports;
+
+interface DocumentGateway
+{
+    public function fetch(): string;
+}
+PHP);
+        $this->writeFile('app/Documents/Adapters/HttpDocumentGateway.php', <<<'PHP'
+<?php
+
+namespace App\Documents\Adapters;
+
+use App\Documents\Ports\DocumentGateway;
+
+final class HttpDocumentGateway implements DocumentGateway
+{
+    public function fetch(): string
+    {
+        return 'document';
+    }
+}
+PHP);
+        $this->writeFile('app/Documents/Actions/FetchDocument.php', <<<'PHP'
+<?php
+
+namespace App\Documents\Actions;
+
+use App\Documents\Adapters\HttpDocumentGateway;
+
+final class FetchDocument
+{
+    public function __construct(private HttpDocumentGateway $gateway)
+    {
+    }
+}
+PHP);
+
+        $result = $this->audit([Architecture::PortsAndAdapters]);
+        $codes = array_map(
+            fn ($finding): string => (new FindingCodeRegistry)->codeFor($finding),
+            $result->findings,
+        );
+
+        $this->assertContains('E_PORT_BYPASS', $codes);
+        $this->assertContains('E_LAYER_DEPENDENCY', $codes);
+    }
+
+    public function test_class_constant_dependencies_participate_in_layer_findings_and_namespace_cycles(): void
+    {
+        $this->writeFile('app/Actions/PayInvoice.php', <<<'PHP'
+<?php
+
+namespace App\Actions;
+
+use App\Infrastructure\PaymentAdapter;
+
+final class PayInvoice
+{
+    public const NAME = 'pay-invoice';
+
+    public function timeout(): int
+    {
+        return PaymentAdapter::DEFAULT_TIMEOUT;
+    }
+}
+PHP);
+        $this->writeFile('app/Infrastructure/PaymentAdapter.php', <<<'PHP'
+<?php
+
+namespace App\Infrastructure;
+
+use App\Actions\PayInvoice;
+
+final class PaymentAdapter
+{
+    public const DEFAULT_TIMEOUT = 10;
+
+    public function actionName(): string
+    {
+        return PayInvoice::NAME;
+    }
+}
+PHP);
+
+        $result = $this->audit([Architecture::Actions]);
+        $codes = array_map(
+            fn ($finding): string => (new FindingCodeRegistry)->codeFor($finding),
+            $result->findings,
+        );
+
+        $this->assertContains('E_LAYER_DEPENDENCY', $codes);
+        $this->assertContains('W_NAMESPACE_CYCLE', $codes);
+    }
+
     public function test_audit_reports_conservative_layer_dependency_and_namespace_cycle(): void
     {
         $this->writeFile('app/Models/Invoice.php', <<<'PHP'

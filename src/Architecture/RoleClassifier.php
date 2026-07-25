@@ -13,25 +13,23 @@ final readonly class RoleClassifier
         }
 
         return match (true) {
-            str_starts_with($path, 'app/Providers/') => 'composition',
-            str_starts_with($path, 'app/Http/Controllers/'),
-            str_starts_with($path, 'app/Http/Requests/'),
-            str_starts_with($path, 'app/Http/Resources/') => 'adapter',
-            str_starts_with($path, 'app/Http/Integrations/'),
-            str_starts_with($path, 'app/Infrastructure/'),
-            str_starts_with($path, 'app/Adapters/'),
-            str_contains($path, '/Infrastructure/'),
-            str_contains($path, '/Adapters/') => 'infrastructure',
-            str_starts_with($path, 'app/Actions/'),
-            str_starts_with($path, 'app/Services/'),
-            str_starts_with($path, 'app/Queries/'),
-            str_starts_with($path, 'app/Jobs/'),
-            str_starts_with($path, 'app/Listeners/') => 'application',
-            str_starts_with($path, 'app/Models/'),
-            str_starts_with($path, 'app/Domain/'),
-            str_starts_with($path, 'app/Data/'),
-            str_starts_with($path, 'app/ValueObjects/'),
-            str_starts_with($path, 'app/Enums/') => 'domain',
+            $this->hasSegment($path, 'Providers') => 'composition',
+            $this->hasSegment($path, 'Http/Controllers'),
+            $this->hasSegment($path, 'Http/Requests'),
+            $this->hasSegment($path, 'Http/Resources') => 'adapter',
+            $this->hasSegment($path, 'Http/Integrations'),
+            $this->hasSegment($path, 'Infrastructure'),
+            $this->hasSegment($path, 'Adapters') => 'infrastructure',
+            $this->hasSegment($path, 'Actions'),
+            $this->hasSegment($path, 'Services'),
+            $this->hasSegment($path, 'Queries'),
+            $this->hasSegment($path, 'Jobs'),
+            $this->hasSegment($path, 'Listeners') => 'application',
+            $this->hasSegment($path, 'Models'),
+            $this->hasSegment($path, 'Domain'),
+            $this->hasSegment($path, 'Data'),
+            $this->hasSegment($path, 'ValueObjects'),
+            $this->hasSegment($path, 'Enums') => 'domain',
             default => 'unknown',
         };
     }
@@ -67,5 +65,10 @@ final readonly class RoleClassifier
             'CastsAttributes',
             'CastsInboundAttributes',
         ], true);
+    }
+
+    private function hasSegment(string $path, string $segment): bool
+    {
+        return str_contains('/'.trim(str_replace('\\', '/', $path), '/').'/', '/'.trim($segment, '/').'/');
     }
 }

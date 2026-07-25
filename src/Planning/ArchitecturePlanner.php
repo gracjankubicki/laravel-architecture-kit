@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Planning;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
+use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectPackageInventory;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
@@ -20,6 +21,8 @@ use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourceDeployment;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
 use Illuminate\Filesystem\Filesystem;
+use PhpParser\Node;
+use PhpParser\Node\Stmt\Enum_;
 
 final readonly class ArchitecturePlanner
 {
@@ -210,8 +213,22 @@ final readonly class ArchitecturePlanner
         $evidence = [];
 
         foreach ($this->files->allFiles($app) as $file) {
-            if ($file->getExtension() === 'php' && preg_match('/\benum\s+[A-Za-z_]/', $this->files->get($file->getPathname())) === 1) {
-                $evidence[] = str_replace($this->basePath.'/', '', $file->getPathname());
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $nodes = PhpAst::parse($this->files->get($file->getPathname()));
+
+            if ($nodes === null) {
+                continue;
+            }
+
+            foreach ($nodes as $node) {
+                if ($node instanceof Node && PhpAst::contains($node, fn (Node $candidate): bool => $candidate instanceof Enum_)) {
+                    $evidence[] = str_replace($this->basePath.'/', '', $file->getPathname());
+
+                    break;
+                }
             }
         }
 

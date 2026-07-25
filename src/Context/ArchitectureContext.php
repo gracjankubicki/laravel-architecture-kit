@@ -46,7 +46,8 @@ final readonly class ArchitectureContext
         $dependents = $limit === 0 ? [] : array_slice($dependents, 0, $limit);
         $allViolations = $this->violations($graph, $resolved, $enabled);
         $violations = $limit === 0 ? [] : array_slice($allViolations, 0, $limit);
-        $inspect = $this->inspectPaths($resolved, $dependencies, $dependents, $limit);
+        $allInspect = $this->inspectPaths($resolved, $dependencies, $dependents);
+        $inspect = $limit === 0 ? [] : array_slice($allInspect, 0, $limit);
         $next = [];
 
         if ($inspect !== []) {
@@ -67,7 +68,8 @@ final readonly class ArchitectureContext
             inspect: $inspect,
             next: $next,
             truncated: count($dependencies) + count($dependents) < $totalRelationships
-                || count($violations) < count($allViolations),
+                || count($violations) < count($allViolations)
+                || count($inspect) < count($allInspect),
         );
     }
 
@@ -189,7 +191,7 @@ final readonly class ArchitectureContext
      * @param  array<int, array<string, mixed>>  $dependents
      * @return array<int, string>
      */
-    private function inspectPaths(ProjectSymbol $subject, array $dependencies, array $dependents, int $limit): array
+    private function inspectPaths(ProjectSymbol $subject, array $dependencies, array $dependents): array
     {
         $paths = [$subject->path => $subject->path];
 
@@ -202,6 +204,6 @@ final readonly class ArchitectureContext
         $paths = array_values($paths);
         sort($paths);
 
-        return $limit === 0 ? [] : array_slice($paths, 0, $limit);
+        return $paths;
     }
 }

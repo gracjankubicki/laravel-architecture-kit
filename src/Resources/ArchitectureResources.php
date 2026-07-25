@@ -103,8 +103,17 @@ final class ArchitectureResources
 
         return array_merge(
             $skills,
-            (new UpgradeGuideResources($this->packagePath, $this->projectPath, $this->files))->skills($enabled),
+            $this->upgradeSkills($enabled),
         );
+    }
+
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<string, GeneratedFile>
+     */
+    public function upgradeSkills(array $enabled): array
+    {
+        return (new UpgradeGuideResources($this->packagePath, $this->projectPath, $this->files))->skills($enabled);
     }
 
     /**
@@ -191,7 +200,7 @@ final class ArchitectureResources
             }
         }
 
-        (new UpgradeGuideResources($this->packagePath, $this->projectPath, $this->files))->skills($enabled);
+        $this->upgradeSkills($enabled);
     }
 
     /**

@@ -186,6 +186,13 @@ final readonly class ArchitectureDoctor
                 : 'architecture-kit-'.$architecture,
             $enabled,
         );
+        $expectedSkillNames = array_values(array_unique([
+            ...$expectedSkillNames,
+            ...array_map(
+                fn (GeneratedFile $file): string => basename(dirname($file->path)),
+                $this->resources->upgradeSkills($enabled),
+            ),
+        ]));
 
         if ($canGenerate) {
             $skills = $this->resources->skills($enabled);

@@ -52,6 +52,10 @@ final readonly class JsonConfigWriter
                 return null;
             }
 
+            if (! (new McpServerConfigValidator)->jsonInvokesArchitectureKit($servers[$managedKey])) {
+                return null;
+            }
+
             $hasExistingIntegration = true;
         }
 
