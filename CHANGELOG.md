@@ -2,6 +2,17 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.2.6 - 2026-07-25
+
+### Fixed
+
+- Fixed project graph role classification for domain-first folders by using the first recognized architecture segment, so nested Actions, Services, domain types, HTTP adapters, infrastructure, and providers participate in layer and port-bypass findings without an inner folder overriding its outer layer.
+- Fixed missing strong dependency edges for class constants and enum cases while keeping `::class` and Eloquent relations weak and context-only.
+- Fixed architecture context truncation metadata when the combined inspect-path list or a zero limit hides relevant files.
+- Fixed Architecture Doctor incorrectly reporting generated atomic Laravel AI upgrade guides as stale while an enabled but unsupported Laravel AI profile blocks dependent resource generation.
+- Fixed Architecture Planner treating enum-like text in comments, docblocks, strings, or invalid PHP as evidence of real enum declarations.
+- Fixed agent installation accepting unrelated MCP servers under reserved Architecture Kit keys; valid existing JSON/TOML integrations remain byte-for-byte, while incompatible collisions now block without writes.
+
 ## v0.2.5 - 2026-07-25
 
 ### Added

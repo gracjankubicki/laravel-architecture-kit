@@ -121,4 +121,64 @@ PHP),
                 && ! $edge->strong,
         ));
     }
+
+    public function test_it_records_class_constants_and_enum_cases_as_strong_dependencies(): void
+    {
+        $graph = (new ProjectGraphBuilder)->build([
+            new FileContext('app/Actions/PayInvoice.php', <<<'PHP'
+<?php
+
+namespace App\Actions;
+
+use App\Infrastructure\InfrastructureMode;
+use App\Infrastructure\PaymentAdapter;
+
+final class PayInvoice
+{
+    public function timeout(): int
+    {
+        return PaymentAdapter::DEFAULT_TIMEOUT;
+    }
+
+    public function mode(): InfrastructureMode
+    {
+        return InfrastructureMode::Live;
+    }
+}
+PHP),
+            new FileContext('app/Infrastructure/PaymentAdapter.php', <<<'PHP'
+<?php
+
+namespace App\Infrastructure;
+
+final class PaymentAdapter
+{
+    public const DEFAULT_TIMEOUT = 10;
+}
+PHP),
+            new FileContext('app/Infrastructure/InfrastructureMode.php', <<<'PHP'
+<?php
+
+namespace App\Infrastructure;
+
+enum InfrastructureMode
+{
+    case Live;
+}
+PHP),
+        ]);
+
+        $edges = $graph->dependenciesOf('App\Actions\PayInvoice');
+
+        $this->assertTrue(collect($edges)->contains(
+            fn ($edge): bool => $edge->to === 'App\Infrastructure\PaymentAdapter'
+                && $edge->kind === 'class-constant'
+                && $edge->strong,
+        ));
+        $this->assertTrue(collect($edges)->contains(
+            fn ($edge): bool => $edge->to === 'App\Infrastructure\InfrastructureMode'
+                && $edge->kind === 'class-constant'
+                && $edge->strong,
+        ));
+    }
 }

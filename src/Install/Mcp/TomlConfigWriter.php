@@ -32,27 +32,27 @@ final readonly class TomlConfigWriter
             return null;
         }
 
-        $targetKey = $this->firstExistingKey($content, [$serverKey, ...$existingKeys]);
+        $hasExistingIntegration = false;
 
-        if ($targetKey !== null) {
+        foreach (array_values(array_unique([$serverKey, ...$existingKeys])) as $managedKey) {
+            $target = $this->sectionRange($content, $managedKey);
+
+            if ($target === null) {
+                continue;
+            }
+
+            if (! (new McpServerConfigValidator)->tomlInvokesArchitectureKit($target['contents'])) {
+                return null;
+            }
+
+            $hasExistingIntegration = true;
+        }
+
+        if ($hasExistingIntegration) {
             return $content;
         }
 
         return rtrim($content)."\n\n".$section."\n";
-    }
-
-    /**
-     * @param  array<int, string>  $keys
-     */
-    private function firstExistingKey(string $content, array $keys): ?string
-    {
-        foreach ($keys as $key) {
-            if ($this->sectionRange($content, $key) !== null) {
-                return $key;
-            }
-        }
-
-        return null;
     }
 
     /**

@@ -215,6 +215,35 @@ class DoctorCommandTest extends TestCase
         $this->assertSame('0.9.0', $payload['laravel_ai']['installed_version']);
     }
 
+    public function test_it_does_not_mark_upgrade_guides_as_stale_when_enabled_laravel_ai_is_unsupported(): void
+    {
+        $this->writeLaravelAiFixture('^0.9', '0.9.1');
+        $this->writeCurrentResources([Architecture::LaravelAi]);
+        $this->writeLaravelAiFixture('^0.11', '0.11.0');
+
+        $exit = Artisan::call('architecture-kit:doctor');
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exit, $output);
+        $this->assertStringContainsString('blocked  composer.json', $output);
+        $this->assertStringNotContainsString('stale    .ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9', $output);
+        $this->assertStringNotContainsString('stale    .ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10', $output);
+    }
+
+    public function test_it_marks_upgrade_guides_as_stale_after_laravel_ai_is_disabled(): void
+    {
+        $this->writeLaravelAiFixture('^0.9', '0.9.1');
+        $this->writeCurrentResources([Architecture::LaravelAi]);
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Actions]);
+
+        $exit = Artisan::call('architecture-kit:doctor');
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exit, $output);
+        $this->assertStringContainsString('stale    .ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9', $output);
+        $this->assertStringContainsString('stale    .ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10', $output);
+    }
+
     public function test_it_blocks_dev_only_architecture_kit_placement(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([

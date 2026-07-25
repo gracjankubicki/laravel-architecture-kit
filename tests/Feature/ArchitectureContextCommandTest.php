@@ -116,6 +116,86 @@ PHP);
             );
     }
 
+    public function test_context_reports_truncation_when_only_the_combined_inspect_paths_exceed_the_limit(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+        $this->writeFile('app/Actions/SubjectAction.php', <<<'PHP'
+<?php
+
+namespace App\Actions;
+
+use App\Data\DependencyData;
+
+final class SubjectAction
+{
+    public function __construct(private DependencyData $data)
+    {
+    }
+}
+PHP);
+        $this->writeFile('app/Data/DependencyData.php', <<<'PHP'
+<?php
+
+namespace App\Data;
+
+final readonly class DependencyData
+{
+}
+PHP);
+        $this->writeFile('app/Http/Controllers/SubjectController.php', <<<'PHP'
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Actions\SubjectAction;
+
+final class SubjectController
+{
+    public function __construct(private SubjectAction $action)
+    {
+    }
+}
+PHP);
+
+        $exit = Artisan::call('architecture-kit:context', [
+            'subject' => 'App\Actions\SubjectAction',
+            '--agent' => true,
+            '--limit' => 2,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertCount(1, $payload['dependencies']);
+        $this->assertCount(1, $payload['dependents']);
+        $this->assertCount(2, $payload['inspect']);
+        $this->assertTrue($payload['trunc']);
+    }
+
+    public function test_zero_limit_reports_truncation_when_the_subject_inspect_path_is_hidden(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+        $this->writeFile('app/Actions/SubjectAction.php', <<<'PHP'
+<?php
+
+namespace App\Actions;
+
+final class SubjectAction
+{
+}
+PHP);
+
+        $exit = Artisan::call('architecture-kit:context', [
+            'subject' => 'App\Actions\SubjectAction',
+            '--agent' => true,
+            '--limit' => 0,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame([], $payload['inspect']);
+        $this->assertTrue($payload['trunc']);
+    }
+
     private function writeFixture(): void
     {
         $this->writeConfig([Architecture::Actions, Architecture::PortsAndAdapters]);

@@ -12,28 +12,7 @@ final readonly class RoleClassifier
             return 'port';
         }
 
-        return match (true) {
-            str_starts_with($path, 'app/Providers/') => 'composition',
-            str_starts_with($path, 'app/Http/Controllers/'),
-            str_starts_with($path, 'app/Http/Requests/'),
-            str_starts_with($path, 'app/Http/Resources/') => 'adapter',
-            str_starts_with($path, 'app/Http/Integrations/'),
-            str_starts_with($path, 'app/Infrastructure/'),
-            str_starts_with($path, 'app/Adapters/'),
-            str_contains($path, '/Infrastructure/'),
-            str_contains($path, '/Adapters/') => 'infrastructure',
-            str_starts_with($path, 'app/Actions/'),
-            str_starts_with($path, 'app/Services/'),
-            str_starts_with($path, 'app/Queries/'),
-            str_starts_with($path, 'app/Jobs/'),
-            str_starts_with($path, 'app/Listeners/') => 'application',
-            str_starts_with($path, 'app/Models/'),
-            str_starts_with($path, 'app/Domain/'),
-            str_starts_with($path, 'app/Data/'),
-            str_starts_with($path, 'app/ValueObjects/'),
-            str_starts_with($path, 'app/Enums/') => 'domain',
-            default => 'unknown',
-        };
+        return $this->roleFromPath($path);
     }
 
     public function isPort(string $path, string $name, bool $hasMethods = true): bool
@@ -67,5 +46,43 @@ final readonly class RoleClassifier
             'CastsAttributes',
             'CastsInboundAttributes',
         ], true);
+    }
+
+    private function hasSegment(string $path, string $segment): bool
+    {
+        return str_contains('/'.trim(str_replace('\\', '/', $path), '/').'/', '/'.trim($segment, '/').'/');
+    }
+
+    private function roleFromPath(string $path): string
+    {
+        $segments = explode('/', trim(str_replace('\\', '/', $path), '/'));
+
+        foreach ($segments as $index => $segment) {
+            if ($segment === 'Http') {
+                $httpRole = match ($segments[$index + 1] ?? null) {
+                    'Controllers', 'Requests', 'Resources' => 'adapter',
+                    'Integrations' => 'infrastructure',
+                    default => null,
+                };
+
+                if ($httpRole !== null) {
+                    return $httpRole;
+                }
+            }
+
+            $role = match ($segment) {
+                'Providers' => 'composition',
+                'Infrastructure', 'Adapters' => 'infrastructure',
+                'Actions', 'Services', 'Queries', 'Jobs', 'Listeners' => 'application',
+                'Models', 'Domain', 'Data', 'ValueObjects', 'Enums' => 'domain',
+                default => null,
+            };
+
+            if ($role !== null) {
+                return $role;
+            }
+        }
+
+        return 'unknown';
     }
 }
