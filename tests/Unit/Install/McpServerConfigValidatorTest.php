@@ -22,6 +22,10 @@ final class McpServerConfigValidatorTest extends TestCase
             'args' => ['unrelated-server.js'],
             'env' => ['EXAMPLE' => 'architecture-kit:mcp'],
         ]));
+        $this->assertFalse($validator->jsonInvokesArchitectureKit([
+            'command' => 'node',
+            'args' => ['unused' => 'architecture-kit:mcp'],
+        ]));
     }
 
     public function test_toml_accepts_multiline_arguments_but_ignores_comments(): void
@@ -44,6 +48,14 @@ TOML));
 command = "node"
 args = ["unrelated-server.js"]
 # "architecture-kit:mcp"
+TOML));
+        $this->assertFalse($validator->tomlInvokesArchitectureKit(<<<'TOML'
+[mcp_servers.architecture-kit]
+command = "node"
+args = [
+    "unrelated-server.js",
+    # "architecture-kit:mcp"
+]
 TOML));
     }
 

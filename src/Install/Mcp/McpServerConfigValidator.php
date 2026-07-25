@@ -15,7 +15,9 @@ final readonly class McpServerConfigValidator
 
         $args = $config['args'] ?? [];
 
-        if (! is_array($args) || array_filter($args, fn (mixed $argument): bool => ! is_string($argument)) !== []) {
+        if (! is_array($args)
+            || ! array_is_list($args)
+            || array_filter($args, fn (mixed $argument): bool => ! is_string($argument)) !== []) {
             return false;
         }
 
@@ -59,21 +61,103 @@ final readonly class McpServerConfigValidator
     /** @return array<int, string>|null */
     private function tomlArguments(string $section): ?array
     {
-        if (! preg_match('/^\h*args\h*=\h*\[(.*?)\]\h*(?:#.*)?$/ms', $section, $match)) {
+        if (! preg_match('/^\h*args\h*=\h*\[/m', $section, $match, PREG_OFFSET_CAPTURE)) {
             return preg_match('/^\h*args\h*=/m', $section) === 1 ? null : [];
         }
 
-        if (trim($match[1]) === '') {
-            return [];
+        $offset = $match[0][1] + strlen($match[0][0]);
+        $length = strlen($section);
+        $arguments = [];
+
+        while ($offset < $length) {
+            $this->skipTomlWhitespaceAndComments($section, $offset);
+
+            if ($offset >= $length) {
+                return null;
+            }
+
+            if ($section[$offset] === ']') {
+                return $arguments;
+            }
+
+            if (! in_array($section[$offset], ['"', "'"], true)) {
+                return null;
+            }
+
+            $argument = $this->readTomlString($section, $offset);
+
+            if ($argument === null) {
+                return null;
+            }
+
+            $arguments[] = $argument;
+            $this->skipTomlWhitespaceAndComments($section, $offset);
+
+            if ($offset >= $length) {
+                return null;
+            }
+
+            if ($section[$offset] === ']') {
+                return $arguments;
+            }
+
+            if ($section[$offset] !== ',') {
+                return null;
+            }
+
+            $offset++;
         }
 
-        preg_match_all('/"(?:\\\\.|[^"\\\\])*"|\'[^\']*\'/', $match[1], $strings);
-        $arguments = array_map($this->tomlString(...), $strings[0]);
+        return null;
+    }
 
-        return in_array(null, $arguments, true) ? null : array_values(array_filter(
-            $arguments,
-            fn (?string $argument): bool => $argument !== null,
-        ));
+    private function skipTomlWhitespaceAndComments(string $section, int &$offset): void
+    {
+        $length = strlen($section);
+
+        while ($offset < $length) {
+            if (ctype_space($section[$offset])) {
+                $offset++;
+
+                continue;
+            }
+
+            if ($section[$offset] !== '#') {
+                return;
+            }
+
+            $newline = strpos($section, "\n", $offset);
+            $offset = $newline === false ? $length : $newline + 1;
+        }
+    }
+
+    private function readTomlString(string $section, int &$offset): ?string
+    {
+        $quote = $section[$offset];
+        $start = $offset++;
+        $length = strlen($section);
+
+        while ($offset < $length) {
+            if ($section[$offset] === "\n" || $section[$offset] === "\r") {
+                return null;
+            }
+
+            if ($quote === '"' && $section[$offset] === '\\') {
+                $offset += 2;
+
+                continue;
+            }
+
+            if ($section[$offset] === $quote) {
+                $offset++;
+
+                return $this->tomlString(substr($section, $start, $offset - $start));
+            }
+
+            $offset++;
+        }
+
+        return null;
     }
 
     private function tomlString(string $value): ?string

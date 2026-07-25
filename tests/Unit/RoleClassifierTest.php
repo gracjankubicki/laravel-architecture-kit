@@ -58,5 +58,15 @@ final class RoleClassifierTest extends TestCase
             'DocumentController',
             'class',
         ));
+        $this->assertSame('domain', $classifier->classify(
+            'app/Documents/Domain/Services/PricingService.php',
+            'PricingService',
+            'class',
+        ));
+        $this->assertSame('application', $classifier->classify(
+            'app/Documents/Actions/Domain/ApproveDocument.php',
+            'ApproveDocument',
+            'class',
+        ));
     }
 }

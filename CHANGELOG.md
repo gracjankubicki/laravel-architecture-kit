@@ -6,7 +6,7 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Fixed
 
-- Fixed project graph role classification for domain-first folders so nested Actions, Services, domain types, HTTP adapters, infrastructure, and providers participate in layer and port-bypass findings.
+- Fixed project graph role classification for domain-first folders by using the first recognized architecture segment, so nested Actions, Services, domain types, HTTP adapters, infrastructure, and providers participate in layer and port-bypass findings without an inner folder overriding its outer layer.
 - Fixed missing strong dependency edges for class constants and enum cases while keeping `::class` and Eloquent relations weak and context-only.
 - Fixed architecture context truncation metadata when the combined inspect-path list or a zero limit hides relevant files.
 - Fixed Architecture Doctor incorrectly reporting generated atomic Laravel AI upgrade guides as stale while an enabled but unsupported Laravel AI profile blocks dependent resource generation.

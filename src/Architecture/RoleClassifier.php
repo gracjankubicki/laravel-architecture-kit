@@ -12,26 +12,7 @@ final readonly class RoleClassifier
             return 'port';
         }
 
-        return match (true) {
-            $this->hasSegment($path, 'Providers') => 'composition',
-            $this->hasSegment($path, 'Http/Controllers'),
-            $this->hasSegment($path, 'Http/Requests'),
-            $this->hasSegment($path, 'Http/Resources') => 'adapter',
-            $this->hasSegment($path, 'Http/Integrations'),
-            $this->hasSegment($path, 'Infrastructure'),
-            $this->hasSegment($path, 'Adapters') => 'infrastructure',
-            $this->hasSegment($path, 'Actions'),
-            $this->hasSegment($path, 'Services'),
-            $this->hasSegment($path, 'Queries'),
-            $this->hasSegment($path, 'Jobs'),
-            $this->hasSegment($path, 'Listeners') => 'application',
-            $this->hasSegment($path, 'Models'),
-            $this->hasSegment($path, 'Domain'),
-            $this->hasSegment($path, 'Data'),
-            $this->hasSegment($path, 'ValueObjects'),
-            $this->hasSegment($path, 'Enums') => 'domain',
-            default => 'unknown',
-        };
+        return $this->roleFromPath($path);
     }
 
     public function isPort(string $path, string $name, bool $hasMethods = true): bool
@@ -70,5 +51,38 @@ final readonly class RoleClassifier
     private function hasSegment(string $path, string $segment): bool
     {
         return str_contains('/'.trim(str_replace('\\', '/', $path), '/').'/', '/'.trim($segment, '/').'/');
+    }
+
+    private function roleFromPath(string $path): string
+    {
+        $segments = explode('/', trim(str_replace('\\', '/', $path), '/'));
+
+        foreach ($segments as $index => $segment) {
+            if ($segment === 'Http') {
+                $httpRole = match ($segments[$index + 1] ?? null) {
+                    'Controllers', 'Requests', 'Resources' => 'adapter',
+                    'Integrations' => 'infrastructure',
+                    default => null,
+                };
+
+                if ($httpRole !== null) {
+                    return $httpRole;
+                }
+            }
+
+            $role = match ($segment) {
+                'Providers' => 'composition',
+                'Infrastructure', 'Adapters' => 'infrastructure',
+                'Actions', 'Services', 'Queries', 'Jobs', 'Listeners' => 'application',
+                'Models', 'Domain', 'Data', 'ValueObjects', 'Enums' => 'domain',
+                default => null,
+            };
+
+            if ($role !== null) {
+                return $role;
+            }
+        }
+
+        return 'unknown';
     }
 }
