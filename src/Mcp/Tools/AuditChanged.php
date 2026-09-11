@@ -15,6 +15,7 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
+use Throwable;
 
 #[Name('audit-changed')]
 #[Description('Audit changed application files against enabled Architecture Kit rules.')]
@@ -41,21 +42,25 @@ class AuditChanged extends Tool
             return $this->inputError('audit', $message);
         }
 
-        $state = $this->projectState();
-        $audit = $this->audit(
-            state: $state,
-            changedOnly: $request->get('changed', true),
-            baseRef: $request->get('base'),
-        );
-        $strict = $request->get('strict', false);
-
         $agent = new AgentOutput;
 
-        return Response::structured($agent->audit(
-            result: $audit,
-            ok: $audit->errors() === 0 && (! $strict || $audit->warnings() === 0),
-            limit: $agent->limit($request->get('limit', 20)),
-            full: $request->get('full', false),
-        ));
+        try {
+            $state = $this->projectState();
+            $audit = $this->audit(
+                state: $state,
+                changedOnly: $request->get('changed', true),
+                baseRef: $request->get('base'),
+            );
+            $strict = $request->get('strict', false);
+
+            return Response::structured($agent->audit(
+                result: $audit,
+                ok: $audit->errors() === 0 && (! $strict || $audit->warnings() === 0),
+                limit: $agent->limit($request->get('limit', 20)),
+                full: $request->get('full', false),
+            ));
+        } catch (Throwable $exception) {
+            return Response::structured($agent->error('audit', $exception->getMessage()));
+        }
     }
 }

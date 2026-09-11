@@ -144,6 +144,7 @@ final class ArchitectureConfig
 
     /**
      * @param  array<int, Architecture|string>  $enabled
+     * @param  array{driver?: string, service?: string|null, php?: string, command?: array<int, string>|string|null}|null  $runtime  Raw runtime configuration; missing keys are filled in by RuntimeResolver.
      */
     public function render(array $enabled, ?array $runtime = null): string
     {
@@ -731,6 +732,7 @@ final class ArchitectureConfig
 
     /**
      * @param  array<int, Architecture|string>  $enabled
+     * @param  array{driver?: string, service?: string|null, php?: string, command?: array<int, string>|string|null}|null  $runtime  Raw runtime configuration; missing keys are filled in by RuntimeResolver.
      */
     public function write(array $enabled, ?array $runtime = null): void
     {

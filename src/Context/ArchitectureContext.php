@@ -124,7 +124,7 @@ final readonly class ArchitectureContext
         return [
             'symbol' => $outgoing ? $edge->to : $edge->from,
             'path' => $related?->path,
-            'role' => $related?->role ?? 'external',
+            'role' => $related !== null ? $related->role : 'external',
             'kind' => $edge->kind,
             'strength' => $edge->strong ? 'strong' : 'weak',
             'allowed' => $allowed,

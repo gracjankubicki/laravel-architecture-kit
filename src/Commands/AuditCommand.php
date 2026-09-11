@@ -36,6 +36,20 @@ class AuditCommand extends Command
             return self::SUCCESS;
         }
 
+        if ((bool) $this->option('changed') && (bool) $this->option('update-baseline')) {
+            $message = 'The --changed and --update-baseline options cannot be used together. Use --update-baseline without --changed, or run --changed without --update-baseline.';
+
+            if ((bool) $this->option('agent')) {
+                $this->line($this->json($agent->error('audit', $message)));
+
+                return self::FAILURE;
+            }
+
+            $this->error($message);
+
+            return self::FAILURE;
+        }
+
         try {
             $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
         } catch (Throwable $exception) {

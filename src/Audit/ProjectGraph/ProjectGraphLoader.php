@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use SplFileInfo;
 
@@ -21,29 +22,40 @@ final readonly class ProjectGraphLoader
      */
     public function files(array $exclude = []): array
     {
-        if (! $this->files->isDirectory($this->basePath.'/app')) {
-            return [];
+        $contexts = [];
+
+        foreach ($this->stream($exclude) as $context) {
+            $contexts[$context->path] = $context;
         }
 
-        $contexts = [];
+        ksort($contexts);
+
+        return $contexts;
+    }
+
+    /**
+     * @param  array<int, string>  $exclude
+     * @return iterable<int, FileContext>
+     */
+    public function stream(array $exclude = []): iterable
+    {
+        if (! $this->files->isDirectory($this->basePath.'/app')) {
+            return;
+        }
 
         foreach ($this->files->allFiles($this->basePath.'/app') as $file) {
             if (! $file instanceof SplFileInfo || $file->getExtension() !== 'php') {
                 continue;
             }
 
-            $path = ltrim(str_replace($this->basePath, '', $file->getPathname()), '/');
+            $path = ProjectPath::relative($this->basePath, $file->getPathname());
 
             if ($this->isExcluded($path, $exclude)) {
                 continue;
             }
 
-            $contexts[$path] = new FileContext($path, $this->files->get($file->getPathname()));
+            yield new FileContext($path, $this->files->get($file->getPathname()));
         }
-
-        ksort($contexts);
-
-        return $contexts;
     }
 
     /** @param array<int, string> $exclude */

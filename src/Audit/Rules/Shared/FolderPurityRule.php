@@ -290,8 +290,8 @@ final readonly class FolderPurityRule implements AuditRule
      */
     private function looksLikeEnum(array $nodes): bool
     {
-        return PhpAst::contains(
-            new Stmt\Namespace_(null, $nodes),
+        return PhpAst::containsAny(
+            $nodes,
             fn (Node $node): bool => $node instanceof Stmt\Enum_,
         );
     }
@@ -324,8 +324,8 @@ final readonly class FolderPurityRule implements AuditRule
      */
     private function containsEnumDeclaration(array $nodes): bool
     {
-        return PhpAst::contains(
-            new Stmt\Namespace_(null, $nodes),
+        return PhpAst::containsAny(
+            $nodes,
             fn (Node $node): bool => $node instanceof Stmt\Enum_,
         );
     }

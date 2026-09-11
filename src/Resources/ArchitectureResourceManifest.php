@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Resources;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+
 final readonly class ArchitectureResourceManifest
 {
     public function __construct(private ArchitectureResources $resources) {}

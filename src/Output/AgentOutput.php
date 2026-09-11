@@ -62,8 +62,8 @@ final readonly class AgentOutput
             'err' => $result->audit?->errors() ?? 0,
             'warn' => $result->audit?->warnings() ?? 0,
             'sup' => [
-                'inline' => $result->audit?->suppressedInline ?? 0,
-                'baseline' => $result->audit?->suppressedBaseline ?? 0,
+                'inline' => $result->audit !== null ? $result->audit->suppressedInline : 0,
+                'baseline' => $result->audit !== null ? $result->audit->suppressedBaseline : 0,
             ],
             ...$findings,
             'next' => $result->ok()
@@ -149,7 +149,10 @@ final readonly class AgentOutput
         ];
     }
 
-    /** @param array<string, mixed>|null $profile @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>|null  $profile
+     * @return array<string, mixed>
+     */
     public function syncError(string $message, ?array $profile = null): array
     {
         return [
@@ -163,7 +166,10 @@ final readonly class AgentOutput
         ];
     }
 
-    /** @param array<string, mixed>|null $profile @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>|null  $profile
+     * @return array<string, mixed>
+     */
     public function syncApplyError(string $message, ?array $profile = null): array
     {
         return [

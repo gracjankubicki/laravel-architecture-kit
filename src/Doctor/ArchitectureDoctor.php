@@ -22,8 +22,10 @@ use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
+use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Application as ConsoleApplication;
+use Symfony\Component\Process\Process;
 use Throwable;
 
 final readonly class ArchitectureDoctor
@@ -44,8 +46,8 @@ final readonly class ArchitectureDoctor
         $canGenerate = true;
 
         try {
-            $enabled = $state?->enabled ?? $this->config->read();
-            $runtime = $state?->runtime ?? $this->config->runtime();
+            $enabled = $state !== null ? $state->enabled : $this->config->read();
+            $runtime = $state !== null ? $state->runtime : $this->config->runtime();
             $checks[] = new ArchitectureDoctorCheck('config', 'current', 'config/architectures.php');
         } catch (Throwable $exception) {
             $checks[] = new ArchitectureDoctorCheck(
@@ -335,11 +337,15 @@ final readonly class ArchitectureDoctor
      */
     private function commandSucceeds(array $command): bool
     {
-        $output = [];
-        $status = 1;
-        @exec(implode(' ', array_map(escapeshellarg(...), $command)).' 2>/dev/null', $output, $status);
+        try {
+            $process = new Process($command, $this->basePath);
+            $process->setTimeout(null);
+            $process->run();
 
-        return $status === 0;
+            return $process->isSuccessful();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -376,6 +382,7 @@ final readonly class ArchitectureDoctor
 
     /**
      * @param  array<int, Architecture|string>  $enabled
+     * @param  array<int, string>|null  $exclude
      * @return array<int, ArchitectureDoctorCheck>
      */
     private function baselineChecks(array $enabled, bool $deep, ?array $exclude, ?CustomRuleSet $customRules): array
@@ -437,6 +444,6 @@ final readonly class ArchitectureDoctor
 
     private function relative(string $path): string
     {
-        return str_replace($this->basePath.'/', '', $path);
+        return ProjectPath::relative($this->basePath, $path);
     }
 }

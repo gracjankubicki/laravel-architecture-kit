@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 use PhpParser\Node;
@@ -212,8 +213,8 @@ final readonly class EnumsRule implements AuditRule
      */
     private function modelCastsAttributeToEnum(array $nodes, string $attribute, string $enum): bool
     {
-        return PhpAst::contains(
-            new Stmt\Namespace_(null, $nodes),
+        return PhpAst::containsAny(
+            $nodes,
             fn (Node $node): bool => $node instanceof Node\Expr\ArrayItem
                 && $node->key instanceof Node\Scalar\String_
                 && $node->key->value === $attribute
@@ -412,7 +413,7 @@ final readonly class EnumsRule implements AuditRule
 
     private function relative(string $path): string
     {
-        return ltrim(str_replace($this->basePath, '', $path), DIRECTORY_SEPARATOR);
+        return ProjectPath::relative($this->basePath, $path);
     }
 
     private function finding(string $severity, string $path, int $line, string $message): AuditFinding

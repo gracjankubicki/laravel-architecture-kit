@@ -44,8 +44,8 @@ final readonly class ArchitectureGuard
                 enabled: $doctor->enabled,
                 changedOnly: $changedOnly,
                 baseRef: $baseRef,
-                exclude: $state?->exclude ?? $config->auditExcludes(),
-                customRules: $state?->customRules ?? $config->customRuleSet(),
+                exclude: $state !== null ? $state->exclude : $config->auditExcludes(),
+                customRules: $state !== null ? $state->customRules : $config->customRuleSet(),
             );
         }
 

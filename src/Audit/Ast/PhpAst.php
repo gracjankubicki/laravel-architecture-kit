@@ -40,12 +40,21 @@ final class PhpAst
      */
     public static function contains(Node $node, callable $predicate): bool
     {
+        return self::containsAny([$node], $predicate);
+    }
+
+    /**
+     * @param  array<int, Node>  $nodes
+     * @param  callable(Node): bool  $predicate
+     */
+    public static function containsAny(array $nodes, callable $predicate): bool
+    {
         $state = new class
         {
             public bool $found = false;
         };
 
-        self::traverse([$node], new class($predicate, $state) extends NodeVisitorAbstract
+        self::traverse($nodes, new class($predicate, $state) extends NodeVisitorAbstract
         {
             /**
              * @param  callable(Node): bool  $predicate

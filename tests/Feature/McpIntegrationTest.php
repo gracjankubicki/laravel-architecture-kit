@@ -194,6 +194,44 @@ PHP);
             );
     }
 
+    public function test_guard_and_audit_changed_tools_report_memory_budget_failures_as_structured_errors(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('app/Actions/DocumentAction.php', '<?php final class DocumentAction {}');
+
+        $previousMemoryLimit = ini_get('memory_limit');
+        $baselineMemory = memory_get_usage(true);
+        $memoryPadding = str_repeat('x', 24 * 1024 * 1024);
+
+        try {
+            $this->assertNotFalse(ini_set('memory_limit', (string) ($baselineMemory + 32 * 1024 * 1024)));
+
+            ArchitectureKitServer::tool(Guard::class, ['changed' => false, 'strict' => true])
+                ->assertOk()
+                ->assertStructuredContent(fn ($json) => $json
+                    ->where('ok', false)
+                    ->where('cmd', 'guard')
+                    ->where('m', 'E_COMMAND_FAILED')
+                    ->where('msg', fn (string $message): bool => str_contains($message, 'Audit memory budget exceeded'))
+                    ->etc()
+                );
+
+            $this->assertNotFalse(ini_set('memory_limit', (string) ($baselineMemory + 32 * 1024 * 1024)));
+
+            ArchitectureKitServer::tool(AuditChanged::class, ['changed' => false])
+                ->assertOk()
+                ->assertStructuredContent(fn ($json) => $json
+                    ->where('ok', false)
+                    ->where('cmd', 'audit')
+                    ->where('m', 'E_COMMAND_FAILED')
+                    ->where('msg', fn (string $message): bool => str_contains($message, 'Audit memory budget exceeded'))
+                    ->etc()
+                );
+        } finally {
+            ini_set('memory_limit', (string) $previousMemoryLimit);
+        }
+    }
+
     public function test_audit_changed_tool_returns_agent_payload_with_structured_content_and_text_fallback(): void
     {
         $this->writeCurrentResources([

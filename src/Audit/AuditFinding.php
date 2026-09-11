@@ -8,6 +8,7 @@ use InvalidArgumentException;
 
 final readonly class AuditFinding
 {
+    /** @var 'error'|'warn' */
     public string $severity;
 
     public string $rule;
@@ -65,7 +66,6 @@ final readonly class AuditFinding
         return match ($this->severity) {
             'error' => 0,
             'warn' => 1,
-            default => 2,
         };
     }
 }

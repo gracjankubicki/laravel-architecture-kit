@@ -2,6 +2,31 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.3.0 - 2026-09-11
+
+This release contains no new features. It fixes correctness and reliability problems in the audit, the guard, and the generated agent hook. Three fixes can surface as new failures in a project that changed nothing on its side: a previously silent audit may start reporting findings, a stale inline suppression is now reported as a warning that fails `guard --strict`, and `audit --changed --update-baseline` is rejected. See [UPGRADE.md](UPGRADE.md) before updating.
+
+### Fixed
+
+- Fixed relative path normalization so audit, graph, doctor, and planner strip only the project directory prefix. A project whose base path ends with a segment that repeats inside file paths, such as `base_path()` equal to `/app`, no longer loses the `app/` prefix and no longer reports a silently green audit.
+- Fixed audit memory growth by releasing each file's AST immediately after its rules run and its symbols and dependencies are accumulated into the project graph. The graph is now built in a single streaming pass, and the audit aborts with an explicit message when the remaining memory budget is insufficient instead of ending in a fatal error.
+- Fixed the syntax-tree memory estimate that guards a single oversized file. It is now based on token count, which tracks node count closely, instead of source size alone, whose cost per byte varies by a factor of 448 between a long string literal and a dense array. A byte-based fast path still skips the extra work for files that fit under any measured density.
+- Fixed `architecture-kit:audit` accepting `--changed` together with `--update-baseline`, which rewrote the baseline from a narrowed scope and silently dropped suppressions for files outside it. The combination is now rejected in both human and agent output.
+- Fixed external process execution in audit and doctor by replacing `exec()` with `Symfony\Component\Process\Process`, so an unavailable binary or a runtime that blocks process execution degrades to the documented fallback instead of raising an unhandled error.
+- Fixed unhandled audit exceptions on the guard path: `architecture-kit:guard` and the `guard` and `audit-changed` MCP tools now return a structured, readable failure instead of propagating the exception to the agent hook.
+- Fixed the generated agent hook for applications located in a repository subdirectory. The `guard.sh` script resolves the project directory from its own location, and the Codex hook command prefers the current project directory before falling back to the repository root.
+- Fixed inline suppression matching so a directive written in a multi-line docblock applies to the findings it covers, and so one comment can suppress several rules. A known suppression that matches no finding is now reported as an `invalid-suppression` warning instead of being silently ignored.
+- Fixed the missing `Architecture` import in `ArchitectureResourceManifest`, so its `array<int, Architecture|string>` parameter contract resolves to the real enum instead of a class that does not exist in that namespace.
+- Fixed dead code and imprecise contracts reported by static analysis: `SaloonRule` no longer takes a filesystem and base path it never used, two unused methods and several always-true guards are gone, optional project state is now expressed as an explicit null check, node-set searches no longer build a throwaway namespace node, and every array contract in the package declares its element type.
+
+### Added
+
+- Added PHPStan static analysis for the package source, wired into the `lint` CI job and available as `composer stan`. The analysis passes with no baseline and no disabled rules, so any new finding fails the build.
+
+### Changed
+
+- Changed the `SaloonRule` constructor to take no arguments. The rule never used the injected filesystem or base path. Code that constructed it directly must drop both arguments; the documented extension point for project-specific rules is unaffected.
+
 ## v0.2.6 - 2026-07-25
 
 ### Fixed

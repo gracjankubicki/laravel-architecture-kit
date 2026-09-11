@@ -194,13 +194,6 @@ final readonly class LaravelAiRule implements AuditRule
                 return (str_starts_with($class, 'Laravel\\Ai\\') || str_starts_with($class, 'App\\Ai\\Agents\\'))
                     && str_ends_with($class, 'Agent');
             }
-
-            private function shortTypeName(string $name): string
-            {
-                $parts = explode('\\', $name);
-
-                return $parts[count($parts) - 1];
-            }
         });
 
         return $state->lines;

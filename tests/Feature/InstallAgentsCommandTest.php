@@ -37,6 +37,9 @@ class InstallAgentsCommandTest extends TestCase
         $this->assertStringContainsString('"command": "php"', $claudeMcp);
         $this->assertStringContainsString('"architecture-kit:mcp"', $claudeMcp);
         $this->assertStringContainsString("RUNNER=('php')", $guard);
+        $this->assertStringContainsString('set -o pipefail', $guard);
+        $this->assertStringContainsString('ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"', $guard);
+        $this->assertStringNotContainsString('git rev-parse --show-toplevel', $guard);
         $this->assertStringContainsString('architecture-kit: runtime unavailable', $guard);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $codexHooks);
         $this->assertStringNotContainsString('_architectureKit', $codexHooks);
@@ -45,6 +48,22 @@ class InstallAgentsCommandTest extends TestCase
         $this->assertStringContainsString('"codex"', $state);
         $this->assertStringContainsString('"claude_code"', $state);
         $this->assertSame('755', substr(sprintf('%o', fileperms($this->tempPath.'/.architecture-kit/hooks/guard.sh')), -3));
+    }
+
+    public function test_it_preserves_an_existing_developer_owned_guard_script(): void
+    {
+        $this->writeCurrentResources();
+
+        $files = new Filesystem;
+        $existingGuard = "#!/usr/bin/env bash\n# developer-owned guard\nexit 0\n";
+        $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit/hooks');
+        $files->put($this->tempPath.'/.architecture-kit/hooks/guard.sh', $existingGuard);
+
+        $this->artisan('architecture-kit:install-agents --codex --hooks')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $this->assertSame($existingGuard, $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh'));
     }
 
     public function test_it_uses_runtime_config_for_mcp_and_hooks(): void

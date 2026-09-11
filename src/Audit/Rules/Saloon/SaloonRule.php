@@ -18,17 +18,14 @@ use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\RawSaloonResponseCh
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\RequestCheck;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\SaloonInsideTransactionCheck;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\SecurityCheck;
-use Illuminate\Filesystem\Filesystem;
 
 final readonly class SaloonRule implements AuditRule
 {
     /** @var array<int, FileCheck> */
     private array $checks;
 
-    public function __construct(
-        private Filesystem $files,
-        private string $basePath,
-    ) {
+    public function __construct()
+    {
         $paths = new IntegrationPaths;
         $this->checks = [
             new RawHttpCheck($paths), new AdapterBoundaryCheck($paths), new IntegrationFolderCheck($paths), new ConnectorCheck($paths),

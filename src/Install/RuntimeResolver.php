@@ -110,6 +110,9 @@ final readonly class RuntimeResolver
         return $variableName.'=('.implode(' ', array_map(escapeshellarg(...), $this->commandPrefix())).')';
     }
 
+    /**
+     * @param  array<int, string>  $command
+     */
     public function shellCommand(array $command): string
     {
         return implode(' ', array_map(escapeshellarg(...), $command));

@@ -11,29 +11,55 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
 
-final readonly class ProjectGraphBuilder
+final class ProjectGraphBuilder
 {
-    public function __construct(private RoleClassifier $roles = new RoleClassifier) {}
+    /** @var array<int, ProjectSymbol> */
+    private array $symbols = [];
+
+    /** @var array<int, DependencyEdge> */
+    private array $edges = [];
+
+    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier) {}
 
     /**
      * @param  array<int, FileContext>  $files
      */
     public function build(array $files): ProjectGraphSnapshot
     {
-        $symbols = [];
-        $edges = [];
+        $this->symbols = [];
+        $this->edges = [];
 
         foreach ($files as $file) {
+            $this->add($file);
+        }
+
+        return $this->finish();
+    }
+
+    public function add(FileContext $file): void
+    {
+        $nodes = null;
+
+        try {
             $nodes = $file->ast();
 
             if ($nodes === null) {
-                continue;
+                return;
             }
 
             foreach ($nodes as $node) {
-                $this->visit($file, $node, null, $symbols, $edges, []);
+                $this->visit($file, $node, null, $this->symbols, $this->edges, []);
             }
+        } finally {
+            unset($nodes);
+            $file->releaseAst();
         }
+    }
+
+    public function finish(): ProjectGraphSnapshot
+    {
+        $symbols = $this->symbols;
+        $edges = $this->edges;
 
         usort($symbols, fn (ProjectSymbol $left, ProjectSymbol $right): int => [$left->name, $left->path, $left->line] <=> [$right->name, $right->path, $right->line]);
 
@@ -228,7 +254,7 @@ final readonly class ProjectGraphBuilder
 
     private function symbolName(Stmt\ClassLike $node): ?string
     {
-        return isset($node->namespacedName) && $node->namespacedName instanceof Name
+        return isset($node->namespacedName)
             ? ltrim($node->namespacedName->toString(), '\\')
             : null;
     }

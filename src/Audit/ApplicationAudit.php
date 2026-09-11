@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
+use Closure;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
@@ -29,15 +30,58 @@ use GracjanKubicki\ArchitectureKit\Audit\Rules\ThinControllers\ThinControllerRul
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
+use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
+use InvalidArgumentException;
+use RuntimeException;
 use SplFileInfo;
+use Symfony\Component\Process\Process;
+use Throwable;
 
 final class ApplicationAudit
 {
+    /**
+     * Upper bound of syntax-tree memory per source byte, used as a fast path.
+     *
+     * Source size alone is a poor predictor because cost follows node density, not
+     * byte count: measured across 3244 real files and synthetic extremes, the ratio
+     * spans 1.5x for a file dominated by one long string up to 685x for a dense
+     * array of short literals. When a file fits even at that upper bound there is no
+     * need to inspect it further.
+     */
+    private const AST_MEMORY_PER_SOURCE_BYTE_CEILING = 700;
+
+    /**
+     * Upper bound of tokenizer memory per source byte. Counting tokens allocates too,
+     * so the cheap byte-based estimate guards the tokenizer itself. Measured peak was
+     * 134x for a dense array of short literals.
+     */
+    private const TOKENIZER_MEMORY_PER_SOURCE_BYTE = 150;
+
+    /**
+     * Syntax-tree memory per token. Token count tracks node count closely: measured
+     * 243x to 685x per token across the same samples, so this covers the worst case
+     * while staying far below the byte-based ceiling for ordinary code.
+     */
+    private const AST_MEMORY_PER_TOKEN = 750;
+
+    /**
+     * Syntax-tree memory per source byte, added on top of the per-token cost to cover
+     * literal payloads that live inside few nodes, such as one very long string.
+     */
+    private const AST_MEMORY_PER_SOURCE_BYTE = 4;
+
     public function __construct(
         private readonly Filesystem $files,
         private readonly string $basePath,
-    ) {}
+        private readonly ?int $memoryLimitBytes = null,
+        private readonly float $memoryBudgetRatio = 0.8,
+        private readonly ?Closure $memoryUsage = null,
+    ) {
+        if ($memoryBudgetRatio <= 0 || $memoryBudgetRatio > 1) {
+            throw new InvalidArgumentException('Application audit memory budget ratio must be greater than 0 and no greater than 1.');
+        }
+    }
 
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -63,45 +107,49 @@ final class ApplicationAudit
         $customAuditRules = (new RuleRegistry($customRuleSet->rulesFor($enabled)))->customRules();
         $knownRules = $this->knownRules($customRuleSet);
         $rules = array_merge($this->builtInRules($enabled), $customAuditRules);
-        $files = (new ProjectGraphLoader($this->files, $this->basePath))->files($exclude);
         $changedFocusAvailable = $changedOnly && str_starts_with($scope, 'changed application files');
-
-        if (! $changedFocusAvailable) {
-            $focusPaths = array_keys($files);
-        } else {
-            $focusPaths = array_values(array_intersect($focusPaths, array_keys($files)));
-        }
+        $focusPathSet = array_fill_keys($focusPaths, true);
+        $focusFiles = [];
+        $graphBuilder = new ProjectGraphBuilder;
+        $memoryLimitBytes = $this->configuredMemoryLimitBytes();
+        $processedFiles = 0;
 
         /** @var array<string, array<int, AuditFinding>> $findingsByPath */
         $findingsByPath = [];
 
-        foreach ($focusPaths as $path) {
-            $file = $files[$path] ?? null;
+        foreach ((new ProjectGraphLoader($this->files, $this->basePath))->stream($exclude) as $file) {
+            $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
+            $this->assertAstHeadroom($memoryLimitBytes, $file);
 
-            if (! $file instanceof FileContext) {
-                continue;
-            }
+            $inFocus = ! $changedFocusAvailable || isset($focusPathSet[$file->path]);
 
-            $parseFindings = $this->unparseableFileFindings($file);
+            if ($inFocus) {
+                $parseFindings = $this->unparseableFileFindings($file);
 
-            if ($parseFindings !== []) {
-                $findingsByPath[$path] = $parseFindings;
+                if ($parseFindings !== []) {
+                    $findingsByPath[$file->path] = $parseFindings;
+                } else {
+                    $fileFindings = [];
 
-                continue;
-            }
+                    foreach ($rules as $rule) {
+                        if ($rule->supports($file->path, $enabled)) {
+                            array_push($fileFindings, ...$rule->check($file));
+                        }
+                    }
 
-            $fileFindings = [];
-
-            foreach ($rules as $rule) {
-                if ($rule->supports($path, $enabled)) {
-                    array_push($fileFindings, ...$rule->check($file));
+                    $findingsByPath[$file->path] = $fileFindings;
                 }
+
+                $focusFiles[$file->path] = $file;
             }
 
-            $findingsByPath[$path] = $fileFindings;
+            $graphBuilder->add($file);
+
+            $processedFiles++;
+            $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
         }
 
-        $graph = (new ProjectGraphBuilder)->build(array_values($files));
+        $graph = $graphBuilder->finish();
 
         foreach ((new ProjectRuleSet)->rules() as $rule) {
             foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
@@ -109,13 +157,7 @@ final class ApplicationAudit
             }
         }
 
-        foreach ($focusPaths as $path) {
-            $file = $files[$path] ?? null;
-
-            if (! $file instanceof FileContext) {
-                continue;
-            }
-
+        foreach ($focusFiles as $path => $file) {
             $inlineResult = (new InlineIgnores)->apply($path, $file->contents, $findingsByPath[$path] ?? [], $knownRules);
             $suppressedInline += $inlineResult->inline;
             array_push($findings, ...$inlineResult->findings);
@@ -215,7 +257,7 @@ final class ApplicationAudit
             new ModernPhp85Rule,
             new LaravelAiRule,
             new EloquentLifecycleRule($this->files, $this->basePath),
-            new SaloonRule($this->files, $this->basePath),
+            new SaloonRule,
             new ServiceLocatorRule,
             new TestabilityRule,
             new UnenabledPatternRule($enabled),
@@ -301,15 +343,9 @@ final class ApplicationAudit
      */
     private function changedApplicationFiles(?string $baseRef): ?array
     {
-        exec('git -C '.escapeshellarg($this->basePath).' rev-parse --show-toplevel', $rootOutput, $rootExitCode);
+        $prefixOutput = $this->runProcess(['git', '-C', $this->basePath, 'rev-parse', '--show-prefix']);
 
-        if ($rootExitCode !== 0) {
-            return null;
-        }
-
-        exec('git -C '.escapeshellarg($this->basePath).' rev-parse --show-prefix', $prefixOutput, $prefixExitCode);
-
-        if ($prefixExitCode !== 0) {
+        if ($prefixOutput === null) {
             return null;
         }
 
@@ -324,22 +360,20 @@ final class ApplicationAudit
                 return null;
             }
 
-            $commands[] = 'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB '.escapeshellarg($mergeBase).'...HEAD -- app';
-            $commands[] = 'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB HEAD -- app';
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', $mergeBase.'...HEAD', '--', 'app'];
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD', '--', 'app'];
         } else {
-            $commands[] = 'git -C '.escapeshellarg($this->basePath).' diff --name-only --diff-filter=ACMRTUXB HEAD -- app';
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD', '--', 'app'];
         }
 
-        $commands[] = 'git -C '.escapeshellarg($this->basePath).' ls-files --others --exclude-standard -- app';
+        $commands[] = ['git', '-C', $this->basePath, 'ls-files', '--others', '--exclude-standard', '--', 'app'];
 
         $paths = [];
 
         foreach ($commands as $command) {
-            $output = [];
-            $exitCode = 0;
-            exec($command, $output, $exitCode);
+            $output = $this->runProcess($command);
 
-            if ($exitCode !== 0) {
+            if ($output === null) {
                 return null;
             }
 
@@ -361,12 +395,9 @@ final class ApplicationAudit
 
     private function mergeBase(string $baseRef): ?string
     {
-        $command = 'git -C '.escapeshellarg($this->basePath).' merge-base '.escapeshellarg($baseRef).' HEAD';
-        $output = [];
-        $exitCode = 0;
-        exec($command, $output, $exitCode);
+        $output = $this->runProcess(['git', '-C', $this->basePath, 'merge-base', $baseRef, 'HEAD']);
 
-        if ($exitCode !== 0 || ($output[0] ?? '') === '') {
+        if ($output === null || ($output[0] ?? '') === '') {
             return null;
         }
 
@@ -385,6 +416,129 @@ final class ApplicationAudit
 
     private function relative(string $path): string
     {
-        return ltrim(str_replace($this->basePath, '', $path), '/');
+        return ProjectPath::relative($this->basePath, $path);
+    }
+
+    /**
+     * @param  array<int, string>  $command
+     * @return array<int, string>|null
+     */
+    private function runProcess(array $command): ?array
+    {
+        try {
+            $process = new Process($command, $this->basePath);
+            $process->setTimeout(null);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                return null;
+            }
+
+            $output = trim($process->getOutput());
+
+            return $output === '' ? [] : (preg_split('/\R/', $output) ?: []);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function configuredMemoryLimitBytes(): ?int
+    {
+        if ($this->memoryLimitBytes !== null) {
+            return $this->memoryLimitBytes;
+        }
+
+        $limit = ini_get('memory_limit');
+
+        if ($limit === false || trim($limit) === '' || trim($limit) === '-1') {
+            return null;
+        }
+
+        if (! preg_match('/^\s*(\d+(?:\.\d+)?)\s*([kmgt]?)\s*$/i', $limit, $matches)) {
+            return null;
+        }
+
+        $multipliers = ['' => 1, 'k' => 1024, 'm' => 1024 ** 2, 'g' => 1024 ** 3, 't' => 1024 ** 4];
+
+        return (int) round((float) $matches[1] * $multipliers[strtolower($matches[2])]);
+    }
+
+    private function assertMemoryBudget(?int $memoryLimitBytes, int $processedFiles): void
+    {
+        if ($memoryLimitBytes === null) {
+            return;
+        }
+
+        $usageReader = $this->memoryUsage ?? static fn (): int => memory_get_usage(true);
+        $usage = $usageReader();
+        $budget = (int) floor($memoryLimitBytes * $this->memoryBudgetRatio);
+
+        if ($usage <= $budget) {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            'Audit memory budget exceeded after processing %d file%s (%d bytes used, budget %d). Increase PHP memory_limit or run a smaller audit scope.',
+            $processedFiles,
+            $processedFiles === 1 ? '' : 's',
+            $usage,
+            $budget,
+        ));
+    }
+
+    /**
+     * Reject a file whose syntax tree would not fit in the remaining budget, so a
+     * single large file cannot exhaust the PHP memory limit while it is parsed.
+     */
+    private function assertAstHeadroom(?int $memoryLimitBytes, FileContext $file): void
+    {
+        if ($memoryLimitBytes === null) {
+            return;
+        }
+
+        $usageReader = $this->memoryUsage ?? static fn (): int => memory_get_usage(true);
+        $budget = (int) floor($memoryLimitBytes * $this->memoryBudgetRatio);
+        $headroom = $budget - $usageReader();
+        $bytes = strlen($file->contents);
+
+        if ($bytes * self::AST_MEMORY_PER_SOURCE_BYTE_CEILING <= $headroom) {
+            return;
+        }
+
+        $this->assertHeadroomFits(
+            $bytes * self::TOKENIZER_MEMORY_PER_SOURCE_BYTE,
+            $headroom,
+            $budget,
+            $file->path,
+        );
+
+        $tokens = @token_get_all($file->contents);
+        $tokenCount = count($tokens);
+        unset($tokens);
+
+        // Tokenizing raises usage, and PHP does not necessarily hand that memory back
+        // once the token array is freed, so measure the headroom the parser will really
+        // get instead of reusing the value from before tokenization.
+        $this->assertHeadroomFits(
+            $tokenCount * self::AST_MEMORY_PER_TOKEN + $bytes * self::AST_MEMORY_PER_SOURCE_BYTE,
+            $budget - $usageReader(),
+            $budget,
+            $file->path,
+        );
+    }
+
+    private function assertHeadroomFits(int $estimate, int $headroom, int $budget, string $path): void
+    {
+        if ($estimate <= $headroom) {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            'Audit stopped before parsing [%s]: it is estimated to need %d bytes but only %d bytes of the %d byte budget remain. Increase PHP memory_limit, exclude this path, or run a smaller audit scope.',
+            $path,
+            $estimate,
+            max(0, $headroom),
+            $budget,
+        ));
     }
 }

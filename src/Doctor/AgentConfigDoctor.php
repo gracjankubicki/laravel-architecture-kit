@@ -14,6 +14,9 @@ use Symfony\Component\Console\Application as ConsoleApplication;
 
 final readonly class AgentConfigDoctor
 {
+    /**
+     * @param  array{driver: string, service: string|null, php: string, command: array<int, string>|null}  $runtime
+     */
     public function __construct(
         private Filesystem $files,
         private string $basePath,

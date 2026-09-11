@@ -26,7 +26,7 @@ abstract class RuleCheckTestCase extends TestCase
      */
     protected function saloonFindings(string $path, string $contents): array
     {
-        return (new SaloonRule(new Filesystem, $this->tempPath))->check(new FileContext($path, $contents));
+        return (new SaloonRule)->check(new FileContext($path, $contents));
     }
 
     /**

@@ -125,6 +125,7 @@ class GuidelinesCommand extends Command
     /**
      * @param  array<string, EnabledArchitecture>  $known
      * @param  array<int, Architecture|string>  $enabled
+     * @param  array<string, mixed>|null  $laravelAi
      * @return array<string, mixed>
      */
     private function listPayload(ArchitectureResources $resources, array $known, array $enabled, ?array $laravelAi = null): array

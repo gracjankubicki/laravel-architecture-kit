@@ -60,6 +60,13 @@ final class FileContext
         return $this->parseError;
     }
 
+    public function releaseAst(): void
+    {
+        $this->ast = null;
+        $this->parsed = false;
+        $this->parseError = null;
+    }
+
     public function resolvedName(Node\Name $name): string
     {
         $resolved = $name->getAttribute('resolvedName');

@@ -12,9 +12,42 @@ use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
+use Symfony\Component\Process\Process;
 
 class DoctorCommandTest extends TestCase
 {
+    public function test_doctor_treats_disabled_exec_as_an_unavailable_process(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions], [
+            'driver' => 'docker',
+            'service' => 'architecture-kit-service-that-is-not-running',
+            'php' => 'php',
+            'command' => null,
+        ]);
+        $probe = $this->tempPath.'/doctor-process-probe.php';
+        $this->writeFile('doctor-process-probe.php', sprintf(
+            <<<'PHP'
+<?php
+require %s;
+$doctor = new \GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor(new \GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig(%s), new \GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources(%s, %s), new \Illuminate\Filesystem\Filesystem, %s);
+$result = $doctor->run();
+$warnings = array_filter($result->checks, static fn (object $check): bool => $check->area === 'runtime' && $check->path === 'git' && $check->status === 'warning');
+echo $warnings === [] ? 'missing' : 'warning';
+PHP,
+            var_export(dirname(__DIR__, 2).'/vendor/autoload.php', true),
+            var_export($this->tempPath.'/config/architectures.php', true),
+            var_export(dirname(__DIR__, 2), true),
+            var_export($this->tempPath, true),
+            var_export($this->tempPath, true),
+        ));
+
+        $process = new Process([PHP_BINARY, '-d', 'disable_functions=exec', $probe], $this->tempPath);
+        $process->run();
+
+        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+        $this->assertSame('warning', trim($process->getOutput()));
+    }
+
     public function test_doctor_agent_output_reports_compact_checks_and_issues(): void
     {
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php');
