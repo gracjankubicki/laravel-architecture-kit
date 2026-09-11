@@ -11,12 +11,88 @@ use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
+use Symfony\Component\Process\Process;
 
 class AuditCommandTest extends TestCase
 {
+    public function test_audit_keeps_the_repeated_project_segment_in_finding_paths(): void
+    {
+        $files = new Filesystem;
+        $projectPath = $this->tempPath.'/app';
+        $path = $projectPath.'/app/tmp/app/Models/User.php';
+        $files->ensureDirectoryExists(dirname($path));
+        $files->put($path, '<?php final class User {');
+
+        $result = (new ApplicationAudit($files, $projectPath))->run([], changedOnly: false, useBaseline: false);
+
+        $this->assertSame('app/tmp/app/Models/User.php', $result->findings[0]->path);
+        $this->assertSame('app/Models/User.php', ProjectPath::relative('/app', '/app/app/Models/User.php'));
+    }
+
+    public function test_changed_audit_falls_back_to_a_full_scan_when_git_is_unavailable(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+        $this->writeFile('app/Models/User.php', '<?php final class User {}');
+
+        $this->artisan('architecture-kit:audit --changed')
+            ->expectsOutputToContain('Scope: all application files (changed scope unavailable)')
+            ->assertExitCode(0);
+    }
+
+    public function test_changed_audit_falls_back_when_exec_is_disabled(): void
+    {
+        $this->writeFile('app/Models/User.php', '<?php final class User {}');
+        $probe = $this->tempPath.'/audit-process-probe.php';
+        $this->writeFile('audit-process-probe.php', sprintf(
+            <<<'PHP'
+<?php
+require %s;
+$result = (new \GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit(new \Illuminate\Filesystem\Filesystem, %s))->run([], changedOnly: true, useBaseline: false);
+echo $result->scope;
+PHP,
+            var_export(dirname(__DIR__, 2).'/vendor/autoload.php', true),
+            var_export($this->tempPath, true),
+        ));
+
+        $process = new Process([PHP_BINARY, '-d', 'disable_functions=exec', $probe], $this->tempPath);
+        $process->run();
+
+        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+        $this->assertSame('all application files (changed scope unavailable)', trim($process->getOutput()));
+    }
+
+    public function test_changed_and_update_baseline_are_rejected_without_touching_the_baseline(): void
+    {
+        $this->writeConfig([]);
+        $baselinePath = $this->tempPath.'/.architecture-kit/baseline.json';
+        $baseline = '{"version":2,"findings":[]}';
+        (new Filesystem)->ensureDirectoryExists(dirname($baselinePath));
+        (new Filesystem)->put($baselinePath, $baseline);
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--changed' => true, '--update-baseline' => true]);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('cannot be used together', Artisan::output());
+        $this->assertSame($baseline, (new Filesystem)->get($baselinePath));
+    }
+
+    public function test_agent_rejection_of_changed_and_update_baseline_uses_the_existing_error_payload(): void
+    {
+        $this->writeConfig([]);
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--changed' => true, '--update-baseline' => true, '--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame('audit', $payload['cmd']);
+        $this->assertSame('E_COMMAND_FAILED', $payload['m']);
+        $this->assertStringContainsString('cannot be used together', $payload['msg']);
+    }
+
     public function test_agent_output_is_minified_and_uses_finding_codes_by_default(): void
     {
         $this->writeConfig([

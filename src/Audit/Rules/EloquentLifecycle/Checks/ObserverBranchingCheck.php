@@ -47,7 +47,7 @@ final readonly class ObserverBranchingCheck implements FileCheck
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\ClassMethod || ! $node->name instanceof Node\Identifier) {
+                if (! $node instanceof Stmt\ClassMethod) {
                     return null;
                 }
 

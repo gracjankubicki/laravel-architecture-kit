@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
+use Throwable;
 
 class GuardCommand extends Command
 {
@@ -33,11 +34,23 @@ class GuardCommand extends Command
             return self::SUCCESS;
         }
 
-        $result = (new ArchitectureGuard($files, dirname(__DIR__, 2), base_path(), $this->getApplication()))->run(
-            changedOnly: (bool) $this->option('changed'),
-            baseRef: $this->option('base') !== null ? (string) $this->option('base') : null,
-            strict: (bool) $this->option('strict'),
-        );
+        try {
+            $result = (new ArchitectureGuard($files, dirname(__DIR__, 2), base_path(), $this->getApplication()))->run(
+                changedOnly: (bool) $this->option('changed'),
+                baseRef: $this->option('base') !== null ? (string) $this->option('base') : null,
+                strict: (bool) $this->option('strict'),
+            );
+        } catch (Throwable $exception) {
+            if ((bool) $this->option('agent') || (bool) $this->option('json')) {
+                $this->line($this->json($agent->error('guard', $exception->getMessage())));
+
+                return self::FAILURE;
+            }
+
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         if ((bool) $this->option('agent')) {
             $this->line($this->json($agent->guard(

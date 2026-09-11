@@ -207,9 +207,10 @@ final readonly class HookWriter
 #!/usr/bin/env bash
 # Bootstrapped by Laravel Architecture Kit. Developer-owned after creation.
 set -u
+set -o pipefail
 
 MODE="\${1:-codex}"
-ROOT="\$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+ROOT="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/../.." && pwd)"
 
 cd "\$ROOT" || exit 1
 
@@ -221,10 +222,13 @@ if [ "\$STATUS" -eq 0 ]; then
     exit 0
 fi
 
-if ! printf '%s' "\$OUTPUT" | grep -q '"ok"'; then
-    echo "architecture-kit: runtime unavailable (\$RUNTIME_LABEL failed)." >&2
-    echo "Start the project runtime and retry, e.g. docker compose up -d." >&2
-fi
+case "\$OUTPUT" in
+    *'"ok"'*) ;;
+    *)
+        echo "architecture-kit: runtime unavailable (\$RUNTIME_LABEL failed)." >&2
+        echo "Start the project runtime and retry, e.g. docker compose up -d." >&2
+        ;;
+esac
 
 printf '%s\\n' "\$OUTPUT" >&2
 

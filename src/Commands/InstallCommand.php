@@ -286,6 +286,9 @@ class InstallCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * @return array<int, string>|null
+     */
     private function plannedSaloonPackages(Filesystem $files): ?array
     {
         $violations = SaloonRequirement::violations($files, base_path());

@@ -15,6 +15,7 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
+use Throwable;
 
 #[Name('guard')]
 #[Description('Run the same Architecture Kit gate used by hooks and CLI.')]
@@ -42,13 +43,18 @@ class Guard extends Tool
         }
 
         $agent = new AgentOutput;
-        $state = $this->projectState();
 
-        return Response::structured($agent->guard($this->guard(
-            state: $state,
-            changedOnly: $request->get('changed', true),
-            baseRef: $request->get('base'),
-            strict: $request->get('strict', true),
-        ), $agent->limit($request->get('limit', 20)), $request->get('full', false)));
+        try {
+            $state = $this->projectState();
+
+            return Response::structured($agent->guard($this->guard(
+                state: $state,
+                changedOnly: $request->get('changed', true),
+                baseRef: $request->get('base'),
+                strict: $request->get('strict', true),
+            ), $agent->limit($request->get('limit', 20)), $request->get('full', false)));
+        } catch (Throwable $exception) {
+            return Response::structured($agent->error('guard', $exception->getMessage()));
+        }
     }
 }

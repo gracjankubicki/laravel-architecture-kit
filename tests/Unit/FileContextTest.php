@@ -34,6 +34,18 @@ PHP);
         $this->assertSame($nodes, $file->ast());
     }
 
+    public function test_release_ast_allows_a_context_to_be_reparsed(): void
+    {
+        $file = new FileContext('app/Models/Document.php', '<?php final class Document {}');
+
+        $this->assertNotNull($file->ast());
+
+        $file->releaseAst();
+
+        $this->assertNotNull($file->ast());
+        $this->assertNull($file->parseError());
+    }
+
     /**
      * @param  array<int, Node>  $nodes
      */

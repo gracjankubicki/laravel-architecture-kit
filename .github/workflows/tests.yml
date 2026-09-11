@@ -21,6 +21,7 @@ jobs:
       - run: composer validate --strict
       - run: composer audit --locked --no-interaction
       - run: vendor/bin/pint --test
+      - run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
   tests:
     runs-on: ubuntu-latest

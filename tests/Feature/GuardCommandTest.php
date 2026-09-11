@@ -58,6 +58,36 @@ PHP);
         $this->assertStringContainsString('"message": "Controller mutates a model directly; move the write use case to an Action."', $output);
     }
 
+    public function test_guard_reports_memory_budget_failures_in_human_and_agent_output(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('app/Actions/DocumentAction.php', '<?php final class DocumentAction {}');
+        Artisan::call('list');
+
+        $previousMemoryLimit = ini_get('memory_limit');
+        $baselineMemory = memory_get_usage(true);
+        $memoryPadding = str_repeat('x', 24 * 1024 * 1024);
+        $this->assertNotFalse(ini_set('memory_limit', (string) ($baselineMemory + 32 * 1024 * 1024)));
+
+        try {
+            $exitCode = Artisan::call('architecture-kit:guard');
+            $humanOutput = Artisan::output();
+
+            $this->assertSame(1, $exitCode);
+            $this->assertStringContainsString('Audit memory budget exceeded', $humanOutput);
+
+            $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true]);
+            $payload = json_decode(trim(Artisan::output()), true);
+
+            $this->assertSame(1, $exitCode);
+            $this->assertSame('guard', $payload['cmd']);
+            $this->assertSame('E_COMMAND_FAILED', $payload['m']);
+            $this->assertStringContainsString('Audit memory budget exceeded', $payload['msg']);
+        } finally {
+            ini_set('memory_limit', (string) $previousMemoryLimit);
+        }
+    }
+
     public function test_guard_agent_output_marks_audit_as_skipped_when_doctor_blocks(): void
     {
         $this->writeFile('config/architectures.php', <<<'PHP'

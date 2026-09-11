@@ -142,7 +142,10 @@ final class SyncCommand extends Command
         ];
     }
 
-    /** @param array<int, string> $paths @return array<int, string> */
+    /**
+     * @param  array<int, string>  $paths
+     * @return array<int, string>
+     */
     private function relativePaths(array $paths): array
     {
         return array_map($this->relative(...), $paths);

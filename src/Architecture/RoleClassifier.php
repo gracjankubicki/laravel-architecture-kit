@@ -48,11 +48,6 @@ final readonly class RoleClassifier
         ], true);
     }
 
-    private function hasSegment(string $path, string $segment): bool
-    {
-        return str_contains('/'.trim(str_replace('\\', '/', $path), '/').'/', '/'.trim($segment, '/').'/');
-    }
-
     private function roleFromPath(string $path): string
     {
         $segments = explode('/', trim(str_replace('\\', '/', $path), '/'));

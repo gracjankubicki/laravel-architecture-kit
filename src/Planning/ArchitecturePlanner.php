@@ -20,6 +20,7 @@ use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourceDeployment;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
+use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use PhpParser\Node;
 use PhpParser\Node\Stmt\Enum_;
@@ -113,7 +114,10 @@ final readonly class ArchitecturePlanner
         return $detected;
     }
 
-    /** @param array<int, Architecture|string> $enabled @return array<int, ArchitectureRecommendation> */
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<int, ArchitectureRecommendation>
+     */
     private function recommendations(ArchitectureCatalog $catalog, array $enabled, bool $configured): array
     {
         return array_map(function (EnabledArchitecture $architecture) use ($configured): ArchitectureRecommendation {
@@ -179,7 +183,7 @@ final readonly class ArchitecturePlanner
 
             foreach ($this->files->allFiles($directory) as $file) {
                 if ($file->getExtension() === 'php') {
-                    $evidence[] = str_replace($this->basePath.'/', '', $file->getPathname());
+                    $evidence[] = ProjectPath::relative($this->basePath, $file->getPathname());
                 }
             }
         }
@@ -225,7 +229,7 @@ final readonly class ArchitecturePlanner
 
             foreach ($nodes as $node) {
                 if ($node instanceof Node && PhpAst::contains($node, fn (Node $candidate): bool => $candidate instanceof Enum_)) {
-                    $evidence[] = str_replace($this->basePath.'/', '', $file->getPathname());
+                    $evidence[] = ProjectPath::relative($this->basePath, $file->getPathname());
 
                     break;
                 }

@@ -418,6 +418,17 @@ Inline suppression is for reviewed false positives only. Always name the rule an
 $invoice->update($payload);
 ```
 
+The directive can also be placed in a multi-line docblock. It applies to findings
+inside the comment and to the line immediately after the comment. Repeat the
+directive in one comment to suppress several rules:
+
+```php
+/**
+ * @architecture-kit-ignore thin-controller
+ * @architecture-kit-ignore actions
+ */
+```
+
 File-level suppression is also rule-specific:
 
 ```php
@@ -425,6 +436,9 @@ File-level suppression is also rule-specific:
 ```
 
 Unknown suppression rules are reported as `invalid-suppression` warnings and do not hide the original finding.
+Known inline rules that do not match any finding are also reported as
+`invalid-suppression` warnings with an `Unused` message, so stale suppressions
+are visible instead of being silently ignored.
 
 Baseline files use schema version 2, which fingerprints severity as well as rule, path, and message. A legacy version 1 baseline is rejected because it cannot distinguish a warning from a later error; recreate it deliberately with `php artisan architecture-kit:audit --update-baseline`.
 

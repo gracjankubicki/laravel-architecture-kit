@@ -1,5 +1,61 @@
 # Upgrade Guide
 
+## Upgrading to v0.3.0 from v0.2.x
+
+v0.3.0 contains no new features. It fixes correctness and reliability problems in the audit, the guard, and the generated agent hook. Three of those fixes can surface as new failures in a project that did not change any of its own code, so review them before updating.
+
+### A previously silent audit may now report findings
+
+Relative paths were normalized by stripping the project directory anywhere it appeared in a file path, instead of only at the beginning. A project whose base path ends with a segment that also occurs inside file paths, most commonly a container `WORKDIR` of `/app`, lost the leading `app/` from every path. Because every rule matches on that prefix, the audit silently matched nothing and reported success.
+
+If the project runs Architecture Kit in such a container, the first audit after this upgrade is effectively the first real audit. Expect findings that were always present but never reported, and treat the result as a new baseline rather than a regression:
+
+```bash
+php artisan architecture-kit:audit
+php artisan architecture-kit:audit --update-baseline
+```
+
+### A stale inline suppression is now reported
+
+An inline suppression naming a known rule that matches no finding is reported as an `invalid-suppression` warning. Because `architecture-kit:guard --strict` treats warnings as failures, a project carrying an obsolete `@architecture-kit-ignore` comment can see its gate fail without any local change.
+
+Remove the comment once the underlying finding is gone. Suppression in a multi-line docblock and several rules in one comment now work as documented, so a directive that never took effect may also start applying:
+
+```php
+/**
+ * @architecture-kit-ignore thin-controller
+ * @architecture-kit-ignore actions
+ */
+```
+
+### Narrowed scope and baseline rewrite are mutually exclusive
+
+`architecture-kit:audit --changed --update-baseline` rewrote the baseline from the narrowed scope and silently dropped suppressions for every file outside it. The combination is now rejected. Update the baseline over the full project instead:
+
+```bash
+php artisan architecture-kit:audit --update-baseline
+```
+
+### Custom rule sets constructing `SaloonRule` directly
+
+`SaloonRule` never used its injected filesystem and base path, and its constructor now takes no arguments. This only affects code that constructed the class directly; the documented extension point for project-specific rules is unchanged.
+
+```php
+new SaloonRule($files, base_path()); // before
+new SaloonRule;                      // after
+```
+
+### Agent hooks generated before v0.3.0
+
+The generated `guard.sh` resolved the project directory from the repository root, so an application living in a subdirectory of a monorepo pointed the hook at a guard script that does not exist. Existing hook files stay developer-owned and are never rewritten, so a project that wants the fix has to remove the old file and regenerate it:
+
+```bash
+rm .architecture-kit/hooks/guard.sh
+php artisan architecture-kit:install-agents --hooks
+```
+
+Review the regenerated script if it was customized locally.
+
 ## Upgrading to v0.2.0 from v0.1.x
 
 v0.2.0 changes the installation and Laravel AI compatibility contracts.

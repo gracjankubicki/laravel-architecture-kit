@@ -451,8 +451,8 @@ final readonly class LifecycleAst
             return false;
         }
 
-        return PhpAst::contains(
-            new Stmt\Namespace_(null, $nodes),
+        return PhpAst::containsAny(
+            $nodes,
             fn (Node $node): bool => $node instanceof Stmt\Trait_,
         );
     }

@@ -72,6 +72,9 @@ final class Baseline
         return new SuppressionResult($remaining, inline: 0, baseline: $suppressed);
     }
 
+    /**
+     * @param  array<int, AuditFinding>  $currentFindings
+     */
     public function orphanedCount(array $currentFindings): int
     {
         $entries = $this->read();

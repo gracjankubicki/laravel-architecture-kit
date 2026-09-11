@@ -14,9 +14,11 @@ use Illuminate\Filesystem\Filesystem;
 
 final readonly class ProjectState
 {
-    /** @param array<int, Architecture|string> $enabled */
-    /** @param array<int, string> $exclude */
-    /** @param array{driver: string, service: string|null, php: string, command: array<int, string>|null} $runtime */
+    /**
+     * @param  array<int, Architecture|string>  $enabled
+     * @param  array<int, string>  $exclude
+     * @param  array{driver: string, service: string|null, php: string, command: array<int, string>|null}  $runtime
+     */
     private function __construct(
         public ArchitectureConfig $config,
         public ArchitectureResources $resources,
