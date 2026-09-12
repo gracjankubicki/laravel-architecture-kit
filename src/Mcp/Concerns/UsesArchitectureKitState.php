@@ -51,6 +51,8 @@ trait UsesArchitectureKitState
             customRules: $state->customRules,
             scope: $state->auditScope,
             missingTestLevel: $state->missingTestLevel,
+            cache: $state->graphCache,
+            cacheConfiguration: $state->graphConfiguration(),
         );
     }
 

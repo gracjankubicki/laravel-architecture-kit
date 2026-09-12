@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit;
 
 use GracjanKubicki\ArchitectureKit\Commands\ArchitectureContextCommand;
 use GracjanKubicki\ArchitectureKit\Commands\AuditCommand;
+use GracjanKubicki\ArchitectureKit\Commands\CacheClearCommand;
 use GracjanKubicki\ArchitectureKit\Commands\DoctorCommand;
 use GracjanKubicki\ArchitectureKit\Commands\ExplainCommand;
 use GracjanKubicki\ArchitectureKit\Commands\FileRulesCommand;
@@ -42,6 +43,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
         $this->commands([
             ArchitectureContextCommand::class,
             AuditCommand::class,
+            CacheClearCommand::class,
             DoctorCommand::class,
             ExplainCommand::class,
             FileRulesCommand::class,

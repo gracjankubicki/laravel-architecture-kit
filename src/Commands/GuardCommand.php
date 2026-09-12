@@ -80,6 +80,10 @@ class GuardCommand extends Command
             $this->line('Audit: '.$result->audit->scope);
             $this->line(sprintf('Findings: %d error(s), %d warning(s)', $result->audit->errors(), $result->audit->warnings()));
             $this->line(sprintf('Suppressed: %d inline, %d baseline', $result->audit->suppressedInline, $result->audit->suppressedBaseline));
+
+            if ($result->audit->cacheNote() !== null) {
+                $this->warn($result->audit->cacheNote());
+            }
         }
 
         if (! $result->ok()) {

@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
 use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextResult;
 use GracjanKubicki\ArchitectureKit\Context\ImpactRanking;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
@@ -40,6 +41,7 @@ final readonly class AgentOutput
                 'baseline' => $result->suppressedBaseline,
             ],
             ...($baselineUpdated ? ['baseline' => 'updated'] : []),
+            ...($result->cacheNote() !== null ? ['cache' => $result->cacheStatus->value] : []),
             ...$this->findings($result->findings, $limit, $full),
             'next' => $ok ? ['continue'] : ['fix_findings', 'rerun:audit --agent'],
         ];
@@ -68,6 +70,7 @@ final readonly class AgentOutput
                 'inline' => $result->audit !== null ? $result->audit->suppressedInline : 0,
                 'baseline' => $result->audit !== null ? $result->audit->suppressedBaseline : 0,
             ],
+            ...($result->audit?->cacheNote() !== null ? ['cache' => $result->audit->cacheStatus->value] : []),
             ...$findings,
             'next' => $result->ok()
                 ? ['continue']
@@ -251,6 +254,7 @@ final readonly class AgentOutput
             'violations' => $context->violations,
             'tests' => $context->tests,
             'inspect' => $context->inspect,
+            ...($context->cacheNote() !== null ? ['cache' => $context->cacheStatus->value] : []),
             'trunc' => $context->truncated,
             'next' => $context->next,
         ];
@@ -450,6 +454,7 @@ final readonly class AgentOutput
                 'warn' => ['type' => 'integer', 'minimum' => 0],
                 'sup' => $this->suppressionSchema(),
                 'baseline' => ['const' => 'updated'],
+                'cache' => $this->cacheStatusSchema(),
                 ...$this->findingCollectionProperties(),
                 'next' => $this->stringListSchema(),
             ],
@@ -479,6 +484,7 @@ final readonly class AgentOutput
                 'err' => ['type' => 'integer', 'minimum' => 0],
                 'warn' => ['type' => 'integer', 'minimum' => 0],
                 'sup' => $this->suppressionSchema(),
+                'cache' => $this->cacheStatusSchema(),
                 ...$this->findingCollectionProperties(),
                 'next' => $this->stringListSchema(),
             ],
@@ -1073,6 +1079,7 @@ final readonly class AgentOutput
                 ],
                 'dependencies' => ['type' => 'array', 'items' => $relationship],
                 'dependents' => ['type' => 'array', 'items' => $relationship],
+                'cache' => $this->cacheStatusSchema(),
                 'tests' => [
                     'type' => 'array',
                     'items' => [
@@ -1186,6 +1193,19 @@ final readonly class AgentOutput
             ],
             'additionalProperties' => false,
         ];
+    }
+
+    /**
+     * Present only when the run had to rebuild the graph for a reason worth reporting.
+     *
+     * @return array<string, mixed>
+     */
+    private function cacheStatusSchema(): array
+    {
+        return ['enum' => array_values(array_map(
+            static fn (CacheStatus $status): string => $status->value,
+            array_filter(CacheStatus::cases(), static fn (CacheStatus $status): bool => $status->isNoteworthy()),
+        ))];
     }
 
     /**

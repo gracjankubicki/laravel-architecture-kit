@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
@@ -91,6 +92,35 @@ final class ArchitectureConfig
         $scope = new AuditScope([AuditScope::APPLICATION, ...array_values(array_filter($paths, 'is_string'))]);
 
         return $this->missingTestLevel()->isEnabled() ? $scope->withTests() : $scope;
+    }
+
+    /**
+     * The graph cache for this project, or null when the project turned it off.
+     *
+     * On by default, unlike the missing-test rule: a cache changes how long an answer
+     * takes, not what it says, so there is nothing for a project to opt into. What it
+     * does have to be able to do is turn it off and say where it lives.
+     */
+    public function graphCache(): ?ProjectGraphCache
+    {
+        $config = $this->config();
+        $cache = $config['audit']['cache'] ?? null;
+
+        if ($cache === false) {
+            return null;
+        }
+
+        if ($cache !== null && ! is_string($cache) && $cache !== true) {
+            throw new InvalidArgumentException(
+                'config/architectures.php audit.cache must be false to disable it, or a directory path.',
+            );
+        }
+
+        return new ProjectGraphCache(
+            $this->files,
+            $this->projectPath(),
+            is_string($cache) && trim($cache) !== '' ? $cache : ProjectGraphCache::DIRECTORY,
+        );
     }
 
     public function missingTestLevel(): MissingTestLevel

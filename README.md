@@ -161,6 +161,7 @@ php artisan architecture-kit:audit --agent
 php artisan architecture-kit:guard --agent
 php artisan architecture-kit:doctor --agent
 php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE --agent
+php artisan architecture-kit:cache-clear
 ```
 
 `architecture-kit:install` is idempotent. Re-run it to change the selected architectures, the PHP runtime, or regenerate outdated `.ai` resources.
@@ -262,6 +263,38 @@ Interfaces and traits are not reported, because neither is tested on its own. An
 Enabling it also brings `tests/` into the audited scope. That is not optional: without test files in the graph the rule would see no test for anything and report every class, including well covered ones. Rules written for application code never fire inside test files.
 
 The rule is off unless a project asks for it. Measured on an application with 6305 files under `app/` and 5153 test files, enabling it by default would have produced roughly 700 findings on the first run after an upgrade.
+
+### The project graph is built once
+
+Building the graph means parsing every PHP file in scope, which is 87% of the cost and takes about 19.5s on an application with 11566 files. `guard --changed` paid it on every run: its rules only check the files you touched, but a changed edge can reveal a cycle through a file you did not, so the graph still had to cover the whole project.
+
+The graph is now kept between runs, per file, so a run parses only what moved:
+
+```php
+// config/architectures.php
+'audit' => [
+    'cache' => false,              // turn it off
+    'cache' => 'storage/graphs',   // or put it somewhere else
+],
+```
+
+Measured on that application, with `app/` in scope and nothing edited between runs:
+
+| | Without the cache | With it |
+|---|---|---|
+| `guard --changed` | 6.44s | 0.47s |
+| Full `audit` | 6.57s | 6.63s |
+| `context` on one symbol | 19.67s | 0.72s |
+
+A full audit gains nothing, and that is not an oversight: its rules need the syntax tree of every file they check, so those files are parsed either way. The cache removes parsing that nothing else needed, which is what `--changed` and `context` are made of.
+
+Staleness is the risk, not speed: a graph that describes code the project no longer has would report findings for deleted code and stay silent about new code, with nothing in the output to say so. An entry is discarded when the enabled architectures, custom rules or audited scope change, and when the package itself changes, which is decided by hashing its sources rather than by a version constant somebody has to remember to bump. A file is parsed again when its modification time or size moves, and the run is driven by the files the project actually has, so a deleted file leaves the graph and a contribution missing from the entry is rebuilt rather than assumed. The stored file carries a hash of its own contents, because a damaged entry can still be well formed: one stripped of its symbols looks exactly like a file that declares none, and no structural check can tell those apart.
+
+File state is stat rather than a content hash: hashing the same project costs 1.58s against 0.02s, on every run including the ones that hit the cache, and it would eat most of what the cache saves. The gap that leaves is narrow and named: content changed while both timestamp and size stayed identical, which `rsync -a`, an archive unpacked with its timestamps, and `touch -r` can do but Git, editors and agents cannot. `php artisan architecture-kit:cache-clear` is the answer to it, and to any entry you no longer trust. A corrupt or unreadable entry is not an error: the command rebuilds and moves on.
+
+A rebuild answers correctly, which is why a rejected entry would otherwise be invisible while costing a full build on every run. When an entry is unreadable, or too large to restore inside the remaining memory budget, `audit`, `guard` and `context` all say so: `--agent` output carries a `cache` field and human output prints a note. An ordinary first run says nothing, because there is nothing to report.
+
+The default location is `storage/framework/cache/architecture-kit`, which Laravel already ignores: the skeleton's `storage/framework/cache/.gitignore` excludes everything under it except `data/`. The entry is sizeable, 33.8 MB for 11629 symbols and 198858 edges, so it is not somewhere a project should commit by accident. Restoring it peaks at about six times that in memory and writing it adds more, so the cache checks the remaining budget first and steps aside rather than pushing the process past `memory_limit`. After moving or disabling the cache the old directory is no longer in the configuration, so `cache-clear` takes `--path=` for that case.
 
 Recommended agent flow:
 

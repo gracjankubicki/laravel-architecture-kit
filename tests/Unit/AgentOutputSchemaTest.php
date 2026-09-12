@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrence;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectPackage;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
@@ -177,12 +178,17 @@ class AgentOutputSchemaTest extends TestCase
             code: 'E_THIN_CONTROLLER_MODEL_WRITE',
         );
         $audit = new ApplicationAuditResult('changed application files', [$finding], 1, 2);
+        // The same run after the stored graph had to be rejected. Both shapes are
+        // published under one schema, and the schema refuses undeclared properties, so a
+        // reported cache has to be part of the contract rather than an extra field.
+        $rebuilt = new ApplicationAuditResult('changed application files', [$finding], 1, 2, CacheStatus::Corrupt);
         $doctor = new ArchitectureDoctorResult(
             [Architecture::Actions],
             [new ArchitectureDoctorCheck('config', 'current', 'config/architectures.php')],
             false,
         );
         $guard = new ArchitectureGuardResult($doctor, $audit, strict: true);
+        $rebuiltGuard = new ArchitectureGuardResult($doctor, $rebuilt, strict: true);
         $explanation = (new FindingCodeRegistry)->explain('E_THIN_CONTROLLER_MODEL_WRITE');
         $situated = (new FindingCodeRegistry)->explain(
             'E_THIN_CONTROLLER_MODEL_WRITE',
@@ -194,10 +200,12 @@ class AgentOutputSchemaTest extends TestCase
         $payloads = [
             'audit' => [
                 $agent->audit($audit, ok: false),
+                $agent->audit($rebuilt, ok: false),
                 $agent->error('audit', 'Audit failed.'),
             ],
             'guard' => [
                 $agent->guard($guard),
+                $agent->guard($rebuiltGuard),
                 $agent->error('guard', 'Guard failed.'),
             ],
             'doctor' => [

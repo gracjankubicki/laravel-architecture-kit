@@ -76,6 +76,10 @@ final readonly class ArchitectureGuardResult
                         ],
                         $this->audit->findings,
                     ),
+                    // The generated hook runs `guard --json`, so leaving the status out
+                    // of it would hide a rejected cache from the one caller that runs on
+                    // every change an agent makes.
+                    ...($this->audit->cacheNote() !== null ? ['cache' => $this->audit->cacheStatus->value] : []),
                     'skipped' => false,
                 ],
         ];

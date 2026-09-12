@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Context;
 
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\DependencyEdge;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\LayerPolicy;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
@@ -22,6 +23,9 @@ final readonly class ArchitectureContext
         private LayerPolicy $policy = new LayerPolicy,
         private FindingCodeRegistry $codes = new FindingCodeRegistry,
         private AuditScope $scope = new AuditScope,
+        private ?ProjectGraphCache $cache = null,
+        /** @var array<int, string> */
+        private array $cacheConfiguration = [],
     ) {}
 
     /**
@@ -32,7 +36,9 @@ final readonly class ArchitectureContext
     {
         // The same scope the audit reads. Answering from a narrower graph would report no
         // dependents for a symbol the audit already reports findings about.
-        $graph = (new ProjectGraphLoader($this->files, $this->basePath, $this->scope))->load($exclude);
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration);
+        $plan = $loader->plan($exclude);
+        $graph = $loader->build($plan);
         $resolved = $this->resolve($graph, trim($subject));
         $limit = max(0, $limit);
         $dependencies = array_map(
@@ -84,6 +90,7 @@ final readonly class ArchitectureContext
                 || count($violations) < count($allViolations)
                 || count($tests) < count($allTests)
                 || count($inspect) < count($allInspect),
+            cacheStatus: $plan->cacheStatus,
         );
     }
 

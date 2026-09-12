@@ -25,5 +25,10 @@ return [
         // One of 'off', 'warn', 'error'. Enabling it also brings tests/
         // into scope, because the rule answers from the project graph.
         // 'missing_test' => 'warn',
+        //
+        // The project graph is kept between runs so an unchanged file is not
+        // parsed again. Set false to turn it off, or give a directory to move
+        // it; the default lives in storage/, which Laravel already ignores.
+        // 'cache' => false,
     ],
 ];

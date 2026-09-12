@@ -76,6 +76,8 @@ class AuditCommand extends Command
                 updateBaseline: (bool) $this->option('update-baseline'),
                 scope: $state->auditScope,
                 missingTestLevel: $state->missingTestLevel,
+                cache: $state->graphCache,
+                cacheConfiguration: $state->graphConfiguration(),
             );
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
@@ -106,6 +108,11 @@ class AuditCommand extends Command
 
         $this->info('Architecture Kit Application Audit');
         $this->line('Scope: '.$result->scope);
+
+        if ($result->cacheNote() !== null) {
+            $this->warn($result->cacheNote());
+        }
+
         $this->newLine();
 
         if ($result->findings === []) {

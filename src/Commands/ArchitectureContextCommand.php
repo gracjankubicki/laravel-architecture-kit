@@ -40,7 +40,13 @@ final class ArchitectureContextCommand extends Command
 
         try {
             $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
-            $context = (new ArchitectureContext($files, base_path(), scope: $state->auditScope))->inspect(
+            $context = (new ArchitectureContext(
+                $files,
+                base_path(),
+                scope: $state->auditScope,
+                cache: $state->graphCache,
+                cacheConfiguration: $state->graphConfiguration(),
+            ))->inspect(
                 subject: $subject,
                 enabled: $state->enabled,
                 exclude: $state->exclude,
@@ -62,6 +68,11 @@ final class ArchitectureContextCommand extends Command
         $this->line("Subject: {$context->subject->name}");
         $this->line("Role:    {$context->subject->role}");
         $this->line("Path:    {$context->subject->path}:{$context->subject->line}");
+
+        if ($context->cacheNote() !== null) {
+            $this->warn($context->cacheNote());
+        }
+
         $this->newLine();
         $this->line('Dependencies:');
         $this->relationships($context->dependencies);

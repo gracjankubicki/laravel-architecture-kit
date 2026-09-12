@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
@@ -32,6 +33,7 @@ final readonly class ProjectState
         public ?LaravelAiCompatibilityResult $laravelAi,
         public AuditScope $auditScope,
         public MissingTestLevel $missingTestLevel,
+        public ?ProjectGraphCache $graphCache,
     ) {}
 
     public static function load(Filesystem $files, string $packagePath, string $basePath): self
@@ -56,7 +58,47 @@ final readonly class ProjectState
             $laravelAi,
             $config->auditScope(),
             $config->missingTestLevel(),
+            $config->graphCache(),
         );
+    }
+
+    /**
+     * Configuration a cached graph must not be shared across.
+     *
+     * The builder does not read the enabled list today, so in principle these entries
+     * could be shared. They are kept apart anyway: entries are stored per fingerprint
+     * rather than overwritten, so the cost of being conservative is one more file, while
+     * the cost of being wrong is an answer computed under settings the project no longer
+     * has.
+     *
+     * @return array<int, string>
+     */
+    public function graphConfiguration(): array
+    {
+        return self::graphConfigurationFor($this->enabled, $this->customRules);
+    }
+
+    /**
+     * The same answer for callers that hold the pieces but not the state.
+     *
+     * The guard can run before a state is loaded, and two spellings of this would mean
+     * two fingerprints for one project: each run would miss the entry the other wrote.
+     *
+     * @param  array<int, Architecture|string>  $enabled
+     * @return array<int, string>
+     */
+    public static function graphConfigurationFor(array $enabled, CustomRuleSet $customRules): array
+    {
+        $names = array_map(
+            static fn (Architecture|string $architecture): string => $architecture instanceof Architecture ? $architecture->value : $architecture,
+            $enabled,
+        );
+        sort($names);
+
+        $custom = $customRules->knownRuleClasses();
+        sort($custom);
+
+        return [implode(',', $names), implode(',', $custom)];
     }
 
     public function assertCompatibility(): void

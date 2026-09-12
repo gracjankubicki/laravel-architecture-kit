@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Audit;
 
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -54,6 +55,41 @@ final class ApplicationAuditMemoryTest extends TestCase
             memoryBudgetRatio: 1.0,
             memoryUsage: static fn (): int => 101,
         ))->run([], changedOnly: false);
+    }
+
+    public function test_it_checks_the_memory_budget_on_a_cache_hit_that_parses_nothing(): void
+    {
+        // A cache hit can skip the file loop entirely and still materialise the whole
+        // graph at once, so the run would otherwise never look at its budget on the one
+        // path where everything arrives in a single allocation.
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/app');
+        $files->put($this->tempPath.'/app/User.php', '<?php final class User {}');
+
+        $cache = new ProjectGraphCache($files, $this->tempPath);
+        (new ApplicationAudit(files: $files, basePath: $this->tempPath))->run([], changedOnly: false, cache: $cache);
+
+        // Three reads belong to the file loop: budget pre-check, syntax-tree headroom,
+        // budget post-check. Only the read after that one exceeds the budget, so nothing
+        // but a check placed after the graph is composed can catch it.
+        $reads = 0;
+        $audit = new ApplicationAudit(
+            files: $files,
+            basePath: $this->tempPath,
+            memoryLimitBytes: 1_000_000,
+            memoryBudgetRatio: 1.0,
+            memoryUsage: function () use (&$reads): int {
+                return $reads++ < 3 ? 0 : 1_000_001;
+            },
+        );
+
+        try {
+            $audit->run([], changedOnly: false, cache: $cache);
+            $this->fail('The run should have refused to continue past its memory budget.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('memory budget exceeded', $exception->getMessage());
+            $this->assertSame(4, $reads, 'The budget must be checked once more after the graph is composed.');
+        }
     }
 
     public function test_it_stops_before_parsing_a_file_whose_syntax_tree_cannot_fit_the_remaining_budget(): void

@@ -6,11 +6,13 @@ namespace GracjanKubicki\ArchitectureKit\Audit;
 
 use Closure;
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
+use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
@@ -68,6 +70,7 @@ final class ApplicationAudit
      * @param  array<int, Architecture|string>  $enabled
      * @param  array<int, string>  $exclude
      * @param  array<int, class-string>|CustomRuleSet  $customRules
+     * @param  array<int, string>  $cacheConfiguration
      */
     public function run(
         array $enabled,
@@ -79,6 +82,8 @@ final class ApplicationAudit
         bool $updateBaseline = false,
         ?AuditScope $scope = null,
         MissingTestLevel $missingTestLevel = MissingTestLevel::Off,
+        ?ProjectGraphCache $cache = null,
+        array $cacheConfiguration = [],
     ): ApplicationAuditResult {
         // The two cannot be set independently: a scope without tests plus an enabled
         // rule would report every class as untested, so the audit resolves the pair
@@ -105,11 +110,33 @@ final class ApplicationAudit
         /** @var array<string, array<int, AuditFinding>> $findingsByPath */
         $findingsByPath = [];
 
-        foreach ((new ProjectGraphLoader($this->files, $this->basePath, $auditScope))->stream($exclude) as $file) {
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $auditScope, $cache, $cacheConfiguration);
+        // Decided from stat alone, before a single file is opened. Without a cache every
+        // path lands in `toParse`, which is the behaviour this loop always had.
+        $plan = $loader->plan($exclude);
+        $changed = array_fill_keys($plan->toParse, true);
+        $entries = $plan->reusable;
+
+        foreach (array_keys($plan->files) as $path) {
+            $inFocus = ! $changedFocusAvailable || isset($focusPathSet[$path]);
+
+            // A file is opened when a rule has to read it or when the graph no longer
+            // knows it. `guard --changed` edits a handful of files, so the rest of a
+            // large project is restored rather than parsed.
+            if (! $inFocus && ! isset($changed[$path])) {
+                continue;
+            }
+
+            $absolute = $plan->absolutePath($path);
+
+            if ($absolute === null) {
+                continue;
+            }
+
+            $file = new FileContext($path, $this->files->get($absolute));
+
             $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
             $this->assertAstHeadroom($memoryLimitBytes, $file);
-
-            $inFocus = ! $changedFocusAvailable || isset($focusPathSet[$file->path]);
 
             if ($inFocus) {
                 $parseFindings = $this->unparseableFileFindings($file);
@@ -131,13 +158,16 @@ final class ApplicationAudit
                 $focusFiles[$file->path] = $file;
             }
 
-            $graphBuilder->add($file);
+            $entries[$path] = $graphBuilder->collect($file);
 
             $processedFiles++;
             $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
         }
 
-        $graph = $graphBuilder->finish();
+        $graph = $loader->compose($graphBuilder, $plan, $entries);
+        // A cache hit can skip the loop entirely, so without this the run would never
+        // check its budget on the path where the whole graph arrives at once.
+        $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
 
         foreach ((new ProjectRuleSet($missingTestLevel))->rules() as $rule) {
             foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
@@ -175,6 +205,7 @@ final class ApplicationAudit
             findings: $findings,
             suppressedInline: $suppressedInline,
             suppressedBaseline: $suppressedBaseline,
+            cacheStatus: $plan->cacheStatus,
         );
     }
 
@@ -428,23 +459,7 @@ final class ApplicationAudit
 
     private function configuredMemoryLimitBytes(): ?int
     {
-        if ($this->memoryLimitBytes !== null) {
-            return $this->memoryLimitBytes;
-        }
-
-        $limit = ini_get('memory_limit');
-
-        if ($limit === false || trim($limit) === '' || trim($limit) === '-1') {
-            return null;
-        }
-
-        if (! preg_match('/^\s*(\d+(?:\.\d+)?)\s*([kmgt]?)\s*$/i', $limit, $matches)) {
-            return null;
-        }
-
-        $multipliers = ['' => 1, 'k' => 1024, 'm' => 1024 ** 2, 'g' => 1024 ** 3, 't' => 1024 ** 4];
-
-        return (int) round((float) $matches[1] * $multipliers[strtolower($matches[2])]);
+        return MemoryLimit::bytes($this->memoryLimitBytes);
     }
 
     private function assertMemoryBudget(?int $memoryLimitBytes, int $processedFiles): void

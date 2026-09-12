@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Context;
 
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
 
 final readonly class ArchitectureContextResult
@@ -27,5 +28,18 @@ final readonly class ArchitectureContextResult
         // Appended, not inserted: an existing positional construction of this result
         // would otherwise start passing tests where inspect is expected.
         public array $tests = [],
+        public CacheStatus $cacheStatus = CacheStatus::Disabled,
     ) {}
+
+    /**
+     * A note about the graph cache, when this answer cost a rebuild worth reporting.
+     *
+     * Context is the command an agent runs before touching a symbol, so an entry being
+     * rejected on every call is the difference between an answer in under a second and
+     * one in twenty, with nothing else to show for it.
+     */
+    public function cacheNote(): ?string
+    {
+        return $this->cacheStatus->note();
+    }
 }

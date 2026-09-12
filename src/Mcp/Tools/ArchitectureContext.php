@@ -55,7 +55,13 @@ final class ArchitectureContext extends Tool
 
         try {
             $state = $this->projectState();
-            $context = (new ContextQuery($this->files(), base_path(), scope: $state->auditScope))->inspect(
+            $context = (new ContextQuery(
+                $this->files(),
+                base_path(),
+                scope: $state->auditScope,
+                cache: $state->graphCache,
+                cacheConfiguration: $state->graphConfiguration(),
+            ))->inspect(
                 subject: $subject,
                 enabled: $state->enabled,
                 exclude: $state->exclude,

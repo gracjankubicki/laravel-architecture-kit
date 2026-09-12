@@ -48,6 +48,10 @@ final readonly class ArchitectureGuard
                 customRules: $state !== null ? $state->customRules : $config->customRuleSet(),
                 scope: $state !== null ? $state->auditScope : $config->auditScope(),
                 missingTestLevel: $state !== null ? $state->missingTestLevel : $config->missingTestLevel(),
+                cache: $state !== null ? $state->graphCache : $config->graphCache(),
+                cacheConfiguration: $state !== null
+                    ? $state->graphConfiguration()
+                    : ProjectState::graphConfigurationFor($doctor->enabled, $config->customRuleSet()),
             );
         }
 
