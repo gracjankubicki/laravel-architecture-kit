@@ -258,6 +258,149 @@ final class OtherController
 PHP);
     }
 
+    public function test_truncation_keeps_what_breaks_first_not_what_sorts_first(): void
+    {
+        // The whole point of ranking: `AaaReader` sorts first by name but only mentions
+        // the subject in a signature, while `ZzzHandler` extends it and stops loading the
+        // moment the subject changes. Alphabetical order used to drop the second one.
+        $this->writeConfig([Architecture::Actions]);
+        $this->writeFile('app/Actions/BaseAction.php', <<<'PHP'
+<?php
+
+namespace App\Actions;
+
+abstract class BaseAction
+{
+    abstract public function handle(): void;
+}
+PHP);
+        $this->writeFile('app/Actions/AaaReader.php', <<<'PHP'
+<?php
+
+namespace App\Actions;
+
+final class AaaReader
+{
+    public function read(BaseAction $action): void
+    {
+    }
+}
+PHP);
+        $this->writeFile('app/Actions/ZzzHandler.php', <<<'PHP'
+<?php
+
+namespace App\Actions;
+
+final class ZzzHandler extends BaseAction
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        Artisan::call('architecture-kit:context', [
+            'subject' => 'App\Actions\BaseAction',
+            '--agent' => true,
+            '--limit' => 1,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertCount(1, $payload['dependents']);
+        $this->assertSame('App\Actions\ZzzHandler', $payload['dependents'][0]['symbol']);
+        $this->assertSame('breaking', $payload['dependents'][0]['impact']);
+        $this->assertTrue($payload['trunc']);
+    }
+
+    public function test_context_reports_the_tests_that_cover_the_subject(): void
+    {
+        $this->writeFixture();
+        $this->writeFile('tests/Feature/FetchDocumentTest.php', <<<'PHP'
+<?php
+
+namespace Tests\Feature;
+
+use App\Actions\FetchDocument;
+use PHPUnit\Framework\TestCase;
+
+final class FetchDocumentTest extends TestCase
+{
+    public function test_it_fetches(): void
+    {
+        $this->assertTrue(class_exists(FetchDocument::class));
+    }
+}
+PHP);
+
+        Artisan::call('architecture-kit:context', [
+            'subject' => 'App\Actions\FetchDocument',
+            '--agent' => true,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame([[
+            'path' => 'tests/Feature/FetchDocumentTest.php',
+            'coverage' => 'direct',
+            'via' => null,
+        ]], $payload['tests']);
+        $this->assertContains('run_tests:tests/Feature/FetchDocumentTest.php', $payload['next']);
+    }
+
+    public function test_context_reads_the_same_project_scope_as_the_audit(): void
+    {
+        // Until the scope reached the context, the audit reported findings in routes/
+        // while the context said nothing depended on the symbol used there.
+        $this->writeFixture();
+        $this->writeFile('routes/web.php', <<<'PHP'
+<?php
+
+use App\Actions\FetchDocument;
+
+$action = new FetchDocument();
+$action->handle();
+PHP);
+
+        $withoutScope = $this->dependentsOf('App\Actions\FetchDocument');
+        $this->assertNotContains('routes/web.php', $withoutScope);
+
+        $this->writeRawConfig(<<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+
+return [
+    'enabled' => [
+        Architecture::Actions,
+        Architecture::PortsAndAdapters,
+    ],
+    'audit' => [
+        'paths' => ['routes'],
+    ],
+];
+PHP);
+
+        $this->assertContains('routes/web.php', $this->dependentsOf('App\Actions\FetchDocument'));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function dependentsOf(string $subject): array
+    {
+        Artisan::call('architecture-kit:context', ['subject' => $subject, '--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        return array_values(array_map(
+            static fn (array $relation): string => (string) $relation['evidence']['path'],
+            $payload['dependents'] ?? [],
+        ));
+    }
+
+    private function writeRawConfig(string $contents): void
+    {
+        $this->writeFile('config/architectures.php', $contents);
+    }
+
     /** @param array<int, Architecture|string> $enabled */
     private function writeConfig(array $enabled): void
     {

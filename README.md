@@ -203,6 +203,34 @@ Three graph-aware findings are available:
 
 `audit.exclude`, inline ignores and the baseline apply to graph findings as they do to file findings. Changed-only audit still builds the full graph so an edited edge can reveal a cycle through unchanged files; reporting remains focused on findings anchored in changed source files.
 
+### Before a change: what breaks and what to run
+
+`architecture-kit:context` answers what a change to one symbol would break, not just what it is connected to. Each relationship carries an `impact` level derived from the edge the graph recorded:
+
+| Level | Edge | What a change does |
+|---|---|---|
+| `breaking` | `extends`, `implements`, `trait` | The dependent stops loading |
+| `signature` | `parameter`, `property`, `return` | The type system of the dependent catches it |
+| `usage` | `new`, `static`, `instanceof`, `catch`, `attribute`, `class-constant` | The call site breaks |
+| `context` | weak references such as `::class` | Readable, but nothing breaks |
+
+Relationships are ordered by that level, so `--limit` cuts the least dangerous first. Sorting used to be alphabetical, which meant a subclass could fall out of the answer while a passing type reference stayed in it.
+
+The same answer names the tests that cover the symbol, including those reaching it through another class, and `next` carries them as a ready `run_tests:` hint. That lets an agent run a narrow relevant set before the full suite instead of learning the effect from a red run. Coverage is resolved without building a project graph: files are filtered by the class's short name and only the matches are parsed, which keeps the cost in seconds even on a large application.
+
+### After a finding: what is wrong here
+
+`architecture-kit:explain` takes the reported path and line, not only the code:
+
+```bash
+php artisan architecture-kit:explain E_THIN_CONTROLLER_MODEL_WRITE \
+    --path=app/Http/Controllers/InvoiceController.php --line=14 --agent
+```
+
+The answer then names the symbol at fault and, where the rule states a destination, carries a `proposal` describing what to move and where. Without a path the output is unchanged, so existing callers keep what they had.
+
+A proposal appears only where the destination follows from the rule itself. Guessing it for the remaining codes would send an agent somewhere wrong with confidence, which costs more than saying nothing. Nothing here edits a file: the proposal is text to apply or reject.
+
 ### Audit scope beyond app/
 
 Business logic closed inside a route file used to be invisible: the audit only read `app/`, so a green gate could mean nothing more than where the file was saved. A project can widen the scope:

@@ -5,17 +5,22 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrence;
+use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrenceResolver;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use Illuminate\Console\Command;
+use Illuminate\Filesystem\Filesystem;
 
 class ExplainCommand extends Command
 {
     protected $signature = 'architecture-kit:explain
         {code? : Finding code, for example E_THIN_CONTROLLER_MODEL_WRITE}
+        {--path= : Application-relative path of the file the finding was reported for}
+        {--line= : Line the finding was reported on}
         {--agent : Output agent-optimized JSON}
         {--schema : Output the JSON Schema for --agent output}';
 
-    protected $description = 'Explain an Architecture Kit finding code.';
+    protected $description = 'Explain an Architecture Kit finding, optionally for one reported occurrence.';
 
     public function handle(FindingCodeRegistry $codes): int
     {
@@ -48,7 +53,7 @@ class ExplainCommand extends Command
             return self::FAILURE;
         }
 
-        $explanation = $codes->explain($code);
+        $explanation = $codes->explain($code, $this->occurrence());
 
         if ($explanation === null) {
             $payload = [
@@ -91,7 +96,27 @@ class ExplainCommand extends Command
         $this->line('Why: '.$payload['why']);
         $this->line('Fix: '.$payload['fix']);
 
+        if (isset($payload['proposal']) && is_array($payload['proposal'])) {
+            $this->newLine();
+            $this->line('Proposed change: '.(is_string($payload['proposal']['summary']) ? $payload['proposal']['summary'] : ''));
+            $this->line('Apply it or reject it; Architecture Kit does not edit your code.');
+        }
+
         return self::SUCCESS;
+    }
+
+    private function occurrence(): ?FindingOccurrence
+    {
+        $path = $this->option('path');
+
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        $line = $this->option('line');
+
+        return (new FindingOccurrenceResolver(new Filesystem, dirname(__DIR__, 2), base_path()))
+            ->resolve(trim($path), is_numeric($line) ? (int) $line : null);
     }
 
     /**

@@ -499,6 +499,44 @@ PHP;
             );
     }
 
+    public function test_explain_finding_tool_resolves_the_occurrence_like_the_command(): void
+    {
+        // The tool and the command used to resolve this separately and disagreed in a
+        // project without configuration, so the same input gave a different answer
+        // depending on how it was asked.
+        $this->writeFile('app/Http/Controllers/InvoiceController.php', <<<'PHP'
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Invoice;
+
+final class InvoiceController
+{
+    public function store(Invoice $invoice): void
+    {
+        $invoice->update(['total' => 1]);
+    }
+}
+PHP);
+
+        ArchitectureKitServer::tool(ExplainFinding::class, [
+            'code' => 'E_THIN_CONTROLLER_MODEL_WRITE',
+            'path' => 'app/Http/Controllers/InvoiceController.php',
+            'line' => 11,
+        ])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', true)
+                ->where('cmd', 'explain')
+                ->where('occurrence.symbol', 'App\\Http\\Controllers\\InvoiceController')
+                ->where('occurrence.role', 'adapter')
+                ->where('occurrence.line', 11)
+                ->where('proposal.to', 'an Action invoked by the controller')
+                ->etc()
+            );
+    }
+
     public function test_file_rules_tool_returns_only_rules_governing_the_path(): void
     {
         $this->writeCurrentResources(Architecture::defaultSelection());

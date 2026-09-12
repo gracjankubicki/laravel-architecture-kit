@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrence;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectPackage;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
@@ -183,6 +184,10 @@ class AgentOutputSchemaTest extends TestCase
         );
         $guard = new ArchitectureGuardResult($doctor, $audit, strict: true);
         $explanation = (new FindingCodeRegistry)->explain('E_THIN_CONTROLLER_MODEL_WRITE');
+        $situated = (new FindingCodeRegistry)->explain(
+            'E_THIN_CONTROLLER_MODEL_WRITE',
+            new FindingOccurrence('app/Http/Controllers/InvoiceController.php', 14, 'App\\Http\\Controllers\\InvoiceController', 'adapter'),
+        );
 
         $this->assertNotNull($explanation);
 
@@ -201,6 +206,9 @@ class AgentOutputSchemaTest extends TestCase
             ],
             'explain' => [
                 ['v' => 1, 'ok' => true, 'cmd' => 'explain', ...$explanation],
+                // With the occurrence and the proposal, which are the fields an agent
+                // acts on rather than reads.
+                ['v' => 1, 'ok' => true, 'cmd' => 'explain', ...$situated],
                 ['v' => 1, 'ok' => false, 'cmd' => 'explain', 'code' => 'E_UNKNOWN', 'm' => 'E_UNKNOWN_FINDING_CODE', 'next' => ['use_known_finding_code']],
                 $agent->error('explain', 'Explain failed.'),
             ],

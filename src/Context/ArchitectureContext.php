@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Context;
 
+use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\DependencyEdge;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\LayerPolicy;
@@ -20,6 +21,7 @@ final readonly class ArchitectureContext
         private string $basePath,
         private LayerPolicy $policy = new LayerPolicy,
         private FindingCodeRegistry $codes = new FindingCodeRegistry,
+        private AuditScope $scope = new AuditScope,
     ) {}
 
     /**
@@ -28,7 +30,9 @@ final readonly class ArchitectureContext
      */
     public function inspect(string $subject, array $enabled, array $exclude = [], int $limit = 20): ArchitectureContextResult
     {
-        $graph = (new ProjectGraphLoader($this->files, $this->basePath))->load($exclude);
+        // The same scope the audit reads. Answering from a narrower graph would report no
+        // dependents for a symbol the audit already reports findings about.
+        $graph = (new ProjectGraphLoader($this->files, $this->basePath, $this->scope))->load($exclude);
         $resolved = $this->resolve($graph, trim($subject));
         $limit = max(0, $limit);
         $dependencies = array_map(
@@ -46,6 +50,10 @@ final readonly class ArchitectureContext
         $dependents = $limit === 0 ? [] : array_slice($dependents, 0, $limit);
         $allViolations = $this->violations($graph, $resolved, $enabled);
         $violations = $limit === 0 ? [] : array_slice($allViolations, 0, $limit);
+        // Which tests exercise the symbol, so the agent can run a narrow relevant set
+        // before the full suite instead of learning the effect from a red run.
+        $allTests = (new TestCoverageLookup($this->files, $this->basePath))->for($resolved->name);
+        $tests = $limit === 0 ? [] : array_slice($allTests, 0, $limit);
         $allInspect = $this->inspectPaths($resolved, $dependencies, $dependents);
         $inspect = $limit === 0 ? [] : array_slice($allInspect, 0, $limit);
         $next = [];
@@ -58,6 +66,10 @@ final readonly class ArchitectureContext
             $next[] = 'fix_context_violations';
         }
 
+        if ($tests !== []) {
+            $next[] = 'run_tests:'.implode(',', array_column($tests, 'path'));
+        }
+
         $next[] = 'run:architecture-kit:guard --changed --agent';
 
         return new ArchitectureContextResult(
@@ -65,10 +77,12 @@ final readonly class ArchitectureContext
             dependencies: $dependencies,
             dependents: $dependents,
             violations: $violations,
+            tests: $tests,
             inspect: $inspect,
             next: $next,
             truncated: count($dependencies) + count($dependents) < $totalRelationships
                 || count($violations) < count($allViolations)
+                || count($tests) < count($allTests)
                 || count($inspect) < count($allInspect),
         );
     }
@@ -127,6 +141,9 @@ final readonly class ArchitectureContext
             'role' => $related !== null ? $related->role : 'external',
             'kind' => $edge->kind,
             'strength' => $edge->strong ? 'strong' : 'weak',
+            // What a change to the subject would do to this relationship. Used to order
+            // the answer, so a truncated result keeps what breaks first.
+            'impact' => ImpactRanking::for($edge),
             'allowed' => $allowed,
             'evidence' => [
                 'path' => $edge->path,
@@ -141,11 +158,13 @@ final readonly class ArchitectureContext
     private function sortRelationships(array &$relationships): void
     {
         usort($relationships, fn (array $left, array $right): int => [
+            ImpactRanking::rank(is_string($left['impact']) ? $left['impact'] : ImpactRanking::CONTEXT),
             $left['symbol'],
             $left['kind'],
             $left['evidence']['path'],
             $left['evidence']['line'],
         ] <=> [
+            ImpactRanking::rank(is_string($right['impact']) ? $right['impact'] : ImpactRanking::CONTEXT),
             $right['symbol'],
             $right['kind'],
             $right['evidence']['path'],

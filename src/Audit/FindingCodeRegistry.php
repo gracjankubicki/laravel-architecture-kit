@@ -149,13 +149,41 @@ final readonly class FindingCodeRegistry
     /**
      * @return array{code: string, rule: string, title: string, why: string, fix: string}|null
      */
-    public function explain(string $code): ?array
+    public function explain(string $code, ?FindingOccurrence $occurrence = null): ?array
     {
         $explanation = self::CODE_CATALOG[$code] ?? null;
-
-        return $explanation === null
+        $explanation = $explanation === null
             ? $this->genericExplanation($code)
             : ['code' => $code, ...$explanation, 'severity' => $this->severityFor($code)];
+
+        if ($explanation === null || $occurrence === null) {
+            return $explanation;
+        }
+
+        $proposal = FindingRemediation::for($code, $occurrence);
+
+        // Without the occurrence the answer is the rule; with it the answer is about this
+        // violation, which is what the agent has to act on.
+        return [
+            ...$explanation,
+            'occurrence' => $occurrence->toArray(),
+            'fix' => $this->situatedFix($explanation['fix'], $occurrence),
+            // Present only where the rule names the destination. Absent is an honest
+            // answer; a guessed one would send the agent to the wrong place.
+            ...($proposal === null ? [] : ['proposal' => $proposal]),
+        ];
+    }
+
+    /**
+     * Restates the rule's remedy against the element it was reported for. The rule text
+     * stays the source of truth; only the subject is made explicit.
+     */
+    private function situatedFix(string $fix, FindingOccurrence $occurrence): string
+    {
+        $subject = $occurrence->symbol ?? $occurrence->path;
+        $where = $occurrence->line !== null ? $subject.' at line '.$occurrence->line : $subject;
+
+        return $where.': '.lcfirst($fix);
     }
 
     private function prefix(AuditFinding $finding): string

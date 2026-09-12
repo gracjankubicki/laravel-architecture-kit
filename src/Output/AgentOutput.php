@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextResult;
+use GracjanKubicki\ArchitectureKit\Context\ImpactRanking;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
@@ -248,6 +249,7 @@ final readonly class AgentOutput
             'dependencies' => $context->dependencies,
             'dependents' => $context->dependents,
             'violations' => $context->violations,
+            'tests' => $context->tests,
             'inspect' => $context->inspect,
             'trunc' => $context->truncated,
             'next' => $context->next,
@@ -699,6 +701,30 @@ final readonly class AgentOutput
                         'title' => ['type' => 'string'],
                         'why' => ['type' => 'string'],
                         'fix' => ['type' => 'string'],
+                        // Present when the caller named the reported occurrence. Absent
+                        // keeps the previous contract intact.
+                        'occurrence' => [
+                            'type' => 'object',
+                            'required' => ['path', 'line', 'symbol', 'role'],
+                            'properties' => [
+                                'path' => ['type' => 'string'],
+                                'line' => ['type' => ['integer', 'null']],
+                                'symbol' => ['type' => ['string', 'null']],
+                                'role' => ['type' => ['string', 'null']],
+                            ],
+                            'additionalProperties' => false,
+                        ],
+                        // Present only where the rule names a destination.
+                        'proposal' => [
+                            'type' => 'object',
+                            'required' => ['summary', 'move', 'to'],
+                            'properties' => [
+                                'summary' => ['type' => 'string'],
+                                'move' => ['type' => 'string'],
+                                'to' => ['type' => 'string'],
+                            ],
+                            'additionalProperties' => false,
+                        ],
                     ],
                     'additionalProperties' => false,
                 ],
@@ -1005,13 +1031,14 @@ final readonly class AgentOutput
     {
         $relationship = [
             'type' => 'object',
-            'required' => ['symbol', 'path', 'role', 'kind', 'strength', 'allowed', 'evidence'],
+            'required' => ['symbol', 'path', 'role', 'kind', 'strength', 'impact', 'allowed', 'evidence'],
             'properties' => [
                 'symbol' => ['type' => 'string'],
                 'path' => ['type' => ['string', 'null']],
                 'role' => ['type' => 'string'],
                 'kind' => ['type' => 'string'],
                 'strength' => ['enum' => ['strong', 'weak']],
+                'impact' => ['enum' => ImpactRanking::LEVELS],
                 'allowed' => ['type' => 'boolean'],
                 'evidence' => [
                     'type' => 'object',
@@ -1027,7 +1054,7 @@ final readonly class AgentOutput
         ];
         $success = [
             'type' => 'object',
-            'required' => ['v', 'ok', 'cmd', 'subject', 'dependencies', 'dependents', 'violations', 'inspect', 'trunc', 'next'],
+            'required' => ['v', 'ok', 'cmd', 'subject', 'dependencies', 'dependents', 'violations', 'tests', 'inspect', 'trunc', 'next'],
             'properties' => [
                 'v' => ['const' => 1],
                 'ok' => ['const' => true],
@@ -1039,13 +1066,26 @@ final readonly class AgentOutput
                         'name' => ['type' => 'string'],
                         'path' => ['type' => 'string'],
                         'line' => ['type' => 'integer', 'minimum' => 1],
-                        'kind' => ['enum' => ['class', 'interface', 'trait', 'enum']],
+                        'kind' => ['enum' => ['class', 'interface', 'trait', 'enum', 'file']],
                         'role' => ['type' => 'string'],
                     ],
                     'additionalProperties' => false,
                 ],
                 'dependencies' => ['type' => 'array', 'items' => $relationship],
                 'dependents' => ['type' => 'array', 'items' => $relationship],
+                'tests' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'required' => ['path', 'coverage', 'via'],
+                        'properties' => [
+                            'path' => ['type' => 'string'],
+                            'coverage' => ['enum' => ['direct', 'indirect']],
+                            'via' => ['type' => ['string', 'null']],
+                        ],
+                        'additionalProperties' => false,
+                    ],
+                ],
                 'violations' => [
                     'type' => 'array',
                     'items' => [

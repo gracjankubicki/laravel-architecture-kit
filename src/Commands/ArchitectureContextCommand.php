@@ -40,7 +40,7 @@ final class ArchitectureContextCommand extends Command
 
         try {
             $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
-            $context = (new ArchitectureContext($files, base_path()))->inspect(
+            $context = (new ArchitectureContext($files, base_path(), scope: $state->auditScope))->inspect(
                 subject: $subject,
                 enabled: $state->enabled,
                 exclude: $state->exclude,
