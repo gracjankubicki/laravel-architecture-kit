@@ -13,5 +13,7 @@ final readonly class ProjectSymbol
         public string $namespace,
         public string $kind,
         public string $role,
+        /** Whether the symbol declares methods of its own; an enum without any is a plain set of cases. */
+        public bool $hasMethods = true,
     ) {}
 }

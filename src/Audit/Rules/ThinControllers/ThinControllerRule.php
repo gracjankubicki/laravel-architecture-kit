@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\WorkflowSignals;
 use PhpParser\Node;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -111,7 +112,7 @@ final readonly class ThinControllerRule implements AuditRule
                 if ($node instanceof MethodCall && $node->name instanceof Node\Identifier) {
                     $method = $node->name->toString();
 
-                    if ($method === 'validate') {
+                    if (WorkflowSignals::isValidationCall($method)) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller performs inline validation; use a FormRequest.',
@@ -140,7 +141,7 @@ final readonly class ThinControllerRule implements AuditRule
                     $class = $node->class instanceof Name ? $this->file->resolvedName($node->class) : null;
                     $method = $node->name->toString();
 
-                    if ($class === 'Illuminate\\Support\\Facades\\DB' && $method === 'transaction') {
+                    if ($class !== null && WorkflowSignals::isTransactionCall($class, $method)) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller owns a transaction; move the workflow to an Action.',
@@ -156,7 +157,7 @@ final readonly class ThinControllerRule implements AuditRule
                         ];
                     }
 
-                    if ($method === 'create' && $class !== null && str_starts_with($class, 'App\\Models\\')) {
+                    if ($method === 'create' && $class !== null && WorkflowSignals::isModelClass($class)) {
                         $this->state->calls[] = [
                             'line' => $node->getStartLine(),
                             'message' => 'Controller creates a model directly; move the write use case to an Action.',
@@ -210,7 +211,7 @@ final readonly class ThinControllerRule implements AuditRule
 
             private function isWorkflowDispatchTarget(string $class): bool
             {
-                return str_starts_with($class, 'App\\Jobs\\') || str_starts_with($class, 'App\\Events\\');
+                return WorkflowSignals::isWorkflowDispatchTarget($class);
             }
         });
 

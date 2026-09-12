@@ -49,6 +49,8 @@ trait UsesArchitectureKitState
             baseRef: $baseRef,
             exclude: $state->exclude,
             customRules: $state->customRules,
+            scope: $state->auditScope,
+            missingTestLevel: $state->missingTestLevel,
         );
     }
 

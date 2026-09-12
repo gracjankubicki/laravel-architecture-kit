@@ -46,6 +46,8 @@ final readonly class ArchitectureGuard
                 baseRef: $baseRef,
                 exclude: $state !== null ? $state->exclude : $config->auditExcludes(),
                 customRules: $state !== null ? $state->customRules : $config->customRuleSet(),
+                scope: $state !== null ? $state->auditScope : $config->auditScope(),
+                missingTestLevel: $state !== null ? $state->missingTestLevel : $config->missingTestLevel(),
             );
         }
 

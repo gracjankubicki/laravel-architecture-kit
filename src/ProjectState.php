@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit;
 
+use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
+use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
@@ -28,6 +30,8 @@ final readonly class ProjectState
         public CustomRuleSet $customRules,
         public array $runtime,
         public ?LaravelAiCompatibilityResult $laravelAi,
+        public AuditScope $auditScope,
+        public MissingTestLevel $missingTestLevel,
     ) {}
 
     public static function load(Filesystem $files, string $packagePath, string $basePath): self
@@ -41,7 +45,18 @@ final readonly class ProjectState
 
         $resources = new ArchitectureResources($packagePath, $basePath, $files, $catalog, $laravelAi);
 
-        return new self($config, $resources, $catalog, $enabled, $config->auditExcludes(), $config->customRuleSet(), $config->runtime(), $laravelAi);
+        return new self(
+            $config,
+            $resources,
+            $catalog,
+            $enabled,
+            $config->auditExcludes(),
+            $config->customRuleSet(),
+            $config->runtime(),
+            $laravelAi,
+            $config->auditScope(),
+            $config->missingTestLevel(),
+        );
     }
 
     public function assertCompatibility(): void

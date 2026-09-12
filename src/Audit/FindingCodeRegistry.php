@@ -24,6 +24,8 @@ final readonly class FindingCodeRegistry
         'ports-and-adapters' => ['title' => 'Ports and Adapters violation', 'why' => 'Ports isolate application workflows from infrastructure details.', 'fix' => 'Move the infrastructure dependency behind a port and adapter.'],
         'query-objects' => ['title' => 'Query Object violation', 'why' => 'Query Objects represent read use cases and must not mutate domain state.', 'fix' => 'Keep the object read-only and move writes to an Action.'],
         'raw-http' => ['title' => 'Raw HTTP call', 'why' => 'Outbound HTTP must use the configured Saloon integration boundary.', 'fix' => 'Create a Saloon Connector and Request under app/Http/Integrations.'],
+        'route-logic' => ['title' => 'Business logic in a route definition', 'why' => 'A workflow closed inside a route file escapes every rule written for application code, so the gate stays green because of where the file was saved.', 'fix' => 'Move the workflow to an Action and leave the route pointing at a controller.'],
+        'missing-test' => ['title' => 'Architecture element has no test', 'why' => 'No test file depends on this element, so a change to it is only discovered by the reviewer or in production.', 'fix' => 'Add a test that exercises the element through its public entry point.'],
         'saloon' => ['title' => 'Saloon integration violation', 'why' => 'HTTP integrations require a consistent connector, request, DTO, and boundary shape.', 'fix' => 'Apply the generated Saloon integration conventions.'],
         'service-locator' => ['title' => 'Service locator hides a dependency', 'why' => 'Calls like app(SomeClass::class) make dependencies implicit and harder to test.', 'fix' => 'Use constructor or method injection, or an enabled architecture boundary.'],
         'services' => ['title' => 'Service architecture violation', 'why' => 'Services must follow the configured application boundary conventions.', 'fix' => 'Move the behavior to the correct application boundary.'],
@@ -84,6 +86,42 @@ final readonly class FindingCodeRegistry
             'title' => 'Namespaces form a dependency cycle',
             'why' => 'A namespace cycle prevents either side from changing independently and expands the context an agent must load.',
             'fix' => 'Break the cycle by extracting a stable contract or moving shared behavior to a lower-level namespace.',
+        ],
+        'E_ROUTE_INLINE_VALIDATION' => [
+            'rule' => 'route-logic',
+            'title' => 'Route validates the request inline',
+            'why' => 'Validation written in a route closure is invisible to every rule that governs controllers and Form Requests.',
+            'fix' => 'Point the route at a controller action and move validation into a Form Request.',
+        ],
+        'E_ROUTE_MODEL_WRITE' => [
+            'rule' => 'route-logic',
+            'title' => 'Route writes to a model directly',
+            'why' => 'A write use case closed in a route file cannot be reused, tested, or audited like an Action.',
+            'fix' => 'Move the write to an Action and call it from a controller.',
+        ],
+        'E_ROUTE_TRANSACTION' => [
+            'rule' => 'route-logic',
+            'title' => 'Route owns a database transaction',
+            'why' => 'Transaction boundaries belong to an application workflow, not to the routing layer.',
+            'fix' => 'Move the workflow, including its transaction, to an Action.',
+        ],
+        'E_ROUTE_DISPATCH' => [
+            'rule' => 'route-logic',
+            'title' => 'Route dispatches work directly',
+            'why' => 'Dispatching a job or event from a route hides the workflow from the boundaries that are audited.',
+            'fix' => 'Move the dispatch into an Action invoked by a controller.',
+        ],
+        'W_MISSING_TEST' => [
+            'rule' => 'missing-test',
+            'title' => 'No test depends on this element',
+            'why' => 'Nothing in the test suite exercises it, so a regression here is found late and by a human.',
+            'fix' => 'Add a test that depends on the element through its public entry point.',
+        ],
+        'E_MISSING_TEST' => [
+            'rule' => 'missing-test',
+            'title' => 'No test depends on this element',
+            'why' => 'Nothing in the test suite exercises it, so a regression here is found late and by a human.',
+            'fix' => 'Add a test that depends on the element through its public entry point.',
         ],
     ];
 

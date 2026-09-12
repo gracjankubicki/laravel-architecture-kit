@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
 use PhpParser\Node;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
@@ -16,24 +17,37 @@ use PhpParser\Node\Stmt;
 final readonly class FolderPurityRule implements AuditRule
 {
     /**
+     * Suffixes that mark a class as data rather than behaviour. Scaffolding reads the
+     * same list, so a generated Action or Query Object cannot be named in a way this
+     * rule immediately rejects.
+     *
+     * @var array<int, string>
+     */
+    public const NON_BEHAVIOUR_SUFFIXES = ['Data', 'Dto', 'DTO', 'Result', 'Resource', 'Request', 'Exception', 'Failure', 'Status'];
+
+    /**
      * @param  array<int, Architecture|string>  $enabled
      */
     public function __construct(private array $enabled) {}
 
     /**
+     * Mirrors the gating in check(): an architecture-scoped folder is only supported
+     * when that architecture is enabled, otherwise file-scoped guidance would promise
+     * a rule the audit never runs.
+     *
      * @param  array<int, Architecture|string>  $enabled
      */
     public function supports(string $path, array $enabled): bool
     {
         return str_starts_with($path, 'app/Actions/')
-            || str_starts_with($path, 'app/Services/')
+            || (in_array(Architecture::Services, $enabled, true) && str_starts_with($path, 'app/Services/'))
             || str_starts_with($path, 'app/Data/')
-            || $this->isValueObjectPath($path)
+            || (in_array(Architecture::ValueObjects, $enabled, true) && $this->isValueObjectPath($path))
             || str_starts_with($path, 'app/Enums/')
             || str_starts_with($path, 'app/Exceptions/')
             || str_starts_with($path, 'app/Http/Resources/')
             || str_starts_with($path, 'app/Queries/')
-            || str_starts_with($path, 'app/Models/Builders/');
+            || (in_array(Architecture::CustomEloquentBuilders, $enabled, true) && str_starts_with($path, 'app/Models/Builders/'));
     }
 
     /**
@@ -117,18 +131,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $className = $class->name?->toString();
 
-        if (
-            $className === null
-            || str_ends_with($className, 'Data')
-            || str_ends_with($className, 'Dto')
-            || str_ends_with($className, 'DTO')
-            || str_ends_with($className, 'Result')
-            || str_ends_with($className, 'Resource')
-            || str_ends_with($className, 'Request')
-            || str_ends_with($className, 'Exception')
-            || str_ends_with($className, 'Failure')
-            || str_ends_with($className, 'Status')
-        ) {
+        if ($className === null || $this->hasNonBehaviourSuffix($className)) {
             return false;
         }
 
@@ -187,18 +190,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $className = $class->name?->toString();
 
-        if (
-            $className === null
-            || str_ends_with($className, 'Data')
-            || str_ends_with($className, 'Dto')
-            || str_ends_with($className, 'DTO')
-            || str_ends_with($className, 'Result')
-            || str_ends_with($className, 'Resource')
-            || str_ends_with($className, 'Request')
-            || str_ends_with($className, 'Exception')
-            || str_ends_with($className, 'Failure')
-            || str_ends_with($className, 'Status')
-        ) {
+        if ($className === null || $this->hasNonBehaviourSuffix($className)) {
             return false;
         }
 
@@ -398,9 +390,24 @@ final readonly class FolderPurityRule implements AuditRule
 
     private function hasForbiddenValueObjectSuffix(string $class): bool
     {
-        return str_ends_with($class, 'Value')
-            || str_ends_with($class, 'ValueObject')
-            || str_ends_with($class, 'Vo');
+        foreach (ValueObjectsRule::FORBIDDEN_SUFFIXES as $suffix) {
+            if (str_ends_with($class, $suffix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function hasNonBehaviourSuffix(string $class): bool
+    {
+        foreach (self::NON_BEHAVIOUR_SUFFIXES as $suffix) {
+            if (str_ends_with($class, $suffix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function shortTypeName(string $name): string

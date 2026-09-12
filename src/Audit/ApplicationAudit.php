@@ -9,25 +9,6 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\Actions\ActionsRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\ApiResources\ApiResourcesRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\CustomEloquentBuilders\CustomEloquentBuildersRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\DataObjects\DataObjectsRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\EloquentLifecycleRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\Enums\EnumsRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\FormRequests\FormRequestsRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\LaravelAi\LaravelAiRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\ModernPhp85\ModernPhp85Rule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\PortsAndAdapters\PortsAndAdaptersRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\QueryObjects\QueryObjectsRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\SaloonRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\Services\ServicesRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\FolderPurityRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\ServiceLocatorRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\TestabilityRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\UnenabledPatternRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\ThinControllers\ThinControllerRule;
-use GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
@@ -96,8 +77,15 @@ final class ApplicationAudit
         array|CustomRuleSet $customRules = [],
         bool $useBaseline = true,
         bool $updateBaseline = false,
+        ?AuditScope $scope = null,
+        MissingTestLevel $missingTestLevel = MissingTestLevel::Off,
     ): ApplicationAuditResult {
-        [$scope, $focusPaths] = $this->applicationFiles($changedOnly, $baseRef);
+        // The two cannot be set independently: a scope without tests plus an enabled
+        // rule would report every class as untested, so the audit resolves the pair
+        // itself rather than trusting each caller to keep them consistent.
+        $auditScope = ($scope ?? AuditScope::default());
+        $auditScope = $missingTestLevel->isEnabled() ? $auditScope->withTests() : $auditScope;
+        [$scopeLabel, $focusPaths] = $this->applicationFiles($changedOnly, $baseRef, $auditScope);
         $focusPaths = $this->excludePaths($focusPaths, $exclude);
         $findings = [];
         $suppressedInline = 0;
@@ -107,7 +95,7 @@ final class ApplicationAudit
         $customAuditRules = (new RuleRegistry($customRuleSet->rulesFor($enabled)))->customRules();
         $knownRules = $this->knownRules($customRuleSet);
         $rules = array_merge($this->builtInRules($enabled), $customAuditRules);
-        $changedFocusAvailable = $changedOnly && str_starts_with($scope, 'changed application files');
+        $changedFocusAvailable = $changedOnly && str_starts_with($scopeLabel, 'changed application files');
         $focusPathSet = array_fill_keys($focusPaths, true);
         $focusFiles = [];
         $graphBuilder = new ProjectGraphBuilder;
@@ -117,7 +105,7 @@ final class ApplicationAudit
         /** @var array<string, array<int, AuditFinding>> $findingsByPath */
         $findingsByPath = [];
 
-        foreach ((new ProjectGraphLoader($this->files, $this->basePath))->stream($exclude) as $file) {
+        foreach ((new ProjectGraphLoader($this->files, $this->basePath, $auditScope))->stream($exclude) as $file) {
             $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
             $this->assertAstHeadroom($memoryLimitBytes, $file);
 
@@ -132,7 +120,7 @@ final class ApplicationAudit
                     $fileFindings = [];
 
                     foreach ($rules as $rule) {
-                        if ($rule->supports($file->path, $enabled)) {
+                        if ($this->appliesTo($rule, $file->path, $auditScope) && $rule->supports($file->path, $enabled)) {
                             array_push($fileFindings, ...$rule->check($file));
                         }
                     }
@@ -151,7 +139,7 @@ final class ApplicationAudit
 
         $graph = $graphBuilder->finish();
 
-        foreach ((new ProjectRuleSet)->rules() as $rule) {
+        foreach ((new ProjectRuleSet($missingTestLevel))->rules() as $rule) {
             foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
                 $findingsByPath[$finding->path][] = $finding;
             }
@@ -183,7 +171,7 @@ final class ApplicationAudit
         });
 
         return new ApplicationAuditResult(
-            scope: $scope,
+            scope: $scopeLabel,
             findings: $findings,
             suppressedInline: $suppressedInline,
             suppressedBaseline: $suppressedBaseline,
@@ -205,6 +193,15 @@ final class ApplicationAudit
             $paths,
             fn (string $path): bool => ! $this->isExcluded($path, $exclude),
         ));
+    }
+
+    /**
+     * A rule written for application code must not fire inside a test file. Most rules
+     * never check the path, so the decision cannot be left to each supports().
+     */
+    private function appliesTo(AuditRule $rule, string $path, AuditScope $scope): bool
+    {
+        return ! $scope->isTestPath($path) || $rule instanceof RunsOnTestFiles;
     }
 
     /**
@@ -241,27 +238,7 @@ final class ApplicationAudit
      */
     private function builtInRules(array $enabled): array
     {
-        return [
-            new FolderPurityRule($enabled),
-            new ThinControllerRule($enabled),
-            new ServicesRule,
-            new ActionsRule,
-            new QueryObjectsRule,
-            new CustomEloquentBuildersRule,
-            new DataObjectsRule,
-            new ValueObjectsRule,
-            new FormRequestsRule($enabled),
-            new EnumsRule($this->files, $this->basePath, $enabled),
-            new ApiResourcesRule,
-            new PortsAndAdaptersRule($this->files, $this->basePath, $enabled),
-            new ModernPhp85Rule,
-            new LaravelAiRule,
-            new EloquentLifecycleRule($this->files, $this->basePath),
-            new SaloonRule,
-            new ServiceLocatorRule,
-            new TestabilityRule,
-            new UnenabledPatternRule($enabled),
-        ];
+        return BuiltInRules::all($this->files, $this->basePath, $enabled);
     }
 
     /**
@@ -309,31 +286,37 @@ final class ApplicationAudit
     /**
      * @return array{0: string, 1: array<int, string>}
      */
-    private function applicationFiles(bool $changedOnly, ?string $baseRef): array
+    private function applicationFiles(bool $changedOnly, ?string $baseRef, AuditScope $scope): array
     {
         if ($changedOnly) {
-            $changed = $this->changedApplicationFiles($baseRef);
+            $changed = $this->changedApplicationFiles($baseRef, $scope);
 
             if ($changed !== null) {
-                $scope = $baseRef === null
+                $label = $baseRef === null
                     ? 'changed application files'
                     : 'changed application files since '.$baseRef;
 
-                return [$scope, $changed];
+                return [$label, $changed];
             }
         }
 
-        if (! $this->files->isDirectory($this->basePath.'/app')) {
-            return [$changedOnly ? 'all application files (changed scope unavailable)' : 'all application files', []];
-        }
+        $paths = [];
 
-        $paths = array_values(array_map(
-            fn (SplFileInfo $file): string => $this->relative($file->getPathname()),
-            array_filter(
-                $this->files->allFiles($this->basePath.'/app'),
-                fn (SplFileInfo $file): bool => $file->getExtension() === 'php',
-            ),
-        ));
+        foreach ($scope->directories as $directory) {
+            $absolute = $this->basePath.'/'.$directory;
+
+            if (! $this->files->isDirectory($absolute)) {
+                continue;
+            }
+
+            array_push($paths, ...array_map(
+                fn (SplFileInfo $file): string => $this->relative($file->getPathname()),
+                array_filter(
+                    $this->files->allFiles($absolute),
+                    fn (SplFileInfo $file): bool => $file->getExtension() === 'php',
+                ),
+            ));
+        }
 
         return [$changedOnly ? 'all application files (changed scope unavailable)' : 'all application files', $paths];
     }
@@ -341,7 +324,7 @@ final class ApplicationAudit
     /**
      * @return array<int, string>|null
      */
-    private function changedApplicationFiles(?string $baseRef): ?array
+    private function changedApplicationFiles(?string $baseRef, AuditScope $scope): ?array
     {
         $prefixOutput = $this->runProcess(['git', '-C', $this->basePath, 'rev-parse', '--show-prefix']);
 
@@ -352,6 +335,7 @@ final class ApplicationAudit
         $prefix = $prefixOutput[0] ?? '';
 
         $commands = [];
+        $pathspec = $scope->directories;
 
         if ($baseRef !== null && $baseRef !== '') {
             $mergeBase = $this->mergeBase($baseRef);
@@ -360,13 +344,13 @@ final class ApplicationAudit
                 return null;
             }
 
-            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', $mergeBase.'...HEAD', '--', 'app'];
-            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD', '--', 'app'];
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', $mergeBase.'...HEAD', '--', ...$pathspec];
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD', '--', ...$pathspec];
         } else {
-            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD', '--', 'app'];
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD', '--', ...$pathspec];
         }
 
-        $commands[] = ['git', '-C', $this->basePath, 'ls-files', '--others', '--exclude-standard', '--', 'app'];
+        $commands[] = ['git', '-C', $this->basePath, 'ls-files', '--others', '--exclude-standard', '--', ...$pathspec];
 
         $paths = [];
 

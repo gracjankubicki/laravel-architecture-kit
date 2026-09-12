@@ -14,8 +14,10 @@ use GracjanKubicki\ArchitectureKit\Mcp\Tools\AuditChanged;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Doctor;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ExplainFinding;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\FileRules;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Guard;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\PlanUpgrade;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\Scaffold;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\UpgradeGuideResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
@@ -495,6 +497,56 @@ PHP;
                 ->where('title', 'Controller writes through an Eloquent model')
                 ->etc()
             );
+    }
+
+    public function test_file_rules_tool_returns_only_rules_governing_the_path(): void
+    {
+        $this->writeCurrentResources(Architecture::defaultSelection());
+
+        ArchitectureKitServer::tool(FileRules::class, ['path' => 'app/Actions/SendInvoice.php'])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', true)
+                ->where('cmd', 'file-rules')
+                ->where('path', 'app/Actions/SendInvoice.php')
+                ->where('scope', 'application')
+                ->where('arch', function ($arch): bool {
+                    $slugs = collect($arch)->pluck('slug')->all();
+
+                    return in_array('actions', $slugs, true) && ! in_array('api-resources', $slugs, true);
+                })
+                ->etc()
+            );
+    }
+
+    public function test_file_rules_tool_requires_a_path(): void
+    {
+        $this->writeCurrentResources(Architecture::defaultSelection());
+
+        ArchitectureKitServer::tool(FileRules::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', false)
+                ->where('cmd', 'file-rules')
+                ->etc()
+            );
+    }
+
+    public function test_scaffold_tool_returns_a_skeleton_without_writing_anything(): void
+    {
+        $this->writeCurrentResources(Architecture::defaultSelection());
+
+        ArchitectureKitServer::tool(Scaffold::class, ['architecture' => 'actions', 'name' => 'SendInvoice'])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', true)
+                ->where('cmd', 'make')
+                ->where('written', false)
+                ->where('class', 'App\\Actions\\SendInvoice')
+                ->etc()
+            );
+
+        $this->assertFileDoesNotExist($this->tempPath.'/app/Actions/SendInvoice.php');
     }
 
     /**

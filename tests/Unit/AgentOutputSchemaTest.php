@@ -16,6 +16,8 @@ use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitectureRecommendation;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
+use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldFile;
+use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldPlan;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradeGuide;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlan;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlanStep;
@@ -41,7 +43,7 @@ class AgentOutputSchemaTest extends TestCase
     {
         $agent = new AgentOutput;
 
-        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'plan', 'sync', 'upgrade-plan', 'architecture-context'] as $command) {
+        foreach (['audit', 'guard', 'doctor', 'explain', 'guidelines', 'plan', 'sync', 'upgrade-plan', 'architecture-context', 'file-rules', 'make'] as $command) {
             $schema = $agent->schema($command);
 
             $this->assertSame(1, $schema['oneOf'][0]['properties']['v']['const']);
@@ -255,6 +257,43 @@ class AgentOutputSchemaTest extends TestCase
                     next: ['continue'],
                 )),
                 $agent->error('upgrade-plan', 'Planning failed.'),
+            ],
+            'file-rules' => [
+                $agent->fileRules([
+                    'path' => 'app/Actions/SendInvoice.php',
+                    'in_scope' => true,
+                    'architectures' => [[
+                        'slug' => 'actions',
+                        'label' => 'Actions',
+                        'governs' => true,
+                        'enforcement' => 'enforced',
+                        'rules' => ['actions', 'folder-purity'],
+                        'placement' => ['app/Actions'],
+                        'skill' => 'architecture-kit-actions',
+                    ]],
+                    'rules' => ['actions', 'folder-purity'],
+                    'project_rules' => ['forbidden-workflow-audit-rule'],
+                    'global_rules' => ['service-locator'],
+                ]),
+                $agent->fileRules([
+                    'path' => 'routes/api.php',
+                    'in_scope' => false,
+                    'architectures' => [],
+                    'rules' => [],
+                    'project_rules' => [],
+                    'global_rules' => [],
+                ]),
+                $agent->error('file-rules', 'File rules failed.'),
+            ],
+            'make' => [
+                $agent->make(new ScaffoldPlan(
+                    architecture: 'actions',
+                    class: 'SendInvoice',
+                    namespace: 'App\\Actions',
+                    files: [new ScaffoldFile('app/Actions/SendInvoice.php', '<?php', 'element')],
+                    existing: [],
+                ), written: false),
+                $agent->error('make', 'Scaffolding failed.', 'E_SCAFFOLD_INVALID_NAME'),
             ],
         ];
 

@@ -13,6 +13,8 @@ use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
+use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldFile;
+use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldPlan;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlan;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlanStep;
 
@@ -119,13 +121,13 @@ final readonly class AgentOutput
     /**
      * @return array<string, mixed>
      */
-    public function error(string $cmd, string $message): array
+    public function error(string $cmd, string $message, string $code = 'E_COMMAND_FAILED'): array
     {
         return [
             'v' => 1,
             'ok' => false,
             'cmd' => $cmd,
-            'm' => 'E_COMMAND_FAILED',
+            'm' => $code,
             'msg' => $message,
             'next' => ['fix_command_error', 'rerun:'.$cmd.' --agent'],
         ];
@@ -285,6 +287,8 @@ final readonly class AgentOutput
             'sync' => $this->syncSchema(),
             'upgrade-plan' => $this->upgradePlanSchema(),
             'architecture-context' => $this->architectureContextSchema(),
+            'file-rules' => $this->fileRulesSchema(),
+            'make' => $this->makeSchema(),
             default => [
                 '$schema' => 'https://json-schema.org/draft/2020-12/schema',
                 'type' => 'object',
@@ -538,6 +542,139 @@ final readonly class AgentOutput
         ];
 
         return $this->successOrCommandErrorSchema('Architecture Kit doctor agent output', 'doctor', $success);
+    }
+
+    /**
+     * @param  array{path: string, in_scope: bool, architectures: array<int, array<string, mixed>>, rules: array<int, string>, project_rules: array<int, string>, global_rules: array<int, string>}  $guidance
+     * @return array<string, mixed>
+     */
+    public function fileRules(array $guidance): array
+    {
+        return [
+            'v' => 1,
+            'ok' => true,
+            'cmd' => 'file-rules',
+            'path' => $guidance['path'],
+            'scope' => $guidance['in_scope'] ? 'application' : 'outside_application',
+            'arch' => array_map(
+                fn (array $architecture): array => [
+                    'slug' => $architecture['slug'],
+                    'governs' => $architecture['governs'],
+                    'enforcement' => $architecture['enforcement'],
+                    'rules' => $architecture['rules'],
+                    'skill' => $architecture['skill'],
+                ],
+                $guidance['architectures'],
+            ),
+            'rules' => $guidance['rules'],
+            // Rules the project registered itself: enforced, but absent from the
+            // package's own architecture guidance.
+            'project' => $guidance['project_rules'],
+            'global' => $guidance['global_rules'],
+            'next' => $guidance['in_scope']
+                ? ['write_file', 'rerun:audit --changed --agent']
+                : ['no_rules_enforced_here'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function make(ScaffoldPlan $plan, bool $written): array
+    {
+        return [
+            'v' => 1,
+            'ok' => true,
+            'cmd' => 'make',
+            'arch' => $plan->architecture,
+            'class' => $plan->namespace.'\\'.$plan->class,
+            'written' => $written,
+            'files' => array_map(
+                fn (ScaffoldFile $file): array => $file->toArray(),
+                $plan->files,
+            ),
+            'next' => ['write_files', 'rerun:audit --changed --agent'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function makeSchema(): array
+    {
+        return $this->successOrCommandErrorSchema(
+            title: 'Architecture Kit make agent output',
+            command: 'make',
+            success: [
+                'type' => 'object',
+                'required' => ['v', 'ok', 'cmd', 'arch', 'class', 'written', 'files', 'next'],
+                'properties' => [
+                    'v' => ['const' => 1],
+                    'ok' => ['const' => true],
+                    'cmd' => ['const' => 'make'],
+                    'arch' => ['type' => 'string'],
+                    'class' => ['type' => 'string'],
+                    'written' => ['type' => 'boolean'],
+                    'files' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'required' => ['path', 'purpose', 'contents'],
+                            'properties' => [
+                                'path' => ['type' => 'string'],
+                                'purpose' => ['type' => 'string'],
+                                'contents' => ['type' => 'string'],
+                            ],
+                            'additionalProperties' => false,
+                        ],
+                    ],
+                    'next' => $this->stringListSchema(),
+                ],
+                'additionalProperties' => false,
+            ],
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fileRulesSchema(): array
+    {
+        return $this->successOrCommandErrorSchema(
+            title: 'Architecture Kit file-rules agent output',
+            command: 'file-rules',
+            success: [
+                'type' => 'object',
+                'required' => ['v', 'ok', 'cmd', 'path', 'scope', 'arch', 'rules', 'project', 'global', 'next'],
+                'properties' => [
+                    'v' => ['const' => 1],
+                    'ok' => ['const' => true],
+                    'cmd' => ['const' => 'file-rules'],
+                    'path' => ['type' => 'string'],
+                    'scope' => ['enum' => ['application', 'outside_application']],
+                    'arch' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'required' => ['slug', 'governs', 'enforcement', 'rules', 'skill'],
+                            'properties' => [
+                                'slug' => ['type' => 'string'],
+                                'governs' => ['type' => 'boolean'],
+                                'enforcement' => ['enum' => ['enforced', 'advisory']],
+                                'rules' => $this->stringListSchema(),
+                                'skill' => ['type' => 'string'],
+                            ],
+                            'additionalProperties' => false,
+                        ],
+                    ],
+                    'rules' => $this->stringListSchema(),
+                    'project' => $this->stringListSchema(),
+                    'global' => $this->stringListSchema(),
+                    'next' => $this->stringListSchema(),
+                ],
+                'additionalProperties' => false,
+            ],
+        );
     }
 
     /**

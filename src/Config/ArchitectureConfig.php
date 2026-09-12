@@ -6,7 +6,9 @@ namespace GracjanKubicki\ArchitectureKit\Config;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
+use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
+use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
@@ -69,6 +71,48 @@ final class ArchitectureConfig
         }
 
         return array_values(array_filter($exclude, 'is_string'));
+    }
+
+    /**
+     * Directories the audit reads. The test directory is added here rather than left to
+     * the project, because the missing-test rule answers its question from the project
+     * graph: with no test files in it, every class looks untested and the rule reports
+     * all of them.
+     */
+    public function auditScope(): AuditScope
+    {
+        $config = $this->config();
+        $paths = $config['audit']['paths'] ?? [];
+
+        if (! is_array($paths)) {
+            throw new InvalidArgumentException('config/architectures.php audit.paths must be an array.');
+        }
+
+        $scope = new AuditScope([AuditScope::APPLICATION, ...array_values(array_filter($paths, 'is_string'))]);
+
+        return $this->missingTestLevel()->isEnabled() ? $scope->withTests() : $scope;
+    }
+
+    public function missingTestLevel(): MissingTestLevel
+    {
+        $config = $this->config();
+        $level = $config['audit']['missing_test'] ?? null;
+
+        if ($level === null) {
+            return MissingTestLevel::Off;
+        }
+
+        if ($level instanceof MissingTestLevel) {
+            return $level;
+        }
+
+        if (! is_string($level) || MissingTestLevel::tryFrom($level) === null) {
+            throw new InvalidArgumentException(
+                'config/architectures.php audit.missing_test must be one of: '.implode(', ', MissingTestLevel::values()).'.',
+            );
+        }
+
+        return MissingTestLevel::from($level);
     }
 
     public function customRuleSet(): CustomRuleSet
@@ -197,10 +241,31 @@ final class ArchitectureConfig
             $lines[] = $this->renderRuntimeBlock($runtime, '    ');
         }
 
+        $lines[] = $this->renderAuditBlock('    ');
         $lines[] = '];';
         $lines[] = '';
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Written commented out on purpose: both settings change what the gate reports, so
+     * they stay inert until a project decides otherwise, while still being visible where
+     * they are configured.
+     */
+    private function renderAuditBlock(string $indent): string
+    {
+        return implode("\n", [
+            $indent."'audit' => [",
+            $indent.'    // Directories outside app/ the audit should read, for example: ',
+            $indent."    // 'paths' => ['routes'],",
+            $indent.'    //',
+            $indent.'    // Report an architecture element that no test depends on.',
+            $indent."    // One of 'off', 'warn', 'error'. Enabling it also brings tests/",
+            $indent.'    // into scope, because the rule answers from the project graph.',
+            $indent."    // 'missing_test' => 'warn',",
+            $indent.'],',
+        ]);
     }
 
     /**

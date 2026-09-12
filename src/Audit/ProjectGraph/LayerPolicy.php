@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
+
 final readonly class LayerPolicy
 {
     public function allows(string $sourceRole, string $targetRole): bool
     {
-        if (in_array($sourceRole, ['unknown', 'composition', 'infrastructure', 'adapter'], true)) {
+        // A test depends on whatever it exercises, in any layer, by design.
+        if (in_array($sourceRole, ['unknown', 'composition', 'infrastructure', 'adapter', RoleClassifier::TEST], true)) {
             return true;
         }
 

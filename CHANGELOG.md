@@ -2,6 +2,24 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- Added `architecture-kit:file-rules` and the read-only `file-rules` MCP tool, which return only the rules that govern one path instead of the full guideline. The path does not have to exist yet, which is the point: the question is asked before the file is written. Each architecture is reported as `enforced` or `advisory`, so a green guard is no longer mistaken for full compliance, and as `governs` or `shared`, so it is clear which guideline actually describes the file. Custom project rules are reported in a separate `project` list, and project-wide rules such as `layer-dependency` and `namespace-cycle` are reported as always active.
+- Added `architecture-kit:make` and the read-only `scaffold` MCP tool, which emit the files, folder, namespace, naming, and base classes a new element of an enabled architecture needs. The interactive command writes the files and refuses to overwrite an existing one; `--agent` and the MCP tool write nothing and leave that decision to the agent. Skeletons are built to pass this package's own audit, and a test verifies that for every supported architecture. A name is rejected before anything is planned when it is not a plain PHP identifier, when it would escape the architecture folder, when it is a reserved PHP word, or when its suffix marks a different kind of class. The rejected suffixes are read from the audit rules themselves, so the generator cannot drift from what the audit accepts.
+- Added a configurable audit scope. `audit.paths` in `config/architectures.php` lets a project have the audit read directories outside `app/`. Until now every file outside `app/` was invisible, so business logic closed inside a route file left the gate green for no reason other than where the file was saved. The new `route-logic` rule reports inline validation, a direct model write, a transaction, and a dispatch inside a route definition, using the signals the package already applies to controllers rather than a second definition of the same idea.
+- Added the `missing-test` rule, which reports an architecture element that no test depends on. It is controlled by `audit.missing_test` in `config/architectures.php`, one of `off`, `warn`, or `error`, and defaults to `off`, so a project that does not change its configuration gets exactly the audit it had before upgrading. The rule reads the dependency graph instead of a naming or folder convention, so it covers every architecture wherever its elements live, and a test that reaches an element through another class still counts. Interfaces and traits are exempt, and an enum is reported only when it declares methods. Enabling the rule also brings `tests/` into the audited scope and keeps test files in the graph even when an exclusion pattern matches them, because without them the rule would report every class as untested. Rules written for application code never fire inside test files.
+
+### Changed
+
+- Changed the project graph to record a stand-in symbol for a file that declares no class of its own, so its dependencies become visible. Classless Pest tests and route files previously contributed nothing to the graph. Application files under `app/` are unaffected, so layer and namespace-cycle findings are unchanged.
+
+### Fixed
+
+- Fixed project-relative path resolution so `.` and `..` segments are collapsed before a path is compared with the project directory. `app/../routes/api.php` is no longer treated as an application file by file-scoped guidance.
+- Fixed `FolderPurityRule::supports()` reporting architecture-scoped folders regardless of configuration. It now mirrors the gating already applied in the rule's checks, so file-scoped guidance no longer promises a folder purity finding for `app/Services`, a Value Object folder, or `app/Models/Builders` while the matching architecture is disabled. Audit output is unchanged: the skipped check returned nothing in that configuration, and unparseable files are reported before rule support is consulted.
+
 ## v0.3.0 - 2026-09-11
 
 This release contains no new features. It fixes correctness and reliability problems in the audit, the guard, and the generated agent hook. Three fixes can surface as new failures in a project that changed nothing on its side: a previously silent audit may start reporting findings, a stale inline suppression is now reported as a warning that fails `guard --strict`, and `audit --changed --update-baseline` is rejected. See [UPGRADE.md](UPGRADE.md) before updating.

@@ -6,13 +6,31 @@ namespace GracjanKubicki\ArchitectureKit\Architecture;
 
 final readonly class RoleClassifier
 {
+    public const TEST = 'test';
+
     public function classify(string $path, string $name, string $kind, bool $hasMethods = true): string
     {
+        // Checked before ports: a test double living in tests/ is not a project port.
+        if (self::isTestPath($path)) {
+            return self::TEST;
+        }
+
         if ($kind === 'interface' && $this->isPort($path, $name, $hasMethods)) {
             return 'port';
         }
 
         return $this->roleFromPath($path);
+    }
+
+    /**
+     * A file holding tests rather than application code. The missing-test rule tells a
+     * test edge from a code edge by this, so it cannot rely on a class-name convention.
+     */
+    public static function isTestPath(string $path): bool
+    {
+        $path = str_replace('\\', '/', $path);
+
+        return str_starts_with($path, 'tests/') || str_contains($path, '/Tests/');
     }
 
     public function isPort(string $path, string $name, bool $hasMethods = true): bool

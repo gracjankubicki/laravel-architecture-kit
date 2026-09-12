@@ -409,6 +409,8 @@ final readonly class ArchitectureDoctor
                 exclude: $exclude ?? $this->config->auditExcludes(),
                 customRules: $customRules ?? $this->config->customRuleSet(),
                 useBaseline: false,
+                scope: $this->config->auditScope(),
+                missingTestLevel: $this->config->missingTestLevel(),
             );
             $orphaned = $baseline->orphanedCount($audit->findings);
         } catch (Throwable $exception) {

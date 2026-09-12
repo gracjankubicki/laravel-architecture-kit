@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
+use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -47,13 +48,61 @@ final class ProjectGraphBuilder
                 return;
             }
 
+            $source = $this->fileSymbol($file, $nodes);
+
             foreach ($nodes as $node) {
-                $this->visit($file, $node, null, $this->symbols, $this->edges, []);
+                $this->visit($file, $node, $source, $this->symbols, $this->edges, []);
             }
         } finally {
             unset($nodes);
             $file->releaseAst();
         }
+    }
+
+    /**
+     * A stand-in symbol for a file that declares no class of its own.
+     *
+     * Pest writes tests as top-level `it(...)` calls and a route file is a script, so
+     * without this their dependencies are invisible and every class they exercise looks
+     * unused. Application files keep the previous behaviour: introducing symbols there
+     * would change what the layer and cycle rules see.
+     *
+     * @param  array<int, Node>  $nodes
+     */
+    private function fileSymbol(FileContext $file, array $nodes): ?string
+    {
+        if (str_starts_with($file->path, 'app/') || $this->declaresClassLike($nodes)) {
+            return null;
+        }
+
+        $name = '(file) '.$file->path;
+
+        $this->symbols[] = new ProjectSymbol(
+            name: $name,
+            path: $file->path,
+            line: 1,
+            namespace: '',
+            kind: 'file',
+            // Never a layer of its own. Classifying by path would make
+            // `routes/Actions/billing.php` an `application` symbol whose dependencies
+            // then produce layer findings, which is not what a stand-in is for. Both
+            // roles used here are permissive sources in LayerPolicy.
+            role: RoleClassifier::isTestPath($file->path) ? RoleClassifier::TEST : 'unknown',
+            hasMethods: false,
+        );
+
+        return $name;
+    }
+
+    /**
+     * @param  array<int, Node>  $nodes
+     */
+    private function declaresClassLike(array $nodes): bool
+    {
+        return PhpAst::containsAny(
+            $nodes,
+            static fn (Node $node): bool => $node instanceof Stmt\ClassLike && $node->name !== null,
+        );
     }
 
     public function finish(): ProjectGraphSnapshot
@@ -111,6 +160,7 @@ final class ProjectGraphBuilder
                     namespace: $this->namespaceOf($source),
                     kind: $kind,
                     role: $this->roles->classify($file->path, $node->name->toString(), $kind, $hasMethods),
+                    hasMethods: $node->getMethods() !== [],
                 );
             }
         }

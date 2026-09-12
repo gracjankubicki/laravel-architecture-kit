@@ -8,10 +8,12 @@ use GracjanKubicki\ArchitectureKit\Commands\ArchitectureContextCommand;
 use GracjanKubicki\ArchitectureKit\Commands\AuditCommand;
 use GracjanKubicki\ArchitectureKit\Commands\DoctorCommand;
 use GracjanKubicki\ArchitectureKit\Commands\ExplainCommand;
+use GracjanKubicki\ArchitectureKit\Commands\FileRulesCommand;
 use GracjanKubicki\ArchitectureKit\Commands\GuardCommand;
 use GracjanKubicki\ArchitectureKit\Commands\GuidelinesCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallAgentsCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallCommand;
+use GracjanKubicki\ArchitectureKit\Commands\MakeCommand;
 use GracjanKubicki\ArchitectureKit\Commands\McpCommand;
 use GracjanKubicki\ArchitectureKit\Commands\PlanCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SyncCommand;
@@ -42,10 +44,12 @@ class ArchitectureKitServiceProvider extends ServiceProvider
             AuditCommand::class,
             DoctorCommand::class,
             ExplainCommand::class,
+            FileRulesCommand::class,
             GuardCommand::class,
             GuidelinesCommand::class,
             InstallAgentsCommand::class,
             InstallCommand::class,
+            MakeCommand::class,
             McpCommand::class,
             PlanCommand::class,
             SyncCommand::class,

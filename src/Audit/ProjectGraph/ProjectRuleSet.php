@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\LayerDependencyRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\MissingTestRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\NamespaceCycleRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\PortBypassRule;
 
 final readonly class ProjectRuleSet
 {
+    public function __construct(private MissingTestLevel $missingTestLevel = MissingTestLevel::Off) {}
+
     /**
      * @return array<int, ProjectAuditRule>
      */
@@ -19,6 +23,7 @@ final readonly class ProjectRuleSet
             new PortBypassRule,
             new LayerDependencyRule,
             new NamespaceCycleRule,
+            new MissingTestRule($this->missingTestLevel),
         ];
     }
 }

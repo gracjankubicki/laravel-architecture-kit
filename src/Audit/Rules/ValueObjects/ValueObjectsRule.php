@@ -17,6 +17,14 @@ use PhpParser\NodeVisitorAbstract;
 final readonly class ValueObjectsRule implements AuditRule
 {
     /**
+     * Suffixes that restate what the folder already says. Scaffolding reads the same
+     * list, so a generated class cannot be rejected by the rule that defines it.
+     *
+     * @var array<int, string>
+     */
+    public const FORBIDDEN_SUFFIXES = ['Value', 'ValueObject', 'Vo'];
+
+    /**
      * @param  array<int, Architecture|string>  $enabled
      */
     public function supports(string $path, array $enabled): bool
@@ -78,9 +86,13 @@ final readonly class ValueObjectsRule implements AuditRule
 
     private function hasForbiddenValueObjectSuffix(string $class): bool
     {
-        return str_ends_with($class, 'Value')
-            || str_ends_with($class, 'ValueObject')
-            || str_ends_with($class, 'Vo');
+        foreach (self::FORBIDDEN_SUFFIXES as $suffix) {
+            if (str_ends_with($class, $suffix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

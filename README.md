@@ -32,11 +32,42 @@ This package is installed as a runtime dependency because the committed architec
 | Capability | What it provides | Enforced by guard? |
 | --- | --- | --- |
 | Guidance | Generated guidelines, skills, and MCP resources | No — prose is advice for agents and reviewers. |
+| File rules | The rules that govern one path, each marked enforced or advisory | No — it tells the agent what will be checked before it writes. |
+| Scaffolding | The files and skeletons a new element of an enabled architecture needs | No — the skeleton is built to pass the audit that follows. |
 | Project context | Static dependencies, dependents, roles, violations, and inspect paths for one PHP symbol | No — it informs the change before coding. |
 | Audit | Deterministic AST and filesystem findings | Yes, for implemented audit rules. |
 | Guard | Doctor plus audit as a CI/hook gate | Yes, according to selected architectures and strict mode. |
 
 Guidance is intentionally broader than the rules that can be verified deterministically. Add project-specific custom audit rules when a local policy, such as bilingual documentation, must be enforced.
+
+Because that gap is invisible in a green guard, `architecture-kit:file-rules` reports it per file. Each architecture is marked `enforced` when a rule can detect a violation, or `advisory` when it ships guidance only. `laravel-best-practices` is advisory today, and it is part of the default selection, so most projects carry guidance no rule verifies:
+
+```bash
+php artisan architecture-kit:file-rules app/Actions/CreateInvoice.php
+```
+
+```text
+enforced  governs   actions                    actions, folder-purity
+enforced  shared    form-requests              form-request
+advisory  shared    laravel-best-practices     guidance only
+```
+
+`governs` marks the architecture that describes the file. `shared` marks an architecture whose rule also runs here without the file belonging to it, which matters when deciding which guideline to read.
+
+Custom audit rules registered under `rules` in `config/architectures.php` are reported too, in a separate `project` list, because they fail the same gate as the built-in ones. Rules that run over the whole project rather than per file, such as `layer-dependency` and `namespace-cycle`, are reported as always active.
+
+### Scaffolding a new element
+
+`architecture-kit:make` emits the folder, namespace, naming, and base-class conventions the project already declares, so an agent does not rebuild them from prose:
+
+```bash
+php artisan architecture-kit:make actions CreateInvoice
+php artisan architecture-kit:make actions Billing/CreateInvoice
+```
+
+The interactive command writes the files and never overwrites an existing one. With `--agent`, and through the `scaffold` MCP tool, nothing is written: the plan and the skeleton are returned and the agent decides what to create. Skeletons are built to pass this package's own audit, and a test verifies that for every supported architecture.
+
+A name must be a plain PHP identifier, optionally prefixed with `/`-separated sub-namespaces. A name that would escape the architecture folder is rejected, as is a name whose suffix marks a different kind of class, such as `CreateInvoiceData` inside `app/Actions`.
 
 ## Installation
 
@@ -115,6 +146,10 @@ php artisan architecture-kit:sync --no-interaction
 php artisan architecture-kit:sync --dry-run --agent
 php artisan architecture-kit:guidelines
 php artisan architecture-kit:guidelines actions --agent
+php artisan architecture-kit:file-rules app/Actions/CreateInvoice.php
+php artisan architecture-kit:file-rules app/Actions/CreateInvoice.php --agent
+php artisan architecture-kit:make actions CreateInvoice
+php artisan architecture-kit:make actions CreateInvoice --agent
 php artisan architecture-kit:context 'App\Actions\CreateInvoice' --agent
 php artisan architecture-kit:context app/Actions/CreateInvoice.php
 php artisan architecture-kit:guard --changed --strict
@@ -156,7 +191,7 @@ Use `architecture-kit:audit --update-baseline` when adopting Architecture Kit in
 
 ### Project Architecture Graph
 
-Architecture Kit parses every non-excluded `app/**/*.php` file into one deterministic graph. It records project classes, interfaces, traits and enums plus evidenced dependencies such as constructor and method types, inheritance, implementations, instantiation, static calls, class constants, enum cases and traits. Imports alone are not dependencies. Role classification follows architecture path segments in both top-level and domain-first layouts.
+Architecture Kit parses every non-excluded PHP file in the audited scope into one deterministic graph. The scope is `app/` unless the project widens it. It records project classes, interfaces, traits and enums plus evidenced dependencies such as constructor and method types, inheritance, implementations, instantiation, static calls, class constants, enum cases and traits. Imports alone are not dependencies. Role classification follows architecture path segments in both top-level and domain-first layouts.
 
 The graph distinguishes strong executable/type dependencies from weak context-only references. `SomeClass::class` and Eloquent relationship targets are visible to context, but do not independently trigger layer errors or namespace-cycle warnings. The graph is static: dynamic service-container bindings, runtime reflection and dependencies assembled from strings cannot be guaranteed.
 
@@ -167,6 +202,38 @@ Three graph-aware findings are available:
 - `W_NAMESPACE_CYCLE` for a deterministic strongly connected component between project namespaces.
 
 `audit.exclude`, inline ignores and the baseline apply to graph findings as they do to file findings. Changed-only audit still builds the full graph so an edited edge can reveal a cycle through unchanged files; reporting remains focused on findings anchored in changed source files.
+
+### Audit scope beyond app/
+
+Business logic closed inside a route file used to be invisible: the audit only read `app/`, so a green gate could mean nothing more than where the file was saved. A project can widen the scope:
+
+```php
+// config/architectures.php
+'audit' => [
+    'paths' => ['routes'],
+],
+```
+
+A route closure that validates a request, writes to a model, opens a transaction, or dispatches a job is then reported as `route-logic`, using the same signals the package already applies to controllers. Files outside the scope stay unread, so a project that does not change its configuration gets exactly the audit it had before upgrading.
+
+### Missing tests
+
+Skipping tests is a systematic weakness of coding agents, and guidance written in prose does not change a gate result. The `missing-test` rule reports an architecture element that no test depends on:
+
+```php
+// config/architectures.php
+'audit' => [
+    'missing_test' => 'warn', // 'off' (default), 'warn', 'error'
+],
+```
+
+The rule reads the dependency graph rather than a naming or folder convention, so it covers every architecture wherever its elements live, and a test that exercises an element through another class still counts. Classless Pest tests count too: a file with no class of its own contributes its dependencies to the graph under a stand-in symbol.
+
+Interfaces and traits are not reported, because neither is tested on its own. An enum is reported only when it declares methods: a plain set of cases has nothing to assert beyond the language itself, while a method on an enum is behaviour like any other.
+
+Enabling it also brings `tests/` into the audited scope. That is not optional: without test files in the graph the rule would see no test for anything and report every class, including well covered ones. Rules written for application code never fire inside test files.
+
+The rule is off unless a project asks for it. Measured on an application with 6305 files under `app/` and 5153 test files, enabling it by default would have produced roughly 700 findings on the first run after an upgrade.
 
 Recommended agent flow:
 

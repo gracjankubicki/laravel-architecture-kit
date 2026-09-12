@@ -74,6 +74,8 @@ class AuditCommand extends Command
                 customRules: $state->customRules,
                 useBaseline: ! (bool) $this->option('no-baseline'),
                 updateBaseline: (bool) $this->option('update-baseline'),
+                scope: $state->auditScope,
+                missingTestLevel: $state->missingTestLevel,
             );
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {

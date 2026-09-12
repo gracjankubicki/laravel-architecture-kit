@@ -12,8 +12,10 @@ use GracjanKubicki\ArchitectureKit\Mcp\Tools\AuditChanged;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Doctor;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\EnabledArchitectures;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ExplainFinding;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\FileRules;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Guard;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\PlanUpgrade;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\Scaffold;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\ServerContext;
 
@@ -38,6 +40,8 @@ MARKDOWN;
         EnabledArchitectures::class,
         ArchitectureRules::class,
         ArchitectureContext::class,
+        FileRules::class,
+        Scaffold::class,
         Doctor::class,
         AuditChanged::class,
         Guard::class,

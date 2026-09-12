@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
@@ -14,6 +15,7 @@ final readonly class ProjectGraphLoader
     public function __construct(
         private Filesystem $files,
         private string $basePath,
+        private AuditScope $scope = new AuditScope,
     ) {}
 
     /**
@@ -39,23 +41,37 @@ final readonly class ProjectGraphLoader
      */
     public function stream(array $exclude = []): iterable
     {
-        if (! $this->files->isDirectory($this->basePath.'/app')) {
-            return;
-        }
+        foreach ($this->scope->directories as $directory) {
+            $absolute = $this->basePath.'/'.$directory;
 
-        foreach ($this->files->allFiles($this->basePath.'/app') as $file) {
-            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'php') {
+            // A configured directory that does not exist is not an error: a project may
+            // list one it has not created yet.
+            if (! $this->files->isDirectory($absolute)) {
                 continue;
             }
 
-            $path = ProjectPath::relative($this->basePath, $file->getPathname());
+            foreach ($this->files->allFiles($absolute) as $file) {
+                if (! $file instanceof SplFileInfo || $file->getExtension() !== 'php') {
+                    continue;
+                }
 
-            if ($this->isExcluded($path, $exclude)) {
-                continue;
+                $path = ProjectPath::relative($this->basePath, $file->getPathname());
+
+                // A test file stays in the graph even when an exclusion pattern matches
+                // it: the scope only contains tests/ because the missing-test rule needs
+                // them, and hiding some would make covered classes look untested.
+                if (! $this->isRequiredTestFile($path) && $this->isExcluded($path, $exclude)) {
+                    continue;
+                }
+
+                yield new FileContext($path, $this->files->get($file->getPathname()));
             }
-
-            yield new FileContext($path, $this->files->get($file->getPathname()));
         }
+    }
+
+    private function isRequiredTestFile(string $path): bool
+    {
+        return $this->scope->includesTests() && $this->scope->isTestPath($path);
     }
 
     /** @param array<int, string> $exclude */

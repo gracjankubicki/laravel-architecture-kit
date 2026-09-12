@@ -24,6 +24,50 @@ final class ProjectPath
     {
         $path = str_replace('\\', '/', $path);
 
-        return preg_replace('#/+#', '/', $path) ?? $path;
+        $path = preg_replace('#/+#', '/', $path) ?? $path;
+
+        return self::resolveTraversal($path);
+    }
+
+    /**
+     * Collapses `.` and `..` lexically so a caller-supplied path is compared against
+     * the base in the same shape the audit would see. Without it `app/../routes/api.php`
+     * reads as an application file even though the audit never loads it.
+     */
+    private static function resolveTraversal(string $path): string
+    {
+        if (! str_contains($path, '.')) {
+            return $path;
+        }
+
+        $leading = str_starts_with($path, '/') ? '/' : '';
+        $trailing = str_ends_with($path, '/') && rtrim($path, '/') !== '' ? '/' : '';
+        $resolved = [];
+
+        foreach (explode('/', trim($path, '/')) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+
+            if ($segment !== '..') {
+                $resolved[] = $segment;
+
+                continue;
+            }
+
+            $last = end($resolved);
+
+            // A `..` that would escape the root is kept, otherwise an absolute path
+            // outside the base would silently collapse into a relative one.
+            if ($last === false || $last === '..') {
+                $resolved[] = '..';
+
+                continue;
+            }
+
+            array_pop($resolved);
+        }
+
+        return $leading.implode('/', $resolved).($resolved === [] ? '' : $trailing);
     }
 }
