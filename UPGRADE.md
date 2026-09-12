@@ -1,5 +1,40 @@
 # Upgrade Guide
 
+## Upgrading to v0.4.0 from v0.3.x
+
+Nothing in this release changes what the audit reports for a project that changes no configuration. The wider audit scope and the `missing-test` rule are both opt-in, and the rest is additive. Three things are worth knowing before you update.
+
+### The project graph is cached on disk, by default
+
+A run now keeps the graph it built and reuses the parts that did not change. The entry lives in `storage/framework/cache/architecture-kit`, which Laravel's own `.gitignore` already excludes, and it is sizeable: 33.8 MB for an application with 11566 files. Restoring it peaks at several times that in memory, so on a constrained `memory_limit` the cache steps aside and the run rebuilds instead of failing.
+
+The cache is invalidated by file modification time and size, by the enabled architectures, custom rules and audited scope, and by the package version. If you ever suspect it:
+
+```bash
+php artisan architecture-kit:cache-clear
+```
+
+To turn it off, or to put it elsewhere:
+
+```php
+// config/architectures.php
+'audit' => [
+    'cache' => false,              // or 'storage/graphs'
+],
+```
+
+One case the invalidation cannot see: content changed while both the timestamp and the size stayed identical. Git, editors and agents all move the timestamp; `rsync -a`, an archive unpacked with its timestamps and `touch -r` do not. Clear the cache after one of those.
+
+### `architecture-kit:context` orders relationships by impact
+
+Relationships used to come back in alphabetical order. They are now ordered by what a change would break: inheritance and contracts first, then types in a signature, then executable references, then weak ones. `--limit` therefore cuts the least dangerous relationship instead of the last one by name, and a subclass that stops loading can no longer fall out of the answer while a passing type reference stays in it.
+
+If you parse that output, the order has changed and each relationship now carries an `impact` field. The answer also carries the tests covering the symbol.
+
+### Agent output can carry a `cache` field
+
+`audit`, `guard` and `context` add `cache` to their `--agent` output when a stored graph had to be rejected, and `guard --json` does the same. It is declared in the published schemas, so a consumer validating against them needs no change. It appears only when there is something to report; an ordinary run says nothing.
+
 ## Upgrading to v0.3.0 from v0.2.x
 
 v0.3.0 contains no new features. It fixes correctness and reliability problems in the audit, the guard, and the generated agent hook. Three of those fixes can surface as new failures in a project that did not change any of its own code, so review them before updating.

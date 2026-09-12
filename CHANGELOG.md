@@ -2,7 +2,11 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
-## Unreleased
+## v0.4.0 - 2026-09-12
+
+This release is about the moment before an agent writes code and the moment after it does. It answers which rules govern a file that does not exist yet, scaffolds that file so it passes the audit, reports what a change to a symbol would break and which tests cover it, and explains a finding against the symbol at fault rather than restating the rule. The audit can now read outside `app/`, where an agent could previously hide logic and leave the gate green. The project graph is kept between runs, which takes `guard --changed` from 6.44s to 0.47s on a large application.
+
+A project that changes no configuration gets exactly the audit it had before: the new scope and the `missing-test` rule are both opt-in. The graph cache is on by default because it changes how long an answer takes, not what it says. See [UPGRADE.md](UPGRADE.md) before updating.
 
 ### Added
 
