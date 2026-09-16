@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
+
 /**
  * What one file contributed to the graph.
  *
@@ -17,9 +19,11 @@ final readonly class FileGraphEntry
     /**
      * @param  array<int, ProjectSymbol>  $symbols
      * @param  array<int, DependencyEdge>  $edges
+     * @param  list<TestInvocation>  $testInvocations
      */
     public function __construct(
         public array $symbols,
         public array $edges,
+        public array $testInvocations = [],
     ) {}
 }

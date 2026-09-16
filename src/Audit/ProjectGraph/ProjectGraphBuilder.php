@@ -7,6 +7,8 @@ namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
+use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocationExtractor;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Name;
@@ -20,6 +22,9 @@ final class ProjectGraphBuilder
     /** @var array<int, DependencyEdge> */
     private array $edges = [];
 
+    /** @var list<TestInvocation> */
+    private array $testInvocations = [];
+
     public function __construct(private readonly RoleClassifier $roles = new RoleClassifier) {}
 
     /**
@@ -29,6 +34,7 @@ final class ProjectGraphBuilder
     {
         $this->symbols = [];
         $this->edges = [];
+        $this->testInvocations = [];
 
         foreach ($files as $file) {
             $this->add($file);
@@ -53,6 +59,7 @@ final class ProjectGraphBuilder
     {
         array_push($this->symbols, ...$entry->symbols);
         array_push($this->edges, ...$entry->edges);
+        array_push($this->testInvocations, ...$entry->testInvocations);
     }
 
     /**
@@ -71,6 +78,7 @@ final class ProjectGraphBuilder
                 return new FileGraphEntry([], []);
             }
 
+            $invocations = (new TestInvocationExtractor)->extract($file);
             $source = $this->fileSymbol($file, $nodes, $symbols);
 
             foreach ($nodes as $node) {
@@ -81,7 +89,7 @@ final class ProjectGraphBuilder
             $file->releaseAst();
         }
 
-        return new FileGraphEntry($symbols, $this->distinct($edges));
+        return new FileGraphEntry($symbols, $this->distinct($edges), $invocations);
     }
 
     /**
@@ -165,6 +173,7 @@ final class ProjectGraphBuilder
         return new ProjectGraphSnapshot(
             $this->sorted($symbols, static fn (ProjectSymbol $symbol): string => self::key($symbol->name, $symbol->path, $symbol->line)),
             $this->sorted($edges, static fn (DependencyEdge $edge): string => self::key($edge->from, $edge->to, $edge->path, $edge->line, $edge->kind)),
+            $this->testInvocations,
         );
     }
 

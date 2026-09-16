@@ -14,6 +14,18 @@ use Illuminate\Support\Facades\Artisan;
 
 class GuardCommandTest extends TestCase
 {
+    public function test_incomplete_test_analysis_alone_blocks_strict_guard(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn']];");
+        $this->writeFile('tests/Feature/DynamicTest.php', "<?php it('dynamic', function () { \$this->get(\$url); });");
+        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
+        $payload = json_decode(trim(Artisan::output()), true);
+        $this->assertSame('ok', $payload['doctor']);
+        $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true]));
+    }
+
     public function test_guard_agent_output_reports_audit_findings_without_changing_json_contract(): void
     {
         $this->writeCurrentResources([

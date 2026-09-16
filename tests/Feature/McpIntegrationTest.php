@@ -22,6 +22,7 @@ use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\UpgradeGuideResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Artisan;
 use Laravel\Mcp\Enums\ProtocolVersion;
 use Laravel\Mcp\Facades\Mcp;
 use Laravel\Mcp\Server\Contracts\Transport;
@@ -30,6 +31,23 @@ use Symfony\Component\Process\Process;
 
 class McpIntegrationTest extends TestCase
 {
+    public function test_incomplete_test_analysis_has_the_same_cli_and_mcp_finding(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn']];");
+        $this->writeFile('tests/Feature/DynamicTest.php', "<?php it('dynamic', function () { \$this->get(\$url); });");
+        Artisan::call('architecture-kit:audit', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true);
+        foreach ([AuditChanged::class, Guard::class] as $tool) {
+            ArchitectureKitServer::tool($tool, ['changed' => false, 'strict' => true])
+                ->assertOk()
+                ->assertStructuredContent(fn ($json) => $json
+                    ->where('ok', false)
+                    ->where('find', $payload['find'])
+                    ->etc());
+        }
+    }
+
     public function test_mcp_server_version_is_read_from_composer_metadata(): void
     {
         $server = new ArchitectureKitServer(new FakeTransporter);

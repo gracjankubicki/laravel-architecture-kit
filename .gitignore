@@ -7,3 +7,5 @@
 /implementation-plans
 .DS_Store
 /docs
+/.playwright-mcp/
+/REPO-REVIEW.md

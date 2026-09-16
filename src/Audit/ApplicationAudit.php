@@ -14,6 +14,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerReadAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
+use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestReachability;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
@@ -172,9 +173,19 @@ final class ApplicationAudit
         // check its budget on the path where the whole graph arrives at once.
         $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
 
-        foreach ((new ProjectRuleSet($missingTestLevel))->rules() as $rule) {
+        $reachability = null;
+        if ($missingTestLevel->isEnabled()) {
+            $testReachability = new TestReachability($this->files, $this->basePath);
+            if ($testReachability->needsRoutes($graph)) {
+                $routes ??= RouteMap::fresh($this->basePath);
+            }
+            $reachability = $testReachability->analyze($graph, $routes);
+        }
+
+        foreach ((new ProjectRuleSet($missingTestLevel, $reachability))->rules() as $rule) {
             foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
                 $findingsByPath[$finding->path][] = $finding;
+                $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)));
             }
         }
 

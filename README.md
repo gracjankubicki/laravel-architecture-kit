@@ -79,7 +79,7 @@ The audit follows reachable project method bodies without executing endpoints. R
 
 Route discovery boots Laravel in a fresh child PHP process, with a process-local route-cache override. It does not dispatch a request or instantiate controllers, and does not clear the application's route cache. Normal application bootstrap code still runs. This keeps a long-lived MCP server from using routes from its initial boot. The timeout is 15 seconds; boot failure becomes an explicit incomplete-analysis finding when relevant. Programmatic callers without a Laravel bootstrap can pass a fresh `RouteMap::fromRoutes($router->getRoutes())` as the optional `routes` argument to `ApplicationAudit::run()`.
 
-Analysis is limited to 12 method levels, 128 method visits and 20,000 AST nodes per endpoint, 100 KB per source file and 1 MB of retained source per controller, with an additional PHP memory headroom check. A cycle or exceeded budget is incomplete analysis. Source lookup stays in the configured project graph; excluded/out-of-scope dependencies are unresolved. The graph cache format is unchanged. In `--changed`, changed dependencies recheck their controller dependents; edits under routes/bootstrap/config/providers and deleted inputs recheck all controllers. Custom route-registration files outside those locations require a full audit.
+Analysis is limited to 12 method levels, 128 method visits and 20,000 AST nodes per endpoint, 100 KB per source file and 1 MB of retained source per controller, with an additional PHP memory headroom check. A cycle or exceeded budget is incomplete analysis. Source lookup stays in the configured project graph; excluded/out-of-scope dependencies are unresolved. The graph cache also stores static test-invocation metadata. Package fingerprinting invalidates older entries; fresh route snapshots are not cached. In `--changed`, changed dependencies recheck their controller dependents; edits under routes/bootstrap/config/providers and deleted inputs recheck all controllers. Custom route-registration files outside those locations require a full audit.
 
 ## Installation
 
@@ -259,7 +259,7 @@ A route closure that validates a request, writes to a model, opens a transaction
 
 ### Missing tests
 
-Skipping tests is a systematic weakness of coding agents, and guidance written in prose does not change a gate result. The `missing-test` rule reports an architecture element that no test depends on:
+The `missing-test` rule reports architecture elements without a statically identified relationship to a test:
 
 ```php
 // config/architectures.php
@@ -268,7 +268,15 @@ Skipping tests is a systematic weakness of coding agents, and guidance written i
 ],
 ```
 
-The rule reads the dependency graph rather than a naming or folder convention, so it covers every architecture wherever its elements live, and a test that exercises an element through another class still counts. Classless Pest tests count too: a file with no class of its own contributes its dependencies to the graph under a stand-in symbol.
+The rule combines existing transitive class references with Laravel HTTP and factory analysis. It applies across architectures and supports classless Pest tests.
+
+HTTP calls use a fresh route map to select the handler by verb and address, including named and resource routes and unambiguous symbolic IDs. Analysis follows the selected method and its calls. Testing `update` does not automatically link `destroy` or unused injected dependencies. Route discovery boots Laravel in an isolated process; the audit never executes the endpoint or deletes the application's route cache.
+
+`Model::factory()` resolves supported Laravel declarations and naming conventions. A `HasFactory<T>` annotation confirms a mapping but cannot override runtime selection. A factory is linked as test setup, not proof that its states are tested. Include `database` in `audit.paths` to analyze factory classes; only `tests` is added automatically.
+
+`W_MISSING_TEST_ANALYSIS_INCOMPLETE` identifies an unresolved address, handler, factory mapping, or analysis limit at its source. It is a warning at both enabled levels and blocks `guard --strict`. Existing inline and baseline suppression apply. Uncertainty neither credits a class nor hides unrelated missing relationships.
+
+These are static relationships, not runtime coverage or assertion-quality checks. Inspect existing behavioural tests before adding another. A meaningful endpoint test can suffice; do not add artificial `SomeClass::class` references or a separate test solely because of a class's role. Graph cache modes preserve the same analysis results and refresh the route map on each audit that needs HTTP dispatch.
 
 Interfaces and traits are not reported, because neither is tested on its own. An enum is reported only when it declares methods: a plain set of cases has nothing to assert beyond the language itself, while a method on an enum is behaviour like any other.
 

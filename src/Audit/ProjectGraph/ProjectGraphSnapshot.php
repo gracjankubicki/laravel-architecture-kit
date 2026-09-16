@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
+
 final readonly class ProjectGraphSnapshot
 {
     /** @var array<string, ProjectSymbol> */
@@ -12,10 +14,12 @@ final readonly class ProjectGraphSnapshot
     /**
      * @param  array<int, ProjectSymbol>  $symbols
      * @param  array<int, DependencyEdge>  $edges
+     * @param  list<TestInvocation>  $testInvocations
      */
     public function __construct(
         public array $symbols,
         public array $edges,
+        public array $testInvocations = [],
     ) {
         $byName = [];
 

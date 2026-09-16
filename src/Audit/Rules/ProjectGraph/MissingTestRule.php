@@ -10,16 +10,9 @@ use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectAuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
+use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestReachabilityResult;
 
-/**
- * An architecture element that no test depends on.
- *
- * The question is answered from the dependency graph rather than from a naming or
- * folder convention, so it holds for every architecture wherever its elements live, and
- * a test that exercises an element indirectly still counts. Skipping tests is a
- * systematic weakness of coding agents, and guidance written in prose does not change a
- * gate result, so it does not change behaviour either.
- */
+/** Static relationships to tests, without a claim about execution or assertions. */
 final readonly class MissingTestRule implements ProjectAuditRule
 {
     /**
@@ -35,7 +28,7 @@ final readonly class MissingTestRule implements ProjectAuditRule
      */
     private const UNTESTABLE_KINDS = ['interface', 'trait', 'file'];
 
-    public function __construct(private MissingTestLevel $level = MissingTestLevel::Off) {}
+    public function __construct(private MissingTestLevel $level = MissingTestLevel::Off, private ?TestReachabilityResult $reachability = null) {}
 
     /**
      * @param  array<int, mixed>  $enabled
@@ -48,8 +41,14 @@ final readonly class MissingTestRule implements ProjectAuditRule
             return [];
         }
 
-        $tested = $this->testedSymbols($graph);
+        $tested = $this->testedSymbols($graph) + ($this->reachability->symbols ?? []);
         $findings = [];
+        foreach ($this->reachability->diagnostics ?? [] as $key => $finding) {
+            $origins = array_keys($this->reachability->diagnosticOrigins[$key] ?? []);
+            if ($focusPaths === null || in_array($finding->path, $focusPaths, true) || array_intersect($focusPaths, $origins) !== []) {
+                $findings[] = $finding;
+            }
+        }
 
         foreach ($graph->symbols as $symbol) {
             if (! $this->isTestable($symbol) || isset($tested[strtolower($symbol->name)])) {
@@ -65,7 +64,7 @@ final readonly class MissingTestRule implements ProjectAuditRule
                 rule: 'missing-test',
                 path: $symbol->path,
                 line: $symbol->line,
-                message: "No test depends on {$symbol->name}; add one, for example ".$this->suggestedTestPath($symbol).'.',
+                message: "No static test relationship found for {$symbol->name}; check existing tests or add a test for uncovered behaviour, for example ".$this->suggestedTestPath($symbol).'.',
                 code: $this->level === MissingTestLevel::Error ? 'E_MISSING_TEST' : 'W_MISSING_TEST',
             );
         }
@@ -74,8 +73,8 @@ final readonly class MissingTestRule implements ProjectAuditRule
     }
 
     /**
-     * Symbols reachable from a test file. A test that goes through a service still
-     * covers what that service uses, so reachability is transitive.
+     * Symbols reachable from a test file. Class references retain their historical transitive semantics.
+     * Framework dispatch results are merged afterwards, without another class BFS.
      *
      * @return array<string, true>
      */

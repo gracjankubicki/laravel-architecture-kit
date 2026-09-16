@@ -19,6 +19,28 @@ final class SourceIndex
 
     private int $sourceBytes = 0;
 
+    /** @var array<string, true> */
+    private array $paths = [];
+
+    /** @return list<string> Sources consulted by this bounded lookup, including unavailable ones. */
+    public function paths(): array
+    {
+        return array_keys($this->paths);
+    }
+
+    /** @var array<string, string> */
+    private array $unavailable = [];
+
+    public function unavailableReason(string $name): ?string
+    {
+        return $this->unavailable[strtolower($name)] ?? null;
+    }
+
+    public function inScope(string $name): bool
+    {
+        return $this->graph->symbol($name) !== null;
+    }
+
     public function __construct(private Filesystem $files, private string $basePath, private ProjectGraphSnapshot $graph) {}
 
     public function get(string $name): ?SourceClass
@@ -29,6 +51,9 @@ final class SourceIndex
         }
         $this->classes[$key] = null;
         $symbol = $this->graph->symbol($name);
+        if ($symbol !== null) {
+            $this->paths[$symbol->path] = true;
+        }
         if ($symbol === null || ! $this->files->isFile($this->basePath.'/'.$symbol->path)) {
             return null;
         }
@@ -36,6 +61,8 @@ final class SourceIndex
         $limit = MemoryLimit::bytes();
         // A bounded query must not retain a second full-project syntax tree.
         if ($size > 100_000 || $this->sourceBytes + $size > 1_000_000 || ($limit !== null && memory_get_usage(true) + $size * 700 > $limit * 0.8)) {
+            $this->unavailable[$key] = 'Source or memory budget exceeded for '.$name;
+
             return null;
         }
         $this->sourceBytes += $size;
@@ -56,6 +83,7 @@ final class SourceIndex
             return true;
         }
         $frameworkParents = [
+            'Orchestra\\Testbench\\TestCase' => 'Illuminate\\Foundation\\Testing\\TestCase',
             'Illuminate\\Foundation\\Http\\FormRequest' => 'Illuminate\\Http\\Request',
             'Illuminate\\Http\\Resources\\Json\\ResourceCollection' => 'Illuminate\\Http\\Resources\\Json\\JsonResource',
             'Illuminate\\Database\\Eloquent\\Collection' => 'Illuminate\\Support\\Collection',
@@ -67,12 +95,23 @@ final class SourceIndex
             return $this->isA($frameworkParents[$name], $parent, $depth + 1);
         }
         if ($depth >= 12) {
+            $this->unavailable[strtolower($name)] = 'Inheritance depth budget exceeded for '.$name;
+
             return false;
         }
         $source = $this->get($name);
         $extends = $source?->node instanceof Node\Stmt\Class_ ? $source->node->extends : null;
 
-        return $extends !== null && $this->isA($source->file->resolvedName($extends), $parent, $depth + 1);
+        if ($extends === null) {
+            return false;
+        }
+        $base = $source->file->resolvedName($extends);
+        $matches = $this->isA($base, $parent, $depth + 1);
+        if (! $matches && ($reason = $this->unavailableReason($base)) !== null) {
+            $this->unavailable[strtolower($name)] = $reason;
+        }
+
+        return $matches;
     }
 
     /** @return array{SourceClass, Node\Stmt\ClassMethod}|null */
@@ -94,10 +133,19 @@ final class SourceIndex
                 if ($found !== null) {
                     return $found;
                 }
+                if (($reason = $this->unavailableReason($source->file->resolvedName($trait))) !== null) {
+                    $this->unavailable[strtolower($class)] = $reason;
+                }
             }
         }
         if ($source->node instanceof Node\Stmt\Class_ && $source->node->extends !== null) {
-            return $this->method($source->file->resolvedName($source->node->extends), $method, $depth + 1);
+            $parent = $source->file->resolvedName($source->node->extends);
+            $found = $this->method($parent, $method, $depth + 1);
+            if ($found === null && ($reason = $this->unavailableReason($parent)) !== null) {
+                $this->unavailable[strtolower($class)] = $reason;
+            }
+
+            return $found;
         }
 
         return null;

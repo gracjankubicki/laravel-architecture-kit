@@ -39,6 +39,7 @@ final class ArchitectureResources
             $this->composition($enabled),
             $this->architectureIndex($enabled),
             $this->compactGlobalRules(),
+            $this->behaviouralTestGuidance(),
             $this->beforeFinishing(),
         ]);
 
@@ -60,6 +61,7 @@ final class ArchitectureResources
             $this->globalRules(),
             $this->packageFirstRule(),
             $this->testabilityRule(),
+            $this->behaviouralTestGuidance(),
             $this->enabledArchitectures($enabled),
             $this->composition($enabled),
             $this->architectureRules($enabled),
@@ -78,6 +80,7 @@ final class ArchitectureResources
             'Status: '.(in_array($architecture->slug(), $this->enabledSlugs($enabled), true) ? 'enabled globally.' : 'available, not enabled globally.'),
             'Skill: `'.$architecture->skillName().'`',
             trim($this->sourceContents($architecture, 'guideline', $enabled)),
+            $this->behaviouralTestGuidance(),
         ]);
     }
 
@@ -97,7 +100,7 @@ final class ArchitectureResources
 
             $skills[$architecture->slug()] = new GeneratedFile(
                 path: $this->projectPath.'/.ai/skills/'.$architecture->skillName().'/SKILL.md',
-                contents: GeneratedResourceMarker::skill($contents),
+                contents: GeneratedResourceMarker::skill(rtrim($contents)."\n\n".$this->behaviouralTestGuidance()."\n"),
             );
         }
 
@@ -305,6 +308,11 @@ Architecture folder purity:
 - `app/Exceptions/**` contains Exceptions only.
 - If the project uses domain-first structure, keep the same purity under the domain folder, for example `app/Documents/Actions`, `app/Documents/Data`, `app/Documents/Enums`, and `app/Documents/Exceptions`.
 MARKDOWN;
+    }
+
+    private function behaviouralTestGuidance(): string
+    {
+        return 'Choose tests for changed behaviour, regressions, and risk. A meaningful endpoint or public-entry test can suffice; a class role alone does not require a separate test. Factory use is setup, and static class references do not prove execution or meaningful assertions.';
     }
 
     private function testabilityRule(): string

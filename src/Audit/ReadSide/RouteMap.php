@@ -13,8 +13,9 @@ final readonly class RouteMap
 {
     /**
      * @param  array<string, list<string>>  $methods
+     * @param  list<RouteEntry>|null  $entries
      */
-    public function __construct(public array $methods = [], public ?string $unavailable = null) {}
+    public function __construct(public array $methods = [], public ?string $unavailable = null, public ?array $entries = null) {}
 
     /**
      * @param  iterable<Route>  $routes
@@ -22,7 +23,9 @@ final readonly class RouteMap
     public static function fromRoutes(iterable $routes): self
     {
         $methods = [];
+        $entries = [];
         foreach ($routes as $route) {
+            $entries[] = RouteEntry::fromRoute($route);
             if ($route->getControllerClass() === null) {
                 continue;
             }
@@ -35,13 +38,40 @@ final readonly class RouteMap
         }
         ksort($methods);
 
-        return new self($methods);
+        return new self($methods, entries: $entries);
     }
 
     /** @return list<string> */
     public function verbs(string $class, string $method): array
     {
         return $this->methods[strtolower(ltrim($class, '\\').'::'.$method)] ?? [];
+    }
+
+    /** @return array<string, mixed> */
+    public function snapshot(): array
+    {
+        return ['version' => 1, 'entries' => array_map(fn (RouteEntry $entry): array => $entry->toArray(), $this->entries ?? [])];
+    }
+
+    public static function fromSnapshot(mixed $data): self
+    {
+        if (! is_array($data) || ($data['version'] ?? null) !== 1 || ! is_array($data['entries'] ?? null) || ! array_is_list($data['entries'])) {
+            throw new \UnexpectedValueException('Invalid route snapshot.');
+        }
+        $entries = [];
+        $methods = [];
+        foreach ($data['entries'] as $value) {
+            $entry = RouteEntry::fromArray($value);
+            $entries[] = $entry;
+            if ($entry->class !== null && $entry->method !== null) {
+                $key = strtolower($entry->class.'::'.$entry->method);
+                $methods[$key] = array_values(array_unique([...($methods[$key] ?? []), ...$entry->verbs]));
+                sort($methods[$key]);
+            }
+        }
+        ksort($methods);
+
+        return new self($methods, entries: $entries);
     }
 
     public static function fresh(string $basePath): self
@@ -63,21 +93,9 @@ final readonly class RouteMap
                 return new self(unavailable: 'Fresh Laravel route discovery failed; inspect application boot separately.');
             }
             $data = json_decode(substr($output, $marker + strlen('ARCHITECTURE_KIT_ROUTES=')), true, flags: JSON_THROW_ON_ERROR);
-            if (! is_array($data)) {
-                throw new \UnexpectedValueException('Invalid route snapshot.');
-            }
-            foreach ($data as $key => $verbs) {
-                if (! is_string($key) || ! is_array($verbs) || ! array_is_list($verbs)) {
-                    throw new \UnexpectedValueException('Invalid route entry.');
-                }
-                foreach ($verbs as $verb) {
-                    if (! is_string($verb)) {
-                        throw new \UnexpectedValueException('Invalid HTTP verb.');
-                    }
-                }
-            }
 
-            return new self($data);
+            return self::fromSnapshot($data);
+
         } catch (Throwable) {
             return new self(unavailable: 'Fresh Laravel route discovery is unavailable or exceeded its 15 second limit.');
         }

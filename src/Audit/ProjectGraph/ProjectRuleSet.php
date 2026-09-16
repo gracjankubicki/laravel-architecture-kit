@@ -9,10 +9,11 @@ use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\LayerDependencyRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\MissingTestRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\NamespaceCycleRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\PortBypassRule;
+use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestReachabilityResult;
 
 final readonly class ProjectRuleSet
 {
-    public function __construct(private MissingTestLevel $missingTestLevel = MissingTestLevel::Off) {}
+    public function __construct(private MissingTestLevel $missingTestLevel = MissingTestLevel::Off, private ?TestReachabilityResult $reachability = null) {}
 
     /**
      * @return array<int, ProjectAuditRule>
@@ -23,7 +24,7 @@ final readonly class ProjectRuleSet
             new PortBypassRule,
             new LayerDependencyRule,
             new NamespaceCycleRule,
-            new MissingTestRule($this->missingTestLevel),
+            new MissingTestRule($this->missingTestLevel, $this->reachability),
         ];
     }
 }

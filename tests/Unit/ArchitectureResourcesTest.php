@@ -33,6 +33,16 @@ class ArchitectureResourcesTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_behavioural_test_guidance_is_present_in_each_generated_form(): void
+    {
+        $resources = $this->resources();
+        $enabled = [Architecture::Actions];
+        foreach ([$resources->guideline($enabled)->contents, $resources->fullGuideline($enabled), $resources->architectureGuideline(Architecture::Actions, $enabled), $resources->skills($enabled)['actions']->contents] as $text) {
+            $this->assertStringContainsString('class role alone does not require a separate test', $text);
+            $this->assertStringContainsString('static class references do not prove execution or meaningful assertions', $text);
+        }
+    }
+
     public function test_compact_guideline_stays_within_token_budget(): void
     {
         $resources = $this->resources();

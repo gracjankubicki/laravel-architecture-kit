@@ -8,6 +8,7 @@ use Illuminate\Contracts\Console\Kernel;
 $projectPath = $_SERVER['argv'][1] ?? throw new InvalidArgumentException('Missing project path.');
 require $projectPath.'/vendor/autoload.php';
 require_once __DIR__.'/RouteMap.php';
+require_once __DIR__.'/RouteEntry.php';
 $application = require $projectPath.'/bootstrap/app.php';
 $application->make(Kernel::class)->bootstrap();
-echo 'ARCHITECTURE_KIT_ROUTES='.json_encode(RouteMap::fromRoutes($application->make('router')->getRoutes())->methods, JSON_THROW_ON_ERROR);
+echo 'ARCHITECTURE_KIT_ROUTES='.json_encode(RouteMap::fromRoutes($application->make('router')->getRoutes())->snapshot(), JSON_THROW_ON_ERROR);

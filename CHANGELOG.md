@@ -4,6 +4,10 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ## Unreleased
 
+## v0.4.1 - 2026-09-16
+
+- Resolve Laravel HTTP and factory test relationships for missing-test without crediting unrelated methods. Report incomplete analysis as a warning that blocks strict guard, and clarify that static relationships do not prove execution or assertion quality.
+
 ### Fixed
 
 - Clarify that Saloon owns application-written direct HTTP while appropriate official SDKs keep HTTP or gRPC inside provider adapters. Generated guidance now separates Action tests from adapter tests and requires an SDK isolation seam for transport, credentials, authentication, and token refresh. The audit allows integration DTO mapping inside infrastructure adapters, rejects those DTOs in Port signatures, and reports HTTP adapters that bypass an available Port without granting a general `Client` exception.

@@ -31,7 +31,10 @@ final readonly class ProjectGraphCache
      * replaced. Being wrong here means an allocation failure, the one outcome a cache
      * must never cause.
      */
-    private const MEMORY_PER_STORED_BYTE = 8;
+    // GH-13: 50,000 short invocations / 10,000 entries measured 9.88x in
+    // an isolated read process (11.18 MB -> 110.46 MB extra peak). Long URIs
+    // measured 4.42x. Fourteen retains over 40% margin for the dense shape.
+    private const MEMORY_PER_STORED_BYTE = 14;
 
     /**
      * Extra memory a write needs, as a multiple of the entry being written.
@@ -181,6 +184,15 @@ final readonly class ProjectGraphCache
         $estimate = count($graph->entries) * self::BYTES_PER_ENTRY;
 
         foreach ($graph->entries as $entry) {
+            // Invocation arrays cost more than their compact strings: the measured
+            // dense write is 6.13x disk bytes, but below 1.3x this estimate. The
+            // existing 3x multiplier applies to the estimate, not raw disk bytes.
+            foreach ($entry->testInvocations as $invocation) {
+                $estimate += 1024 + strlen($invocation->uri ?? '') + strlen($invocation->route ?? '') + strlen($invocation->model ?? '') + strlen($invocation->context ?? '') + strlen($invocation->reason ?? '');
+                foreach ($invocation->parameters as $key => $value) {
+                    $estimate += 128 + strlen((string) $key) + strlen($value ?? '');
+                }
+            }
             $estimate += (count($entry->symbols) + count($entry->edges)) * self::BYTES_PER_ELEMENT;
         }
 
