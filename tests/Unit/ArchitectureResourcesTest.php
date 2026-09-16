@@ -49,6 +49,16 @@ class ArchitectureResourcesTest extends TestCase
         $this->assertStringNotContainsString('```php', $default);
     }
 
+    public function test_read_flow_uses_service_only_when_queries_are_not_enabled(): void
+    {
+        $enabled = [Architecture::ThinControllers, Architecture::Actions, Architecture::Services];
+        $guideline = $this->resources()->guideline($enabled)->contents;
+        $this->assertStringContainsString('Read flow: Route -> Controller -> Read Service', $guideline);
+        $withQueries = $this->resources()->guideline([...$enabled, Architecture::QueryObjects])->contents;
+        $this->assertStringContainsString('Read flow: Route -> Controller -> Query Object', $withQueries);
+        $this->assertStringNotContainsString('Read Service', $withQueries);
+    }
+
     public function test_full_and_single_architecture_guidelines_keep_expanded_content(): void
     {
         $resources = $this->resources();

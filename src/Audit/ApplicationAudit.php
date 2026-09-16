@@ -10,6 +10,8 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerReadAudit;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
@@ -84,6 +86,7 @@ final class ApplicationAudit
         MissingTestLevel $missingTestLevel = MissingTestLevel::Off,
         ?ProjectGraphCache $cache = null,
         array $cacheConfiguration = [],
+        ?RouteMap $routes = null,
     ): ApplicationAuditResult {
         // The two cannot be set independently: a scope without tests plus an enabled
         // rule would report every class as untested, so the audit resolves the pair
@@ -172,6 +175,18 @@ final class ApplicationAudit
         foreach ((new ProjectRuleSet($missingTestLevel))->rules() as $rule) {
             foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
                 $findingsByPath[$finding->path][] = $finding;
+            }
+        }
+
+        if (in_array(Architecture::ThinControllers, $enabled, true) && in_array(Architecture::Actions, $enabled, true)) {
+            $endpointInputs = $changedFocusAvailable
+                ? $this->changedApplicationFiles($baseRef, new AuditScope([...$auditScope->directories, 'routes', 'bootstrap', 'config']), includeDeleted: true)
+                : null;
+            foreach ((new ControllerReadAudit($this->files, $this->basePath))->check($graph, $enabled, $endpointInputs, $routes) as $finding) {
+                $findingsByPath[$finding->path][] = $finding;
+                // An unchanged controller may be affected by an edited dependency.
+                // Keep inline and baseline suppression on the same shared path.
+                $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)));
             }
         }
 
@@ -355,7 +370,7 @@ final class ApplicationAudit
     /**
      * @return array<int, string>|null
      */
-    private function changedApplicationFiles(?string $baseRef, AuditScope $scope): ?array
+    private function changedApplicationFiles(?string $baseRef, AuditScope $scope, bool $includeDeleted = false): ?array
     {
         $prefixOutput = $this->runProcess(['git', '-C', $this->basePath, 'rev-parse', '--show-prefix']);
 
@@ -367,6 +382,7 @@ final class ApplicationAudit
 
         $commands = [];
         $pathspec = $scope->directories;
+        $filter = $includeDeleted ? '--diff-filter=ACDMRTUXB' : '--diff-filter=ACMRTUXB';
 
         if ($baseRef !== null && $baseRef !== '') {
             $mergeBase = $this->mergeBase($baseRef);
@@ -375,10 +391,10 @@ final class ApplicationAudit
                 return null;
             }
 
-            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', $mergeBase.'...HEAD', '--', ...$pathspec];
-            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD', '--', ...$pathspec];
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', $filter, $mergeBase.'...HEAD', '--', ...$pathspec];
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', $filter, 'HEAD', '--', ...$pathspec];
         } else {
-            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD', '--', ...$pathspec];
+            $commands[] = ['git', '-C', $this->basePath, 'diff', '--name-only', $filter, 'HEAD', '--', ...$pathspec];
         }
 
         $commands[] = ['git', '-C', $this->basePath, 'ls-files', '--others', '--exclude-standard', '--', ...$pathspec];
@@ -397,7 +413,7 @@ final class ApplicationAudit
                     $path = substr($path, strlen($prefix));
                 }
 
-                if (str_ends_with($path, '.php') && $this->files->exists($this->absolute($path))) {
+                if (str_ends_with($path, '.php') && ($includeDeleted || $this->files->exists($this->absolute($path)))) {
                     $paths[$path] = $path;
                 }
             }

@@ -1,1 +1,1 @@
-Controllers are HTTP adapters only: validate, call one application boundary, return a response; no Eloquent writes or business decisions.
+Controllers are HTTP adapters only: validate, call one application boundary, return a response; no Eloquent writes or business decisions. Read endpoints may use the enabled read boundary; route-aware analysis reports writes, effects and unresolved calls without import duplicates.

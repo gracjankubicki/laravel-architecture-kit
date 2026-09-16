@@ -48,3 +48,15 @@ final class InvoiceController
     }
 }
 ```
+
+### Route-aware read checks
+
+With Thin Controllers and Actions enabled, the audit reads a fresh Laravel route collection and associates each controller method with its HTTP verbs. GET/HEAD may call a cohesive read Service when Services are enabled; when Query Objects are enabled, use a Query Object for reusable read composition. POST/PUT/PATCH/DELETE Service calls retain the Action advisory. Imports and unused injected parameters are not dependency findings. Constructor dependencies are attributed to the methods that call them.
+
+The audit follows reachable project method bodies without executing endpoints. Recognized model, builder, relation and DB mutations, jobs, mail and notifications produce `E_THIN_CONTROLLER_READ_SIDE_EFFECT` on a GET/HEAD endpoint, with a call chain and the operation's file/line. It examines called methods, not unrelated write methods in the same Service. A transaction alone is not a write; its callback is analysed.
+
+`W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE` means the audit could not resolve a route/call/type, raw SQL, or a bounded traversal. It is a warning, and fails `--strict`. Absence of a finding means no effect was detected in the supported static subset, not proof that runtime hooks, model events, macros, magic dispatch, vendor SDKs or every possible branch are harmless. Dynamic SQL is never treated as a proved read. `W_THIN_CONTROLLER_READ_SERVICE` separately advises using enabled Query Objects.
+
+Route discovery boots Laravel in a fresh child PHP process, with a process-local route-cache override. It does not dispatch a request or instantiate controllers, and does not clear the application's route cache. Normal application bootstrap code still runs. This keeps a long-lived MCP server from using routes from its initial boot. The timeout is 15 seconds; boot failure becomes an explicit incomplete-analysis finding when relevant. Programmatic callers without a Laravel bootstrap can pass a fresh `RouteMap::fromRoutes($router->getRoutes())` as the optional `routes` argument to `ApplicationAudit::run()`.
+
+Analysis is limited to 12 method levels, 128 method visits and 20,000 AST nodes per endpoint, 100 KB per source file and 1 MB of retained source per controller, with an additional PHP memory headroom check. A cycle or exceeded budget is incomplete analysis. Source lookup stays in the configured project graph; excluded/out-of-scope dependencies are unresolved. The graph cache format is unchanged. In `--changed`, changed dependencies recheck their controller dependents; edits under routes/bootstrap/config/providers and deleted inputs recheck all controllers. Custom route-registration files outside those locations require a full audit.

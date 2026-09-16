@@ -77,7 +77,9 @@ use Illuminate\Support\Facades\Route;
 Route::get('/invoices', function () {
     Invoice::create(['total' => 1]);
 });
+Route::post('/invoices', [\App\Http\Controllers\InvoiceController::class, 'store']);
 PHP);
+        $this->withRoutes(file_get_contents($this->tempPath.'/routes/web.php'));
 
         // Would be reported if the missing-test rule turned itself on.
         $this->writeFile('tests/Feature/PlaceholderTest.php', <<<'PHP'

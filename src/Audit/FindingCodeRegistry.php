@@ -69,6 +69,24 @@ final readonly class FindingCodeRegistry
             'why' => 'When Actions are enabled, write use cases should enter through Actions so the boundary is consistent for agents and tests.',
             'fix' => 'Inject an Action into the controller or move the workflow behind the enabled application boundary.',
         ],
+        'E_THIN_CONTROLLER_READ_SIDE_EFFECT' => [
+            'rule' => 'thin-controller',
+            'title' => 'Read endpoint can cause a write or side effect',
+            'why' => 'GET and HEAD should not perform domain writes or dispatch external effects.',
+            'fix' => 'Follow the reported call chain and move the effect to a write endpoint and Action.',
+        ],
+        'W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE' => [
+            'rule' => 'thin-controller',
+            'title' => 'Read analysis is incomplete',
+            'why' => 'A route, call target, raw SQL statement, or bounded analysis could not be resolved; absence of a detected write is not proof of a read.',
+            'fix' => 'Inspect the reported location, make dispatch explicit, or supply a fresh RouteMap to programmatic audits. Suppress only after reviewing the boundary.',
+        ],
+        'W_THIN_CONTROLLER_READ_SERVICE' => [
+            'rule' => 'thin-controller',
+            'title' => 'Read Service used while Query Objects are enabled',
+            'why' => 'The enabled read boundary is a Query Object.',
+            'fix' => 'Move reusable read composition into a Query Object.',
+        ],
         'E_PORT_BYPASS' => [
             'rule' => 'ports-and-adapters',
             'title' => 'Application code bypasses an available port',

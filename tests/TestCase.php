@@ -31,10 +31,31 @@ abstract class TestCase extends Orchestra
     protected function tearDown(): void
     {
         if (isset($this->tempPath)) {
+            if (is_link($this->tempPath.'/vendor')) {
+                unlink($this->tempPath.'/vendor');
+            }
             (new Filesystem)->deleteDirectory($this->tempPath);
         }
 
         parent::tearDown();
+    }
+
+    /** Supply actual routes to command fixtures that exercise route-aware checks. */
+    protected function withRoutes(string $source): void
+    {
+        $files = new Filesystem;
+        foreach (['bootstrap/cache', 'routes', 'storage/framework/views', 'storage/logs'] as $directory) {
+            $files->ensureDirectoryExists($this->tempPath.'/'.$directory);
+        }
+        symlink(dirname(__DIR__).'/vendor', $this->tempPath.'/vendor');
+        $files->put($this->tempPath.'/routes/web.php', $source);
+        $files->put($this->tempPath.'/bootstrap/app.php', <<<'PHP'
+<?php
+return Illuminate\Foundation\Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(web: dirname(__DIR__).'/routes/web.php')
+    ->withExceptions()
+    ->create();
+PHP);
     }
 
     /**

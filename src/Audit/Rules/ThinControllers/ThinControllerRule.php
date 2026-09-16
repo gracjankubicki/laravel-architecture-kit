@@ -22,13 +22,6 @@ final readonly class ThinControllerRule implements AuditRule
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
-    public function __construct(
-        private array $enabled,
-    ) {}
-
-    /**
-     * @param  array<int, Architecture|string>  $enabled
-     */
     public function supports(string $path, array $enabled): bool
     {
         return str_starts_with($path, 'app/Http/Controllers/')
@@ -50,28 +43,6 @@ final readonly class ThinControllerRule implements AuditRule
 
         foreach ($this->workflowCallLines($file, $nodes) as $call) {
             $findings[] = $this->finding('error', $file->path, $call['line'], $call['message'], $call['code'] ?? null);
-        }
-
-        if (in_array(Architecture::Actions, $this->enabled, true)) {
-            foreach ($this->serviceUseLines($nodes) as $line) {
-                $findings[] = $this->finding(
-                    'warn',
-                    $file->path,
-                    $line,
-                    'Controller depends on an App\\Services class while Actions are enabled; prefer routing write use cases through an Action.',
-                    'W_THIN_CONTROLLER_SERVICE_DEPENDENCY',
-                );
-            }
-
-            foreach ($this->serviceInjectionLines($nodes) as $line) {
-                $findings[] = $this->finding(
-                    'warn',
-                    $file->path,
-                    $line,
-                    'Controller injects a Service while Actions are enabled; prefer routing write use cases through an Action.',
-                    'W_THIN_CONTROLLER_SERVICE_DEPENDENCY',
-                );
-            }
         }
 
         return $findings;
@@ -216,116 +187,6 @@ final readonly class ThinControllerRule implements AuditRule
         });
 
         return $state->calls;
-    }
-
-    /**
-     * @param  array<int, Node>  $nodes
-     * @return array<int, int>
-     */
-    private function serviceUseLines(array $nodes): array
-    {
-        $state = new class
-        {
-            /**
-             * @var array<int, int>
-             */
-            public array $lines = [];
-        };
-
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
-        {
-            public function __construct(private object $state) {}
-
-            public function enterNode(Node $node): null
-            {
-                if ($node instanceof Stmt\UseUse && str_starts_with($node->name->toString(), 'App\\Services\\')) {
-                    $this->state->lines[] = $node->getStartLine();
-                }
-
-                return null;
-            }
-        });
-
-        return $state->lines;
-    }
-
-    /**
-     * @param  array<int, Node>  $nodes
-     * @return array<int, int>
-     */
-    private function serviceInjectionLines(array $nodes): array
-    {
-        $state = new class
-        {
-            /**
-             * @var array<int, int>
-             */
-            public array $lines = [];
-        };
-
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
-        {
-            public function __construct(private object $state) {}
-
-            public function enterNode(Node $node): null
-            {
-                if (! $node instanceof Node\Param) {
-                    return null;
-                }
-
-                foreach ($this->typeNames($node->type) as $name) {
-                    if (str_starts_with($name, 'App\\Services\\')) {
-                        $this->state->lines[] = $node->getStartLine();
-
-                        break;
-                    }
-                }
-
-                return null;
-            }
-
-            /**
-             * @return array<int, string>
-             */
-            private function typeNames(Node|string|null $type): array
-            {
-                if ($type === null) {
-                    return [];
-                }
-
-                if (is_string($type)) {
-                    return [$type];
-                }
-
-                if ($type instanceof Name) {
-                    $resolved = $type->getAttribute('resolvedName');
-
-                    return [$resolved instanceof Name ? $resolved->toString() : $type->toString()];
-                }
-
-                if ($type instanceof Node\Identifier) {
-                    return [$type->toString()];
-                }
-
-                if ($type instanceof Node\NullableType) {
-                    return $this->typeNames($type->type);
-                }
-
-                if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
-                    $names = [];
-
-                    foreach ($type->types as $innerType) {
-                        array_push($names, ...$this->typeNames($innerType));
-                    }
-
-                    return $names;
-                }
-
-                return [];
-            }
-        });
-
-        return $state->lines;
     }
 
     private function finding(string $severity, string $path, int $line, string $message, ?string $code = null): AuditFinding

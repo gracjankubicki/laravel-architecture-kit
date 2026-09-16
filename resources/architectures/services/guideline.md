@@ -86,3 +86,5 @@ final class DocumentService
     public function approvePseudonymization(Document $document): void {}
 }
 ```
+
+Read-only GET/HEAD projections may call a cohesive Service when Services are enabled and Query Objects are not. A Service may also contain write methods, but the read endpoint must not reach them. The audit follows the called methods, reports detected effects with their locations, and marks unresolved calls as incomplete analysis. When Query Objects are enabled, reusable read composition belongs there.

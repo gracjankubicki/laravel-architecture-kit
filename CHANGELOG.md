@@ -2,6 +2,14 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- Make Thin Controller Service dependency findings route-aware. Read endpoints may use the enabled read boundary, writes retain the Action advisory, and imports/unused injection no longer produce duplicate findings. Constructor dependencies are attributed to endpoint usage.
+- Detect supported database writes and side effects through bounded reachable method analysis on GET/HEAD endpoints, with call-chain evidence. Unresolved routes/calls and exhausted limits report a distinct warning rather than claiming a safe read. Fresh route discovery ignores stale route cache only in its child process; changed dependencies recheck affected controllers.
+- Align generated read-flow guidance with the Services fallback and document static-analysis limits. Existing direct controller validation/write/transaction/dispatch checks and output schemas are preserved.
+
 ## v0.4.0 - 2026-09-12
 
 This release is about the moment before an agent writes code and the moment after it does. It answers which rules govern a file that does not exist yet, scaffolds that file so it passes the audit, reports what a change to a symbol would break and which tests cover it, and explains a finding against the symbol at fault rather than restating the rule. The audit can now read outside `app/`, where an agent could previously hide logic and leave the gate green. The project graph is kept between runs, which takes `guard --changed` from 6.44s to 0.47s on a large application.

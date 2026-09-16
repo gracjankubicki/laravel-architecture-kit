@@ -43,7 +43,7 @@ final readonly class BuiltInRules
     {
         return [
             new FolderPurityRule($enabled),
-            new ThinControllerRule($enabled),
+            new ThinControllerRule,
             new ServicesRule,
             new ActionsRule,
             new QueryObjectsRule,

@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
@@ -183,7 +184,8 @@ class MakeCommandTest extends TestCase
             );
         }
 
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run($this->enabled, changedOnly: false);
+        // Scaffolding creates classes, but does not register endpoints.
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run($this->enabled, changedOnly: false, routes: new RouteMap);
 
         $this->assertSame([], array_map(
             fn ($finding): string => "{$finding->rule} {$finding->path}:{$finding->line} {$finding->message}",

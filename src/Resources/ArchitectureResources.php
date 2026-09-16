@@ -446,6 +446,7 @@ MARKDOWN;
             Architecture::FormRequests->value => 'FormRequest/Search Data',
             Architecture::DataObjects->value => 'Data Object',
             Architecture::QueryObjects->value => 'Query Object',
+            Architecture::Services->value => in_array(Architecture::QueryObjects->value, $enabledValues, true) ? '' : 'Read Service',
             Architecture::CustomEloquentBuilders->value => 'Custom Eloquent Builder',
             Architecture::ApiResources->value => 'API Resource',
         ], $enabledValues);
@@ -464,11 +465,11 @@ MARKDOWN;
      */
     private function flow(array $steps, array $enabled): string
     {
-        return implode(' -> ', array_values(array_filter(
+        return implode(' -> ', array_values(array_filter(array_filter(
             $steps,
             fn (string $key): bool => in_array($key, $enabled, true),
             ARRAY_FILTER_USE_KEY,
-        )));
+        ))));
     }
 
     private function assertSkillName(EnabledArchitecture $architecture, string $contents): void

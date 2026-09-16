@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
@@ -170,6 +171,8 @@ PHP);
 
     public function test_agent_output_can_hide_findings_with_zero_limit(): void
     {
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::post("/documents", [\App\Http\Controllers\DocumentController::class, "update"]);');
+
         $this->writeConfig([
             Architecture::ThinControllers,
             Architecture::Actions,
@@ -205,6 +208,8 @@ PHP);
 
     public function test_agent_output_can_limit_findings_and_report_truncation(): void
     {
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::post("/documents", [\App\Http\Controllers\DocumentController::class, "update"]);');
+
         $this->writeConfig([
             Architecture::ThinControllers,
             Architecture::Actions,
@@ -357,6 +362,8 @@ PHP);
 
     public function test_it_passes_for_a_minimal_compliant_slice(): void
     {
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::post("/documents", [\App\Http\Controllers\DocumentController::class, "update"]);');
+
         $this->writeConfig([
             Architecture::ThinControllers,
             Architecture::FormRequests,
@@ -1224,8 +1231,9 @@ use App\Services\DocumentService;
 
 final class DocumentController
 {
-    public function __construct(private DocumentService $service)
+    public function store(DocumentService $service): void
     {
+        $service->store();
     }
 }
 PHP);
@@ -1233,10 +1241,12 @@ PHP);
         $thinOnly = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers],
             changedOnly: false,
+            routes: new RouteMap(['app\\http\\controllers\\documentcontroller::store' => ['POST']]),
         );
         $withActions = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions],
             changedOnly: false,
+            routes: new RouteMap(['app\\http\\controllers\\documentcontroller::store' => ['POST']]),
         );
 
         $this->assertFalse(collect($thinOnly->findings)->contains(fn (AuditFinding $finding): bool => $finding->severity === 'warn'));
@@ -1245,6 +1255,8 @@ PHP);
 
     public function test_inline_ignore_suppresses_specific_finding(): void
     {
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::post("/documents", [\App\Http\Controllers\DocumentController::class, "update"]);');
+
         $this->writeConfig([
             Architecture::ThinControllers,
             Architecture::Actions,
@@ -1367,6 +1379,8 @@ PHP);
 
     public function test_update_baseline_suppresses_existing_findings_and_keeps_new_findings_visible(): void
     {
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::post("/documents", [\App\Http\Controllers\DocumentController::class, "update"]);');
+
         $this->writeConfig([
             Architecture::ThinControllers,
             Architecture::Actions,
