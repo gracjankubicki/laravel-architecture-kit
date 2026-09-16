@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
@@ -16,11 +17,20 @@ use PhpParser\NodeVisitorAbstract;
 
 final readonly class IntegrationDtoLeakCheck implements FileCheck
 {
-    public function __construct(private IntegrationPaths $paths) {}
+    private RoleClassifier $roles;
+
+    public function __construct(private IntegrationPaths $paths, ?RoleClassifier $roles = null)
+    {
+        $this->roles = $roles ?? new RoleClassifier;
+    }
 
     public function findings(FileContext $file): array
     {
-        if ($this->paths->isIntegrationPath($file->path) || $this->paths->isUseCasePath($file->path)) {
+        if (
+            $this->paths->isIntegrationPath($file->path)
+            || $this->paths->isUseCasePath($file->path)
+            || $this->roles->classify($file->path, '', 'class') === 'infrastructure'
+        ) {
             return [];
         }
 

@@ -28,7 +28,7 @@ final readonly class PortBypassRule implements ProjectAuditRule
             $source = $graph->symbol($edge->from);
             $target = $graph->symbol($edge->to);
 
-            if ($source?->role !== 'application' || $target?->role !== 'infrastructure') {
+            if (! in_array($source?->role, ['application', 'adapter'], true) || $target?->role !== 'infrastructure') {
                 continue;
             }
 
@@ -48,12 +48,15 @@ final readonly class PortBypassRule implements ProjectAuditRule
 
             sort($ports);
             $port = $ports[0];
+            $remedy = $source->role === 'adapter'
+                ? "delegate to an Action or Service that depends on port {$port}"
+                : "depend on port {$port} instead";
             $findings[] = new AuditFinding(
                 severity: 'error',
                 rule: 'ports-and-adapters',
                 path: $edge->path,
                 line: $edge->line,
-                message: "{$source->name} depends directly on adapter {$target->name}; depend on port {$port} instead.",
+                message: "{$source->name} depends directly on adapter {$target->name}; {$remedy}.",
                 code: 'E_PORT_BYPASS',
             );
         }

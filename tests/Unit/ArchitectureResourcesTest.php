@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityStatus;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiProfile;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Filesystem\Filesystem;
+use PhpParser\ParserFactory;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -259,6 +260,62 @@ class ArchitectureResourcesTest extends TestCase
         $this->assertStringContainsString('project-owned Gateways', $summary);
         $this->assertStringNotContainsString('0.8', $summary);
         $this->assertStringNotContainsString('0.9', $summary);
+    }
+
+    public function test_sdk_and_saloon_policy_is_consistent_across_generated_resource_variants(): void
+    {
+        $resources = $this->resources();
+        $saloon = [Architecture::Saloon];
+        $actionsAndSaloon = [Architecture::Actions, Architecture::Saloon];
+        $allBoundaries = [
+            Architecture::Actions,
+            Architecture::Saloon,
+            Architecture::PortsAndAdapters,
+            Architecture::DataObjects,
+            Architecture::LaravelBestPractices,
+        ];
+        $portsOnly = [Architecture::PortsAndAdapters];
+
+        $outputs = [
+            $resources->guideline($saloon)->contents,
+            $resources->fullGuideline($actionsAndSaloon),
+            $resources->architectureGuideline(Architecture::Saloon, $allBoundaries),
+            $resources->summaryFor(Architecture::Saloon, $allBoundaries),
+            $resources->skills($allBoundaries)['saloon']->contents,
+            $resources->architectureGuideline(Architecture::PortsAndAdapters, $portsOnly),
+            $resources->skills($portsOnly)['ports-and-adapters']->contents,
+        ];
+        $combined = implode("\n", $outputs);
+
+        $this->assertStringContainsString('application-owned direct HTTP', $combined);
+        $this->assertStringContainsString('official SDK', $combined);
+        $this->assertStringContainsString('HTTP or gRPC', $combined);
+        $this->assertStringContainsString('app/Advertising/Adapters', $combined);
+        $this->assertStringContainsString('Actions and Jobs depend on application Ports', $combined);
+        $this->assertStringContainsString('authentication, and token refresh', $combined);
+        $this->assertStringContainsString('do not intercept SDK-owned traffic', $combined);
+        $this->assertStringContainsString('googleads/google-ads-php` v35.0.0', $combined);
+        $this->assertStringNotContainsString('Every third-party or internal outbound HTTP integration goes through Saloon.', $combined);
+        $this->assertStringNotContainsString('All outbound HTTP integrations MUST go through Saloon', $combined);
+    }
+
+    public function test_saloon_skill_php_examples_are_syntactically_valid(): void
+    {
+        $skill = $this->resources()->skills([
+            Architecture::Actions,
+            Architecture::Saloon,
+            Architecture::PortsAndAdapters,
+        ])['saloon']->contents;
+        $matched = preg_match_all('/```php\n(.*?)```/s', $skill, $matches);
+
+        $this->assertNotFalse($matched);
+        $this->assertGreaterThanOrEqual(6, $matched);
+
+        $parser = (new ParserFactory)->createForNewestSupportedVersion();
+
+        foreach ($matches[1] as $example) {
+            $this->assertNotNull($parser->parse("<?php\n".$example));
+        }
     }
 
     private function resources(): ArchitectureResources

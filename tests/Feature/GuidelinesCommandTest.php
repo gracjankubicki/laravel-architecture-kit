@@ -68,6 +68,28 @@ class GuidelinesCommandTest extends TestCase
         $this->assertStringContainsString('## Saloon', $payload['md']);
     }
 
+    public function test_it_expands_the_sdk_and_saloon_boundary_for_agents(): void
+    {
+        $this->writeConfig([
+            Architecture::Actions,
+            Architecture::PortsAndAdapters,
+            Architecture::Saloon,
+        ]);
+
+        $exitCode = Artisan::call('architecture-kit:guidelines', [
+            'architecture' => 'saloon',
+            '--agent' => true,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertTrue($payload['enabled']);
+        $this->assertStringContainsString('Application-owned direct HTTP integrations go through Saloon.', $payload['md']);
+        $this->assertStringContainsString('official SDK', $payload['md']);
+        $this->assertStringContainsString('Actions and Jobs orchestrate application Ports', $payload['md']);
+        $this->assertStringContainsString('do not intercept SDK traffic', $payload['md']);
+    }
+
     public function test_it_reports_unknown_architecture(): void
     {
         $this->writeConfig([Architecture::Actions]);

@@ -1,1 +1,1 @@
-Saloon owns external HTTP integrations: connectors/requests live under integration folders, return typed data, and never leak raw responses.
+Saloon owns application-written direct HTTP; official SDK HTTP or gRPC stays inside provider adapters, and both paths return project-owned typed results without leaking provider details.

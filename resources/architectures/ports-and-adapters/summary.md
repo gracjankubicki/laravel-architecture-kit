@@ -1,1 +1,1 @@
-Ports define external boundaries; adapters implement them, bindings are explicit, and concrete infrastructure stays outside application code.
+Ports define external boundaries; Saloon and official SDK adapters perform provider calls, translate data and errors, and stay outside application code.

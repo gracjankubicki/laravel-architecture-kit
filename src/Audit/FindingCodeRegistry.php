@@ -89,9 +89,9 @@ final readonly class FindingCodeRegistry
         ],
         'E_PORT_BYPASS' => [
             'rule' => 'ports-and-adapters',
-            'title' => 'Application code bypasses an available port',
-            'why' => 'Depending on the concrete adapter couples the application workflow to infrastructure despite an existing port boundary.',
-            'fix' => 'Inject the implemented port and keep the concrete adapter binding in the composition root.',
+            'title' => 'Application or HTTP code bypasses an available port',
+            'why' => 'Depending on the concrete adapter couples a workflow or HTTP entry point to infrastructure despite an existing port boundary.',
+            'fix' => 'Application code should inject the implemented port. HTTP code should delegate to an Action or Service that injects the port. Keep the concrete adapter binding in the composition root.',
         ],
         'E_LAYER_DEPENDENCY' => [
             'rule' => 'layer-dependency',

@@ -44,6 +44,13 @@ final readonly class FindingRemediation
             return null;
         }
 
+        if ($code === 'E_PORT_BYPASS' && $occurrence?->role === 'adapter') {
+            $proposal = [
+                'move' => 'the external provider call',
+                'to' => 'an Action or cohesive Service that depends on the available port',
+            ];
+        }
+
         $where = $occurrence === null
             ? ''
             : ' in '.($occurrence->symbol ?? $occurrence->path).($occurrence->line !== null ? ' at line '.$occurrence->line : '');

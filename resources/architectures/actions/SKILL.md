@@ -28,6 +28,8 @@ Use this skill when implementing or refactoring write/application use cases.
 - Map uploaded/request data in the controller/FormRequest layer before calling the Action.
 - If Ports And Adapters are enabled, Actions may depend on Ports for real provider, infrastructure, package, legacy, runtime, or testability boundaries.
 - Do not create a Port for every Action.
+- With Ports And Adapters enabled, do not inject concrete adapters, official SDK clients, Saloon Connectors, or HTTP clients into Actions. Adapters own provider calls and translation; Actions orchestrate Ports.
+- Without Ports And Adapters, an Action or queued Job may call a Saloon integration and map its result and exception at the use-case boundary.
 - Action folders MUST contain Actions only.
 - Do not put Data Objects, Result objects, Enums, Exceptions, API Resources, or Value Objects under `app/Actions/**`.
 - Put supporting classes in the matching architecture folder, for example `app/Data/Documents`, `app/Enums/Documents`, or `app/Exceptions/Documents`.

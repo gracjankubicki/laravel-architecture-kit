@@ -53,4 +53,27 @@ PHP);
 
         $this->assertDoesNotHaveFinding($findings, 'saloon', 'Integration DTOs must not leak outside Actions');
     }
+
+    public function test_it_allows_private_mapping_inside_an_infrastructure_adapter(): void
+    {
+        $findings = $this->saloonFindings('app/Advertising/Adapters/GoogleAdsCampaignReader.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Advertising\Adapters;
+
+use App\Http\Integrations\Reporting\Dto\CampaignData;
+
+final class GoogleAdsCampaignReader
+{
+    private function map(object $campaign): CampaignData
+    {
+        return new CampaignData((string) $campaign->id);
+    }
+}
+PHP);
+
+        $this->assertDoesNotHaveFinding($findings, 'saloon', 'Integration DTOs must not leak outside Actions');
+    }
 }

@@ -933,11 +933,14 @@ PHP;
         $guideline = $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md');
         $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-saloon/SKILL.md');
 
-        $this->assertStringContainsString('| Saloon | `app/Http/Integrations` | Saloon owns external HTTP integrations', $guideline);
+        $this->assertStringContainsString('| Saloon | `app/Http/Integrations` | Saloon owns application-written direct HTTP', $guideline);
         $this->assertStringNotContainsString('Every third-party or internal outbound HTTP integration goes through Saloon.', $guideline);
         $this->assertStringContainsString('name: architecture-kit-saloon', $skill);
         $this->assertStringContainsString('MockClient', $skill);
         $this->assertStringContainsString('HasRateLimits', $skill);
+        $this->assertStringContainsString('application-owned direct HTTP', $skill);
+        $this->assertStringContainsString('official SDK', $skill);
+        $this->assertStringContainsString('do not intercept SDK-owned traffic', $skill);
     }
 
     public function test_it_warns_when_saloon_is_selected_without_actions(): void
@@ -1059,7 +1062,8 @@ PHP);
         ]);
 
         $this->assertStringContainsString("Use Laravel's `Http` facade", $defaultSkill);
-        $this->assertStringContainsString('All outbound HTTP integrations MUST go through Saloon connectors and requests.', $saloonSkill);
+        $this->assertStringContainsString('Application-owned direct HTTP integrations MUST go through Saloon connectors and requests.', $saloonSkill);
+        $this->assertStringContainsString('official SDKs may keep their own HTTP or gRPC transport', $saloonSkill);
         $this->assertStringNotContainsString("Use Laravel's `Http` facade", $saloonSkill);
         $this->assertStringContainsString('All non-trivial HTTP validation MUST use Form Requests.', $formRequestGuideline);
         $this->assertStringContainsString('Do not introduce Services, Repositories, or other patterns unless they are enabled', $defaultSkill);

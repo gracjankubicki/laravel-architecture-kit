@@ -42,6 +42,28 @@ PHP);
         $this->assertHasFinding($findings, 'folder-purity', 'error', 1, 'Integration DTOs under app/Http/Integrations/**/Dto/** must be final readonly');
     }
 
+    public function test_it_keeps_official_sdk_adapters_out_of_the_saloon_integration_folder(): void
+    {
+        $findings = $this->saloonFindings('app/Http/Integrations/GoogleAds/GoogleAdsCampaignReader.php', <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Integrations\GoogleAds;
+
+use Google\Ads\GoogleAds\Lib\V25\GoogleAdsClient;
+
+final readonly class GoogleAdsCampaignReader
+{
+    public function __construct(private GoogleAdsClient $client)
+    {
+    }
+}
+PHP);
+
+        $this->assertHasFinding($findings, 'folder-purity', 'error', 1, 'app/Http/Integrations/** must contain Saloon Connectors');
+    }
+
     public function test_it_reports_model_and_persistence_logic_inside_integrations(): void
     {
         $contents = <<<'PHP'

@@ -449,7 +449,7 @@ The architecture catalog:
 | Enums | domain-first | Closed sets with exhaustive `match` |
 | API Resources | `app/Http/Resources` | Read output shaping |
 | Eloquent Lifecycle | `app/Observers`, `app/Lifecycle` | Model lifecycle boundaries: thin observers, handlers, after-commit events |
-| Saloon | `app/Http/Integrations` | External HTTP integrations through Saloon connectors |
+| Saloon | `app/Http/Integrations` | Application-owned direct HTTP through Saloon; official SDK transport stays inside provider adapters |
 | Ports And Adapters | near the owning boundary | Explicit outbound seams for providers and infrastructure |
 | Modern PHP 8.5 | cross-cutting | Strict modern PHP runtime contract |
 | Laravel AI | `app/Ai` | Typed `laravel/ai` agents, tools, and prompts |

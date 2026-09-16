@@ -6,6 +6,7 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Fixed
 
+- Clarify that Saloon owns application-written direct HTTP while appropriate official SDKs keep HTTP or gRPC inside provider adapters. Generated guidance now separates Action tests from adapter tests and requires an SDK isolation seam for transport, credentials, authentication, and token refresh. The audit allows integration DTO mapping inside infrastructure adapters, rejects those DTOs in Port signatures, and reports HTTP adapters that bypass an available Port without granting a general `Client` exception.
 - Make Thin Controller Service dependency findings route-aware. Read endpoints may use the enabled read boundary, writes retain the Action advisory, and imports/unused injection no longer produce duplicate findings. Constructor dependencies are attributed to endpoint usage.
 - Detect supported database writes and side effects through bounded reachable method analysis on GET/HEAD endpoints, with call-chain evidence. Unresolved routes/calls and exhausted limits report a distinct warning rather than claiming a safe read. Fresh route discovery ignores stale route cache only in its child process; changed dependencies recheck affected controllers.
 - Align generated read-flow guidance with the Services fallback and document static-analysis limits. Existing direct controller validation/write/transaction/dispatch checks and output schemas are preserved.

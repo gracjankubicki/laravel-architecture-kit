@@ -20,6 +20,8 @@ Rules:
 - Actions should return models, Data/Result objects, enums, scalars, or domain/application results. Controllers format HTTP responses.
 - Action-to-Action calls are exceptional and should only represent explicit orchestration of multiple full use cases.
 - If Ports And Adapters are enabled, Actions may depend on Ports for real provider, infrastructure, package, legacy, runtime, or testability boundaries. Do not create a Port for every Action.
+- With Ports And Adapters enabled, Actions must not call concrete adapters, official SDKs, Saloon Connectors, or HTTP clients. The Adapter performs the provider call and maps provider data and errors; the Action orchestrates the business operation through a Port.
+- Without Ports And Adapters, an Action or queued Job may call a Saloon integration directly and map its result and exception at the use-case boundary.
 - Put supporting classes in their matching architecture folders, for example `app/Data`, `app/Enums`, `app/Exceptions`, or their domain-first equivalents.
 
 Good names:

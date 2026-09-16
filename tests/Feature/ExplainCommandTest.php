@@ -112,6 +112,57 @@ class ExplainCommandTest extends TestCase
         $this->assertArrayNotHasKey('proposal', $payload);
     }
 
+    public function test_http_port_bypass_proposes_delegating_to_an_application_boundary(): void
+    {
+        $this->writeController();
+
+        $payload = $this->explain([
+            'code' => 'E_PORT_BYPASS',
+            '--path' => 'app/Http/Controllers/InvoiceController.php',
+            '--line' => 10,
+            '--agent' => true,
+        ]);
+
+        $this->assertSame('adapter', $payload['occurrence']['role']);
+        $this->assertSame('the external provider call', $payload['proposal']['move']);
+        $this->assertSame(
+            'an Action or cohesive Service that depends on the available port',
+            $payload['proposal']['to'],
+        );
+        $this->assertStringContainsString('delegate to an Action or Service', $payload['fix']);
+    }
+
+    public function test_application_port_bypass_keeps_the_direct_port_proposal(): void
+    {
+        $files = new Filesystem;
+        $path = $this->tempPath.'/app/Actions/IssueInvoice.php';
+        $files->ensureDirectoryExists(dirname($path));
+        $files->put($path, <<<'PHP'
+<?php
+
+namespace App\Actions;
+
+final class IssueInvoice
+{
+    public function handle(): void
+    {
+    }
+}
+PHP);
+
+        $payload = $this->explain([
+            'code' => 'E_PORT_BYPASS',
+            '--path' => 'app/Actions/IssueInvoice.php',
+            '--line' => 7,
+            '--agent' => true,
+        ]);
+
+        $this->assertSame('application', $payload['occurrence']['role']);
+        $this->assertSame('the dependency on the concrete adapter', $payload['proposal']['move']);
+        $this->assertSame('the port it implements, bound in a service provider', $payload['proposal']['to']);
+        $this->assertStringContainsString('inject the implemented port', $payload['fix']);
+    }
+
     public function test_the_line_decides_which_class_in_a_shared_file_is_named(): void
     {
         // Symbols are stored alphabetically, so taking the first one would describe a

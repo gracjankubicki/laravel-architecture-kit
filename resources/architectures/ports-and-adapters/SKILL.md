@@ -33,6 +33,7 @@ If the protected boundary, typed payloads, test strategy, and binding/resolution
 6. Implement the Port with a named Adapter near the provider, SDK, integration, or infrastructure it wraps.
 7. Bind or resolve the Adapter explicitly only when runtime/test wiring needs the abstraction.
 8. Test the Adapter without calling the real provider.
+9. For an official SDK, verify how tests replace its client, transport, or endpoint, including authentication and token refresh.
 
 ## Rules
 
@@ -49,6 +50,8 @@ If the protected boundary, typed payloads, test strategy, and binding/resolution
 - Port boundaries should use immutable inputs and outputs.
 - Adapter classes should be `final readonly` by default.
 - Adapters translate provider payloads and vendor exceptions into project-owned types and exceptions.
+- Keep SDK clients, transport details, response types, and exceptions inside the Adapter. Place SDK Adapters near the owning area, for example `app/Advertising/Adapters`, not in the Saloon-only `app/Http/Integrations` folder.
+- When Saloon is enabled, use it for application-owned direct HTTP. An appropriate official SDK may keep its own HTTP or gRPC transport and does not need a Saloon Request wrapper.
 - Adapters may configure authentication, timeout, transport retry, backoff, rate limit, and provider error mapping.
 - Adapters must not orchestrate application side effects, mutate model state, send notifications, dispatch domain jobs/events, or start unrelated workflows.
 - Controllers must not call Adapters directly. Delegate to an enabled application boundary such as an Action or cohesive Service.
@@ -63,6 +66,9 @@ If the protected boundary, typed payloads, test strategy, and binding/resolution
 - Avoid Port inheritance in application code. Prefer composing small Ports in Actions or Services.
 - Use shared contract tests only when multiple Adapters implement the same Port.
 - Do not add a Port only for testing when the concrete class or Laravel/package abstraction can already be faked, mocked, or swapped cleanly.
+- A fake Port tests Action orchestration, not Adapter mapping or error translation. Test the Adapter with the SDK's supported fake, replaceable client or transport, or a configurable local endpoint. Include credentials, authentication, and token refresh in the isolation design.
+- If the SDK has no workable isolation seam, report the limitation and require a separate decision to use that SDK or choose Saloon.
+- `Saloon::fake()`, Saloon stray-request prevention, and Laravel `Http::fake()` do not intercept SDK-owned traffic.
 
 ## Examples
 

@@ -24,6 +24,8 @@ Rules:
 - When Data Objects are enabled, Port methods must not use raw arrays as boundary payloads.
 - Adapters translate provider-specific APIs, SDKs, payloads, exceptions, and response shapes into project-owned Data objects, Value Objects, enums, results, or domain exceptions.
 - Adapters must translate vendor exceptions before they cross the Port boundary.
+- Official SDK clients, transports, request types, response types, and exceptions stay inside the Adapter. Place the Adapter near its owning area, for example `app/Advertising/Adapters`, not in the Saloon-only `app/Http/Integrations` folder.
+- Application-owned direct HTTP uses Saloon when Saloon is enabled. An appropriate official SDK may use its own HTTP or gRPC transport and does not need a Saloon Request wrapper.
 - Use `final readonly class` for Adapters by default unless a framework, package base class, lifecycle requirement, or existing project convention requires a different shape.
 - Adapters may perform the technical provider call they wrap, but must not orchestrate application side effects such as dispatching domain jobs/events, changing model state, sending notifications, or starting unrelated workflows.
 - Adapters may configure technical resilience such as authentication, timeouts, transport retries, backoff, rate limits, and provider error mapping.
@@ -42,6 +44,8 @@ Rules:
 - Avoid Port inheritance in application code. Prefer composing small Ports in Actions or Services.
 - Packages may expose public interfaces more often than applications, but every public contract still needs a real extension point, integration boundary, or user-swappable implementation.
 - Adapters should have tests that verify provider payload mapping, error translation, and Port contract behavior without calling real external services.
+- Before choosing an SDK, identify its supported fake, replaceable client or transport, or configurable endpoint for a local server. The test seam must also isolate credentials, authentication, and token refresh. If no workable seam exists, require a separate decision to accept the limit or use Saloon.
+- Test Actions with fake Ports and test each Adapter separately. Saloon and Laravel HTTP fakes do not intercept traffic owned by an SDK.
 - Use shared contract tests only when multiple Adapters implement the same Port.
 - Do not add a Port only for testing when the concrete class or Laravel/package abstraction can already be faked, mocked, or swapped cleanly in the project's tests.
 

@@ -272,6 +272,10 @@ final readonly class PortsAndAdaptersRule implements AuditRule
                         || str_starts_with($resolved, 'GuzzleHttp\\')
                         || str_starts_with($resolved, 'OpenAI\\')
                         || str_starts_with($resolved, 'Laravel\\Ai\\')
+                        || (
+                            str_starts_with($resolved, 'App\\Http\\Integrations\\')
+                            && str_contains($resolved, '\\Dto\\')
+                        )
                     ) {
                         return true;
                     }

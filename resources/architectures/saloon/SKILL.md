@@ -5,7 +5,7 @@ description: Build Laravel outbound API integrations with Saloon connectors, req
 
 # Saloon
 
-Use this skill when implementing or refactoring outbound HTTP/API integrations.
+Use this skill when implementing or refactoring application-owned outbound HTTP integrations, or when deciding how Saloon coexists with an official provider SDK.
 
 ## Required Stack
 
@@ -15,15 +15,23 @@ This architecture requires:
 - `saloonphp/laravel-plugin`
 - `saloonphp/rate-limit-plugin`
 
-Do not implement a custom HTTP client, custom retry layer, custom fixture layer, or ad hoc integration wrapper before using Saloon.
+Do not implement a custom HTTP client, retry layer, fixture layer, or ad hoc wrapper before using Saloon for application-owned direct HTTP.
+
+## Choose The Integration Path
+
+- Use Saloon when the application owns the direct HTTP request and response contract.
+- Use an appropriate official SDK inside a provider Adapter when the SDK owns HTTP or gRPC transport and provides useful provider behavior.
+- Do not rewrite SDK calls as Saloon Requests or wrap SDK transport in Saloon.
+- Keep SDK Adapters near the owning area, for example `app/Advertising/Adapters/GoogleAdsCampaignReader.php`.
+- Keep `app/Http/Integrations/**` for Saloon Connectors, Requests, DTOs, and integration-local support.
 
 ## Workflow
 
 1. Create one Connector per external service under `app/Http/Integrations/<Service>/`.
 2. Create one Request class per endpoint under `Requests/`.
 3. Create immutable response DTOs under `Dto/`.
-4. Call the integration from an Action or queued Job.
-5. Map integration DTOs to domain/application results before returning to controllers.
+4. Without Ports And Adapters, call the integration from an Action or queued Job and map its DTOs and exceptions there.
+5. With Ports And Adapters, call an application Port from the Action or Job. Map Saloon and SDK data and exceptions inside the Adapter.
 6. Test with `MockClient` / `Saloon::fake()` and prevent stray requests.
 
 ## Connector Shape
@@ -170,7 +178,7 @@ final readonly class InvoiceCreatedData
 }
 ```
 
-Integration DTOs must not leak into controllers, API Resources, or models. Actions/Jobs map them to domain/application results.
+Integration DTOs must not leak into controllers, API Resources, models, or Port signatures. Without Ports And Adapters, Actions or Jobs map them to application results. With Ports And Adapters, the Adapter maps them before returning through the Port.
 
 ## Application Boundary
 
@@ -181,7 +189,7 @@ Controllers, FormRequests, API Resources, and Models must not:
 - call `->send()` or `->sendAsync()`,
 - consume Saloon responses.
 
-Good:
+Good when Ports And Adapters are not enabled:
 
 ```php
 final readonly class IssueExternalInvoice
@@ -206,30 +214,30 @@ final readonly class IssueExternalInvoice
 }
 ```
 
-Jobs may call connectors directly when the job is the async use case. Extract an Action only when a second caller needs the same workflow.
+Jobs may call connectors directly when the job is the async use case and Ports And Adapters are not enabled. Extract an Action only when a second caller needs the same workflow.
 
 ## Raw HTTP Is Forbidden
 
-When Saloon is enabled, all outbound HTTP goes through Saloon:
+When Saloon is enabled, application-owned direct HTTP goes through Saloon:
 
 - no `Http::`
 - no direct `GuzzleHttp\Client`
 - no `curl_*`
 - no `file_get_contents('http...')`
 
-This includes internal services such as localhost endpoints, monitoring, and own microservices.
+This includes internal services such as localhost endpoints, monitoring, and own microservices. The rule does not require an official SDK to replace its HTTP or gRPC transport with Saloon.
 
 ## Failure Handling
 
 Use `AlwaysThrowOnErrors` on connectors.
 
-Catch Saloon exceptions at the Action/Job boundary and map them to named domain exceptions. Saloon exceptions must not reach controllers.
+Without Ports And Adapters, catch Saloon exceptions at the Action or Job boundary. With Ports And Adapters, catch them in the Adapter. Map them to named application or domain exceptions before they cross the active boundary. Saloon exceptions must not reach controllers.
 
 If an API returns HTTP 200 with an error payload, override `hasRequestFailed()`.
 
 ## Resilience
 
-Every connector defines:
+Every Connector defines:
 
 - retries,
 - backoff,
@@ -238,22 +246,118 @@ Every connector defines:
 
 Prefer queued Jobs for external calls. Never call external APIs inside an open database transaction.
 
+SDK Adapters must also define explicit timeouts, rate-limit handling, and one owner for retry behavior. Prefer the SDK's retry mechanism. Do not add a second retry loop. Retry a mutation only when an idempotency key or another provider guarantee makes it safe.
+
 ## Ports And Adapters
 
-If Ports And Adapters are enabled, Saloon Connector and Request classes are technical integration adapters. Add an application Port above Saloon only when the workflow needs a provider-neutral capability boundary or tests should replace the provider call.
+If Ports And Adapters are enabled, Actions and Jobs depend on application Ports for provider calls. The Adapter uses a Saloon Connector or an official SDK and translates provider data and exceptions to project-owned types. Do not create a Port per class.
 
-Ports And Adapters does not require Saloon. When both are enabled and an Adapter wraps an external HTTP API, use Saloon Connector/Request classes instead of raw HTTP clients.
+Controllers, FormRequests, and API Resources delegate to an Action or cohesive Service. They do not call a Port implementation, SDK, Connector, or Request directly.
+
+Ports And Adapters does not require Saloon. When both are enabled, use Saloon for application-owned direct HTTP and keep official SDK transport inside its provider Adapter.
+
+## SDK And Saloon In One Application
+
+The SDK names below match `googleads/google-ads-php` v35.0.0 and Google Ads API V25. The Adapter receives the generated service client, so a test can replace that client without using the real provider.
+
+```php
+use App\Advertising\Data\CampaignSummaryData;
+use Google\Ads\GoogleAds\V25\Services\Client\GoogleAdsServiceClient;
+use Google\Ads\GoogleAds\V25\Services\SearchGoogleAdsRequest;
+
+interface CampaignReader
+{
+    public function find(string $customerId): CampaignSummaryData;
+}
+
+final readonly class GoogleAdsCampaignReader implements CampaignReader
+{
+    public function __construct(private GoogleAdsServiceClient $client) {}
+
+    public function find(string $customerId): CampaignSummaryData
+    {
+        try {
+            $rows = $this->client->search(SearchGoogleAdsRequest::build(
+                $customerId,
+                'SELECT campaign.id, campaign.name FROM campaign LIMIT 1',
+            ));
+        } catch (\Google\ApiCore\ApiException $exception) {
+            throw AdvertisingProviderFailed::fromGoogleAds($exception);
+        }
+
+        return CampaignSummaryData::fromGoogleAdsRow($rows->iterateAllElements()->current());
+    }
+}
+```
+
+Another capability can use Saloon behind its own Port:
+
+```php
+interface InvoiceIssuer
+{
+    public function issue(CreateInvoiceData $data): ExternalInvoiceIssued;
+}
+
+final readonly class FakturowniaInvoiceIssuer implements InvoiceIssuer
+{
+    public function __construct(private FakturowniaConnector $connector) {}
+
+    public function issue(CreateInvoiceData $data): ExternalInvoiceIssued
+    {
+        try {
+            $dto = $this->connector->send(new CreateInvoiceRequest($data))->dtoOrFail();
+        } catch (RequestException $exception) {
+            throw ExternalInvoiceFailed::fromSaloon($exception);
+        }
+
+        return ExternalInvoiceIssued::fromFakturownia($dto);
+    }
+}
+```
+
+Bind both Adapters in a Service Provider. The Action depends only on the Ports:
+
+```php
+$this->app->bind(CampaignReader::class, GoogleAdsCampaignReader::class);
+$this->app->bind(InvoiceIssuer::class, FakturowniaInvoiceIssuer::class);
+
+final readonly class LaunchCampaign
+{
+    public function __construct(
+        private CampaignReader $campaigns,
+        private InvoiceIssuer $invoices,
+    ) {}
+
+    public function handle(LaunchCampaignData $data): LaunchCampaignResult
+    {
+        $campaign = $this->campaigns->find($data->customerId);
+        $invoice = $this->invoices->issue($data->invoice);
+
+        return new LaunchCampaignResult($campaign, $invoice);
+    }
+}
+```
 
 ## Testing
 
-Use:
+For Saloon Adapters, use:
 
 - `MockClient`
 - `Saloon::fake()`
 - fixtures under `tests/Fixtures/Saloon/<service>/`
 - `Config::preventStrayRequests()` in the base test case
 
-Test application handling of success, failure, and malformed responses. Do not test whether the provider API works.
+Test application workflow with fake Ports. Separately test each Adapter's request payload, successful mapping, provider failure, malformed response, and error translation without the real provider.
+
+Before selecting an official SDK, verify one supported isolation mechanism:
+
+- a library fake,
+- a replaceable client or transport,
+- a configurable endpoint and local test server.
+
+The mechanism must isolate credentials discovery, authentication, and token refresh as well as the API call. If no workable mechanism exists, report that limit and require a separate decision to accept the SDK or use Saloon.
+
+`Saloon::fake()`, `Config::preventStrayRequests()`, and Laravel `Http::fake()` do not intercept SDK-owned traffic. A fake Port does not prove Adapter mapping or error translation.
 
 ## Security
 
