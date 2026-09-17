@@ -15,6 +15,7 @@ use GracjanKubicki\ArchitectureKit\Install\ComposerPackageInstaller;
 use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
 use GracjanKubicki\ArchitectureKit\Install\InstallResult;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\ArchitectureKitRuntimeRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\InertiaRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\SaloonRequirement;
@@ -68,6 +69,14 @@ class InstallCommand extends Command
 
             if (
                 ! $files->exists(config_path('architectures.php'))
+                && InertiaRequirement::resolve($files, base_path())->supported()
+                && ! in_array(Architecture::Inertia, $current, true)
+            ) {
+                $current[] = Architecture::Inertia;
+            }
+
+            if (
+                ! $files->exists(config_path('architectures.php'))
                 && ServicesRequirement::projectHasServices($files, base_path())
                 && ! in_array(Architecture::Services, $current, true)
             ) {
@@ -97,6 +106,14 @@ class InstallCommand extends Command
 
             if ($laravelAi !== null && ! $laravelAi->supported()) {
                 throw new \RuntimeException($laravelAi->message.' '.$laravelAi->remediation);
+            }
+
+            $inertia = in_array(Architecture::Inertia, $enabled, true)
+                ? InertiaRequirement::resolve($files, base_path())
+                : null;
+
+            if ($inertia !== null && ! $inertia->supported()) {
+                throw new \RuntimeException($inertia->message.' '.$inertia->remediation);
             }
 
             $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files, $catalog, $laravelAi);

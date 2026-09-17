@@ -16,6 +16,7 @@ final readonly class FindingCodeRegistry
         'enums' => ['title' => 'Enum architecture violation', 'why' => 'Enum folders are reserved for finite typed state definitions.', 'fix' => 'Use a backed enum with the required project conventions.'],
         'folder-purity' => ['title' => 'Folder purity violation', 'why' => 'Architecture folders must remain type-pure for predictable navigation and enforcement.', 'fix' => 'Move the class to its matching boundary or change it to the required type.'],
         'form-request' => ['title' => 'Form Request violation', 'why' => 'HTTP validation and authorization belong in Form Requests.', 'fix' => 'Move request validation and authorization into a typed Form Request.'],
+        'inertia' => ['title' => 'Inertia presentation boundary violation', 'why' => 'Inertia response composition belongs in the presentation layer and must expose only selected request data.', 'fix' => 'Move Inertia dependencies to the presentation layer and pass only explicitly selected request fields.'],
         'invalid-suppression' => ['title' => 'Suppression comment does not target a known rule', 'why' => 'Unknown suppressions are ignored so Architecture Kit does not silently hide real findings.', 'fix' => 'Use an existing rule slug in the suppression comment and include a short reason.'],
         'laravel-ai' => ['title' => 'Laravel AI boundary violation', 'why' => 'AI provider access must remain behind a dedicated application boundary.', 'fix' => 'Move the call behind an AI Gateway, Action, or Job.'],
         'layer-dependency' => ['title' => 'Layer dependency violation', 'why' => 'Dependencies must point toward stable application and domain boundaries, not back into adapters or infrastructure.', 'fix' => 'Invert the dependency or move the contract to a stable inner boundary.'],
@@ -39,6 +40,24 @@ final readonly class FindingCodeRegistry
 
     /** @var array<string, array{rule: string, title: string, why: string, fix: string}> */
     private const CODE_CATALOG = [
+        'E_INERTIA_LAYER_DEPENDENCY' => [
+            'rule' => 'inertia',
+            'title' => 'Application boundary depends on Inertia',
+            'why' => 'Actions and Query Objects should return application data without depending on the presentation adapter.',
+            'fix' => 'Remove the Inertia dependency and compose the page response in a controller, page responder, middleware, or named props class.',
+        ],
+        'E_INERTIA_UNFILTERED_REQUEST_PROPS' => [
+            'rule' => 'inertia',
+            'title' => 'Whole request reaches Inertia props',
+            'why' => 'Passing every request value can expose fields that the page contract did not select.',
+            'fix' => 'Pass validated data or select named fields with only(...), input("field"), or collect("field").',
+        ],
+        'W_INERTIA_REQUEST_PROPS_ANALYSIS_INCOMPLETE' => [
+            'rule' => 'inertia',
+            'title' => 'Inertia request prop analysis is incomplete',
+            'why' => 'A dynamic or indirect transformation prevents static analysis from proving that the page receives only selected request fields.',
+            'fix' => 'Make field selection explicit at the page boundary or inspect the named transformer before suppressing the warning.',
+        ],
         'E_THIN_CONTROLLER_MODEL_WRITE' => [
             'rule' => 'thin-controller',
             'title' => 'Controller writes through an Eloquent model',

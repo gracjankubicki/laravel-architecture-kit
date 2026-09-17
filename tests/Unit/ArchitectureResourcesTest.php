@@ -86,6 +86,38 @@ class ArchitectureResourcesTest extends TestCase
         $this->assertStringContainsString('Expose one public entry method: `handle(...)`.', $single);
     }
 
+    public function test_inertia_resources_keep_guidance_and_enforcement_boundaries_consistent(): void
+    {
+        $resources = $this->resources();
+        $enabled = [
+            Architecture::Actions,
+            Architecture::QueryObjects,
+            Architecture::DataObjects,
+            Architecture::ApiResources,
+            Architecture::Inertia,
+        ];
+
+        $guideline = $resources->architectureGuideline(Architecture::Inertia, $enabled);
+        $skill = $resources->skills($enabled)['inertia']->contents;
+        $summary = $resources->summaryFor(Architecture::Inertia, $enabled);
+        $combined = implode("\n", [$guideline, $skill]);
+
+        $this->assertStringContainsString('Keep Inertia 3 response composition in the presentation layer', $summary);
+        $this->assertStringContainsString('name: architecture-kit-inertia', $skill);
+        $this->assertStringContainsString('explicit array', $combined);
+        $this->assertStringContainsString('API Resources', $combined);
+        $this->assertStringContainsString('Query Objects', $combined);
+        $this->assertStringContainsString('Data Objects', $combined);
+        $this->assertStringContainsString('Spatie Laravel Data is optional', $combined);
+        $this->assertStringContainsString('ProvidesInertiaProperties', $combined);
+        $this->assertStringContainsString('reloadOnly', $combined);
+        $this->assertStringContainsString('loadDeferredProps', $combined);
+        $this->assertStringContainsString('rescue()', $combined);
+        $this->assertStringContainsString('frontend is not the authorization boundary', $combined);
+        $this->assertStringContainsString('The `inertia` audit rule enforces two boundaries', $guideline);
+        $this->assertStringContainsString('The guard does not prove prop completeness', $skill);
+    }
+
     public function test_summary_fragments_and_custom_fallbacks_are_resolved(): void
     {
         $resources = $this->resources();

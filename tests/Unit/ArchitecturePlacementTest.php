@@ -22,6 +22,7 @@ class ArchitecturePlacementTest extends TestCase
             Architecture::ValueObjects->value => 'app/ValueObjects',
             Architecture::Enums->value => null,
             Architecture::ApiResources->value => 'app/Http/Resources',
+            Architecture::Inertia->value => null,
             Architecture::EloquentLifecycle->value => 'app/Observers, app/Lifecycle',
             Architecture::Saloon->value => 'app/Http/Integrations',
             Architecture::PortsAndAdapters->value => null,
@@ -54,6 +55,7 @@ class ArchitecturePlacementTest extends TestCase
 
         $this->assertSame([
             Architecture::Enums->value,
+            Architecture::Inertia->value,
             Architecture::PortsAndAdapters->value,
             Architecture::ModernPhp85->value,
             Architecture::LaravelBestPractices->value,

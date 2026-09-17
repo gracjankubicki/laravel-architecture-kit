@@ -103,6 +103,7 @@ final readonly class AgentOutput
                 ...($result->boostInstalled ? ['sync' => 'php artisan boost:update --no-interaction'] : []),
             ],
             ...($result->laravelAi !== null ? ['laravel_ai' => $result->laravelAi->toArray()] : []),
+            ...($result->inertia !== null ? ['inertia' => $result->inertia->toArray()] : []),
             'checks' => $this->checks($result->checks),
             'trunc' => count($visibleIssues) < count($issues),
             ...($limit > 0 ? [
@@ -139,27 +140,30 @@ final readonly class AgentOutput
 
     /**
      * @param  array<string, array<int, string>>  $changes
-     * @param  array<string, mixed>|null  $profile
+     * @param  array<string, mixed>|null  $laravelAi
+     * @param  array<string, mixed>|null  $inertia
      * @return array<string, mixed>
      */
-    public function sync(array $changes, bool $dryRun, ?array $profile = null): array
+    public function sync(array $changes, bool $dryRun, ?array $laravelAi = null, ?array $inertia = null): array
     {
         return [
             'v' => 1,
             'ok' => true,
             'cmd' => 'sync',
             'dry_run' => $dryRun,
-            ...($profile !== null ? ['laravel_ai' => $profile] : []),
+            ...($laravelAi !== null ? ['laravel_ai' => $laravelAi] : []),
+            ...($inertia !== null ? ['inertia' => $inertia] : []),
             'changes' => $changes,
             'next' => $dryRun ? ['rerun:sync --no-interaction'] : ['run:boost:update --no-interaction'],
         ];
     }
 
     /**
-     * @param  array<string, mixed>|null  $profile
+     * @param  array<string, mixed>|null  $laravelAi
+     * @param  array<string, mixed>|null  $inertia
      * @return array<string, mixed>
      */
-    public function syncError(string $message, ?array $profile = null): array
+    public function syncError(string $message, ?array $laravelAi = null, ?array $inertia = null): array
     {
         return [
             'v' => 1,
@@ -167,16 +171,18 @@ final readonly class AgentOutput
             'cmd' => 'sync',
             'm' => 'E_SYNC_PREFLIGHT',
             'msg' => $message,
-            ...($profile !== null ? ['laravel_ai' => $profile] : []),
+            ...($laravelAi !== null ? ['laravel_ai' => $laravelAi] : []),
+            ...($inertia !== null ? ['inertia' => $inertia] : []),
             'next' => ['fix_preflight', 'rerun:sync --no-interaction'],
         ];
     }
 
     /**
-     * @param  array<string, mixed>|null  $profile
+     * @param  array<string, mixed>|null  $laravelAi
+     * @param  array<string, mixed>|null  $inertia
      * @return array<string, mixed>
      */
-    public function syncApplyError(string $message, ?array $profile = null): array
+    public function syncApplyError(string $message, ?array $laravelAi = null, ?array $inertia = null): array
     {
         return [
             'v' => 1,
@@ -184,7 +190,8 @@ final readonly class AgentOutput
             'cmd' => 'sync',
             'm' => 'E_SYNC_APPLY',
             'msg' => $message,
-            ...($profile !== null ? ['laravel_ai' => $profile] : []),
+            ...($laravelAi !== null ? ['laravel_ai' => $laravelAi] : []),
+            ...($inertia !== null ? ['inertia' => $inertia] : []),
             'next' => ['fix_filesystem', 'rerun:sync --no-interaction'],
         ];
     }
@@ -522,6 +529,10 @@ final readonly class AgentOutput
                     'type' => ['object', 'null'],
                     'additionalProperties' => true,
                 ],
+                'inertia' => [
+                    'type' => ['object', 'null'],
+                    'additionalProperties' => true,
+                ],
                 'checks' => [
                     'type' => 'object',
                     'additionalProperties' => ['enum' => ['ok', 'warn', 'fail']],
@@ -781,6 +792,7 @@ final readonly class AgentOutput
                         'ok' => ['const' => true],
                         'cmd' => ['const' => 'guidelines'],
                         'laravel_ai' => ['type' => 'object', 'additionalProperties' => true],
+                        'inertia' => ['type' => 'object', 'additionalProperties' => true],
                         'arch' => [
                             'type' => 'array',
                             'items' => [
@@ -808,6 +820,7 @@ final readonly class AgentOutput
                         'ok' => ['const' => true],
                         'cmd' => ['const' => 'guidelines'],
                         'laravel_ai' => ['type' => 'object', 'additionalProperties' => true],
+                        'inertia' => ['type' => 'object', 'additionalProperties' => true],
                         'slug' => ['type' => 'string'],
                         'label' => ['type' => 'string'],
                         'enabled' => ['type' => 'boolean'],
@@ -850,7 +863,7 @@ final readonly class AgentOutput
     /** @return array<string, mixed> */
     private function syncSchema(): array
     {
-        $laravelAi = [
+        $profile = [
             'type' => 'object',
             'additionalProperties' => true,
         ];
@@ -877,7 +890,8 @@ final readonly class AgentOutput
                         'ok' => ['const' => true],
                         'cmd' => ['const' => 'sync'],
                         'dry_run' => ['type' => 'boolean'],
-                        'laravel_ai' => $laravelAi,
+                        'laravel_ai' => $profile,
+                        'inertia' => $profile,
                         'changes' => $changes,
                         'next' => $this->stringListSchema(),
                     ],
@@ -892,7 +906,8 @@ final readonly class AgentOutput
                         'cmd' => ['const' => 'sync'],
                         'm' => ['const' => 'E_SYNC_PREFLIGHT'],
                         'msg' => ['type' => 'string'],
-                        'laravel_ai' => $laravelAi,
+                        'laravel_ai' => $profile,
+                        'inertia' => $profile,
                         'next' => $this->stringListSchema(),
                     ],
                     'additionalProperties' => false,
@@ -906,7 +921,8 @@ final readonly class AgentOutput
                         'cmd' => ['const' => 'sync'],
                         'm' => ['const' => 'E_SYNC_APPLY'],
                         'msg' => ['type' => 'string'],
-                        'laravel_ai' => $laravelAi,
+                        'laravel_ai' => $profile,
+                        'inertia' => $profile,
                         'next' => $this->stringListSchema(),
                     ],
                     'additionalProperties' => false,

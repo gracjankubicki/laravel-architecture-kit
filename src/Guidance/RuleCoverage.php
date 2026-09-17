@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Rules\DataObjects\DataObjectsRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\EloquentLifecycleRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Enums\EnumsRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\FormRequests\FormRequestsRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Inertia\InertiaRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\LaravelAi\LaravelAiRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ModernPhp85\ModernPhp85Rule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\PortsAndAdapters\PortsAndAdaptersRule;
@@ -47,6 +48,7 @@ final class RuleCoverage
         EnumsRule::class => ['enums'],
         FolderPurityRule::class => ['folder-purity'],
         FormRequestsRule::class => ['form-request'],
+        InertiaRule::class => ['inertia'],
         LaravelAiRule::class => ['laravel-ai'],
         ModernPhp85Rule::class => ['modern-php-85'],
         PortsAndAdaptersRule::class => ['ports-and-adapters'],
@@ -82,6 +84,7 @@ final class RuleCoverage
         'value-objects' => ['value-objects', 'folder-purity'],
         'enums' => ['enums', 'folder-purity'],
         'api-resources' => ['api-resource', 'folder-purity'],
+        'inertia' => ['inertia'],
         'eloquent-lifecycle' => ['eloquent-lifecycle', 'transaction-side-effects'],
         'saloon' => ['saloon', 'raw-http', 'folder-purity', 'transaction-side-effects'],
         'ports-and-adapters' => ['ports-and-adapters'],

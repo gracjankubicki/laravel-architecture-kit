@@ -97,6 +97,21 @@ class DoctorCommand extends Command
             }
         }
 
+        if ($result->inertia !== null) {
+            $this->newLine();
+            $this->line('Inertia:');
+            $this->line('  status     '.$result->inertia->status->value);
+            $this->line('  section    '.($result->inertia->section ?? 'none'));
+            $this->line('  constraint '.($result->inertia->declaredConstraint ?? 'none'));
+            $this->line('  installed  '.($result->inertia->installedVersion ?? 'none'));
+            $this->line('  locked     '.($result->inertia->lockedVersion ?? 'none'));
+            $this->line('  profile    '.($result->inertia->profile ?? 'none'));
+
+            if (! $result->inertia->supported()) {
+                $this->line('  next       '.$result->inertia->remediation);
+            }
+        }
+
         $this->newLine();
         $this->line('Generated resources:');
 

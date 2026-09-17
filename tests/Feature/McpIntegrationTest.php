@@ -105,6 +105,33 @@ class McpIntegrationTest extends TestCase
             );
     }
 
+    public function test_inertia_guidance_and_profile_are_available_through_mcp(): void
+    {
+        $this->writeInertiaFixture('^3.0', '3.1.0');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Inertia]);
+
+        ArchitectureKitServer::tool(EnabledArchitectures::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('architectures.0.value', 'inertia')
+                ->where('architectures.0.skill', 'architecture-kit-inertia')
+                ->where('inertia.status', 'supported')
+                ->where('inertia.profile', 'inertia@3')
+                ->etc()
+            );
+
+        ArchitectureKitServer::tool(ArchitectureRules::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('inertia.profile', 'inertia@3')
+                ->where('architectures.0.value', 'inertia')
+                ->where('architectures.0.skill', 'architecture-kit-inertia')
+                ->where('guideline', fn (string $guideline): bool => str_contains($guideline, '## Shared and incremental data')
+                    && str_contains($guideline, 'The `inertia` audit rule enforces two boundaries'))
+                ->etc()
+            );
+    }
+
     public function test_enabled_architectures_tool_returns_scoped_custom_audit_rules(): void
     {
         $this->writeCustomArchitecture('billing-workflows');

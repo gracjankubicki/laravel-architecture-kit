@@ -4,6 +4,10 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ## Unreleased
 
+### Added
+
+- Add an optional Inertia 3 architecture profile with first-install detection, explicit selection, compatibility diagnostics, generated guidance, MCP output, and two audit checks. Actions and Query Objects cannot depend on Inertia, and page props cannot receive an unfiltered request. Architecture Kit does not install or update Inertia, and the existing endpoint and missing-test analysis keeps its Inertia semantics when the profile is disabled.
+
 ### Fixed
 
 - Recognize supported Laravel, Inertia 3, and Fortify 1 calls in endpoint and test-reachability analysis. The audit now follows selected policies, API Resource transformations, Inertia props and route-specific shared data, and Fortify actions or view callbacks without executing application code. Session reads remain clean, while explicit session writes on GET or HEAD routes are reported. Dynamic framework dispatch remains an incomplete-analysis warning that blocks strict mode.

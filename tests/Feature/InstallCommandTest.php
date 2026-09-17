@@ -705,6 +705,54 @@ PHP;
         );
     }
 
+    public function test_it_generates_inertia_resources_without_changing_dependencies(): void
+    {
+        $this->writeInertiaFixture('^3.0', '3.1.0');
+        $composerBefore = (new Filesystem)->get($this->tempPath.'/composer.json');
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['inertia'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $files = new Filesystem;
+
+        $this->assertSame($composerBefore, $files->get($this->tempPath.'/composer.json'));
+        $this->assertStringContainsString('Architecture::Inertia', $files->get($this->tempPath.'/config/architectures.php'));
+        $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-inertia/SKILL.md');
+    }
+
+    public function test_it_allows_the_user_to_leave_suggested_inertia_disabled(): void
+    {
+        $this->writeInertiaFixture('^3.0', '3.0.0');
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $config = (new Filesystem)->get($this->tempPath.'/config/architectures.php');
+
+        $this->assertStringContainsString('Architecture::Actions', $config);
+        $this->assertStringNotContainsString('Architecture::Inertia', $config);
+    }
+
+    public function test_it_blocks_inertia_without_a_supported_runtime_dependency(): void
+    {
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Inertia]);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['inertia'], Architecture::promptOptions())
+            ->expectsOutputToContain('Inertia Laravel is not declared directly in root composer.json.')
+            ->assertExitCode(1);
+
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-inertia/SKILL.md');
+    }
+
     public function test_it_blocks_before_config_when_architecture_kit_is_not_a_runtime_dependency(): void
     {
         $files = new Filesystem;

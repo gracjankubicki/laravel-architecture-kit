@@ -14,6 +14,7 @@ use GracjanKubicki\ArchitectureKit\Composer\ProjectPackageInventory;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\ArchitectureKitRuntimeRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\InertiaRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\SaloonRequirement;
@@ -43,6 +44,7 @@ final readonly class ArchitectureDoctor
         $checks = [];
         $enabled = [];
         $laravelAi = $state?->laravelAi;
+        $inertia = $state?->inertia;
         $canGenerate = true;
 
         try {
@@ -62,6 +64,7 @@ final readonly class ArchitectureDoctor
                 checks: $checks,
                 boostInstalled: $this->boostInstalled(),
                 laravelAi: $laravelAi,
+                inertia: $inertia,
             );
         }
 
@@ -125,6 +128,32 @@ final readonly class ArchitectureDoctor
                 status: 'warning',
                 path: 'composer.json',
                 message: 'laravel/ai is declared but Architecture::LaravelAi is not enabled. Detected status: '.$laravelAi->status->value.'.',
+            );
+        }
+
+        $projectRequiresInertia = InertiaRequirement::projectRequiresInertia($this->files, $this->basePath);
+
+        if (in_array(Architecture::Inertia, $enabled, true)) {
+            $inertia ??= InertiaRequirement::resolve($this->files, $this->basePath);
+
+            if (! $inertia->supported()) {
+                $checks[] = new ArchitectureDoctorCheck(
+                    area: 'config',
+                    status: 'blocked',
+                    path: 'composer.json',
+                    message: $inertia->message.' '.$inertia->remediation,
+                );
+                $canGenerate = false;
+            }
+        }
+
+        if (! in_array(Architecture::Inertia, $enabled, true) && $projectRequiresInertia) {
+            $inertia ??= InertiaRequirement::resolve($this->files, $this->basePath);
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'config',
+                status: 'warning',
+                path: 'composer.json',
+                message: 'inertiajs/inertia-laravel is declared but Architecture::Inertia is not enabled. Detected status: '.$inertia->status->value.'.',
             );
         }
 
@@ -242,6 +271,7 @@ final readonly class ArchitectureDoctor
             checks: $checks,
             boostInstalled: $this->boostInstalled(),
             laravelAi: $laravelAi,
+            inertia: $inertia,
         );
     }
 

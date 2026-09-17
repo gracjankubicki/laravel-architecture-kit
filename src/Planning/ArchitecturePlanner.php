@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\ArchitectureKitRuntimeRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\InertiaRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\SaloonRequirement;
@@ -97,6 +98,16 @@ final readonly class ArchitecturePlanner
             ];
         }
 
+        if (in_array(Architecture::Inertia, $enabled, true)) {
+            $inertia = InertiaRequirement::resolve($this->files, $this->basePath);
+            $requirements[] = [
+                'name' => 'inertia',
+                'satisfied' => $inertia->supported(),
+                'message' => $inertia->message,
+                'remediation' => $inertia->remediation,
+            ];
+        }
+
         return $requirements;
     }
 
@@ -150,6 +161,12 @@ final readonly class ArchitecturePlanner
 
         if ($architecture->value === Architecture::LaravelAi) {
             return $this->packageEvidence('laravel/ai');
+        }
+
+        if ($architecture->value === Architecture::Inertia) {
+            return InertiaRequirement::resolve($this->files, $this->basePath)->supported()
+                ? $this->packageEvidence('inertiajs/inertia-laravel')
+                : [];
         }
 
         if ($architecture->value === Architecture::ModernPhp85) {
@@ -254,6 +271,14 @@ final readonly class ArchitecturePlanner
 
         if ($laravelAi !== null && ! $laravelAi->supported()) {
             return new ManagedResourcePlan(blocked: ['requirements:laravel-ai']);
+        }
+
+        $inertia = in_array(Architecture::Inertia, $enabled, true)
+            ? InertiaRequirement::resolve($this->files, $this->basePath)
+            : null;
+
+        if ($inertia !== null && ! $inertia->supported()) {
+            return new ManagedResourcePlan(blocked: ['requirements:inertia']);
         }
 
         $resources = new ArchitectureResources($this->packagePath, $this->basePath, $this->files, $catalog, $laravelAi);

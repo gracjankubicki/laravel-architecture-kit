@@ -236,6 +236,48 @@ PHP);
         $this->assertSame($before, $this->snapshot($files));
     }
 
+    public function test_it_recommends_supported_inertia_3_without_writing(): void
+    {
+        $files = new Filesystem;
+        $files->delete($this->tempPath.'/config/architectures.php');
+        $this->writeInertiaFixture('^3.0', '3.1.0');
+        $before = $this->snapshot($files);
+
+        $exit = Artisan::call('architecture-kit:plan', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $recommendations = array_column($payload['recommendations'], null, 'slug');
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame(
+            ['composer.json:require.inertiajs/inertia-laravel'],
+            $recommendations['inertia']['evidence'],
+        );
+        $this->assertTrue($payload['requirements'][1]['satisfied']);
+        $this->assertSame('inertia', $payload['requirements'][1]['name']);
+        $this->assertSame($before, $this->snapshot($files));
+    }
+
+    public function test_it_does_not_recommend_unsupported_inertia_but_blocks_an_explicit_selection(): void
+    {
+        $files = new Filesystem;
+        $files->delete($this->tempPath.'/config/architectures.php');
+        $this->writeInertiaFixture('^2.0', '2.0.0');
+
+        $exit = Artisan::call('architecture-kit:plan', ['--agent' => true]);
+        $detected = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertNotContains('inertia', array_column($detected['recommendations'], 'slug'));
+
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))->write([Architecture::Inertia]);
+        $exit = Artisan::call('architecture-kit:plan', ['--agent' => true]);
+        $configured = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertFalse($configured['requirements'][1]['satisfied']);
+        $this->assertSame(['requirements:inertia'], $configured['changes']['blocked']);
+    }
+
     /** @return array<string, string> */
     private function snapshot(Filesystem $files): array
     {

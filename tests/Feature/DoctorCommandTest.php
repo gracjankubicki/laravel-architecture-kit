@@ -248,6 +248,53 @@ PHP,
         $this->assertSame('0.9.0', $payload['laravel_ai']['installed_version']);
     }
 
+    public function test_it_reports_the_resolved_inertia_profile_and_runtime_contract(): void
+    {
+        $this->writeInertiaFixture('^3.0', '3.1.0');
+        $this->writeCurrentResources([Architecture::Inertia]);
+
+        $exit = Artisan::call('architecture-kit:doctor', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('supported', $payload['inertia']['status']);
+        $this->assertSame('inertia@3', $payload['inertia']['profile']);
+        $this->assertSame('3.1.0', $payload['inertia']['installed_version']);
+    }
+
+    public function test_it_blocks_enabled_inertia_without_a_supported_dependency(): void
+    {
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Inertia]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  composer.json')
+            ->expectsOutputToContain('Inertia Laravel is not declared directly in root composer.json.')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_reports_invalid_inertia_installed_version_metadata(): void
+    {
+        $this->writeInertiaFixture('^3.0', 'not-a-version');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Inertia]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  composer.json')
+            ->expectsOutputToContain('Invalid inertiajs/inertia-laravel installed or locked version metadata')
+            ->expectsOutputToContain('status     invalid_version')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_warns_when_inertia_is_installed_but_profile_is_disabled(): void
+    {
+        $this->writeInertiaFixture('^3.0', '3.0.0');
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('warning  composer.json')
+            ->expectsOutputToContain('inertiajs/inertia-laravel is declared but Architecture::Inertia is not enabled.')
+            ->assertExitCode(0);
+    }
+
     public function test_it_does_not_mark_upgrade_guides_as_stale_when_enabled_laravel_ai_is_unsupported(): void
     {
         $this->writeLaravelAiFixture('^0.9', '0.9.1');

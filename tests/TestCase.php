@@ -58,6 +58,42 @@ return Illuminate\Foundation\Application::configure(basePath: dirname(__DIR__))
 PHP);
     }
 
+    protected function writeInertiaFixture(
+        string $constraint = '^3.0',
+        ?string $installedVersion = '3.0.0',
+        string $section = 'require',
+        ?string $lockedVersion = null,
+    ): void {
+        $files = new Filesystem;
+        $composer = json_decode($files->get($this->tempPath.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $composer['require'] ??= [];
+        $composer['require-dev'] ??= [];
+        unset($composer['require']['inertiajs/inertia-laravel'], $composer['require-dev']['inertiajs/inertia-laravel']);
+        $composer[$section]['inertiajs/inertia-laravel'] = $constraint;
+        $files->put($this->tempPath.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+
+        $lockedVersion ??= $installedVersion;
+        $lockSection = $section === 'require-dev' ? 'packages-dev' : 'packages';
+        $lock = [
+            'packages' => [[
+                'name' => 'gracjankubicki/laravel-architecture-kit',
+                'version' => '0.2.0',
+            ]],
+            'packages-dev' => [],
+        ];
+
+        if ($lockedVersion !== null) {
+            $lock[$lockSection][] = ['name' => 'inertiajs/inertia-laravel', 'version' => $lockedVersion];
+        }
+
+        $files->put($this->tempPath.'/composer.lock', json_encode($lock, JSON_THROW_ON_ERROR));
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');
+        $installed = $installedVersion === null
+            ? '[]'
+            : "['inertiajs/inertia-laravel' => ['pretty_version' => '{$installedVersion}']]";
+        $files->put($this->tempPath.'/vendor/composer/installed.php', "<?php\nreturn ['versions' => {$installed}];\n");
+    }
+
     /**
      * @return array<int, class-string>
      */

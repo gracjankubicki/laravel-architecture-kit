@@ -27,6 +27,7 @@ class ArchitectureRules extends Tool
             'guideline' => $this->guideline($state),
             'architectures' => $this->architectureSummaries($state),
             ...($state->laravelAi !== null ? ['laravel_ai' => $state->laravelAi->toArray()] : []),
+            ...($state->inertia !== null ? ['inertia' => $state->inertia->toArray()] : []),
         ]);
     }
 }

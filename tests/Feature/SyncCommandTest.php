@@ -97,6 +97,35 @@ final class SyncCommandTest extends TestCase
         $this->assertSame('previous managed state', $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md'));
     }
 
+    public function test_it_blocks_before_writes_when_inertia_is_incompatible(): void
+    {
+        $files = new Filesystem;
+        $this->writeInertiaFixture('^2.0', '2.0.0');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))->write([Architecture::Inertia]);
+        $files->ensureDirectoryExists($this->tempPath.'/.ai/guidelines');
+        $files->put($this->tempPath.'/.ai/guidelines/architecture-kit.md', 'previous managed state');
+
+        $exit = Artisan::call('architecture-kit:sync', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $exit, Artisan::output());
+        $this->assertSame('unsupported_constraint', $payload['inertia']['status']);
+        $this->assertSame('previous managed state', $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md'));
+    }
+
+    public function test_it_reports_inertia_profile_when_syncing_resources(): void
+    {
+        $this->writeInertiaFixture('^3.0', '3.0.0');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Inertia]);
+
+        $exit = Artisan::call('architecture-kit:sync', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('inertia@3', $payload['inertia']['profile']);
+        $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-inertia/SKILL.md');
+    }
+
     public function test_it_upgrades_generated_resources_from_profile_08_to_09(): void
     {
         $files = new Filesystem;

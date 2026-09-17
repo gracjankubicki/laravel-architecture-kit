@@ -16,6 +16,7 @@ enum Architecture: string
     case ValueObjects = 'value-objects';
     case Enums = 'enums';
     case ApiResources = 'api-resources';
+    case Inertia = 'inertia';
     case EloquentLifecycle = 'eloquent-lifecycle';
     case Saloon = 'saloon';
     case PortsAndAdapters = 'ports-and-adapters';
@@ -54,6 +55,7 @@ enum Architecture: string
             self::ValueObjects,
             self::Enums,
             self::ApiResources,
+            self::Inertia,
             self::EloquentLifecycle,
             self::Saloon,
             self::PortsAndAdapters,
@@ -90,6 +92,7 @@ enum Architecture: string
             self::ValueObjects => 'Value Objects',
             self::Enums => 'Enums',
             self::ApiResources => 'API Resources',
+            self::Inertia => 'Inertia',
             self::EloquentLifecycle => 'Eloquent Lifecycle',
             self::Saloon => 'Saloon',
             self::PortsAndAdapters => 'Ports And Adapters',
@@ -117,6 +120,7 @@ enum Architecture: string
             self::ValueObjects => 'app/ValueObjects',
             self::Enums => null,
             self::ApiResources => 'app/Http/Resources',
+            self::Inertia => null,
             self::EloquentLifecycle => 'app/Observers, app/Lifecycle',
             self::Saloon => 'app/Http/Integrations',
             self::PortsAndAdapters => null,

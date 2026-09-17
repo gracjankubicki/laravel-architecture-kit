@@ -10,6 +10,8 @@ use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
+use GracjanKubicki\ArchitectureKit\Inertia\InertiaCompatibilityResult;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\InertiaRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
@@ -31,6 +33,7 @@ final readonly class ProjectState
         public CustomRuleSet $customRules,
         public array $runtime,
         public ?LaravelAiCompatibilityResult $laravelAi,
+        public ?InertiaCompatibilityResult $inertia,
         public AuditScope $auditScope,
         public MissingTestLevel $missingTestLevel,
         public ?ProjectGraphCache $graphCache,
@@ -44,6 +47,9 @@ final readonly class ProjectState
         $laravelAi = in_array(Architecture::LaravelAi, $enabled, true)
             ? LaravelAiRequirement::resolve($files, $basePath)
             : null;
+        $inertia = in_array(Architecture::Inertia, $enabled, true)
+            ? InertiaRequirement::resolve($files, $basePath)
+            : null;
 
         $resources = new ArchitectureResources($packagePath, $basePath, $files, $catalog, $laravelAi);
 
@@ -56,6 +62,7 @@ final readonly class ProjectState
             $config->customRuleSet(),
             $config->runtime(),
             $laravelAi,
+            $inertia,
             $config->auditScope(),
             $config->missingTestLevel(),
             $config->graphCache(),
@@ -105,6 +112,10 @@ final readonly class ProjectState
     {
         if ($this->laravelAi !== null && ! $this->laravelAi->supported()) {
             throw new \RuntimeException($this->laravelAi->message.' '.$this->laravelAi->remediation);
+        }
+
+        if ($this->inertia !== null && ! $this->inertia->supported()) {
+            throw new \RuntimeException($this->inertia->message.' '.$this->inertia->remediation);
         }
     }
 }

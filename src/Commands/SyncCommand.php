@@ -40,12 +40,11 @@ final class SyncCommand extends Command
             return $this->failure($agent, $runtime->message.' '.$runtime->remediation);
         }
 
+        $state = null;
+
         try {
             $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
-
-            if ($state->laravelAi !== null && ! $state->laravelAi->supported()) {
-                return $this->failure($agent, $state->laravelAi->message.' '.$state->laravelAi->remediation, $state->laravelAi->toArray());
-            }
+            $state->assertCompatibility();
 
             $state->resources->assertSourcesExist($state->enabled);
             $manifest = new ArchitectureResourceManifest($state->resources);
@@ -54,7 +53,12 @@ final class SyncCommand extends Command
             $deployment = new ManagedResourceDeployment($files, $state->resources);
             $plan = $deployment->plan($expected, $stale);
         } catch (Throwable $exception) {
-            return $this->failure($agent, $exception->getMessage());
+            return $this->failure(
+                $agent,
+                $exception->getMessage(),
+                $state?->laravelAi?->toArray(),
+                $state?->inertia?->toArray(),
+            );
         }
 
         if ($plan->blocked !== []) {
@@ -65,7 +69,8 @@ final class SyncCommand extends Command
             $this->line($this->json($agent->sync(
                 changes: $this->relativePlan($plan),
                 dryRun: true,
-                profile: $state->laravelAi?->toArray(),
+                laravelAi: $state->laravelAi?->toArray(),
+                inertia: $state->inertia?->toArray(),
             )));
 
             return self::SUCCESS;
@@ -79,14 +84,20 @@ final class SyncCommand extends Command
         try {
             $deployment->apply($expected, $stale);
         } catch (Throwable $exception) {
-            return $this->applyFailure($agent, $exception->getMessage(), $state->laravelAi?->toArray());
+            return $this->applyFailure(
+                $agent,
+                $exception->getMessage(),
+                $state->laravelAi?->toArray(),
+                $state->inertia?->toArray(),
+            );
         }
 
         if ((bool) $this->option('agent')) {
             $this->line($this->json($agent->sync(
                 changes: $this->relativePlan($plan),
                 dryRun: false,
-                profile: $state->laravelAi?->toArray(),
+                laravelAi: $state->laravelAi?->toArray(),
+                inertia: $state->inertia?->toArray(),
             )));
         }
 
@@ -99,11 +110,14 @@ final class SyncCommand extends Command
         return self::SUCCESS;
     }
 
-    /** @param array<string, mixed>|null $profile */
-    private function failure(AgentOutput $agent, string $message, ?array $profile = null): int
+    /**
+     * @param  array<string, mixed>|null  $laravelAi
+     * @param  array<string, mixed>|null  $inertia
+     */
+    private function failure(AgentOutput $agent, string $message, ?array $laravelAi = null, ?array $inertia = null): int
     {
         if ((bool) $this->option('agent')) {
-            $this->line($this->json($agent->syncError($message, $profile)));
+            $this->line($this->json($agent->syncError($message, $laravelAi, $inertia)));
         } else {
             $this->error($message);
         }
@@ -111,11 +125,14 @@ final class SyncCommand extends Command
         return self::FAILURE;
     }
 
-    /** @param array<string, mixed>|null $profile */
-    private function applyFailure(AgentOutput $agent, string $message, ?array $profile = null): int
+    /**
+     * @param  array<string, mixed>|null  $laravelAi
+     * @param  array<string, mixed>|null  $inertia
+     */
+    private function applyFailure(AgentOutput $agent, string $message, ?array $laravelAi = null, ?array $inertia = null): int
     {
         if ((bool) $this->option('agent')) {
-            $this->line($this->json($agent->syncApplyError($message, $profile)));
+            $this->line($this->json($agent->syncApplyError($message, $laravelAi, $inertia)));
         } else {
             $this->error($message);
         }

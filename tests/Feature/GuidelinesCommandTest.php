@@ -150,6 +150,25 @@ class GuidelinesCommandTest extends TestCase
         $this->assertStringContainsString('approval_state', $payload['md']);
     }
 
+    public function test_it_expands_the_inertia_profile_with_the_resolved_runtime_contract(): void
+    {
+        $this->writeInertiaFixture('^3.0', '3.1.0');
+        $this->writeConfig([Architecture::Inertia]);
+
+        $exit = Artisan::call('architecture-kit:guidelines', [
+            'architecture' => 'inertia',
+            '--agent' => true,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('inertia@3', $payload['inertia']['profile']);
+        $this->assertSame('architecture-kit-inertia', $payload['skill']);
+        $this->assertStringContainsString('## Page props', $payload['md']);
+        $this->assertStringContainsString('loadDeferredProps', $payload['md']);
+        $this->assertStringContainsString('The `inertia` audit rule enforces two boundaries', $payload['md']);
+    }
+
     public function test_it_fails_when_config_is_missing(): void
     {
         (new Filesystem)->delete($this->tempPath.'/config/architectures.php');
