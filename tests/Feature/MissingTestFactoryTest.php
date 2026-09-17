@@ -8,8 +8,11 @@ use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Process\Process;
 
 final class MissingTestFactoryTest extends TestCase
@@ -134,6 +137,75 @@ CODE);
         $this->assertCount(1, $result->findings);
         $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $result->findings[0]->code);
         $this->assertSame('tests/Feature/UserTest.php', $result->findings[0]->path);
+    }
+
+    #[DataProvider('authParents')]
+    public function test_auth_user_factory_is_recognized_without_executing_sources(string $parent, string $imports, bool $intermediate): void
+    {
+        $this->authFixture($parent, $imports, $intermediate);
+        $this->assertSame(['database/factories/OtherFactory.php', 'database/seeders/DatabaseSeeder.php'], array_column($this->audit()->findings, 'path'));
+        $this->assertNotContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($this->audit()->findings, 'code'));
+    }
+
+    public static function authParents(): iterable
+    {
+        yield 'FQCN' => ['\\Illuminate\\Foundation\\Auth\\User', '', false];
+        yield 'alias' => ['Authenticatable', 'use Illuminate\\Foundation\\Auth\\User as Authenticatable;', false];
+        yield 'local parent' => ['Authenticatable', 'use Illuminate\\Foundation\\Auth\\User as Authenticatable;', true];
+    }
+
+    public function test_auth_user_reference_and_lookalike_do_not_credit_factory(): void
+    {
+        $this->authFixture();
+        $this->write('tests/Feature/UserTest.php', '<?php it("user", function () { expect(\\App\\Models\\User::class)->toBeString(); });');
+        $expected = ['database/factories/OtherFactory.php', 'database/factories/UserFactory.php', 'database/seeders/DatabaseSeeder.php'];
+        $this->assertSame($expected, array_column($this->audit()->findings, 'path'));
+        $this->fixtures('public static function factory() {}');
+        $this->write('app/Models/Authenticatable.php', '<?php namespace App\\Models; class Authenticatable {}');
+        $this->write('app/Models/User.php', '<?php namespace App\\Models; class User extends Authenticatable { public static function factory() {} }');
+        $this->assertSame($expected, array_column($this->audit()->findings, 'path'));
+    }
+
+    public function test_auth_user_explicit_and_dynamic_factory_keep_precedence(): void
+    {
+        $this->authFixture(body: 'protected static function newFactory() { return \\Database\\Factories\\OtherFactory::new(); }');
+        // Align documentation with the explicit runtime choice.
+        $path = $this->tempPath.'/app/Models/User.php';
+        file_put_contents($path, str_replace('HasFactory<UserFactory>', 'HasFactory<\\Database\\Factories\\OtherFactory>', file_get_contents($path)));
+        $this->assertSame(['database/factories/UserFactory.php', 'database/seeders/DatabaseSeeder.php'], array_column($this->audit()->findings, 'path'));
+        $this->authFixture(body: 'protected static function newFactory() { return resolveFactory(); }');
+        $findings = $this->audit()->findings;
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($findings, 'code'));
+        $this->assertContains('database/factories/UserFactory.php', array_column($findings, 'path'));
+    }
+
+    public function test_auth_user_cache_and_scope_preserve_full_findings(): void
+    {
+        $this->authFixture();
+        $files = new Filesystem;
+        $cache = new ProjectGraphCache($files, $this->tempPath);
+        $audit = new ApplicationAudit($files, $this->tempPath);
+        $scope = new AuditScope(['app', 'database/factories']);
+        $run = fn ($cache) => $audit->run([], false, scope: $scope, missingTestLevel: MissingTestLevel::Warn, cache: $cache);
+        $disabled = $run(null);
+        $this->assertSame(['database/factories/OtherFactory.php'], array_column($disabled->findings, 'path'));
+        $this->assertEquals($disabled->findings, $run($cache)->findings);
+        $this->assertEquals($disabled->findings, $run($cache)->findings);
+        $graph = (new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests', 'database/factories'])))->load();
+        $this->assertNull($graph->symbol('Illuminate\\Foundation\\Auth\\User'));
+        $this->assertSame([], $audit->run([], false, scope: $scope)->findings);
+        $appOnly = $audit->run([], false, missingTestLevel: MissingTestLevel::Warn);
+        $this->assertNotContains('database/factories/OtherFactory.php', array_column($appOnly->findings, 'path'));
+    }
+
+    private function authFixture(string $parent = 'Authenticatable', string $imports = 'use Illuminate\\Foundation\\Auth\\User as Authenticatable;', bool $intermediate = false, string $body = ''): void
+    {
+        $this->fixtures('');
+        $class = $intermediate ? 'BaseUser' : 'User';
+        $this->write('app/Models/'.$class.'.php', '<?php namespace App\\Models; '.$imports.' use Database\\Factories\\UserFactory; use Illuminate\\Database\\Eloquent\\Factories\\HasFactory; throw new \\RuntimeException("Audit executed model source"); class '.$class.' extends '.$parent.' { /** @use HasFactory<UserFactory> */ use HasFactory; '.$body.' }');
+        if ($intermediate) {
+            $this->write('app/Models/User.php', '<?php namespace App\\Models; class User extends BaseUser {}');
+        }
     }
 
     private function fixtures(string $body): void

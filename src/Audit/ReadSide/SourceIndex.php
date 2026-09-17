@@ -83,6 +83,7 @@ final class SourceIndex
             return true;
         }
         $frameworkParents = [
+            'Illuminate\\Foundation\\Auth\\User' => 'Illuminate\\Database\\Eloquent\\Model',
             'Orchestra\\Testbench\\TestCase' => 'Illuminate\\Foundation\\Testing\\TestCase',
             'Illuminate\\Foundation\\Http\\FormRequest' => 'Illuminate\\Http\\Request',
             'Illuminate\\Http\\Resources\\Json\\ResourceCollection' => 'Illuminate\\Http\\Resources\\Json\\JsonResource',

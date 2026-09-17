@@ -52,6 +52,34 @@ PHP);
         return array_values(array_filter($result->findings, fn ($f) => $f->rule === 'thin-controller'));
     }
 
+    #[DataProvider('authUserOperations')]
+    public function test_auth_user_read_and_write_operations(string $body, bool $write, bool $intermediate): void
+    {
+        $this->fixture($body);
+        $parent = $intermediate ? 'BaseUser' : '\\Illuminate\\Foundation\\Auth\\User';
+        $this->write('app/Models/Invoice.php', '<?php namespace App\\Models; class Invoice extends '.$parent.' {}');
+        if ($intermediate) {
+            $this->write('app/Models/BaseUser.php', '<?php namespace App\\Models; class BaseUser extends \\Illuminate\\Foundation\\Auth\\User {}');
+        }
+        $findings = $this->audit();
+        if (! $write) {
+            $this->assertSame([], $findings);
+        } else {
+            $this->assertCount(1, $findings);
+            $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+            $this->assertStringContainsString('PlanningController::show -> App\\Services\\ViewService::load', $findings[0]->message);
+        }
+    }
+
+    public static function authUserOperations(): iterable
+    {
+        foreach ([false, true] as $intermediate) {
+            yield ['return $invoice->save();', true, $intermediate];
+            yield ['return Invoice::query()->update([]);', true, $intermediate];
+            yield ['return Invoice::query()->get();', false, $intermediate];
+        }
+    }
+
     public function test_read_service_is_accepted_without_examining_its_unused_write_method(): void
     {
         $this->fixture(extra: 'public function store() { Invoice::create([]); }');

@@ -4,6 +4,10 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ## Unreleased
 
+### Fixed
+
+- Recognize factories used by models extending Laravel’s standard Auth User, including aliases and local intermediate classes.
+
 ## v0.4.1 - 2026-09-16
 
 - Resolve Laravel HTTP and factory test relationships for missing-test without crediting unrelated methods. Report incomplete analysis as a warning that blocks strict guard, and clarify that static relationships do not prove execution or assertion quality.
