@@ -6,6 +6,7 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Fixed
 
+- Recognize supported Laravel, Inertia 3, and Fortify 1 calls in endpoint and test-reachability analysis. The audit now follows selected policies, API Resource transformations, Inertia props and route-specific shared data, and Fortify actions or view callbacks without executing application code. Session reads remain clean, while explicit session writes on GET or HEAD routes are reported. Dynamic framework dispatch remains an incomplete-analysis warning that blocks strict mode.
 - Recognize factories used by models extending Laravel’s standard Auth User, including aliases and local intermediate classes.
 
 ## v0.4.1 - 2026-09-16

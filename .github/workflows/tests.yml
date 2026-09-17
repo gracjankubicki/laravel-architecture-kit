@@ -65,6 +65,26 @@ jobs:
           composer update --prefer-dist --no-interaction --no-progress
       - run: vendor/bin/phpunit tests/Unit/LaravelAi tests/Unit/ArchitectureResourcesTest.php
 
+  framework-contract:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        laravel: ['12.*', '13.*']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Install real Laravel, Inertia and Fortify contract
+        run: |
+          composer require "laravel/framework:${{ matrix.laravel }}" "inertiajs/inertia-laravel:^3" "laravel/fortify:^1" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --no-progress
+      - run: vendor/bin/phpunit --filter FrameworkRealPackagesContractTest --do-not-cache-result
+        env:
+          ARCHITECTURE_KIT_FRAMEWORK_CONTRACT: '1'
+
   runtime-install:
     runs-on: ubuntu-latest
     steps:
@@ -114,7 +134,7 @@ jobs:
       - run: bash tests/Smoke/project-graph-consumer.sh
 
   coverage:
-    needs: [lint, tests, laravel-ai-contract, runtime-install, boost-composition, workbench-commands, project-graph-consumer]
+    needs: [lint, tests, laravel-ai-contract, framework-contract, runtime-install, boost-composition, workbench-commands, project-graph-consumer]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
+use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContext;
+use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkSemantics;
+use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkValue;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Name;
@@ -43,13 +46,33 @@ final class MethodAnalyzer
     /** @var array<string, true> */
     private array $active = [];
 
-    public function __construct(private SourceIndex $sources) {}
+    private FrameworkSemantics $framework;
+
+    public function __construct(private SourceIndex $sources, FrameworkContext $context = new FrameworkContext)
+    {
+        $this->framework = new FrameworkSemantics($sources, $context);
+    }
 
     public function analyze(string $class, string $method): MethodEffects
     {
         $this->result = new MethodEffects;
         $this->nodes = $this->calls = 0;
         $this->active = [];
+        $entrypoint = $this->framework->entrypoint($class, $method);
+        if ($entrypoint->handled) {
+            foreach ($entrypoint->targets as $target) {
+                $this->visitMethod($target['class'], $target['method'], $target['arguments'] ?? [], [$class.'::'.$method]);
+            }
+            foreach ($entrypoint->callbacks as $callback) {
+                $this->walkCallback($callback, [$class.'::'.$method]);
+            }
+            if ($entrypoint->incomplete !== null) {
+                $origin = $this->framework->context()->origins[0] ?? 'routes/web.php';
+                $this->result->addAt('unknown', $origin, 1, $entrypoint->incomplete, [$class.'::'.$method]);
+            }
+
+            return $this->result;
+        }
         if ($this->sources->method($class, '__construct') !== null) {
             $this->visitMethod($class, '__construct', [], []);
         }
@@ -59,10 +82,10 @@ final class MethodAnalyzer
     }
 
     /**
-     * @param  array<int|string, ?string>  $arguments
+     * @param  array<int|string, FrameworkValue|null>  $arguments
      * @param  list<string>  $trace
      */
-    private function visitMethod(string $class, string $method, array $arguments, array $trace): ?string
+    private function visitMethod(string $class, string $method, array $arguments, array $trace): ?FrameworkValue
     {
         $found = $this->sources->method($class, $method);
         if ($found === null) {
@@ -82,7 +105,7 @@ final class MethodAnalyzer
         }
         $this->active[$key] = true;
         $trace[] = $class.'::'.$method;
-        $variables = ['this' => $class];
+        $variables = ['this' => FrameworkValue::type($class)];
         foreach ($node->params as $i => $param) {
             if (is_string($param->var->name)) {
                 $argument = $arguments[$param->var->name] ?? $arguments[$i] ?? null;
@@ -93,14 +116,16 @@ final class MethodAnalyzer
         $this->walk($node->stmts, $source, $variables, $trace, $returns);
         unset($this->active[$key]);
 
-        return $this->type($source, $node->returnType) ?? (count(array_unique($returns, SORT_REGULAR)) === 1 ? ($returns[0] ?? null) : null);
+        $inferred = FrameworkValue::merge($returns);
+
+        return $inferred !== null && ! $inferred->isUnknown() ? $inferred : $this->type($source, $node->returnType);
     }
 
     /**
      * @param  list<Node>  $nodes
-     * @param  array<string, ?string>  $variables
+     * @param  array<string, FrameworkValue|null>  $variables
      * @param  list<string>  $trace
-     * @param  list<?string>  $returns
+     * @param  list<FrameworkValue|null>  $returns
      */
     private function walk(array $nodes, SourceClass $source, array &$variables, array $trace, array &$returns): void
     {
@@ -133,7 +158,9 @@ final class MethodAnalyzer
                 continue;
             }
             if ($node instanceof Stmt\Return_) {
-                $returns[] = $node->expr === null ? '@scalar' : $this->expression($node->expr, $source, $variables, $trace);
+                $value = $node->expr === null ? FrameworkValue::scalar() : $this->expression($node->expr, $source, $variables, $trace);
+                $this->followReturnedValue($value, $source, $node, $variables, $trace);
+                $returns[] = $value;
 
                 return;
             } elseif ($node instanceof Expr) {
@@ -159,10 +186,10 @@ final class MethodAnalyzer
     }
 
     /**
-     * @param  array<string, ?string>  $variables
+     * @param  array<string, FrameworkValue|null>  $variables
      * @param  list<string>  $trace
      */
-    private function expression(Expr $expr, SourceClass $source, array &$variables, array $trace): ?string
+    private function expression(Expr $expr, SourceClass $source, array &$variables, array $trace): ?FrameworkValue
     {
         if (++$this->nodes > 20_000) {
             $this->result->add('unknown', $source, $expr->getStartLine(), 'AST node limit reached.', $trace);
@@ -173,7 +200,7 @@ final class MethodAnalyzer
             return is_string($expr->name) ? ($variables[$expr->name] ?? null) : null;
         }
         if ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction) {
-            return '@closure';
+            return FrameworkValue::callback($source, $expr, $variables);
         }
         if ($expr instanceof Expr\Ternary) {
             $condition = $this->expression($expr->cond, $source, $variables, $trace);
@@ -182,7 +209,7 @@ final class MethodAnalyzer
             $right = $this->expression($expr->else, $source, $no, $trace);
             $this->mergeVariables($variables, [$yes, $no]);
 
-            return $left === $right ? $left : null;
+            return $left == $right ? $left : FrameworkValue::unknown();
         }
         if ($expr instanceof Expr\BinaryOp\BooleanAnd || $expr instanceof Expr\BinaryOp\BooleanOr || $expr instanceof Expr\BinaryOp\LogicalAnd || $expr instanceof Expr\BinaryOp\LogicalOr || $expr instanceof Expr\BinaryOp\Coalesce) {
             $left = $this->expression($expr->left, $source, $variables, $trace);
@@ -190,7 +217,7 @@ final class MethodAnalyzer
             $right = $this->expression($expr->right, $source, $branch, $trace);
             $this->mergeVariables($variables, [$variables, $branch]);
 
-            return $expr instanceof Expr\BinaryOp\Coalesce ? ($left === $right ? $left : null) : '@scalar';
+            return $expr instanceof Expr\BinaryOp\Coalesce ? ($left == $right ? $left : FrameworkValue::unknown()) : FrameworkValue::scalar();
         }
         if ($expr instanceof Expr\Match_) {
             $this->expression($expr->cond, $source, $variables, $trace);
@@ -205,7 +232,7 @@ final class MethodAnalyzer
             }
             $this->mergeVariables($variables, $branches);
 
-            return count(array_unique($types, SORT_REGULAR)) === 1 ? ($types[0] ?? null) : null;
+            return FrameworkValue::merge($types);
         }
         if ($expr instanceof Expr\Assign) {
             $type = $this->expression($expr->expr, $source, $variables, $trace);
@@ -217,6 +244,29 @@ final class MethodAnalyzer
 
             return $type;
         }
+        if ($expr instanceof Expr\ClassConstFetch && $expr->class instanceof Name && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class') {
+            $class = $this->className($source, $expr->class);
+
+            return new FrameworkValue(type: $class, literal: $class);
+        }
+        if ($expr instanceof Node\Scalar\String_) {
+            return FrameworkValue::scalar($expr->value);
+        }
+        if ($expr instanceof Expr\Array_) {
+            $items = [];
+            foreach ($expr->items as $index => $item) {
+                if ($item === null) {
+                    continue;
+                }
+                if ($item->key instanceof Expr) {
+                    $this->expression($item->key, $source, $variables, $trace);
+                }
+                $key = $item->key instanceof Node\Scalar\String_ ? $item->key->value : ($item->key instanceof Node\Scalar\Int_ ? $item->key->value : $index);
+                $items[$key] = $this->expression($item->value, $source, $variables, $trace);
+            }
+
+            return FrameworkValue::array($items);
+        }
         if ($expr instanceof Expr\PropertyFetch || $expr instanceof Expr\NullsafePropertyFetch) {
             $owner = $this->expression($expr->var, $source, $variables, $trace);
             if ($expr->name instanceof Expr) {
@@ -224,14 +274,14 @@ final class MethodAnalyzer
                 $this->unknown($source, $expr, 'Dynamic property access.', $trace);
             }
 
-            return $owner !== null && $expr->name instanceof Node\Identifier ? $this->property($owner, $expr->name->toString()) : null;
+            return $owner?->type !== null && $expr->name instanceof Node\Identifier ? $this->property($owner->type, $expr->name->toString()) : null;
         }
         if ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall || $expr instanceof Expr\StaticCall || $expr instanceof Expr\New_ || $expr instanceof Expr\FuncCall) {
             $receiver = null;
             if ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall) {
                 $receiver = $this->expression($expr->var, $source, $variables, $trace);
             } elseif (($expr instanceof Expr\StaticCall || $expr instanceof Expr\New_) && $expr->class instanceof Name) {
-                $receiver = $this->className($source, $expr->class);
+                $receiver = FrameworkValue::type($this->className($source, $expr->class));
             } elseif (($expr instanceof Expr\StaticCall || $expr instanceof Expr\New_) && $expr->class instanceof Expr) {
                 $this->expression($expr->class, $source, $variables, $trace);
             }
@@ -239,7 +289,7 @@ final class MethodAnalyzer
                 $this->expression($expr->name, $source, $variables, $trace);
             }
             if ($expr->isFirstClassCallable()) {
-                return '@closure';
+                return FrameworkValue::type('@callback');
             }
             $arguments = [];
             $unpacked = false;
@@ -254,45 +304,56 @@ final class MethodAnalyzer
                 $arguments = [];
             }
             if ($expr instanceof Expr\New_) {
-                if ($receiver === null || $this->sources->get($receiver) === null) {
+                $receiverType = $receiver?->type;
+                if ($receiverType === null || $this->sources->get($receiverType) === null) {
                     $this->unknown($source, $expr, 'Unresolved constructor.', $trace);
-                } elseif ($this->sources->method($receiver, '__construct') !== null) {
-                    $this->visitMethod($receiver, '__construct', $arguments, $trace);
+                } elseif ($this->sources->method($receiverType, '__construct') !== null) {
+                    $this->visitMethod($receiverType, '__construct', $arguments, $trace);
                 }
 
-                return $receiver;
+                return $receiverType !== null && $this->sources->isA($receiverType, 'Illuminate\Http\Resources\Json\JsonResource')
+                    ? FrameworkValue::resource($receiverType, $this->sources->isA($receiverType, 'Illuminate\Http\Resources\Json\ResourceCollection'))
+                    : $receiver;
             }
             if ($expr instanceof Expr\FuncCall) {
-                $function = $expr->name instanceof Name ? strtolower($expr->name->toString()) : '';
+                $function = $expr->name instanceof Name ? strtolower(ltrim($expr->name->toString(), '\\')) : '';
                 if (in_array($function, ['event', 'dispatch', 'dispatch_sync'], true)) {
                     $this->result->add('effect', $source, $expr->getStartLine(), $function.'()', $trace);
-                } elseif ($function === 'response') {
-                    return '@response';
-                } elseif (! in_array($function, ['count', 'strlen', 'strtolower', 'strtoupper', 'trim', 'ltrim', 'rtrim', 'sprintf', 'implode', 'explode', 'in_array', 'array_key_exists', 'array_values', 'array_keys', 'array_unique', 'array_merge', 'is_null', 'is_string', 'is_int', 'is_array', 'abs', 'round', 'min', 'max', 'config', 'now', 'today', 'trans', '__'], true)) {
+                }
+                $framework = $this->framework->describe(null, $function, null, $arguments, $source, $expr);
+                if ($framework->handled) {
+                    return $this->applyFramework($framework, $source, $expr, $variables, $trace);
+                }
+                if (! in_array($function, ['count', 'strlen', 'strtolower', 'strtoupper', 'trim', 'ltrim', 'rtrim', 'sprintf', 'implode', 'explode', 'in_array', 'array_key_exists', 'array_values', 'array_keys', 'array_unique', 'array_merge', 'is_null', 'is_string', 'is_int', 'is_array', 'abs', 'round', 'min', 'max', 'config', 'now', 'today', 'trans', '__'], true)) {
                     $this->unknown($source, $expr, 'Unresolved function/callback '.$function.'().', $trace);
                 }
 
-                return '@scalar';
+                return FrameworkValue::scalar();
             }
-            if ($receiver !== null && str_starts_with($receiver, 'App\\Services\\') && str_starts_with($source->file->path, 'app/Http/Controllers/')) {
-                $this->result->services[strtolower($receiver)] ??= ['type' => $receiver, 'line' => $expr->getStartLine(), 'path' => $source->file->path];
+            $receiverType = $receiver?->type;
+            if ($receiverType !== null && str_starts_with($receiverType, 'App\\Services\\') && str_starts_with($source->file->path, 'app/Http/Controllers/')) {
+                $this->result->services[strtolower($receiverType)] ??= ['type' => $receiverType, 'line' => $expr->getStartLine(), 'path' => $source->file->path];
             }
             $method = $expr->name instanceof Node\Identifier ? $expr->name->toString() : null;
-            if ($receiver === null || $method === null) {
+            if ($receiverType === null || $method === null) {
                 $this->unknown($source, $expr, 'Unresolved receiver or dynamic method.', $trace);
 
                 return null;
             }
             $lower = strtolower($method);
             // Project overrides must be inspected before recognizing a framework API.
-            if ($this->sources->method($receiver, $method) !== null) {
-                if ($receiver !== ($variables['this'] ?? null) && $this->sources->method($receiver, '__construct') !== null) {
-                    $this->visitMethod($receiver, '__construct', [], $trace);
+            if ($this->sources->method($receiverType, $method) !== null) {
+                if ($receiverType !== (isset($variables['this']) ? $variables['this']->type : null) && $this->sources->method($receiverType, '__construct') !== null) {
+                    $this->visitMethod($receiverType, '__construct', [], $trace);
                 }
 
-                return $this->visitMethod($receiver, $method, $arguments, $trace);
+                return $this->visitMethod($receiverType, $method, $arguments, $trace);
             }
-            $db = $receiver === self::DB || $receiver === '@connection' || $this->sources->isA($receiver, 'Illuminate\\Database\\Connection');
+            $framework = $this->framework->describe($receiver, null, $method, $arguments, $source, $expr);
+            if ($framework->handled) {
+                return $this->applyFramework($framework, $source, $expr, $variables, $trace);
+            }
+            $db = $receiverType === self::DB || $receiverType === '@connection' || $this->sources->isA($receiverType, 'Illuminate\\Database\\Connection');
             if ($db && $lower === 'transaction') {
                 $callback = null;
                 foreach ($expr->getArgs() as $i => $arg) {
@@ -308,9 +369,9 @@ final class MethodAnalyzer
                 return null;
             }
             if ($db && in_array($lower, ['insert', 'update', 'delete', 'affectingstatement'], true)) {
-                $this->result->add('write', $source, $expr->getStartLine(), $receiver.'::'.$method.'()', $trace);
+                $this->result->add('write', $source, $expr->getStartLine(), $receiverType.'::'.$method.'()', $trace);
 
-                return '@scalar';
+                return FrameworkValue::scalar();
             }
             if ($db && in_array($lower, ['statement', 'unprepared', 'select', 'selectone', 'cursor'], true)) {
                 $sql = $expr->getArgs()[0]->value ?? null;
@@ -320,63 +381,57 @@ final class MethodAnalyzer
                 return null;
             }
             if ($db && $lower === 'connection') {
-                return '@connection';
+                return FrameworkValue::type('@connection');
             }
             if ($db && $lower === 'table') {
-                return '@query';
+                return FrameworkValue::type('@query');
             }
-            $model = $this->sources->isA($receiver, self::MODEL);
-            $query = str_starts_with($receiver, '@query') || $model || $this->sources->isA($receiver, self::BUILDER) || $this->sources->isA($receiver, self::QUERY);
-            $relation = $receiver === '@relation' || $this->sources->isA($receiver, self::RELATION);
+            $model = $this->sources->isA($receiverType, self::MODEL);
+            $query = str_starts_with($receiverType, '@query') || $model || $this->sources->isA($receiverType, self::BUILDER) || $this->sources->isA($receiverType, self::QUERY);
+            $relation = $receiverType === '@relation' || $this->sources->isA($receiverType, self::RELATION);
             if ($query || $relation) {
                 if (in_array($lower, self::WRITES, true) || ($relation && in_array($lower, ['attach', 'detach', 'sync', 'syncwithoutdetaching', 'syncwithpivotvalues', 'toggle', 'updateexistingpivot', 'savemany', 'createmany'], true))) {
-                    $this->result->add('write', $source, $expr->getStartLine(), $receiver.'::'.$method.'()', $trace);
+                    $this->result->add('write', $source, $expr->getStartLine(), $receiverType.'::'.$method.'()', $trace);
 
-                    return '@scalar';
+                    return FrameworkValue::scalar();
                 }
                 if (in_array($lower, self::CHAIN, true)) {
                     $this->callbacks($expr->getArgs(), $source, $variables, $trace);
 
-                    return $model ? '@query:'.$receiver : $receiver;
+                    return FrameworkValue::type($model ? '@query:'.$receiverType : $receiverType);
                 }
                 if (in_array($lower, self::READS, true)) {
                     if (in_array($lower, ['first', 'firstorfail', 'find', 'findorfail'], true)) {
-                        return $model ? $receiver : (str_starts_with($receiver, '@query:') ? substr($receiver, 7) : null);
+                        return $model ? FrameworkValue::type($receiverType) : (str_starts_with($receiverType, '@query:') ? FrameworkValue::type(substr($receiverType, 7)) : null);
                     }
 
-                    return in_array($lower, ['get', 'all', 'pluck'], true) ? '@collection' : '@scalar';
+                    return in_array($lower, ['get', 'all', 'pluck'], true) ? FrameworkValue::type('@collection') : FrameworkValue::scalar();
                 }
                 if ($model && in_array($lower, self::RELATIONS, true)) {
-                    return '@relation';
+                    return FrameworkValue::type('@relation');
                 }
                 if ($model && in_array($lower, ['toarray', 'tojson', 'getkey', 'getattribute', 'getraworiginal'], true)) {
-                    return '@scalar';
+                    return FrameworkValue::scalar();
                 }
             }
-            if (($receiver === 'Illuminate\\Support\\Facades\\Bus' && in_array($lower, ['dispatch', 'dispatchsync', 'dispatchnow', 'dispatchafterresponse', 'dispatchtoqueue'], true))
-                || ($receiver === 'Illuminate\\Support\\Facades\\Event' && in_array($lower, ['dispatch', 'until', 'push'], true))
-                || ($receiver === 'Illuminate\\Support\\Facades\\Notification' && in_array($lower, ['send', 'sendnow'], true))
-                || ($receiver === '@notification' && in_array($lower, ['notify', 'notifynow'], true))
-                || ((str_starts_with($receiver, 'App\\Jobs\\') || str_starts_with($receiver, 'App\\Events\\')) && in_array($lower, ['dispatch', 'dispatchsync', 'dispatchafterresponse'], true))
-                || (($receiver === 'Illuminate\\Support\\Facades\\Mail' || $receiver === '@mail') && in_array($lower, ['send', 'queue', 'later', 'sendnow'], true))
+            if (($receiverType === 'Illuminate\\Support\\Facades\\Bus' && in_array($lower, ['dispatch', 'dispatchsync', 'dispatchnow', 'dispatchafterresponse', 'dispatchtoqueue'], true))
+                || ($receiverType === 'Illuminate\\Support\\Facades\\Event' && in_array($lower, ['dispatch', 'until', 'push'], true))
+                || ($receiverType === 'Illuminate\\Support\\Facades\\Notification' && in_array($lower, ['send', 'sendnow'], true))
+                || ($receiverType === '@notification' && in_array($lower, ['notify', 'notifynow'], true))
+                || ((str_starts_with($receiverType, 'App\\Jobs\\') || str_starts_with($receiverType, 'App\\Events\\')) && in_array($lower, ['dispatch', 'dispatchsync', 'dispatchafterresponse'], true))
+                || (($receiverType === 'Illuminate\\Support\\Facades\\Mail' || $receiverType === '@mail') && in_array($lower, ['send', 'queue', 'later', 'sendnow'], true))
                 || ($model && in_array($lower, ['notify', 'notifynow'], true))) {
-                $this->result->add('effect', $source, $expr->getStartLine(), $receiver.'::'.$method.'()', $trace);
+                $this->result->add('effect', $source, $expr->getStartLine(), $receiverType.'::'.$method.'()', $trace);
 
-                return '@scalar';
+                return FrameworkValue::scalar();
             }
-            if (($receiver === 'Illuminate\\Support\\Facades\\Notification' || $receiver === '@notification') && $lower === 'route') {
-                return '@notification';
+            if (($receiverType === 'Illuminate\\Support\\Facades\\Notification' || $receiverType === '@notification') && $lower === 'route') {
+                return FrameworkValue::type('@notification');
             }
-            if (($receiver === 'Illuminate\\Support\\Facades\\Mail' || $receiver === '@mail') && in_array($lower, ['to', 'cc', 'bcc', 'locale', 'mailer'], true)) {
-                return '@mail';
+            if (($receiverType === 'Illuminate\\Support\\Facades\\Mail' || $receiverType === '@mail') && in_array($lower, ['to', 'cc', 'bcc', 'locale', 'mailer'], true)) {
+                return FrameworkValue::type('@mail');
             }
-            if (($receiver === '@response' && in_array($lower, ['json', 'make', 'nocontent'], true))
-                || ($this->sources->isA($receiver, 'Illuminate\\Http\\Request') && in_array($lower, ['input', 'query', 'validated', 'safe', 'all', 'user', 'route'], true))
-                || ($this->sources->isA($receiver, 'Illuminate\\Http\\Resources\\Json\\JsonResource') && in_array($lower, ['make', 'collection', 'resolve', 'response'], true))
-                || ($receiver === '@collection' && in_array($lower, ['count', 'isempty', 'isnotempty', 'toarray', 'all', 'values', 'keys', 'pluck', 'first'], true))) {
-                return '@scalar';
-            }
-            $this->unknown($source, $expr, 'Unresolved call '.$receiver.'::'.$method.'().', $trace);
+            $this->unknown($source, $expr, 'Unresolved call '.$receiverType.'::'.$method.'().', $trace);
 
             return null;
         }
@@ -393,12 +448,12 @@ final class MethodAnalyzer
             }
         }
 
-        return $expr instanceof Expr\ConstFetch || $expr instanceof Node\Scalar || $expr instanceof Expr\Array_ || $expr instanceof Expr\BinaryOp || $expr instanceof Expr\Cast ? '@scalar' : null;
+        return $expr instanceof Expr\ConstFetch || $expr instanceof Node\Scalar || $expr instanceof Expr\BinaryOp || $expr instanceof Expr\Cast ? FrameworkValue::scalar() : null;
     }
 
     /**
      * @param  list<Node\Arg>  $args
-     * @param  array<string, ?string>  $variables
+     * @param  array<string, FrameworkValue|null>  $variables
      * @param  list<string>  $trace
      */
     private function callbacks(array $args, SourceClass $source, array $variables, array $trace): void
@@ -408,7 +463,7 @@ final class MethodAnalyzer
                 $callback = $arg->value;
                 foreach ($callback->params as $param) {
                     if (is_string($param->var->name)) {
-                        $variables[$param->var->name] = $this->type($source, $param->type) ?? '@query';
+                        $variables[$param->var->name] = $this->type($source, $param->type) ?? FrameworkValue::type('@query');
                     }
                 }
                 $returns = [];
@@ -417,7 +472,7 @@ final class MethodAnalyzer
         }
     }
 
-    private function property(string $class, string $name, int $depth = 0): ?string
+    private function property(string $class, string $name, int $depth = 0): ?FrameworkValue
     {
         if ($depth >= 12 || ($source = $this->sources->get($class)) === null) {
             return null;
@@ -442,16 +497,16 @@ final class MethodAnalyzer
         return null;
     }
 
-    private function type(SourceClass $source, Node|string|null $type): ?string
+    private function type(SourceClass $source, Node|string|null $type): ?FrameworkValue
     {
         if ($type instanceof Name) {
-            return $this->className($source, $type);
+            return FrameworkValue::type($this->className($source, $type));
         }
         if ($type instanceof Node\NullableType) {
             return $this->type($source, $type->type);
         }
         if ($type instanceof Node\Identifier) {
-            return in_array(strtolower($type->toString()), ['mixed', 'object', 'callable', 'iterable'], true) ? null : '@scalar';
+            return in_array(strtolower($type->toString()), ['mixed', 'object', 'callable', 'iterable'], true) ? null : FrameworkValue::scalar();
         }
 
         return null;
@@ -467,17 +522,75 @@ final class MethodAnalyzer
     }
 
     /**
-     * @param  array<string, ?string>  $variables
-     * @param  list<array<string, ?string>>  $branches
+     * @param  array<string, FrameworkValue|null>  $variables
+     * @param  list<array<string, FrameworkValue|null>>  $branches
      */
     private function mergeVariables(array &$variables, array $branches): void
     {
         foreach ($branches as $branch) {
             foreach ($branch as $name => $type) {
-                $types = array_map(fn (array $path): ?string => $path[$name] ?? null, $branches);
-                $variables[$name] = count(array_unique($types, SORT_REGULAR)) === 1 ? $type : null;
+                $types = array_map(fn (array $path): ?FrameworkValue => $path[$name] ?? null, $branches);
+                $variables[$name] = FrameworkValue::merge($types);
             }
         }
+    }
+
+    /**
+     * @param  array<string, FrameworkValue|null>  $variables
+     * @param  list<string>  $trace
+     */
+    private function applyFramework(object $result, SourceClass $source, Node $expr, array $variables, array $trace): ?FrameworkValue
+    {
+        foreach ($result->effects as $effect) {
+            $this->result->add($effect['kind'], $source, $expr->getStartLine(), $effect['detail'], $trace);
+        }
+        foreach ($result->targets as $target) {
+            $this->visitMethod($target['class'], $target['method'], $target['arguments'] ?? [], $trace);
+        }
+        foreach ($result->callbacks as $callback) {
+            $this->walkCallback($callback, $trace);
+        }
+        if ($result->incomplete !== null) {
+            $this->unknown($source, $expr, $result->incomplete, $trace);
+        }
+
+        return $result->value;
+    }
+
+    /**
+     * @param  array<string, FrameworkValue|null>  $variables
+     * @param  list<string>  $trace
+     */
+    private function followReturnedValue(?FrameworkValue $value, SourceClass $source, Node $node, array $variables, array $trace): void
+    {
+        if ($value === null) {
+            return;
+        }
+        if ($value->resourceClass !== null) {
+            $result = $this->framework->describe($value, null, '@return', [], $source, $node);
+            if ($result->handled) {
+                $this->applyFramework($result, $source, $node, $variables, $trace);
+            }
+        }
+        foreach ($value->items as $item) {
+            $this->followReturnedValue($item, $source, $node, $variables, $trace);
+        }
+    }
+
+    /** @param list<string> $trace */
+    private function walkCallback(FrameworkValue $value, array $trace): void
+    {
+        if ($value->callback === null || $value->callbackSource === null) {
+            return;
+        }
+        $variables = $value->captures;
+        foreach ($value->callback->params as $param) {
+            if (is_string($param->var->name)) {
+                $variables[$param->var->name] = $this->type($value->callbackSource, $param->type) ?? FrameworkValue::unknown();
+            }
+        }
+        $returns = [];
+        $this->walk($value->callback instanceof Expr\Closure ? $value->callback->stmts : [$value->callback->expr], $value->callbackSource, $variables, [...$trace, '{callback}'], $returns);
     }
 
     /**

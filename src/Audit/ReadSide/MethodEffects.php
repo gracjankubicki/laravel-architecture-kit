@@ -17,7 +17,13 @@ final class MethodEffects
      */
     public function add(string $kind, SourceClass $source, int $line, string $detail, array $trace): void
     {
-        $observation = ['kind' => $kind, 'path' => $source->file->path, 'line' => $line, 'detail' => $detail, 'trace' => $trace];
+        $this->addAt($kind, $source->file->path, $line, $detail, $trace);
+    }
+
+    /** @param list<string> $trace */
+    public function addAt(string $kind, string $path, int $line, string $detail, array $trace): void
+    {
+        $observation = ['kind' => $kind, 'path' => $path, 'line' => $line, 'detail' => $detail, 'trace' => $trace];
         if (count($this->observations) < 20) {
             $this->observations[] = $observation;
         } elseif ($kind !== 'unknown') {

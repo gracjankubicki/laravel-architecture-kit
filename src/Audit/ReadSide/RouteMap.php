@@ -14,13 +14,20 @@ final readonly class RouteMap
     /**
      * @param  array<string, list<string>>  $methods
      * @param  list<RouteEntry>|null  $entries
+     * @param  array<string, mixed>|null  $context
      */
-    public function __construct(public array $methods = [], public ?string $unavailable = null, public ?array $entries = null) {}
+    public function __construct(
+        public array $methods = [],
+        public ?string $unavailable = null,
+        public ?array $entries = null,
+        public ?array $context = null,
+    ) {}
 
     /**
      * @param  iterable<Route>  $routes
+     * @param  array<string, mixed>|null  $context
      */
-    public static function fromRoutes(iterable $routes): self
+    public static function fromRoutes(iterable $routes, ?array $context = null): self
     {
         $methods = [];
         $entries = [];
@@ -38,7 +45,7 @@ final readonly class RouteMap
         }
         ksort($methods);
 
-        return new self($methods, entries: $entries);
+        return new self($methods, entries: $entries, context: $context);
     }
 
     /** @return list<string> */
@@ -47,16 +54,43 @@ final readonly class RouteMap
         return $this->methods[strtolower(ltrim($class, '\\').'::'.$method)] ?? [];
     }
 
+    /** @return list<RouteEntry> */
+    public function entriesFor(string $class, string $method): array
+    {
+        return array_values(array_filter(
+            $this->entries ?? [],
+            fn (RouteEntry $entry): bool => $entry->class !== null
+                && $entry->method !== null
+                && strcasecmp($entry->class, ltrim($class, '\\')) === 0
+                && strcasecmp($entry->method, $method) === 0,
+        ));
+    }
+
     /** @return array<string, mixed> */
     public function snapshot(): array
     {
-        return ['version' => 1, 'entries' => array_map(fn (RouteEntry $entry): array => $entry->toArray(), $this->entries ?? [])];
+        return [
+            'version' => 2,
+            'entries' => array_map(fn (RouteEntry $entry): array => $entry->toArray(), $this->entries ?? []),
+            'context' => $this->context ?? [
+                'status' => 'unavailable',
+                'providers' => [],
+                'middleware' => [],
+                'middlewareGroups' => [],
+                'middlewareAliases' => [],
+                'packageVersions' => [],
+                'unavailable' => 'Laravel framework context was not supplied with this route map.',
+            ],
+        ];
     }
 
     public static function fromSnapshot(mixed $data): self
     {
-        if (! is_array($data) || ($data['version'] ?? null) !== 1 || ! is_array($data['entries'] ?? null) || ! array_is_list($data['entries'])) {
+        if (! is_array($data) || ! in_array($data['version'] ?? null, [1, 2], true) || ! is_array($data['entries'] ?? null) || ! array_is_list($data['entries'])) {
             throw new \UnexpectedValueException('Invalid route snapshot.');
+        }
+        if (($data['version'] ?? null) === 2 && ! self::validContext($data['context'] ?? null)) {
+            throw new \UnexpectedValueException('Invalid route snapshot context.');
         }
         $entries = [];
         $methods = [];
@@ -71,7 +105,7 @@ final readonly class RouteMap
         }
         ksort($methods);
 
-        return new self($methods, entries: $entries);
+        return new self($methods, entries: $entries, context: ($data['version'] ?? null) === 2 ? $data['context'] : null);
     }
 
     public static function fresh(string $basePath): self
@@ -99,5 +133,41 @@ final readonly class RouteMap
         } catch (Throwable) {
             return new self(unavailable: 'Fresh Laravel route discovery is unavailable or exceeded its 15 second limit.');
         }
+    }
+
+    private static function validContext(mixed $context): bool
+    {
+        if (! is_array($context) || ! in_array($context['status'] ?? null, ['known', 'empty', 'unavailable'], true)) {
+            return false;
+        }
+        foreach (['providers', 'middleware', 'middlewareGroups', 'middlewareAliases', 'packageVersions'] as $key) {
+            if (! is_array($context[$key] ?? null)) {
+                return false;
+            }
+        }
+
+        if (! array_is_list($context['providers']) || ! array_is_list($context['middleware'])) {
+            return false;
+        }
+        if (array_filter([...$context['providers'], ...$context['middleware']], fn (mixed $value): bool => ! is_string($value)) !== []) {
+            return false;
+        }
+        foreach ($context['middlewareGroups'] as $name => $middleware) {
+            if (! is_string($name) || ! is_array($middleware) || ! array_is_list($middleware) || array_filter($middleware, fn (mixed $value): bool => ! is_string($value)) !== []) {
+                return false;
+            }
+        }
+        foreach ($context['middlewareAliases'] as $name => $middleware) {
+            if (! is_string($name) || ! is_string($middleware)) {
+                return false;
+            }
+        }
+        foreach ($context['packageVersions'] as $package => $version) {
+            if (! is_string($package) || ($version !== null && ! is_string($version))) {
+                return false;
+            }
+        }
+
+        return ! isset($context['unavailable']) || is_string($context['unavailable']);
     }
 }

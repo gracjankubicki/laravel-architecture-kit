@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContextBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use Illuminate\Filesystem\Filesystem;
 
@@ -23,13 +24,13 @@ final readonly class ControllerReadAudit
         if (! in_array(Architecture::ThinControllers, $enabled, true) || ! in_array(Architecture::Actions, $enabled, true)) {
             return [];
         }
+        $routes ??= RouteMap::fresh($this->basePath);
         $focusPaths = $this->affectedControllers($graph, $focusPaths);
         $findings = [];
         foreach ($graph->symbols as $symbol) {
             if ($symbol->kind !== 'class' || ! str_starts_with($symbol->path, 'app/Http/Controllers/') || ($focusPaths !== null && ! in_array($symbol->path, $focusPaths, true))) {
                 continue;
             }
-            $routes ??= RouteMap::fresh($this->basePath);
             if ($routes->unavailable !== null) {
                 // Without routes we cannot identify endpoints, including inherited
                 // ones. Report this once instead of guessing from local methods.
@@ -42,6 +43,11 @@ final readonly class ControllerReadAudit
             foreach (array_keys($routes->methods) as $callback) {
                 if (str_starts_with($callback, strtolower($symbol->name).'::')) {
                     $methodNames[] = substr($callback, strlen($symbol->name) + 2);
+                }
+            }
+            foreach ($routes->entries ?? [] as $entry) {
+                if ($entry->class !== null && $entry->method !== null && strcasecmp($entry->class, $symbol->name) === 0) {
+                    $methodNames[] = $entry->method;
                 }
             }
             // An available route collection is authoritative: public helpers and
@@ -68,36 +74,72 @@ final readonly class ControllerReadAudit
                 if (! $method->isPublic() || ($name !== '__invoke' && str_starts_with($name, '__'))) {
                     continue;
                 }
-                $effects = (new MethodAnalyzer($sources))->analyze($symbol->name, $name);
-                $verbs = $routes->verbs($symbol->name, $name);
-                $reads = array_intersect($verbs, ['GET', 'HEAD']) !== [];
-                $writes = array_diff($verbs, ['GET', 'HEAD', 'OPTIONS']) !== [];
-                $prefix = $symbol->name.'::'.$name.' ['.implode('|', $verbs).']';
-                $known = array_values(array_filter($effects->observations, fn (array $e): bool => $e['kind'] !== 'unknown'));
-                $unknown = array_values(array_filter($effects->observations, fn (array $e): bool => $e['kind'] === 'unknown'));
-                if ($reads && $known !== []) {
-                    $effect = $known[0];
-                    $findings[] = $this->finding('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $symbol->path, $method->getStartLine(),
-                        $prefix.' can perform '.$effect['kind'].': '.implode(' -> ', $effect['trace']).' -> '.$effect['detail'].' at '.$effect['path'].':'.$effect['line'].($unknown !== [] ? ' Other calls could not be fully analysed.' : ''));
+                $routeEntries = $routes->entriesFor($symbol->name, $name);
+                $routeEntries = $routeEntries !== [] ? $routeEntries : [null];
+                foreach ($routeEntries as $routeEntry) {
+                    $framework = (new FrameworkContextBuilder($sources, $routes, $routeEntry))->build();
+                    $effects = (new MethodAnalyzer($sources, $framework))->analyze($symbol->name, $name);
+                    $verbs = $routeEntry !== null ? $routeEntry->verbs : $routes->verbs($symbol->name, $name);
+                    $reads = array_intersect($verbs, ['GET', 'HEAD']) !== [];
+                    $writes = array_diff($verbs, ['GET', 'HEAD', 'OPTIONS']) !== [];
+                    $prefix = $symbol->name.'::'.$name.' ['.implode('|', $verbs).']';
+                    $known = array_values(array_filter($effects->observations, fn (array $e): bool => $e['kind'] !== 'unknown'));
+                    $unknown = array_values(array_filter($effects->observations, fn (array $e): bool => $e['kind'] === 'unknown'));
+                    if ($reads && $known !== []) {
+                        $effect = $known[0];
+                        $findings[] = $this->finding('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $symbol->path, $method->getStartLine(),
+                            $prefix.' can perform '.$effect['kind'].': '.implode(' -> ', $effect['trace']).' -> '.$effect['detail'].' at '.$effect['path'].':'.$effect['line'].($unknown !== [] ? ' Other calls could not be fully analysed.' : ''));
 
-                    continue;
-                }
-                if ($writes) {
-                    foreach ($effects->services as $service) {
-                        $findings[] = $this->finding('W_THIN_CONTROLLER_SERVICE_DEPENDENCY', $symbol->path,
-                            $service['path'] === $symbol->path ? $service['line'] : $method->getStartLine(),
-                            $prefix.' uses '.$service['type'].' for an endpoint accepting write HTTP verbs; route the write use case through an Action.');
+                        continue;
+                    }
+                    if ($writes) {
+                        foreach ($effects->services as $service) {
+                            $findings[] = $this->finding('W_THIN_CONTROLLER_SERVICE_DEPENDENCY', $symbol->path,
+                                $service['path'] === $symbol->path ? $service['line'] : $method->getStartLine(),
+                                $prefix.' uses '.$service['type'].' for an endpoint accepting write HTTP verbs; route the write use case through an Action.');
+                        }
+                    }
+                    if (! $reads && $verbs !== []) {
+                        continue;
+                    }
+                    if ($verbs === [] || $unknown !== []) {
+                        $detail = $verbs === [] ? ($routes->unavailable ?? 'No registered route was found for this controller method.')
+                            : implode(' -> ', $unknown[0]['trace']).': '.$unknown[0]['detail'].' at '.$unknown[0]['path'].':'.$unknown[0]['line'];
+                        $findings[] = $this->finding('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $symbol->path, $method->getStartLine(), $prefix.' cannot be classified completely. '.$detail);
+                    } elseif ($effects->services !== [] && in_array(Architecture::QueryObjects, $enabled, true)) {
+                        $findings[] = $this->finding('W_THIN_CONTROLLER_READ_SERVICE', $symbol->path, $method->getStartLine(), $prefix.' uses a Service for a read; Query Objects are enabled, so put reusable read composition in a Query Object.');
                     }
                 }
-                if (! $reads && $verbs !== []) {
-                    continue;
-                }
-                if ($verbs === [] || $unknown !== []) {
-                    $detail = $verbs === [] ? ($routes->unavailable ?? 'No registered route was found for this controller method.')
-                        : implode(' -> ', $unknown[0]['trace']).': '.$unknown[0]['detail'].' at '.$unknown[0]['path'].':'.$unknown[0]['line'];
-                    $findings[] = $this->finding('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $symbol->path, $method->getStartLine(), $prefix.' cannot be classified completely. '.$detail);
-                } elseif ($effects->services !== [] && in_array(Architecture::QueryObjects, $enabled, true)) {
-                    $findings[] = $this->finding('W_THIN_CONTROLLER_READ_SERVICE', $symbol->path, $method->getStartLine(), $prefix.' uses a Service for a read; Query Objects are enabled, so put reusable read composition in a Query Object.');
+            }
+        }
+
+        foreach ($routes->entries ?? [] as $entry) {
+            if ($entry->class === null || $entry->method === null || ! str_starts_with($entry->class, 'Laravel\\Fortify\\Http\\Controllers\\') || array_intersect($entry->verbs, ['GET', 'HEAD']) === []) {
+                continue;
+            }
+            $sources = new SourceIndex($this->files, $this->basePath, $graph);
+            $framework = (new FrameworkContextBuilder($sources, $routes, $entry))->build();
+            $effects = (new MethodAnalyzer($sources, $framework))->analyze($entry->class, $entry->method);
+            $known = array_values(array_filter($effects->observations, fn (array $effect): bool => $effect['kind'] !== 'unknown'));
+            $unknown = array_values(array_filter($effects->observations, fn (array $effect): bool => $effect['kind'] === 'unknown'));
+            $prefix = $entry->class.'::'.$entry->method.' ['.implode('|', $entry->verbs).']';
+            if ($known !== []) {
+                $effect = $known[0];
+                $findings[] = $this->finding(
+                    'E_THIN_CONTROLLER_READ_SIDE_EFFECT',
+                    $effect['path'],
+                    $effect['line'],
+                    $prefix.' can perform '.$effect['kind'].': '.implode(' -> ', $effect['trace']).' -> '.$effect['detail'].' at '.$effect['path'].':'.$effect['line'].($unknown !== [] ? ' Other calls could not be fully analysed.' : ''),
+                );
+            } elseif ($unknown !== []) {
+                $effect = $unknown[0];
+                if ($this->files->isFile($this->basePath.'/'.$effect['path'])) {
+                    $findings[] = $this->finding(
+                        'W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE',
+                        $effect['path'],
+                        $effect['line'],
+                        $prefix.' cannot be classified completely. '.implode(' -> ', $effect['trace']).': '.$effect['detail'].' at '.$effect['path'].':'.$effect['line'],
+                    );
                 }
             }
         }
@@ -117,7 +159,9 @@ final readonly class ControllerReadAudit
         foreach ($paths as $path) {
             // Route registrations/config may change verbs without changing a PHP
             // controller. A removed source may no longer have a graph symbol.
-            if (! str_starts_with($path, 'app/') || str_contains($path, '/Providers/') || ! $this->files->exists($this->basePath.'/'.$path)) {
+            if (! str_starts_with($path, 'app/')
+                || preg_match('#^app/(?:Actions|Http/Middleware|Http/Resources|Policies|Providers)/#', $path) === 1
+                || ! $this->files->exists($this->basePath.'/'.$path)) {
                 return null;
             }
         }

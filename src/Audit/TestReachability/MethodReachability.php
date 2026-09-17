@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\TestReachability;
 
+use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContext;
+use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkSemantics;
+use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkValue;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceClass;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
 use PhpParser\Node;
@@ -15,7 +18,7 @@ final class MethodReachability
 {
     private TestReachabilityResult $result;
 
-    /** @var array<string, ?string> */
+    /** @var array<string, FrameworkValue|null> */
     private array $visited = [];
 
     /** @var array<string, true> */
@@ -23,13 +26,33 @@ final class MethodReachability
 
     private int $nodes = 0;
 
-    public function __construct(private SourceIndex $sources, private FactoryResolver $factories) {}
+    private FrameworkSemantics $framework;
 
-    public function analyze(string $class, string $method): TestReachabilityResult
+    public function __construct(private SourceIndex $sources, private FactoryResolver $factories, FrameworkContext $context = new FrameworkContext)
+    {
+        $this->framework = new FrameworkSemantics($sources, $context);
+    }
+
+    public function analyze(string $class, string $method, ?string $entryPath = null, int $entryLine = 1): TestReachabilityResult
     {
         $this->result = new TestReachabilityResult;
         $this->visited = $this->active = [];
         $this->nodes = 0;
+        $entrypoint = $this->framework->entrypoint($class, $method);
+        if ($entrypoint->handled) {
+            foreach ($entrypoint->targets as $target) {
+                $this->visit($target['class'], $target['method'], $target['arguments'] ?? [], []);
+            }
+            foreach ($entrypoint->callbacks as $callback) {
+                $this->walkCallback($callback, [$class.'::'.$method]);
+            }
+            if ($entrypoint->incomplete !== null) {
+                $origin = $entrypoint->callbacks[0]->callbackSource ?? null;
+                $this->result->incomplete($origin?->file->path ?? $entryPath ?? 'routes/web.php', $origin?->node->getStartLine() ?? $entryLine, $entrypoint->incomplete);
+            }
+
+            return $this->result;
+        }
         if ($this->sources->method($class, '__construct') !== null) {
             $this->visit($class, '__construct', [], []);
         }
@@ -38,12 +61,12 @@ final class MethodReachability
         return $this->result;
     }
 
-    /** @param array<int|string, ?string> $arguments
+    /** @param array<int|string, FrameworkValue|null> $arguments
      * @param  list<string>  $trace
      */
-    private function visit(string $class, string $method, array $arguments, array $trace): ?string
+    private function visit(string $class, string $method, array $arguments, array $trace): ?FrameworkValue
     {
-        $key = strtolower($class.'::'.$method).serialize($arguments);
+        $key = strtolower($class.'::'.$method).json_encode(array_map(fn (?FrameworkValue $value): array => $this->valueKey($value), $arguments), JSON_THROW_ON_ERROR);
         if (array_key_exists($key, $this->visited)) {
             return $this->visited[$key];
         }
@@ -82,7 +105,7 @@ final class MethodReachability
         $this->result->reach($class, $trace);
         $this->result->reach($source->name, $trace);
         $this->active[$key] = true;
-        $vars = ['this' => $class];
+        $vars = ['this' => FrameworkValue::type($class)];
         foreach ($node->params as $i => $param) {
             if (is_string($param->var->name)) {
                 $vars[$param->var->name] = $arguments[$param->var->name] ?? $arguments[$i] ?? $this->type($source, $param->type);
@@ -92,13 +115,15 @@ final class MethodReachability
         $this->walk($node->stmts, $source, $vars, $trace, $returns);
         unset($this->active[$key]);
 
-        return $this->visited[$key] = $this->type($source, $node->returnType) ?? (count(array_unique($returns, SORT_REGULAR)) === 1 ? ($returns[0] ?? null) : null);
+        $inferred = FrameworkValue::merge($returns);
+
+        return $this->visited[$key] = ($inferred !== null && ! $inferred->isUnknown() ? $inferred : $this->type($source, $node->returnType));
     }
 
     /** @param list<Node> $nodes
-     * @param  array<string, ?string>  $vars
+     * @param  array<string, FrameworkValue|null>  $vars
      * @param  list<string>  $trace
-     * @param  list<?string>  $returns
+     * @param  list<FrameworkValue|null>  $returns
      */
     private function walk(array $nodes, SourceClass $source, array &$vars, array $trace, array &$returns): void
     {
@@ -112,7 +137,9 @@ final class MethodReachability
                 continue;
             }
             if ($node instanceof Stmt\Return_) {
-                $returns[] = $node->expr !== null ? $this->expression($node->expr, $source, $vars, $trace) : null;
+                $value = $node->expr !== null ? $this->expression($node->expr, $source, $vars, $trace) : null;
+                $this->followReturnedValue($value, $source, $node, $trace);
+                $returns[] = $value;
 
                 return;
             }
@@ -146,10 +173,10 @@ final class MethodReachability
         }
     }
 
-    /** @param array<string, ?string> $vars
+    /** @param array<string, FrameworkValue|null> $vars
      * @param  list<string>  $trace
      */
-    private function expression(Expr $expr, SourceClass $source, array &$vars, array $trace): ?string
+    private function expression(Expr $expr, SourceClass $source, array &$vars, array $trace): ?FrameworkValue
     {
         if (++$this->nodes > 20000) {
             $this->result->incomplete($source->file->path, $expr->getStartLine(), 'Method AST node budget exceeded.');
@@ -160,7 +187,7 @@ final class MethodReachability
             return is_string($expr->name) ? ($vars[$expr->name] ?? null) : null;
         }
         if ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction) {
-            return '@callback';
+            return FrameworkValue::callback($source, $expr, $vars);
         }
         if ($expr instanceof Expr\Assign) {
             $value = $this->expression($expr->expr, $source, $vars, $trace);
@@ -170,18 +197,41 @@ final class MethodReachability
 
             return $value;
         }
+        if ($expr instanceof Expr\ClassConstFetch && $expr->class instanceof Node\Name && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class') {
+            $class = $this->name($source, $expr->class, $source->name);
+
+            return new FrameworkValue(type: $class, literal: $class);
+        }
+        if ($expr instanceof Node\Scalar\String_) {
+            return FrameworkValue::scalar($expr->value);
+        }
+        if ($expr instanceof Expr\Array_) {
+            $items = [];
+            foreach ($expr->items as $index => $item) {
+                if ($item === null) {
+                    continue;
+                }
+                if ($item->key instanceof Expr) {
+                    $this->expression($item->key, $source, $vars, $trace);
+                }
+                $key = $item->key instanceof Node\Scalar\String_ ? $item->key->value : ($item->key instanceof Node\Scalar\Int_ ? $item->key->value : $index);
+                $items[$key] = $this->expression($item->value, $source, $vars, $trace);
+            }
+
+            return FrameworkValue::array($items);
+        }
         if ($expr instanceof Expr\PropertyFetch || $expr instanceof Expr\NullsafePropertyFetch) {
             $owner = $this->expression($expr->var, $source, $vars, $trace);
 
-            return $owner !== null && $expr->name instanceof Node\Identifier ? $this->property($owner, $expr->name->toString(), $source->file->path, $expr->getStartLine()) : null;
+            return $owner?->type !== null && $expr->name instanceof Node\Identifier ? $this->property($owner->type, $expr->name->toString(), $source->file->path, $expr->getStartLine()) : null;
         }
         if ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall || $expr instanceof Expr\StaticCall || $expr instanceof Expr\New_ || $expr instanceof Expr\FuncCall) {
             if ($expr->isFirstClassCallable()) {
-                return '@callback';
+                return FrameworkValue::type('@callback');
             }
             $receiver = match (true) {
                 $expr instanceof Expr\MethodCall, $expr instanceof Expr\NullsafeMethodCall => $this->expression($expr->var, $source, $vars, $trace),
-                ($expr instanceof Expr\StaticCall || $expr instanceof Expr\New_) && $expr->class instanceof Node\Name => $this->name($source, $expr->class, $vars['this'] ?? $source->name),
+                ($expr instanceof Expr\StaticCall || $expr instanceof Expr\New_) && $expr->class instanceof Node\Name => FrameworkValue::type($this->name($source, $expr->class, isset($vars['this']) ? ($vars['this']->type ?? $source->name) : $source->name)),
                 default => null,
             };
             $args = [];
@@ -189,49 +239,60 @@ final class MethodReachability
                 $args[$arg->name?->toString() ?? $i] = $this->expression($arg->value, $source, $vars, $trace);
             }
             if ($expr instanceof Expr\FuncCall) {
-                $function = $expr->name instanceof Node\Name ? $source->file->resolvedName($expr->name) : null;
+                $function = $expr->name instanceof Node\Name ? strtolower(ltrim($source->file->resolvedName($expr->name), '\\')) : null;
+                $framework = $this->framework->describe(null, $function, null, $args, $source, $expr);
+                if ($framework->handled) {
+                    return $this->applyFramework($framework, $source, $expr, $trace);
+                }
                 $known = $function !== null && ((function_exists($function) && (new \ReflectionFunction($function))->isInternal()) || in_array($function, ['response', 'view', 'redirect', 'route', 'config', 'now', 'today', 'trans', '__', 'abort', 'abort_if', 'abort_unless', 'event', 'dispatch', 'dispatch_sync'], true));
                 if (! $known) {
                     $this->result->incomplete($source->file->path, $expr->getStartLine(), 'Unresolved function or callback '.($function ?? '(dynamic)').'.');
                 }
 
-                return '@external';
+                return FrameworkValue::type('@external');
             }
             $method = $expr instanceof Expr\New_ ? '__construct' : ($expr->name instanceof Node\Identifier ? $expr->name->toString() : null);
-            if ($receiver === null || $method === null) {
+            $receiverType = $receiver?->type;
+            if ($receiverType === null || $method === null) {
                 $this->result->incomplete($source->file->path, $expr->getStartLine(), 'Unresolved receiver or dynamic method.');
 
                 return null;
             }
             if ($method === 'factory') {
-                $this->result->merge($this->factories->resolve($receiver, $source->file->path, $expr->getStartLine()));
+                $this->result->merge($this->factories->resolve($receiverType, $source->file->path, $expr->getStartLine()));
             }
-            if ($this->sources->method($receiver, $method) !== null) {
-                if ($method !== '__construct' && $receiver !== ($vars['this'] ?? null) && $this->sources->method($receiver, '__construct') !== null) {
-                    $this->visit($receiver, '__construct', [], $trace);
+            if ($this->sources->method($receiverType, $method) !== null) {
+                if ($method !== '__construct' && $receiverType !== (isset($vars['this']) ? $vars['this']->type : null) && $this->sources->method($receiverType, '__construct') !== null) {
+                    $this->visit($receiverType, '__construct', [], $trace);
                 }
-                $return = $this->visit($receiver, $method, $args, $trace);
+                $return = $this->visit($receiverType, $method, $args, $trace);
 
                 return $expr instanceof Expr\New_ ? $receiver : $return;
             }
             if ($expr instanceof Expr\New_) {
-                if ($this->sources->get($receiver) !== null) {
-                    $this->result->reach($receiver, [...$trace, $receiver.'::__construct']);
-                } elseif ($this->sources->inScope($receiver)) {
-                    $this->result->incomplete($source->file->path, $expr->getStartLine(), $this->sources->unavailableReason($receiver) ?? 'Constructor source unavailable: '.$receiver);
+                if ($this->sources->get($receiverType) !== null) {
+                    $this->result->reach($receiverType, [...$trace, $receiverType.'::__construct']);
+                } elseif ($this->sources->inScope($receiverType)) {
+                    $this->result->incomplete($source->file->path, $expr->getStartLine(), $this->sources->unavailableReason($receiverType) ?? 'Constructor source unavailable: '.$receiverType);
                 }
 
-                return $receiver;
+                return $this->sources->isA($receiverType, 'Illuminate\Http\Resources\Json\JsonResource')
+                    ? FrameworkValue::resource($receiverType, $this->sources->isA($receiverType, 'Illuminate\Http\Resources\Json\ResourceCollection'))
+                    : $receiver;
+            }
+            $framework = $this->framework->describe($receiver, null, $method, $args, $source, $expr);
+            if ($framework->handled) {
+                return $this->applyFramework($framework, $source, $expr, $trace);
             }
             // Framework calls are the boundary. Project methods above always win.
-            if (str_starts_with($receiver, 'Illuminate\\') || str_starts_with($receiver, '@') || $this->sources->isA($receiver, 'Illuminate\\Database\\Eloquent\\Model')) {
-                return '@external';
+            if (str_starts_with($receiverType, 'Illuminate\\') || str_starts_with($receiverType, '@') || $this->sources->isA($receiverType, 'Illuminate\\Database\\Eloquent\\Model')) {
+                return FrameworkValue::type('@external');
             }
-            if ($this->sources->inScope($receiver)) {
-                $this->result->incomplete($source->file->path, $expr->getStartLine(), $this->sources->unavailableReason($receiver) ?? 'Unresolved project method '.$receiver.'::'.$method.'.');
+            if ($this->sources->inScope($receiverType)) {
+                $this->result->incomplete($source->file->path, $expr->getStartLine(), $this->sources->unavailableReason($receiverType) ?? 'Unresolved project method '.$receiverType.'::'.$method.'.');
             }
 
-            return '@external';
+            return FrameworkValue::type('@external');
         }
         $branch = $vars;
         foreach ($expr->getSubNodeNames() as $key) {
@@ -253,7 +314,7 @@ final class MethodReachability
         return $value instanceof Node ? [$value] : (is_array($value) ? array_values(array_filter($value, fn ($node) => $node instanceof Node)) : []);
     }
 
-    private function property(string $class, string $name, string $path, int $line, int $depth = 0): ?string
+    private function property(string $class, string $name, string $path, int $line, int $depth = 0): ?FrameworkValue
     {
         if ($depth >= 12 || ($source = $this->sources->get($class)) === null) {
             if (($reason = $this->sources->unavailableReason($class)) !== null) {
@@ -278,13 +339,13 @@ final class MethodReachability
         return $source->node instanceof Stmt\Class_ && $source->node->extends !== null ? $this->property($source->file->resolvedName($source->node->extends), $name, $path, $line, $depth + 1) : null;
     }
 
-    private function type(SourceClass $source, Node|string|null $type): ?string
+    private function type(SourceClass $source, Node|string|null $type): ?FrameworkValue
     {
         if ($type instanceof Node\NullableType) {
             return $this->type($source, $type->type);
         }
 
-        return $type instanceof Node\Name ? $this->name($source, $type, $source->name) : null;
+        return $type instanceof Node\Name ? FrameworkValue::type($this->name($source, $type, $source->name)) : null;
     }
 
     private function name(SourceClass $source, Node\Name $name, string $runtime): string
@@ -300,5 +361,67 @@ final class MethodReachability
         }
 
         return $source->file->resolvedName($name);
+    }
+
+    /** @param list<string> $trace */
+    private function applyFramework(object $result, SourceClass $source, Node $expr, array $trace): ?FrameworkValue
+    {
+        foreach ($result->targets as $target) {
+            $this->visit($target['class'], $target['method'], $target['arguments'] ?? [], $trace);
+        }
+        foreach ($result->callbacks as $callback) {
+            $this->walkCallback($callback, $trace);
+        }
+        if ($result->incomplete !== null) {
+            $this->result->incomplete($source->file->path, $expr->getStartLine(), $result->incomplete);
+        }
+
+        return $result->value;
+    }
+
+    /** @param list<string> $trace */
+    private function followReturnedValue(?FrameworkValue $value, SourceClass $source, Node $node, array $trace): void
+    {
+        if ($value === null) {
+            return;
+        }
+        if ($value->resourceClass !== null) {
+            $result = $this->framework->describe($value, null, '@return', [], $source, $node);
+            if ($result->handled) {
+                $this->applyFramework($result, $source, $node, $trace);
+            }
+        }
+        foreach ($value->items as $item) {
+            $this->followReturnedValue($item, $source, $node, $trace);
+        }
+    }
+
+    /** @param list<string> $trace */
+    private function walkCallback(FrameworkValue $value, array $trace): void
+    {
+        if ($value->callback === null || $value->callbackSource === null) {
+            return;
+        }
+        $vars = $value->captures;
+        foreach ($value->callback->params as $param) {
+            if (is_string($param->var->name)) {
+                $vars[$param->var->name] = $this->type($value->callbackSource, $param->type) ?? FrameworkValue::unknown();
+            }
+        }
+        $returns = [];
+        $this->walk($value->callback instanceof Expr\Closure ? $value->callback->stmts : [$value->callback->expr], $value->callbackSource, $vars, [...$trace, '{callback}'], $returns);
+    }
+
+    /** @return array<string, mixed> */
+    private function valueKey(?FrameworkValue $value): array
+    {
+        return [
+            'type' => $value?->type,
+            'literal' => $value?->literal,
+            'resource' => $value?->resourceClass,
+            'collection' => $value?->resourceCollection,
+            'callback' => $value?->callback?->getStartLine(),
+            'unknown' => $value?->unknown,
+        ];
     }
 }

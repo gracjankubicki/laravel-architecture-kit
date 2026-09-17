@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\TestReachability;
 
+use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContextBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
@@ -110,11 +111,12 @@ final readonly class TestReachability
 
                 continue;
             }
-            $key = $entry->class.'::'.$entry->method;
+            $key = $entry->class.'::'.$entry->method.':'.hash('sha256', json_encode($entry->toArray(), JSON_THROW_ON_ERROR));
             if (! isset($memo[$key])) {
-                $memo[$key] = (new MethodReachability($sources, $factories))->analyze($entry->class, $entry->method);
+                $framework = (new FrameworkContextBuilder($sources, $routes, $entry))->build();
+                $memo[$key] = (new MethodReachability($sources, $factories, $framework))->analyze($entry->class, $entry->method, $call->path, $call->line);
                 $memoOrigins[$key] = [...$sources->paths(), ...$configurationPaths];
-                if ($sources->get($entry->class) === null) {
+                if ($sources->get($entry->class) === null && ! str_starts_with($entry->class, 'Laravel\\Fortify\\Http\\Controllers\\')) {
                     $memo[$key]->incomplete($call->path, $call->line, $sources->unavailableReason($entry->class) ?? 'Handler source unavailable in scope: '.$key);
                 }
             }

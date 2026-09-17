@@ -28,11 +28,13 @@ final class DistributionContractTest extends TestCase
         $this->assertArrayNotHasKey('permissions', $jobs['tests']);
         $this->assertArrayNotHasKey('permissions', $jobs['coverage']);
         $this->assertContains('composer audit --locked --no-interaction', $lintCommands);
-        $this->assertSame(['lint', 'tests', 'laravel-ai-contract', 'runtime-install', 'boost-composition', 'workbench-commands', 'project-graph-consumer'], $jobs['coverage']['needs']);
+        $this->assertSame(['lint', 'tests', 'laravel-ai-contract', 'framework-contract', 'runtime-install', 'boost-composition', 'workbench-commands', 'project-graph-consumer'], $jobs['coverage']['needs']);
         $this->assertSame(
             ['0.8.0', '^0.8', '0.9.0', '^0.9', '0.10.0', '^0.10'],
             $jobs['laravel-ai-contract']['strategy']['matrix']['ai'],
         );
+        $this->assertSame(['12.*', '13.*'], $jobs['framework-contract']['strategy']['matrix']['laravel']);
+        $this->assertSame('1', $jobs['framework-contract']['steps'][3]['env']['ARCHITECTURE_KIT_FRAMEWORK_CONTRACT']);
         $runtimeSmoke = file_get_contents($root.'/tests/Smoke/runtime-install.sh');
         $boostSmoke = file_get_contents($root.'/tests/Smoke/boost-composition.sh');
         $workbenchSmoke = file_get_contents($root.'/tests/Smoke/workbench-commands.sh');
