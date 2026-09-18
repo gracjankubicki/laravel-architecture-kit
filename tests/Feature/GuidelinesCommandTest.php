@@ -150,6 +150,23 @@ class GuidelinesCommandTest extends TestCase
         $this->assertStringContainsString('approval_state', $payload['md']);
     }
 
+    public function test_it_expands_the_laravel_ai_011_profile_for_agents(): void
+    {
+        $this->writeLaravelAiFixture('^0.11', '0.11.2');
+        $this->writeConfig([Architecture::LaravelAi]);
+
+        $exit = Artisan::call('architecture-kit:guidelines', [
+            'architecture' => 'laravel-ai',
+            '--agent' => true,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('laravel-ai@0.11', $payload['laravel_ai']['profile']);
+        $this->assertStringContainsString('StreamErrorException', $payload['md']);
+        $this->assertStringContainsString('dispatch the real', $payload['md']);
+    }
+
     public function test_it_expands_the_inertia_profile_with_the_resolved_runtime_contract(): void
     {
         $this->writeInertiaFixture('^3.0', '3.1.0');
@@ -216,5 +233,9 @@ class GuidelinesCommandTest extends TestCase
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Approvals/Decisions.php', '<?php class Decisions {}');
         $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Contracts');
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Contracts/ConversationStore.php', '<?php interface ConversationStore { public function storeApprovalResults(): void; }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Exceptions');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Exceptions/ProviderConnectionException.php', '<?php class ProviderConnectionException implements FailoverableException {}');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Exceptions/StreamErrorException.php', '<?php class StreamErrorException {}');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Promptable.php', '<?php trait Promptable { public function queue() { return InvokeAgent::dispatch(); } public function broadcastOnQueue() { return BroadcastAgent::dispatch(); } }');
     }
 }

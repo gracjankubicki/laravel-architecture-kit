@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ai: ['0.8.0', '^0.8', '0.9.0', '^0.9', '0.10.0', '^0.10']
+        ai: ['0.8.0', '^0.8', '0.9.0', '^0.9', '0.10.0', '^0.10', '0.11.0', '^0.11']
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
@@ -63,7 +63,12 @@ jobs:
         run: |
           composer require "laravel/ai:${{ matrix.ai }}" --no-interaction --no-update
           composer update --prefer-dist --no-interaction --no-progress
-      - run: vendor/bin/phpunit tests/Unit/LaravelAi tests/Unit/ArchitectureResourcesTest.php
+      - name: Report resolved Laravel AI contract
+        run: composer show laravel/ai --no-interaction --format=json
+      - name: Test real Laravel AI contract
+        run: vendor/bin/phpunit --do-not-cache-result tests/Unit/LaravelAi tests/Feature/RealLaravelAiBehaviorTest.php tests/Unit/ArchitectureResourcesTest.php
+        env:
+          ARCHITECTURE_KIT_LARAVEL_AI_CONTRACT: '1'
 
   framework-contract:
     runs-on: ubuntu-latest

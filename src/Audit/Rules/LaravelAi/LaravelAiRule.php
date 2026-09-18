@@ -10,8 +10,8 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use Illuminate\Filesystem\Filesystem;
 use PhpParser\Node;
-use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
@@ -19,6 +19,11 @@ use PhpParser\NodeVisitorAbstract;
 
 final readonly class LaravelAiRule implements AuditRule
 {
+    public function __construct(
+        private Filesystem $files = new Filesystem,
+        private ?string $basePath = null,
+    ) {}
+
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
@@ -39,8 +44,11 @@ final readonly class LaravelAiRule implements AuditRule
         }
 
         $findings = [];
+        $symbols = new AiSymbolResolver($this->files, $this->basePath);
+        $calls = (new AiCallAnalyzer($symbols))->analyse($file, $nodes);
+        $confirmedCalls = array_values(array_filter($calls, static fn (AiCallMatch $call): bool => $call->confirmed));
 
-        foreach ($this->directAgentPromptLines($file, $nodes) as $line) {
+        foreach ($confirmedCalls as $call) {
             if (! $this->isForbiddenAdapterPath($file->path)) {
                 continue;
             }
@@ -48,21 +56,22 @@ final readonly class LaravelAiRule implements AuditRule
             $findings[] = $this->finding(
                 'error',
                 $file->path,
-                $line,
-                'Controllers, FormRequests, API Resources, and Models must not call Laravel AI Agents directly; use an AI Gateway, Action, or Job.',
+                $call->line(),
+                'Controllers, FormRequests, API Resources, and Models must not call Laravel AI directly; use an AI Gateway, Action, or Job.',
             );
         }
 
-        foreach ($this->directPromptLines($file, $nodes) as $line) {
-            if (! $this->isForbiddenAdapterPath($file->path)) {
+        foreach ($calls as $call) {
+            if ($call->confirmed) {
                 continue;
             }
 
             $findings[] = $this->finding(
-                'error',
+                'warn',
                 $file->path,
-                $line,
-                'Controllers, FormRequests, API Resources, and Models must not call Laravel AI directly; use an AI Gateway, Action, or Job.',
+                $call->line(),
+                'Laravel AI call analysis is incomplete: '.$call->reason,
+                'W_LARAVEL_AI_ANALYSIS_INCOMPLETE',
             );
         }
 
@@ -79,7 +88,7 @@ final readonly class LaravelAiRule implements AuditRule
             );
         }
 
-        foreach ($this->anonymousToolLines($nodes) as $line) {
+        foreach ($this->anonymousToolLines($file, $nodes, $symbols) as $line) {
             $findings[] = $this->finding(
                 'error',
                 $file->path,
@@ -88,7 +97,7 @@ final readonly class LaravelAiRule implements AuditRule
             );
         }
 
-        foreach ($this->genericRunAgentLines($nodes) as $line) {
+        foreach ($confirmedCalls === [] ? [] : $this->genericRunAgentLines($nodes) as $line) {
             $findings[] = $this->finding(
                 'error',
                 $file->path,
@@ -97,7 +106,7 @@ final readonly class LaravelAiRule implements AuditRule
             );
         }
 
-        foreach ($this->structuredGatewayAgentLines($nodes) as $line) {
+        foreach ($this->structuredGatewayAgentLines($file, $nodes, $symbols) as $line) {
             if ($this->isDiagnosticPath($file->path)) {
                 continue;
             }
@@ -110,7 +119,7 @@ final readonly class LaravelAiRule implements AuditRule
             );
         }
 
-        foreach ($this->rawProviderPromptLines($nodes) as $line) {
+        foreach ($this->rawProviderPromptLines($confirmedCalls) as $line) {
             $findings[] = $this->finding(
                 'warn',
                 $file->path,
@@ -146,97 +155,6 @@ final readonly class LaravelAiRule implements AuditRule
             || str_contains($path, '/Diagnostic/')
             || str_contains($path, '/Dev/')
             || str_contains($path, '/Debug/');
-    }
-
-    /**
-     * @param  array<int, Node>  $nodes
-     * @return array<int, int>
-     */
-    private function directAgentPromptLines(FileContext $file, array $nodes): array
-    {
-        $state = new class
-        {
-            /**
-             * @var array<int, int>
-             */
-            public array $lines = [];
-        };
-
-        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
-        {
-            public function __construct(
-                private FileContext $file,
-                private object $state,
-            ) {}
-
-            public function enterNode(Node $node): null
-            {
-                if (
-                    $node instanceof MethodCall
-                    && $node->name instanceof Node\Identifier
-                    && $node->name->toString() === 'prompt'
-                    && $node->var instanceof StaticCall
-                    && $node->var->name instanceof Node\Identifier
-                    && $node->var->name->toString() === 'make'
-                    && $node->var->class instanceof Name
-                    && $this->isLaravelAiAgent($node->var->class)
-                ) {
-                    $this->state->lines[] = $node->getStartLine();
-                }
-
-                return null;
-            }
-
-            private function isLaravelAiAgent(Name $name): bool
-            {
-                $class = $this->file->resolvedName($name);
-
-                return (str_starts_with($class, 'Laravel\\Ai\\') || str_starts_with($class, 'App\\Ai\\Agents\\'))
-                    && str_ends_with($class, 'Agent');
-            }
-        });
-
-        return $state->lines;
-    }
-
-    /**
-     * @param  array<int, Node>  $nodes
-     * @return array<int, int>
-     */
-    private function directPromptLines(FileContext $file, array $nodes): array
-    {
-        $state = new class
-        {
-            /**
-             * @var array<int, int>
-             */
-            public array $lines = [];
-        };
-
-        PhpAst::traverse($nodes, new class($file, $state) extends NodeVisitorAbstract
-        {
-            public function __construct(
-                private FileContext $file,
-                private object $state,
-            ) {}
-
-            public function enterNode(Node $node): null
-            {
-                if (
-                    $node instanceof StaticCall
-                    && $node->class instanceof Name
-                    && $node->name instanceof Node\Identifier
-                    && $node->name->toString() === 'prompt'
-                    && str_starts_with($this->file->resolvedName($node->class), 'Laravel\\Ai\\')
-                ) {
-                    $this->state->lines[] = $node->getStartLine();
-                }
-
-                return null;
-            }
-        });
-
-        return $state->lines;
     }
 
     /**
@@ -279,7 +197,7 @@ final readonly class LaravelAiRule implements AuditRule
                         'Laravel\\Ai\\Files',
                         'Laravel\\Ai\\Stores',
                     ], true)
-                    && in_array($method, ['for', 'of', 'fromBase64', 'fromPath', 'fromStorage', 'fromUpload', 'get', 'create', 'delete'], true)
+                    && in_array($method, ['for', 'of', 'fromBase64', 'fromPath', 'fromStorage', 'fromUpload', 'put', 'putFromPath', 'putFromStorage', 'get', 'create', 'delete'], true)
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }
@@ -295,7 +213,7 @@ final readonly class LaravelAiRule implements AuditRule
      * @param  array<int, Node>  $nodes
      * @return array<int, int>
      */
-    private function anonymousToolLines(array $nodes): array
+    private function anonymousToolLines(FileContext $file, array $nodes, AiSymbolResolver $symbols): array
     {
         $state = new class
         {
@@ -305,9 +223,13 @@ final readonly class LaravelAiRule implements AuditRule
             public array $lines = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $symbols, $state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(
+                private FileContext $file,
+                private AiSymbolResolver $symbols,
+                private object $state,
+            ) {}
 
             public function enterNode(Node $node): null
             {
@@ -316,19 +238,12 @@ final readonly class LaravelAiRule implements AuditRule
                 }
 
                 foreach ($node->class->implements as $implements) {
-                    if ($implements instanceof Name && $this->shortTypeName($implements->toString()) === 'Tool') {
+                    if ($implements instanceof Name && $this->symbols->isTool($this->file->resolvedName($implements), $this->file)) {
                         $this->state->lines[] = $node->getStartLine();
                     }
                 }
 
                 return null;
-            }
-
-            private function shortTypeName(string $name): string
-            {
-                $parts = explode('\\', $name);
-
-                return $parts[count($parts) - 1];
             }
         });
 
@@ -397,7 +312,7 @@ final readonly class LaravelAiRule implements AuditRule
      * @param  array<int, Node>  $nodes
      * @return array<int, int>
      */
-    private function structuredGatewayAgentLines(array $nodes): array
+    private function structuredGatewayAgentLines(FileContext $file, array $nodes, AiSymbolResolver $symbols): array
     {
         $state = new class
         {
@@ -407,28 +322,26 @@ final readonly class LaravelAiRule implements AuditRule
             public array $lines = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($file, $symbols, $state) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(
+                private FileContext $file,
+                private AiSymbolResolver $symbols,
+                private object $state,
+            ) {}
 
             public function enterNode(Node $node): null
             {
                 if (
                     $node instanceof Node\Expr\New_
                     && $node->class instanceof Name
-                    && $this->shortTypeName($node->class->toString()) === 'StructuredGatewayAgent'
+                    && $this->symbols->isAgent($this->file->resolvedName($node->class), $this->file)
+                    && str_ends_with($this->file->resolvedName($node->class), '\\StructuredGatewayAgent')
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }
 
                 return null;
-            }
-
-            private function shortTypeName(string $name): string
-            {
-                $parts = explode('\\', $name);
-
-                return $parts[count($parts) - 1];
             }
         });
 
@@ -436,50 +349,32 @@ final readonly class LaravelAiRule implements AuditRule
     }
 
     /**
-     * @param  array<int, Node>  $nodes
+     * @param  array<int, AiCallMatch>  $calls
      * @return array<int, int>
      */
-    private function rawProviderPromptLines(array $nodes): array
+    private function rawProviderPromptLines(array $calls): array
     {
-        $state = new class
-        {
-            /**
-             * @var array<int, int>
-             */
-            public array $lines = [];
-        };
+        $lines = [];
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
-        {
-            public function __construct(private object $state) {}
-
-            public function enterNode(Node $node): null
-            {
-                if (
-                    ! ($node instanceof MethodCall || $node instanceof StaticCall)
-                    || ! $node->name instanceof Node\Identifier
-                    || $node->name->toString() !== 'prompt'
-                ) {
-                    return null;
-                }
-
-                foreach ($node->args as $arg) {
-                    if (
-                        $arg->name instanceof Node\Identifier
-                        && in_array($arg->name->toString(), ['provider', 'model'], true)
-                        && $arg->value instanceof Node\Scalar\String_
-                    ) {
-                        $this->state->lines[] = $node->getStartLine();
-
-                        break;
-                    }
-                }
-
-                return null;
+        foreach ($calls as $match) {
+            if ($match->method !== 'prompt') {
+                continue;
             }
-        });
 
-        return $state->lines;
+            foreach ($match->call->args as $arg) {
+                if (
+                    $arg->name instanceof Node\Identifier
+                    && in_array($arg->name->toString(), ['provider', 'model'], true)
+                    && $arg->value instanceof Node\Scalar\String_
+                ) {
+                    $lines[] = $match->line();
+
+                    break;
+                }
+            }
+        }
+
+        return $lines;
     }
 
     /**
@@ -516,8 +411,8 @@ final readonly class LaravelAiRule implements AuditRule
         return [];
     }
 
-    private function finding(string $severity, string $path, int $line, string $message): AuditFinding
+    private function finding(string $severity, string $path, int $line, string $message, ?string $code = null): AuditFinding
     {
-        return new AuditFinding($severity, 'laravel-ai', $path, $line, $message);
+        return new AuditFinding($severity, 'laravel-ai', $path, $line, $message, code: $code);
     }
 }

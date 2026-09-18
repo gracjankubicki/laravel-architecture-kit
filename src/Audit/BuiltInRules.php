@@ -56,7 +56,7 @@ final readonly class BuiltInRules
             new ApiResourcesRule,
             new PortsAndAdaptersRule($files, $basePath, $enabled),
             new ModernPhp85Rule,
-            new LaravelAiRule,
+            new LaravelAiRule($files, $basePath),
             new InertiaRule,
             new EloquentLifecycleRule($files, $basePath),
             new SaloonRule,

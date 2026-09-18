@@ -83,7 +83,7 @@ final class SyncCommandTest extends TestCase
         $files->put($this->tempPath.'/composer.json', json_encode([
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
-                'laravel/ai' => '^0.11',
+                'laravel/ai' => '^0.12',
             ],
         ], JSON_THROW_ON_ERROR));
         (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))->write([Architecture::LaravelAi]);
@@ -169,6 +169,9 @@ final class SyncCommandTest extends TestCase
         $this->assertFileExists(
             $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md',
         );
+        $this->assertFileExists(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md',
+        );
         $exit = Artisan::call('architecture-kit:doctor');
 
         $this->assertSame(0, $exit, Artisan::output());
@@ -225,6 +228,29 @@ final class SyncCommandTest extends TestCase
         );
     }
 
+    public function test_it_upgrades_generated_resources_from_profile_010_to_011(): void
+    {
+        $files = new Filesystem;
+        $this->writeLaravelAiFixture('^0.10', '0.10.1');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))
+            ->write([Architecture::LaravelAi]);
+        $this->artisan('architecture-kit:sync --no-interaction')->assertExitCode(0);
+
+        $this->writeLaravelAiFixture('^0.11', '0.11.2');
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('profile    laravel-ai@0.11')
+            ->expectsOutputToContain('outdated .ai/skills/architecture-kit-laravel-ai/SKILL.md')
+            ->assertExitCode(1);
+
+        $this->artisan('architecture-kit:sync --no-interaction')->assertExitCode(0);
+
+        $updated = $files->get($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
+        $this->assertStringContainsString('Profile: `laravel-ai@0.11`', $updated);
+        $this->assertStringContainsString('StreamErrorException', $updated);
+        $this->assertStringNotContainsString('Profile: `laravel-ai@0.10`', $updated);
+    }
+
     public function test_it_removes_only_marker_owned_upgrade_skills_when_laravel_ai_is_disabled(): void
     {
         $files = new Filesystem;
@@ -276,5 +302,9 @@ final class SyncCommandTest extends TestCase
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Approvals/Decisions.php', '<?php class Decisions {}');
         $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Contracts');
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Contracts/ConversationStore.php', '<?php interface ConversationStore { public function storeApprovalResults(): void; }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Exceptions');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Exceptions/ProviderConnectionException.php', '<?php class ProviderConnectionException implements FailoverableException {}');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Exceptions/StreamErrorException.php', '<?php class StreamErrorException {}');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Promptable.php', '<?php trait Promptable { public function queue() { return InvokeAgent::dispatch(); } public function broadcastOnQueue() { return BroadcastAgent::dispatch(); } }');
     }
 }

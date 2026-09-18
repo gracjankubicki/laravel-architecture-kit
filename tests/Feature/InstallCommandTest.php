@@ -703,6 +703,29 @@ PHP;
         $this->assertFileExists(
             $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md',
         );
+        $this->assertFileExists(
+            $this->tempPath.'/.ai/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md',
+        );
+    }
+
+    public function test_it_generates_the_laravel_ai_011_profile_without_provider_traffic(): void
+    {
+        $files = new Filesystem;
+        $this->writeLaravelAiFixture('^0.11', '0.11.2');
+        $files->ensureDirectoryExists($this->tempPath.'/config');
+        $files->put($this->tempPath.'/config/architectures.php', $this->configFor([Architecture::LaravelAi]));
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['laravel-ai'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $skill = $files->get($this->tempPath.'/.ai/skills/architecture-kit-laravel-ai/SKILL.md');
+        $this->assertStringContainsString('Profile: `laravel-ai@0.11`', $skill);
+        $this->assertStringContainsString('StreamErrorException', $skill);
+        $this->assertStringContainsString('queue driver', $skill);
     }
 
     public function test_it_generates_inertia_resources_without_changing_dependencies(): void
@@ -1254,6 +1277,14 @@ PHP);
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Responses/StructuredAgentResponse.php', '<?php class StructuredAgentResponse implements ArrayAccess { public function toArray(): array {} }');
         $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Concerns');
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Concerns/ProviderOptions.php', '<?php trait ProviderOptions { public function withProviderOptions(array $options): static {} }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Approvals');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Approvals/Decisions.php', '<?php class Decisions {}');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Contracts');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Contracts/ConversationStore.php', '<?php interface ConversationStore { public function storeApprovalResults(): void; }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Exceptions');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Exceptions/ProviderConnectionException.php', '<?php class ProviderConnectionException implements FailoverableException {}');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Exceptions/StreamErrorException.php', '<?php class StreamErrorException {}');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Promptable.php', '<?php trait Promptable { public function queue() { return InvokeAgent::dispatch(); } public function broadcastOnQueue() { return BroadcastAgent::dispatch(); } }');
     }
 }
 

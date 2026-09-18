@@ -29,7 +29,7 @@ final class UpgradePlanCommandTest extends TestCase
 
         $exit = Artisan::call('architecture-kit:upgrade-plan', [
             'package' => 'laravel/ai',
-            '--to' => '0.10',
+            '--to' => '0.11',
             '--agent' => true,
         ]);
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
@@ -39,18 +39,19 @@ final class UpgradePlanCommandTest extends TestCase
         $this->assertSame('upgrade-plan', $payload['cmd']);
         $this->assertSame('ready', $payload['status']);
         $this->assertSame('0.8.1', $payload['state']['locked']);
-        $this->assertSame(['ready', 'pending'], array_column($payload['route'], 'status'));
+        $this->assertSame(['ready', 'pending', 'pending'], array_column($payload['route'], 'status'));
         $this->assertSame('architecture-kit-upgrade-laravel-ai-0-8-to-0-9', $payload['active']['skill']);
         $this->assertSame($before, $this->snapshot($files));
     }
 
     public function test_human_output_uses_the_same_plan(): void
     {
-        $this->artisan('architecture-kit:upgrade-plan laravel/ai --to=0.10')
+        $this->artisan('architecture-kit:upgrade-plan laravel/ai --to=0.11')
             ->expectsOutputToContain('Architecture Kit Upgrade Plan')
             ->expectsOutputToContain('Declared:   ^0.8')
             ->expectsOutputToContain('READY   0.8 -> 0.9')
             ->expectsOutputToContain('PENDING 0.9 -> 0.10')
+            ->expectsOutputToContain('PENDING 0.10 -> 0.11')
             ->expectsOutputToContain('No files were changed.')
             ->assertExitCode(0);
     }
@@ -61,7 +62,7 @@ final class UpgradePlanCommandTest extends TestCase
 
         $exit = Artisan::call('architecture-kit:upgrade-plan', [
             'package' => 'laravel/ai',
-            '--to' => '0.10',
+            '--to' => '0.11',
             '--agent' => true,
         ]);
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);

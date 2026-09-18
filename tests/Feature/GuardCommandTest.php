@@ -14,6 +14,34 @@ use Illuminate\Support\Facades\Artisan;
 
 class GuardCommandTest extends TestCase
 {
+    public function test_incomplete_laravel_ai_analysis_alone_blocks_strict_guard(): void
+    {
+        (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'require' => ['laravel/ai' => '^0.8'],
+        ], JSON_THROW_ON_ERROR));
+        $this->writeCurrentResources([Architecture::LaravelAi]);
+        $this->writeFile('app/Ai/Gateways/DynamicGateway.php', <<<'PHP'
+<?php
+
+namespace App\Ai\Gateways;
+
+use Laravel\Ai\Contracts\Agent;
+
+final class DynamicGateway
+{
+    public function run(Agent $agent, string $method): void
+    {
+        $agent->{$method}('dynamic');
+    }
+}
+PHP);
+
+        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('W_LARAVEL_AI_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true]));
+    }
+
     public function test_incomplete_test_analysis_alone_blocks_strict_guard(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
@@ -1157,9 +1185,25 @@ PHP);
             'require' => [
                 'laravel/ai' => '^0.8',
             ],
+            'autoload' => [
+                'psr-4' => ['App\\' => 'app/'],
+            ],
         ], JSON_PRETTY_PRINT));
 
         $this->writeCurrentResources([Architecture::LaravelAi]);
+
+        $this->writeFile('app/Ai/Agents/DocumentSummaryAgent.php', <<<'PHP'
+<?php
+
+namespace App\Ai\Agents;
+
+use Laravel\Ai\Promptable;
+
+final class DocumentSummaryAgent
+{
+    use Promptable;
+}
+PHP);
 
         $this->writeFile('app/Http/Controllers/DocumentSummaryController.php', <<<'PHP'
 <?php
@@ -1187,7 +1231,7 @@ PHP);
         $this->assertSame(1, $exitCode);
         $this->assertStringContainsString('"severity": "error"', $output);
         $this->assertStringContainsString('"rule": "laravel-ai"', $output);
-        $this->assertStringContainsString('Controllers, FormRequests, API Resources, and Models must not call Laravel AI Agents directly', $output);
+        $this->assertStringContainsString('Controllers, FormRequests, API Resources, and Models must not call Laravel AI directly', $output);
     }
 
     public function test_it_fails_on_generic_laravel_ai_gateway_and_anonymous_tool(): void
@@ -1207,7 +1251,10 @@ declare(strict_types=1);
 
 namespace App\Ai\Gateways;
 
+use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Tool;
+
+final class StructuredGatewayAgent implements Agent {}
 
 final class GenericAiGateway
 {

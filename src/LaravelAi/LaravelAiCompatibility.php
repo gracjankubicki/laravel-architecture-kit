@@ -37,7 +37,7 @@ final readonly class LaravelAiCompatibility
                 $package,
                 LaravelAiCompatibilityStatus::RuntimeDependencyInRequireDev,
                 'laravel/ai is an application runtime dependency and cannot be installed only in require-dev.',
-                'Run composer remove --dev laravel/ai && composer require laravel/ai:"^0.8 || ^0.9 || ^0.10".',
+                'Run composer remove --dev laravel/ai && composer require laravel/ai:"^0.8 || ^0.9 || ^0.10 || ^0.11".',
             );
         }
 
@@ -64,7 +64,7 @@ final readonly class LaravelAiCompatibility
             $candidate = $parser->parseConstraints($package->declaredConstraint);
             $supported = $parser->parseConstraints(LaravelAiProfile::supportedUnion());
         } catch (Throwable $exception) {
-            return $this->fromPackage($package, LaravelAiCompatibilityStatus::InvalidConstraint, 'Invalid laravel/ai constraint: '.$exception->getMessage(), 'Use ^0.8, ^0.9, ^0.10 or another fully supported constraint.');
+            return $this->fromPackage($package, LaravelAiCompatibilityStatus::InvalidConstraint, 'Invalid laravel/ai constraint: '.$exception->getMessage(), 'Use ^0.8, ^0.9, ^0.10, ^0.11 or another fully supported constraint.');
         }
 
         if (! Intervals::isSubsetOf($candidate, $supported)) {
@@ -72,7 +72,7 @@ final readonly class LaravelAiCompatibility
                 $package,
                 LaravelAiCompatibilityStatus::UnsupportedConstraint,
                 'The declared laravel/ai constraint permits unsupported versions. Supported ranges: '.LaravelAiProfile::supportedUnion().'.',
-                'Narrow root require.laravel/ai to ^0.8, ^0.9, ^0.10, ^0.8 || ^0.9 || ^0.10, or >=0.8 <0.11 and run composer update laravel/ai.',
+                'Narrow root require.laravel/ai to ^0.8, ^0.9, ^0.10, ^0.11, ^0.8 || ^0.9 || ^0.10 || ^0.11, or >=0.8 <0.12 and run composer update laravel/ai.',
             );
         }
 
@@ -91,7 +91,7 @@ final readonly class LaravelAiCompatibility
         $profile = LaravelAiProfile::forVersion($package->installedVersion);
 
         if ($profile === null) {
-            return $this->fromPackage($package, LaravelAiCompatibilityStatus::UnsupportedVersion, 'The installed laravel/ai version has no verified Architecture Kit profile.', 'Install a supported laravel/ai 0.8.x, 0.9.x or 0.10.x release.');
+            return $this->fromPackage($package, LaravelAiCompatibilityStatus::UnsupportedVersion, 'The installed laravel/ai version has no verified Architecture Kit profile.', 'Install a supported laravel/ai 0.8.x, 0.9.x, 0.10.x or 0.11.x release.');
         }
 
         $missing = $this->missingCapabilities($profile);
@@ -130,6 +130,12 @@ final readonly class LaravelAiCompatibility
         $decisionsContents = $this->files->isFile($decisions) ? $this->files->get($decisions) : '';
         $conversationStore = $this->basePath.'/vendor/laravel/ai/src/Contracts/ConversationStore.php';
         $conversationStoreContents = $this->files->isFile($conversationStore) ? $this->files->get($conversationStore) : '';
+        $providerConnection = $this->basePath.'/vendor/laravel/ai/src/Exceptions/ProviderConnectionException.php';
+        $providerConnectionContents = $this->files->isFile($providerConnection) ? $this->files->get($providerConnection) : '';
+        $streamError = $this->basePath.'/vendor/laravel/ai/src/Exceptions/StreamErrorException.php';
+        $streamErrorContents = $this->files->isFile($streamError) ? $this->files->get($streamError) : '';
+        $promptable = $this->basePath.'/vendor/laravel/ai/src/Promptable.php';
+        $promptableContents = $this->files->isFile($promptable) ? $this->files->get($promptable) : '';
         $allSource = '';
 
         if (in_array('with-provider-options', $profile->requiredCapabilities(), true)) {
@@ -150,6 +156,10 @@ final readonly class LaravelAiCompatibility
             'with-provider-options' => str_contains($allSource, 'withProviderOptions'),
             'approval-resumption-contract' => str_contains($decisionsContents, 'class Decisions')
                 && str_contains($conversationStoreContents, 'function storeApprovalResults'),
+            'provider-connection-failover' => str_contains($providerConnectionContents, 'implements FailoverableException'),
+            'stream-error-exception' => str_contains($streamErrorContents, 'class StreamErrorException'),
+            'queued-jobs-dispatched-when-faked' => str_contains($promptableContents, 'InvokeAgent::dispatch')
+                && str_contains($promptableContents, 'BroadcastAgent::dispatch'),
         ];
 
         return array_values(array_filter(
@@ -178,6 +188,6 @@ final readonly class LaravelAiCompatibility
 
     private function installRemediation(): string
     {
-        return 'Run composer require laravel/ai:"^0.8 || ^0.9 || ^0.10".';
+        return 'Run composer require laravel/ai:"^0.8 || ^0.9 || ^0.10 || ^0.11".';
     }
 }

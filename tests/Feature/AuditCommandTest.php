@@ -622,15 +622,15 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Document;
-use Laravel\Ai\Facades\Ai;
+use Laravel\Ai\Contracts\Agent;
 
 final class AstController
 {
-    public function update(Document $document): void
+    public function update(Document $document, Agent $agent): void
     {
         $document->update(['status' => 'ready']);
         app(AstPortInterface::class);
-        Ai::prompt('Summarize document');
+        $agent->prompt('Summarize document');
     }
 }
 PHP);

@@ -29,6 +29,7 @@ final class UpgradePathPlannerTest extends TestCase
         $this->files->ensureDirectoryExists($this->projectPath.'/config');
         $this->writeGuide('0.8', '0.9');
         $this->writeGuide('0.9', '0.10');
+        $this->writeGuide('0.10', '0.11');
         $this->writeConfig(enabled: true);
         $this->writePackageState('^0.8', '0.8.1', '0.8.1');
         $this->writeGeneratedSkills();
@@ -64,6 +65,49 @@ final class UpgradePathPlannerTest extends TestCase
         $this->assertSame('ready', $plan->status);
         $this->assertCount(1, $plan->route);
         $this->assertSame('architecture-kit-upgrade-laravel-ai-0-9-to-0-10', $plan->activeStep()?->guide->name);
+    }
+
+    public function test_it_returns_the_complete_three_step_route_to_011(): void
+    {
+        $plan = $this->planner()->plan('laravel/ai', '0.11');
+
+        $this->assertSame('ready', $plan->status);
+        $this->assertSame(['ready', 'pending', 'pending'], array_map(fn ($step): string => $step->status, $plan->route));
+        $this->assertSame(['0.8', '0.9', '0.10'], array_map(fn ($step): string => $step->guide->from->value, $plan->route));
+        $this->assertSame(['0.9', '0.10', '0.11'], array_map(fn ($step): string => $step->guide->to->value, $plan->route));
+    }
+
+    public function test_it_selects_the_next_011_step_from_each_supported_starting_line(): void
+    {
+        $this->writePackageState('^0.9', '0.9.4', '0.9.4');
+        $from09 = $this->planner()->plan('laravel/ai', '0.11');
+        $this->assertSame(['ready', 'pending'], array_map(fn ($step): string => $step->status, $from09->route));
+        $this->assertSame('architecture-kit-upgrade-laravel-ai-0-9-to-0-10', $from09->activeStep()?->guide->name);
+
+        $this->writePackageState('^0.10', '0.10.3', '0.10.3');
+        $from010 = $this->planner()->plan('laravel/ai', '0.11');
+        $this->assertCount(1, $from010->route);
+        $this->assertSame('architecture-kit-upgrade-laravel-ai-0-10-to-0-11', $from010->activeStep()?->guide->name);
+
+        $this->writePackageState('^0.11', '0.11.2', '0.11.2');
+        $complete = $this->planner()->plan('laravel/ai', '0.11');
+        $this->assertSame('complete', $complete->status);
+
+        $downgrade = $this->planner()->plan('laravel/ai', '0.10');
+        $this->assertSame('blocked', $downgrade->status);
+    }
+
+    public function test_it_reports_missing_and_ambiguous_routes_to_011(): void
+    {
+        $this->files->deleteDirectory($this->packagePath.'/resources/upgrades/laravel-ai/0.10-to-0.11');
+        $missing = $this->planner()->plan('laravel/ai', '0.11');
+        $this->assertSame('unsupported', $missing->status);
+
+        $this->writeGuide('0.10', '0.11');
+        $this->writeGuide('0.8', '0.11');
+        $this->writeGeneratedSkills();
+        $ambiguous = $this->planner()->plan('laravel/ai', '0.11');
+        $this->assertSame('ambiguous', $ambiguous->status);
     }
 
     public function test_it_reports_complete_when_the_project_is_already_on_the_target_line(): void

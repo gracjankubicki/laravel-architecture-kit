@@ -45,6 +45,31 @@ final class UpgradeGuideCatalogTest extends TestCase
         $this->assertSame('upgrade:laravel-ai:0.8-to-0.9', $enabled[0]->key());
     }
 
+    public function test_distributed_laravel_ai_guides_form_the_canonical_route_to_011(): void
+    {
+        $guides = (new UpgradeGuideCatalog(dirname(__DIR__, 3), new Filesystem))
+            ->forArchitectures([Architecture::LaravelAi]);
+
+        $this->assertSame(
+            ['0.10->0.11', '0.8->0.9', '0.9->0.10'],
+            array_map(fn ($guide): string => $guide->from->value.'->'.$guide->to->value, $guides),
+        );
+
+        $guide = collect($guides)->first(fn ($guide): bool => $guide->from->value === '0.10');
+        $this->assertNotNull($guide);
+        $skill = $guide->contents;
+        $this->assertStringContainsString('ProviderConnectionException', $skill);
+        $this->assertStringContainsString('StreamErrorException', $skill);
+        $this->assertStringContainsString('StreamEnd', $skill);
+        $this->assertStringContainsString('FakePendingDispatch', $skill);
+        $this->assertStringContainsString('gemini-3.7-flash', $skill);
+        $this->assertStringContainsString('AgentFailedOver', $skill);
+        $this->assertStringContainsString('ToolInvoked', $skill);
+        $this->assertStringContainsString('toolInvocationId', $skill);
+        $this->assertStringContainsString('illuminate/json-schema', $skill);
+        $this->assertStringContainsString('## Requirement-evidence handoff', $skill);
+    }
+
     private function writeGuide(string $directory, string $package, string $architecture, string $from, string $to): void
     {
         $name = 'architecture-kit-upgrade-'.$directory.'-'.str_replace('.', '-', $from).'-to-'.str_replace('.', '-', $to);

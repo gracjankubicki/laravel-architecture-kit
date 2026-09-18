@@ -10,7 +10,7 @@ metadata:
 
 # Upgrade Laravel AI 0.8 to 0.9
 
-Use this skill when a Laravel application declares or installs `laravel/ai` 0.8 and the user wants to move to 0.9 or later. This is an atomic transition: finish and verify 0.9 before continuing to 0.10.
+Use this skill when a Laravel application declares or installs `laravel/ai` 0.8 and the user wants to move to 0.9 or later. This is an atomic transition: finish and verify 0.9 before continuing toward 0.10 or 0.11.
 
 ## Outcome
 
@@ -95,7 +95,7 @@ Provider smoke tests requiring credentials remain explicitly open unless they we
 
 ## Sequential upgrade rule
 
-If the requested destination is 0.10, stop after the verified 0.9 handoff, then load `architecture-kit-upgrade-laravel-ai-0-9-to-0-10`. Do not jump directly from the 0.8 code state to the 0.10 checklist.
+If the requested destination is 0.10 or 0.11, stop after the verified 0.9 handoff, rerun `architecture-kit:upgrade-plan laravel/ai --to=0.11` when 0.11 is the destination, then load `architecture-kit-upgrade-laravel-ai-0-9-to-0-10`. Do not jump directly from the 0.8 code state to a later checklist.
 
 ## Requirement-evidence handoff
 

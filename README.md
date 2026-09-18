@@ -155,8 +155,8 @@ php artisan architecture-kit:install-agents --hooks
 php artisan architecture-kit:mcp
 php artisan architecture-kit:plan
 php artisan architecture-kit:plan --agent
-php artisan architecture-kit:upgrade-plan laravel/ai --to=0.10
-php artisan architecture-kit:upgrade-plan laravel/ai --to=0.10 --agent
+php artisan architecture-kit:upgrade-plan laravel/ai --to=0.11
+php artisan architecture-kit:upgrade-plan laravel/ai --to=0.11 --agent
 php artisan architecture-kit:doctor
 php artisan architecture-kit:sync --no-interaction
 php artisan architecture-kit:sync --dry-run --agent
@@ -488,10 +488,15 @@ Laravel AI compatibility:
 | `laravel-ai@0.8` | `>=0.8.0 <0.9.0` | `toArray()` or ArrayAccess | Laravel AI 0.8 contracts |
 | `laravel-ai@0.9` | `>=0.9.0 <0.10.0` | `toArray()` or ArrayAccess | `withProviderOptions()` where applicable |
 | `laravel-ai@0.10` | `>=0.10.0 <0.11.0` | `toArray()` or ArrayAccess | `withProviderOptions()` plus approval resumption |
+| `laravel-ai@0.11` | `>=0.11.0 <0.12.0` | `toArray()` or ArrayAccess | failover, stream errors, and real queued fake jobs |
 
-Constraints such as `^0.8`, `^0.9`, `^0.10`, `^0.8 || ^0.9 || ^0.10`, and `>=0.8 <0.11` are supported. Constraints that also permit `0.11`, `1.x`, or development branches fail closed. Architecture Kit never guesses that the newest known profile is compatible with an unknown Laravel AI release.
+Constraints such as `^0.8`, `^0.9`, `^0.10`, `^0.11`, `^0.8 || ^0.9 || ^0.10 || ^0.11`, and `>=0.8 <0.12` are supported. Constraints that also permit `0.12`, `1.x`, or development branches fail closed. Architecture Kit never guesses that the newest known profile is compatible with an unknown Laravel AI release.
 
 Only the profile selected from the actually installed Laravel AI version is generated at `.ai/skills/architecture-kit-laravel-ai/SKILL.md`. Architecture Kit owns the application architecture overlay; exact SDK features remain in the official `ai-sdk-development` skill shipped by the installed `laravel/ai` package.
+
+When the profile is enabled, the audit reports direct SDK agent calls from controllers, form requests, API resources, and models. It recognizes `prompt`, `stream`, `queue`, and the broadcast methods through `new`, `make`, typed parameters and properties, local assignments, aliases, and bounded fluent chains. It also checks `Files::put`, `putFromPath`, and `putFromStorage` outside the AI boundary.
+
+The audit first proves that a symbol implements the Laravel AI `Agent` or `Tool` contract or uses `Promptable`. A class name ending in `Agent`, an unrelated `prompt()` method, or a project-owned `Tool` interface is not enough. If the SDK relationship is known but a dynamic method or chain cannot be resolved, the audit reports `W_LARAVEL_AI_ANALYSIS_INCOMPLETE`, which blocks strict mode. The analysis reads source files without executing application PHP. It does not resolve arbitrary container bindings, runtime reflection, dynamic class names, or unknown method return types.
 
 ## Versioned package upgrade guides
 
@@ -502,14 +507,15 @@ The Laravel AI architecture currently generates:
 ```text
 .ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md
 .ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md
+.ai/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md
 ```
 
-Each guide represents one atomic version edge. A request to upgrade `0.8 -> 0.9 -> 0.10` must complete and verify the first guide before loading the second. The guides distinguish mandatory, conditional, informational, and blocked work so an agent does not apply an application migration or contract change without evidence that the project uses it.
+Each guide represents one atomic version edge. A request to upgrade `0.8 -> 0.9 -> 0.10 -> 0.11` must complete and verify each guide before loading the next one. The guides distinguish mandatory, conditional, informational, and blocked work so an agent does not apply an application migration or contract change without evidence that the project uses it.
 
 Before loading a guide, resolve the route from the real project state:
 
 ```bash
-php artisan architecture-kit:upgrade-plan laravel/ai --to=0.10
+php artisan architecture-kit:upgrade-plan laravel/ai --to=0.11
 ```
 
 The planner accepts only a direct dependency with a valid constraint, matching locked and installed stable versions, an enabled guide architecture, and a current marker-owned skill for the active edge. Missing state returns `blocked`, a route gap returns `unsupported`, and multiple complete routes return `ambiguous`; none of these outcomes changes project files. Target versions are explicit and local—Architecture Kit does not query for or infer the latest release.

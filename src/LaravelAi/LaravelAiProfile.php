@@ -11,6 +11,7 @@ enum LaravelAiProfile: string
     case V08 = '0.8';
     case V09 = '0.9';
     case V010 = '0.10';
+    case V011 = '0.11';
 
     public function key(): string
     {
@@ -23,6 +24,7 @@ enum LaravelAiProfile: string
             self::V08 => '>=0.8.0 <0.9.0',
             self::V09 => '>=0.9.0 <0.10.0',
             self::V010 => '>=0.10.0 <0.11.0',
+            self::V011 => '>=0.11.0 <0.12.0',
         };
     }
 
@@ -33,6 +35,15 @@ enum LaravelAiProfile: string
             self::V08 => ['structured-response-to-array', 'structured-response-array-access'],
             self::V09 => ['structured-response-to-array', 'structured-response-array-access', 'with-provider-options'],
             self::V010 => ['structured-response-to-array', 'structured-response-array-access', 'with-provider-options', 'approval-resumption-contract'],
+            self::V011 => [
+                'structured-response-to-array',
+                'structured-response-array-access',
+                'with-provider-options',
+                'approval-resumption-contract',
+                'provider-connection-failover',
+                'stream-error-exception',
+                'queued-jobs-dispatched-when-faked',
+            ],
         };
     }
 
@@ -54,6 +65,6 @@ enum LaravelAiProfile: string
 
     public static function supportedUnion(): string
     {
-        return '>=0.8.0 <0.11.0';
+        return '>=0.8.0 <0.12.0';
     }
 }

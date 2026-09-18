@@ -37,8 +37,11 @@ final class LaravelAiCompatibilityTest extends TestCase
             '0.8 caret' => ['^0.8', '0.8.1', 'laravel-ai@0.8'],
             '0.9 caret' => ['^0.9', '0.9.0', 'laravel-ai@0.9'],
             '0.10 caret' => ['^0.10', '0.10.1', 'laravel-ai@0.10'],
-            'supported union' => ['^0.8 || ^0.9 || ^0.10', '0.10.1', 'laravel-ai@0.10'],
-            'supported interval' => ['>=0.8 <0.11', '0.8.0', 'laravel-ai@0.8'],
+            '0.11 minimum' => ['^0.11', '0.11.0', 'laravel-ai@0.11'],
+            '0.11 latest verified' => ['^0.11', '0.11.2', 'laravel-ai@0.11'],
+            '0.11 exact' => ['0.11.2', '0.11.2', 'laravel-ai@0.11'],
+            'supported union' => ['^0.8 || ^0.9 || ^0.10 || ^0.11', '0.11.2', 'laravel-ai@0.11'],
+            'supported interval' => ['>=0.8 <0.12', '0.8.0', 'laravel-ai@0.8'],
         ];
     }
 
@@ -58,8 +61,9 @@ final class LaravelAiCompatibilityTest extends TestCase
     public static function unsupportedConstraints(): array
     {
         return [
-            'future minor' => ['^0.10 || ^0.11'],
+            'future minor' => ['^0.12'],
             'future major' => ['>=0.8 <2.0'],
+            'next major' => ['^1.0'],
             'wildcard' => ['*'],
             'development branch' => ['dev-main'],
         ];
@@ -84,6 +88,37 @@ final class LaravelAiCompatibilityTest extends TestCase
 
         $this->assertSame(LaravelAiCompatibilityStatus::RuntimeDependencyInRequireDev, $result->status);
         $this->assertStringContainsString('composer require laravel/ai', $result->remediation);
+    }
+
+    public function test_it_reports_a_missing_root_dependency(): void
+    {
+        (new Filesystem)->put($this->path.'/composer.json', '{}');
+
+        $result = $this->resolver()->resolve();
+
+        $this->assertSame(LaravelAiCompatibilityStatus::Missing, $result->status);
+        $this->assertStringContainsString('^0.11', $result->remediation);
+    }
+
+    public function test_it_rejects_an_invalid_constraint_without_modifying_the_project(): void
+    {
+        $this->writeProject('not a constraint', '0.11.2', '0.11.2');
+        $composerJson = (new Filesystem)->get($this->path.'/composer.json');
+
+        $result = $this->resolver()->resolve();
+
+        $this->assertSame(LaravelAiCompatibilityStatus::InvalidConstraint, $result->status);
+        $this->assertSame($composerJson, (new Filesystem)->get($this->path.'/composer.json'));
+    }
+
+    public function test_it_reports_declared_but_not_installed_sdk(): void
+    {
+        $this->writeProject('^0.11', '0.11.2', '0.11.2');
+        (new Filesystem)->delete($this->path.'/vendor/composer/installed.php');
+
+        $result = $this->resolver()->resolve();
+
+        $this->assertSame(LaravelAiCompatibilityStatus::NotInstalled, $result->status);
     }
 
     public function test_it_rejects_stale_lock_state(): void
@@ -143,6 +178,17 @@ final class LaravelAiCompatibilityTest extends TestCase
 
         $this->assertSame(LaravelAiCompatibilityStatus::MissingCapability, $result->status);
         $this->assertNotEmpty($result->missingCapabilities);
+    }
+
+    public function test_011_requires_the_verified_streaming_failover_and_queue_contracts(): void
+    {
+        $this->writeProject('^0.11', '0.11.2', '0.11.2');
+        (new Filesystem)->delete($this->path.'/vendor/laravel/ai/src/Exceptions/ProviderConnectionException.php');
+
+        $result = $this->resolver()->resolve();
+
+        $this->assertSame(LaravelAiCompatibilityStatus::MissingCapability, $result->status);
+        $this->assertSame(['provider-connection-failover'], $result->missingCapabilities);
     }
 
     public function test_010_requires_the_approval_resumption_contract(): void
@@ -208,6 +254,19 @@ final class LaravelAiCompatibilityTest extends TestCase
         $files->put(
             $this->path.'/vendor/laravel/ai/src/Contracts/ConversationStore.php',
             '<?php interface ConversationStore { public function storeApprovalResults(): void; }',
+        );
+        $files->ensureDirectoryExists($this->path.'/vendor/laravel/ai/src/Exceptions');
+        $files->put(
+            $this->path.'/vendor/laravel/ai/src/Exceptions/ProviderConnectionException.php',
+            '<?php class ProviderConnectionException implements FailoverableException {}',
+        );
+        $files->put(
+            $this->path.'/vendor/laravel/ai/src/Exceptions/StreamErrorException.php',
+            '<?php class StreamErrorException {}',
+        );
+        $files->put(
+            $this->path.'/vendor/laravel/ai/src/Promptable.php',
+            '<?php trait Promptable { public function queue() { return InvokeAgent::dispatch(); } public function broadcastOnQueue() { return BroadcastAgent::dispatch(); } }',
         );
     }
 }

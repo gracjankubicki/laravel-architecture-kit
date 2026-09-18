@@ -52,6 +52,12 @@ final readonly class FindingCodeRegistry
             'why' => 'Passing every request value can expose fields that the page contract did not select.',
             'fix' => 'Pass validated data or select named fields with only(...), input("field"), or collect("field").',
         ],
+        'W_LARAVEL_AI_ANALYSIS_INCOMPLETE' => [
+            'rule' => 'laravel-ai',
+            'title' => 'Laravel AI call analysis is incomplete',
+            'why' => 'The receiver is related to Laravel AI, but a dynamic method or unsupported fluent call prevents the audit from proving which SDK operation will run.',
+            'fix' => 'Make the Laravel AI entry point explicit or inspect the reported call before suppressing this strict-blocking warning.',
+        ],
         'W_INERTIA_REQUEST_PROPS_ANALYSIS_INCOMPLETE' => [
             'rule' => 'inertia',
             'title' => 'Inertia request prop analysis is incomplete',

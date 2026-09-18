@@ -295,6 +295,36 @@ class ArchitectureResourcesTest extends TestCase
         $this->assertStringNotContainsString('laravel-ai@0.9', $skill);
     }
 
+    public function test_laravel_ai_011_uses_stream_queue_and_audit_aware_resources(): void
+    {
+        $compatibility = new LaravelAiCompatibilityResult(
+            status: LaravelAiCompatibilityStatus::Supported,
+            section: 'require',
+            declaredConstraint: '^0.11',
+            installedVersion: '0.11.2',
+            lockedVersion: '0.11.2',
+            profile: LaravelAiProfile::V011,
+        );
+        $resources = new ArchitectureResources(
+            dirname(__DIR__, 2),
+            $this->tempPath,
+            new Filesystem,
+            laravelAi: $compatibility,
+        );
+
+        $skill = $resources->skills([Architecture::LaravelAi])['laravel-ai']->contents;
+        $guideline = $resources->architectureGuideline(Architecture::LaravelAi, [Architecture::LaravelAi]);
+        $summary = $resources->summaryFor(Architecture::LaravelAi, [Architecture::LaravelAi]);
+
+        $this->assertStringContainsString('Profile: `laravel-ai@0.11`', $skill);
+        $this->assertStringContainsString('StreamErrorException', $skill);
+        $this->assertStringContainsString('ProviderConnectionException', $guideline);
+        $this->assertStringContainsString('dispatch the real job', $skill);
+        $this->assertStringContainsString('does not prove prompt quality', $skill);
+        $this->assertStringContainsString('queue-aware fakes', $summary);
+        $this->assertStringNotContainsString('laravel-ai@0.10`', $skill);
+    }
+
     public function test_disabled_laravel_ai_has_a_neutral_summary_without_resolving_a_profile(): void
     {
         $summary = $this->resources()->summaryFor(Architecture::LaravelAi, [Architecture::Actions]);

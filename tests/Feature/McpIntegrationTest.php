@@ -8,6 +8,7 @@ use Composer\InstalledVersions;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureKit;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureRules;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\AuditChanged;
@@ -31,6 +32,40 @@ use Symfony\Component\Process\Process;
 
 class McpIntegrationTest extends TestCase
 {
+    public function test_incomplete_laravel_ai_analysis_has_the_same_cli_and_mcp_finding(): void
+    {
+        $this->writeLaravelAiFixture('^0.11', '0.11.2');
+        $this->writeCurrentResources([Architecture::LaravelAi]);
+        $this->writeFile('app/Ai/Gateways/DynamicGateway.php', <<<'PHP'
+<?php
+
+namespace App\Ai\Gateways;
+
+use Laravel\Ai\Contracts\Agent;
+
+final class DynamicGateway
+{
+    public function run(Agent $agent, string $method): void
+    {
+        $agent->{$method}('dynamic');
+    }
+}
+PHP);
+        Artisan::call('architecture-kit:audit', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame('W_LARAVEL_AI_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
+
+        foreach ([AuditChanged::class, Guard::class] as $tool) {
+            ArchitectureKitServer::tool($tool, ['changed' => false, 'strict' => true])
+                ->assertOk()
+                ->assertStructuredContent(fn ($json) => $json
+                    ->where('ok', false)
+                    ->where('find', $payload['find'])
+                    ->etc());
+        }
+    }
+
     public function test_incomplete_test_analysis_has_the_same_cli_and_mcp_finding(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
@@ -91,7 +126,7 @@ class McpIntegrationTest extends TestCase
 
     public function test_enabled_architectures_tool_reports_the_resolved_laravel_ai_profile(): void
     {
-        $this->writeLaravelAiFixture('^0.9', '0.9.0');
+        $this->writeLaravelAiFixture('^0.11', '0.11.2');
         (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::LaravelAi]);
 
         ArchitectureKitServer::tool(EnabledArchitectures::class)
@@ -99,8 +134,8 @@ class McpIntegrationTest extends TestCase
             ->assertStructuredContent(fn ($json) => $json
                 ->where('architectures.0.value', 'laravel-ai')
                 ->where('laravel_ai.status', 'supported')
-                ->where('laravel_ai.profile', 'laravel-ai@0.9')
-                ->where('laravel_ai.installed_version', '0.9.0')
+                ->where('laravel_ai.profile', 'laravel-ai@0.11')
+                ->where('laravel_ai.installed_version', '0.11.2')
                 ->etc()
             );
     }
@@ -352,7 +387,7 @@ PHP);
 
         ArchitectureKitServer::tool(PlanUpgrade::class, [
             'package' => 'laravel/ai',
-            'target' => '0.10',
+            'target' => '0.11',
         ])
             ->assertOk()
             ->assertStructuredContent(fn ($json) => $json
@@ -361,6 +396,7 @@ PHP);
                 ->where('status', 'ready')
                 ->where('route.0.status', 'ready')
                 ->where('route.1.status', 'pending')
+                ->where('route.2.status', 'pending')
                 ->where('active.skill', 'architecture-kit-upgrade-laravel-ai-0-8-to-0-9')
                 ->etc()
             );
@@ -639,7 +675,10 @@ PHP);
     {
         $files = new Filesystem;
         $config = new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files);
-        $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files);
+        $laravelAi = in_array(Architecture::LaravelAi, $enabled, true)
+            ? LaravelAiRequirement::resolve($files, $this->tempPath)
+            : null;
+        $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath, $files, laravelAi: $laravelAi);
 
         $config->write($enabled);
 
@@ -691,6 +730,14 @@ PHP);
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Responses/StructuredAgentResponse.php', '<?php class StructuredAgentResponse implements ArrayAccess { public function toArray(): array {} }');
         $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Concerns');
         $files->put($this->tempPath.'/vendor/laravel/ai/src/Concerns/ProviderOptions.php', '<?php trait ProviderOptions { public function withProviderOptions(array $options): static {} }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Approvals');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Approvals/Decisions.php', '<?php class Decisions {}');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Contracts');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Contracts/ConversationStore.php', '<?php interface ConversationStore { public function storeApprovalResults(): void; }');
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/laravel/ai/src/Exceptions');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Exceptions/ProviderConnectionException.php', '<?php class ProviderConnectionException implements FailoverableException {}');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Exceptions/StreamErrorException.php', '<?php class StreamErrorException {}');
+        $files->put($this->tempPath.'/vendor/laravel/ai/src/Promptable.php', '<?php trait Promptable { public function queue() { return InvokeAgent::dispatch(); } public function broadcastOnQueue() { return BroadcastAgent::dispatch(); } }');
     }
 
     /** @return array<string, string> */

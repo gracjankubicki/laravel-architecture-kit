@@ -11,9 +11,15 @@ use GracjanKubicki\ArchitectureKit\Composer\ProjectPackageInventory;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibility;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiProfile;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Ai\Approvals\Decisions;
 use Laravel\Ai\Contracts\ConversationStore;
+use Laravel\Ai\Exceptions\FailoverableException;
+use Laravel\Ai\Exceptions\ProviderConnectionException;
+use Laravel\Ai\Exceptions\StreamErrorException;
+use Laravel\Ai\Jobs\BroadcastAgent;
+use Laravel\Ai\Jobs\InvokeAgent;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use PHPUnit\Framework\TestCase;
 
@@ -21,9 +27,7 @@ final class RealLaravelAiContractTest extends TestCase
 {
     public function test_installed_real_package_satisfies_the_selected_profile_contract(): void
     {
-        if (! InstalledVersions::isInstalled('laravel/ai')) {
-            $this->markTestSkipped('The real Laravel AI contract runs in the dedicated 0.8/0.9/0.10 CI matrix.');
-        }
+        $this->requireRealPackage();
 
         $root = dirname(__DIR__, 3);
         $files = new Filesystem;
@@ -39,13 +43,24 @@ final class RealLaravelAiContractTest extends TestCase
         $this->assertTrue(method_exists(StructuredAgentResponse::class, 'toArray'));
         $this->assertTrue(is_subclass_of(StructuredAgentResponse::class, ArrayAccess::class));
 
-        if (in_array($result->profile, [LaravelAiProfile::V09, LaravelAiProfile::V010], true)) {
+        if (in_array($result->profile, [LaravelAiProfile::V09, LaravelAiProfile::V010, LaravelAiProfile::V011], true)) {
             $this->assertSourceContains($root.'/vendor/laravel/ai/src', 'withProviderOptions');
         }
 
-        if ($result->profile === LaravelAiProfile::V010) {
+        if (in_array($result->profile, [LaravelAiProfile::V010, LaravelAiProfile::V011], true)) {
             $this->assertTrue(class_exists(Decisions::class));
             $this->assertTrue(method_exists(ConversationStore::class, 'storeApprovalResults'));
+        }
+
+        if ($result->profile === LaravelAiProfile::V011) {
+            $this->assertTrue(is_subclass_of(ProviderConnectionException::class, FailoverableException::class));
+            $this->assertTrue(class_exists(StreamErrorException::class));
+            $this->assertTrue(is_subclass_of(InvokeAgent::class, ShouldQueue::class));
+            $this->assertTrue(is_subclass_of(BroadcastAgent::class, ShouldQueue::class));
+            $this->assertTrue(method_exists(InvokeAgent::class, 'handle'));
+            $this->assertFalse(class_exists('Laravel\\Ai\\FakePendingDispatch'));
+            $this->assertSourceContains($root.'/vendor/laravel/ai/src', 'InvokeAgent::dispatch');
+            $this->assertSourceContains($root.'/vendor/laravel/ai/src', 'BroadcastAgent::dispatch');
         }
 
         $target = sys_get_temp_dir().'/architecture-kit-real-ai-'.uniqid('', true);
@@ -61,6 +76,19 @@ final class RealLaravelAiContractTest extends TestCase
         } finally {
             $files->deleteDirectory($target);
         }
+    }
+
+    private function requireRealPackage(): void
+    {
+        if (InstalledVersions::isInstalled('laravel/ai')) {
+            return;
+        }
+
+        if (getenv('ARCHITECTURE_KIT_LARAVEL_AI_CONTRACT') === '1') {
+            $this->fail('The dedicated laravel-ai-contract job must install laravel/ai.');
+        }
+
+        $this->markTestSkipped('The real Laravel AI contract runs in the dedicated 0.8 through 0.11 CI matrix.');
     }
 
     private function assertSourceContains(string $path, string $needle): void

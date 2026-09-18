@@ -7,11 +7,13 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 ### Added
 
 - Add an optional Inertia 3 architecture profile with first-install detection, explicit selection, compatibility diagnostics, generated guidance, MCP output, and two audit checks. Actions and Query Objects cannot depend on Inertia, and page props cannot receive an unfiltered request. Architecture Kit does not install or update Inertia, and the existing endpoint and missing-test analysis keeps its Inertia semantics when the profile is disabled.
+- Add the verified `laravel-ai@0.11` profile and the atomic `0.10 -> 0.11` upgrade guide. Install, sync, doctor, planning, MCP, and the real-package CI matrix now cover Laravel AI 0.8 through 0.11, including prompt, stream, structured-output, and version-specific queued fake behavior without contacting a provider.
 
 ### Fixed
 
 - Recognize supported Laravel, Inertia 3, and Fortify 1 calls in endpoint and test-reachability analysis. The audit now follows selected policies, API Resource transformations, Inertia props and route-specific shared data, and Fortify actions or view callbacks without executing application code. Session reads remain clean, while explicit session writes on GET or HEAD routes are reported. Dynamic framework dispatch remains an incomplete-analysis warning that blocks strict mode.
 - Recognize factories used by models extending Laravel’s standard Auth User, including aliases and local intermediate classes.
+- Recognize direct Laravel AI agent and file operations through SDK contracts, aliases, typed receivers, assignments, and bounded fluent chains instead of class-name suffixes. Unrelated `prompt()` methods and project-owned `Tool` interfaces stay clean, while unresolved calls on confirmed SDK symbols report `W_LARAVEL_AI_ANALYSIS_INCOMPLETE` and block strict mode.
 
 ## v0.4.1 - 2026-09-16
 

@@ -10,7 +10,7 @@ metadata:
 
 # Upgrade Laravel AI 0.9 to 0.10
 
-Use this skill when a Laravel application declares or installs `laravel/ai` 0.9 and the user wants to move to 0.10. If the application starts on 0.8, complete `architecture-kit-upgrade-laravel-ai-0-8-to-0-9` first.
+Use this skill when a Laravel application declares or installs `laravel/ai` 0.9 and the user wants to move to 0.10 or later. If the application starts on 0.8, complete `architecture-kit-upgrade-laravel-ai-0-8-to-0-9` first.
 
 ## Outcome
 
@@ -141,3 +141,7 @@ Return:
 | Generated resources and full verification | required | Commands and outputs | PASS or OPEN |
 
 Explain the final flow, material decisions, schema/data assumptions, remaining risks and how future upgrades should add another atomic guide. Do not call the upgrade complete while any required row is `OPEN`.
+
+## Sequential upgrade rule
+
+If the requested destination is 0.11, stop after the verified 0.10 handoff, rerun `architecture-kit:upgrade-plan laravel/ai --to=0.11`, and load `architecture-kit-upgrade-laravel-ai-0-10-to-0-11`. The 0.10 -> 0.11 step does not replace the conversation schema and backfill evidence owned by this guide.

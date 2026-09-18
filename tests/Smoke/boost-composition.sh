@@ -55,10 +55,12 @@ php artisan boost:update --no-interaction
 test "$(find .ai/skills -path '*/architecture-kit-laravel-ai/SKILL.md' | wc -l | tr -d ' ')" -eq 1
 test -f .ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md
 test -f .ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md
+test -f .ai/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md
 test "$(find .agents/skills -maxdepth 1 -name 'architecture-kit-laravel-ai' | wc -l | tr -d ' ')" -eq 1
 test -f .agents/skills/architecture-kit-laravel-ai/SKILL.md
 test -f .agents/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md
 test -f .agents/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md
+test -f .agents/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md
 test "$(find .agents/skills -maxdepth 1 -name 'ai-sdk-development' | wc -l | tr -d ' ')" -eq 1
 test -f .agents/skills/ai-sdk-development/SKILL.md
 ! grep -Eq 'structuredOutput\(\)' .ai/skills/architecture-kit-laravel-ai/SKILL.md
