@@ -15,6 +15,7 @@ final readonly class FindingCodeRegistry
         'eloquent-lifecycle' => ['title' => 'Eloquent lifecycle violation', 'why' => 'Model observers and lifecycle handlers need predictable, post-commit behavior.', 'fix' => 'Use the documented lifecycle boundary and delegate side effects to listeners or jobs.'],
         'enums' => ['title' => 'Enum architecture violation', 'why' => 'Enum folders are reserved for finite typed state definitions.', 'fix' => 'Use a backed enum with the required project conventions.'],
         'folder-purity' => ['title' => 'Folder purity violation', 'why' => 'Architecture folders must remain type-pure for predictable navigation and enforcement.', 'fix' => 'Move the class to its matching boundary or change it to the required type.'],
+        'fortify' => ['title' => 'Fortify extension contract violation', 'why' => 'Fortify extension points depend on exact contracts and public methods.', 'fix' => 'Implement the contract and public method required by the registered Fortify extension point.'],
         'form-request' => ['title' => 'Form Request violation', 'why' => 'HTTP validation and authorization belong in Form Requests.', 'fix' => 'Move request validation and authorization into a typed Form Request.'],
         'inertia' => ['title' => 'Inertia presentation boundary violation', 'why' => 'Inertia response composition belongs in the presentation layer and must expose only selected request data.', 'fix' => 'Move Inertia dependencies to the presentation layer and pass only explicitly selected request fields.'],
         'invalid-suppression' => ['title' => 'Suppression comment does not target a known rule', 'why' => 'Unknown suppressions are ignored so Architecture Kit does not silently hide real findings.', 'fix' => 'Use an existing rule slug in the suppression comment and include a short reason.'],
@@ -40,6 +41,24 @@ final readonly class FindingCodeRegistry
 
     /** @var array<string, array{rule: string, title: string, why: string, fix: string}> */
     private const CODE_CATALOG = [
+        'E_FORTIFY_CONTRACT_MISMATCH' => [
+            'rule' => 'fortify',
+            'title' => 'Fortify target implements the wrong contract',
+            'why' => 'Fortify resolves the registered class through the contract required by that extension point.',
+            'fix' => 'Implement the Fortify contract named by the finding or register a class that already implements it.',
+        ],
+        'E_FORTIFY_METHOD_MISMATCH' => [
+            'rule' => 'fortify',
+            'title' => 'Fortify target lacks its required public method',
+            'why' => 'Fortify calls a fixed public method such as create(), reset(), update(), or toResponse().',
+            'fix' => 'Add the required public method with the signature defined by the Fortify contract.',
+        ],
+        'W_FORTIFY_ANALYSIS_INCOMPLETE' => [
+            'rule' => 'fortify',
+            'title' => 'Fortify registration analysis is incomplete',
+            'why' => 'A dynamic target or unavailable source prevents static verification of the extension contract.',
+            'fix' => 'Make the registered class explicit or inspect the reported registration before suppressing this strict-blocking warning.',
+        ],
         'E_INERTIA_LAYER_DEPENDENCY' => [
             'rule' => 'inertia',
             'title' => 'Application boundary depends on Inertia',

@@ -295,6 +295,43 @@ PHP);
         $this->assertSame(['requirements:inertia'], $configured['changes']['blocked']);
     }
 
+    public function test_it_recommends_supported_fortify_1_without_writing(): void
+    {
+        $files = new Filesystem;
+        $files->delete($this->tempPath.'/config/architectures.php');
+        $this->writeFortifyFixture('^1.0', '1.31.0');
+        $before = $this->snapshot($files);
+
+        $exit = Artisan::call('architecture-kit:plan', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $recommendations = array_column($payload['recommendations'], null, 'slug');
+        $requirements = array_column($payload['requirements'], null, 'name');
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame(['composer.json:require.laravel/fortify'], $recommendations['fortify']['evidence']);
+        $this->assertTrue($requirements['fortify']['satisfied']);
+        $this->assertSame($before, $this->snapshot($files));
+    }
+
+    public function test_it_does_not_recommend_unsupported_fortify_but_blocks_an_explicit_selection(): void
+    {
+        $files = new Filesystem;
+        $files->delete($this->tempPath.'/config/architectures.php');
+        $this->writeFortifyFixture('^2.0', '2.0.0');
+
+        Artisan::call('architecture-kit:plan', ['--agent' => true]);
+        $detected = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertNotContains('fortify', array_column($detected['recommendations'], 'slug'));
+
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))->write([Architecture::Fortify]);
+        Artisan::call('architecture-kit:plan', ['--agent' => true]);
+        $configured = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $requirements = array_column($configured['requirements'], null, 'name');
+
+        $this->assertFalse($requirements['fortify']['satisfied']);
+        $this->assertSame(['requirements:fortify'], $configured['changes']['blocked']);
+    }
+
     private function writeLaravelAiFixture(string $constraint, string $version): void
     {
         $files = new Filesystem;

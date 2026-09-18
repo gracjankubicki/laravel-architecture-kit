@@ -14,6 +14,7 @@ use GracjanKubicki\ArchitectureKit\Composer\ProjectPackageInventory;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\ArchitectureKitRuntimeRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\FortifyRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\InertiaRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
@@ -45,6 +46,7 @@ final readonly class ArchitectureDoctor
         $enabled = [];
         $laravelAi = $state?->laravelAi;
         $inertia = $state?->inertia;
+        $fortify = $state?->fortify;
         $canGenerate = true;
 
         try {
@@ -65,6 +67,7 @@ final readonly class ArchitectureDoctor
                 boostInstalled: $this->boostInstalled(),
                 laravelAi: $laravelAi,
                 inertia: $inertia,
+                fortify: $fortify,
             );
         }
 
@@ -154,6 +157,32 @@ final readonly class ArchitectureDoctor
                 status: 'warning',
                 path: 'composer.json',
                 message: 'inertiajs/inertia-laravel is declared but Architecture::Inertia is not enabled. Detected status: '.$inertia->status->value.'.',
+            );
+        }
+
+        $projectRequiresFortify = FortifyRequirement::projectRequiresFortify($this->files, $this->basePath);
+
+        if (in_array(Architecture::Fortify, $enabled, true)) {
+            $fortify ??= FortifyRequirement::resolve($this->files, $this->basePath);
+
+            if (! $fortify->supported()) {
+                $checks[] = new ArchitectureDoctorCheck(
+                    area: 'config',
+                    status: 'blocked',
+                    path: 'composer.json',
+                    message: $fortify->message.' '.$fortify->remediation,
+                );
+                $canGenerate = false;
+            }
+        }
+
+        if (! in_array(Architecture::Fortify, $enabled, true) && $projectRequiresFortify) {
+            $fortify ??= FortifyRequirement::resolve($this->files, $this->basePath);
+            $checks[] = new ArchitectureDoctorCheck(
+                area: 'config',
+                status: 'warning',
+                path: 'composer.json',
+                message: 'laravel/fortify is declared but Architecture::Fortify is not enabled. Detected status: '.$fortify->status->value.'.',
             );
         }
 
@@ -272,6 +301,7 @@ final readonly class ArchitectureDoctor
             boostInstalled: $this->boostInstalled(),
             laravelAi: $laravelAi,
             inertia: $inertia,
+            fortify: $fortify,
         );
     }
 

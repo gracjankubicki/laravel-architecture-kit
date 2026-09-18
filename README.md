@@ -466,6 +466,7 @@ The architecture catalog:
 | Modern PHP 8.5 | cross-cutting | Strict modern PHP runtime contract |
 | Laravel AI | `app/Ai` | Typed `laravel/ai` agents, tools, and prompts |
 | Inertia | presentation layer | Explicit Inertia 3 page props and one-way application boundaries |
+| Fortify | authentication extension points | Fortify 1 actions, response contracts, and authentication safeguards |
 | Laravel Best Practices | cross-cutting | Laravel-native defaults composed with the other enabled patterns |
 
 Some patterns have hard requirements, validated by `architecture-kit:install` and `architecture-kit:doctor`:
@@ -474,12 +475,17 @@ Some patterns have hard requirements, validated by `architecture-kit:install` an
 - `Saloon` requires `saloonphp/saloon` `^4.0`, `saloonphp/laravel-plugin`, and `saloonphp/rate-limit-plugin`. The install command offers to `composer require` the missing packages. Constraints that still allow Saloon 3 are reported as invalid because Saloon 4 fixes security issues in v3.
 - `Laravel AI` requires `laravel/ai` directly in root runtime `require`, an installed version consistent with `composer.lock`, and a declared constraint fully contained in the verified support ranges.
 - `Inertia` requires `inertiajs/inertia-laravel` directly in root runtime `require`, with the declared, locked, and installed versions on the supported `>=3.0.0 <4.0.0` line. Architecture Kit reports the required Composer command but never installs or updates Inertia.
+- `Fortify` requires `laravel/fortify` directly in root runtime `require`, with the declared, locked, and installed versions on the supported `>=1.0.0 <2.0.0` line. Architecture Kit reports the required Composer command but never installs or updates Fortify and never changes `config/fortify.php` or authentication features.
 
 On the first install, Architecture Kit preselects `Inertia` when it detects a supported Inertia 3 installation. The architecture prompt remains authoritative, so you can remove the suggestion before any configuration is written. Later installs preserve the configured selection instead of enabling the profile from dependency detection.
 
 The `inertia` audit rule enforces two checks when the profile is enabled. Actions and Query Objects cannot depend on recognized `Inertia\*` symbols, and Inertia page or shared props cannot receive a whole unfiltered request. Explicit `validated()`, `safe()`, `only(...)`, and keyed `input(...)` or `collect(...)` access pass the second check. An unresolved request transformation produces a warning. The remaining profile rules, including prop completeness, frontend types, authorization, partial reloads, and deferred error handling, are guidance backed by application tests rather than deterministic audit checks.
 
 The route-aware Inertia 3 semantics described above remain active without the `Inertia` architecture profile. They support endpoint and missing-test analysis; they do not opt the project into Inertia-specific guidance or findings.
+
+The Fortify profile keeps the package's native extension contracts instead of forcing every class into the generic Action shape. Registered user actions must implement their matching Fortify contract and expose the public `create()`, `reset()`, or `update()` method. Bound Fortify responses must implement the selected response contract and expose public `toResponse()`. These verified classes are accepted in `app/Actions` and `app/Http/Responses`; the profile does not disable checks for either whole folder. A confirmed mismatch is an error, while a dynamic target or unavailable source reports `W_FORTIFY_ANALYSIS_INCOMPLETE` and fails strict mode.
+
+Generated Fortify guidance keeps simple operations in the native classes and delegates broader reusable workflows to ordinary application Actions. It covers static provider bindings, Blade or Inertia response callbacks, `authenticateUsing`, authentication pipelines, throttling, session preparation, guards, password reset, email verification, two-factor authentication, and passkeys when the application has enabled them. It does not add `Features::*`, bypass stateful web authentication, require Form Requests for Fortify's array inputs, or make Fortify depend on the optional Inertia profile.
 
 Laravel AI compatibility:
 
@@ -522,7 +528,7 @@ The planner accepts only a direct dependency with a valid constraint, matching l
 
 Future package transitions follow `resources/upgrades/{package}/{from}-to-{to}/SKILL.md`. The source skill declares its package, architecture and version edge in frontmatter. Install, plan, sync and doctor then reuse the same marker-owned resource lifecycle as architecture skills; no new mutation command or remote recipe execution is introduced.
 
-On the first install (before `config/architectures.php` exists), `Services` is preselected when the project already has an `app/Services` folder. `Laravel AI` and `Inertia` are preselected only when their valid supported runtime dependencies are detected.
+On the first install (before `config/architectures.php` exists), `Services` is preselected when the project already has an `app/Services` folder. `Laravel AI`, `Inertia`, and `Fortify` are preselected only when their valid supported runtime dependencies are detected.
 
 Architecture Kit does not add Composer post-update hooks. After dependency updates, run the explicit sync commands shown above so validation failures remain visible and cannot silently rewrite project files.
 

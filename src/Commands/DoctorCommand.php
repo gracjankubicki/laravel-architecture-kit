@@ -112,6 +112,21 @@ class DoctorCommand extends Command
             }
         }
 
+        if ($result->fortify !== null) {
+            $this->newLine();
+            $this->line('Fortify:');
+            $this->line('  status     '.$result->fortify->status->value);
+            $this->line('  section    '.($result->fortify->section ?? 'none'));
+            $this->line('  constraint '.($result->fortify->declaredConstraint ?? 'none'));
+            $this->line('  installed  '.($result->fortify->installedVersion ?? 'none'));
+            $this->line('  locked     '.($result->fortify->lockedVersion ?? 'none'));
+            $this->line('  profile    '.($result->fortify->profile ?? 'none'));
+
+            if (! $result->fortify->supported()) {
+                $this->line('  next       '.$result->fortify->remediation);
+            }
+        }
+
         $this->newLine();
         $this->line('Generated resources:');
 

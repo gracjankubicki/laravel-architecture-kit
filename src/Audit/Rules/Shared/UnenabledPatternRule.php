@@ -8,13 +8,20 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifyContractMap;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifySourceResolver;
+use Illuminate\Filesystem\Filesystem;
 
 final readonly class UnenabledPatternRule implements AuditRule
 {
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
-    public function __construct(private array $enabled) {}
+    public function __construct(
+        private array $enabled,
+        private ?Filesystem $files = null,
+        private ?string $basePath = null,
+    ) {}
 
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -32,7 +39,10 @@ final readonly class UnenabledPatternRule implements AuditRule
     {
         $findings = [];
 
-        if (str_starts_with($file->path, 'app/Http/Responses/')) {
+        if (
+            str_starts_with($file->path, 'app/Http/Responses/')
+            && ! $this->isFortifyResponse($file)
+        ) {
             $findings[] = $this->finding('warn', $file->path, 1, 'Http Responses are not an enabled Architecture Kit pattern.');
         }
 
@@ -49,5 +59,14 @@ final readonly class UnenabledPatternRule implements AuditRule
     private function finding(string $severity, string $path, int $line, string $message): AuditFinding
     {
         return new AuditFinding($severity, 'unenabled-pattern', $path, $line, $message);
+    }
+
+    private function isFortifyResponse(FileContext $file): bool
+    {
+        return in_array(Architecture::Fortify, $this->enabled, true)
+            && (new FortifySourceResolver(
+                $this->files ?? new Filesystem,
+                $this->basePath ?? '',
+            ))->fileMatches($file, FortifyContractMap::responseContracts());
     }
 }

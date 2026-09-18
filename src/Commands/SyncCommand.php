@@ -58,6 +58,7 @@ final class SyncCommand extends Command
                 $exception->getMessage(),
                 $state?->laravelAi?->toArray(),
                 $state?->inertia?->toArray(),
+                $state?->fortify?->toArray(),
             );
         }
 
@@ -71,6 +72,7 @@ final class SyncCommand extends Command
                 dryRun: true,
                 laravelAi: $state->laravelAi?->toArray(),
                 inertia: $state->inertia?->toArray(),
+                fortify: $state->fortify?->toArray(),
             )));
 
             return self::SUCCESS;
@@ -89,6 +91,7 @@ final class SyncCommand extends Command
                 $exception->getMessage(),
                 $state->laravelAi?->toArray(),
                 $state->inertia?->toArray(),
+                $state->fortify?->toArray(),
             );
         }
 
@@ -98,6 +101,7 @@ final class SyncCommand extends Command
                 dryRun: false,
                 laravelAi: $state->laravelAi?->toArray(),
                 inertia: $state->inertia?->toArray(),
+                fortify: $state->fortify?->toArray(),
             )));
         }
 
@@ -113,11 +117,12 @@ final class SyncCommand extends Command
     /**
      * @param  array<string, mixed>|null  $laravelAi
      * @param  array<string, mixed>|null  $inertia
+     * @param  array<string, mixed>|null  $fortify
      */
-    private function failure(AgentOutput $agent, string $message, ?array $laravelAi = null, ?array $inertia = null): int
+    private function failure(AgentOutput $agent, string $message, ?array $laravelAi = null, ?array $inertia = null, ?array $fortify = null): int
     {
         if ((bool) $this->option('agent')) {
-            $this->line($this->json($agent->syncError($message, $laravelAi, $inertia)));
+            $this->line($this->json($agent->syncError($message, $laravelAi, $inertia, $fortify)));
         } else {
             $this->error($message);
         }
@@ -128,11 +133,12 @@ final class SyncCommand extends Command
     /**
      * @param  array<string, mixed>|null  $laravelAi
      * @param  array<string, mixed>|null  $inertia
+     * @param  array<string, mixed>|null  $fortify
      */
-    private function applyFailure(AgentOutput $agent, string $message, ?array $laravelAi = null, ?array $inertia = null): int
+    private function applyFailure(AgentOutput $agent, string $message, ?array $laravelAi = null, ?array $inertia = null, ?array $fortify = null): int
     {
         if ((bool) $this->option('agent')) {
-            $this->line($this->json($agent->syncApplyError($message, $laravelAi, $inertia)));
+            $this->line($this->json($agent->syncApplyError($message, $laravelAi, $inertia, $fortify)));
         } else {
             $this->error($message);
         }

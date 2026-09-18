@@ -118,6 +118,35 @@ class ArchitectureResourcesTest extends TestCase
         $this->assertStringContainsString('The guard does not prove prop completeness', $skill);
     }
 
+    public function test_fortify_resources_keep_native_contracts_auth_safeguards_and_audit_scope_consistent(): void
+    {
+        $resources = $this->resources();
+        $enabled = [Architecture::Actions, Architecture::Fortify];
+
+        $guideline = $resources->architectureGuideline(Architecture::Fortify, $enabled);
+        $skill = $resources->skills($enabled)['fortify']->contents;
+        $summary = $resources->summaryFor(Architecture::Fortify, $enabled);
+        $combined = implode("\n", [$guideline, $skill]);
+
+        $this->assertStringContainsString('Keep Fortify 1 extension contracts intact', $summary);
+        $this->assertStringContainsString('name: architecture-kit-fortify', $skill);
+        $this->assertStringContainsString('CreatesNewUsers::create()', $combined);
+        $this->assertStringContainsString('ResetsUserPasswords::reset()', $combined);
+        $this->assertStringContainsString('ordinary application Action', $combined);
+        $this->assertStringContainsString('Do not add `handle()` or a Form Request', $skill);
+        $this->assertStringContainsString('PrepareAuthenticatedSession', $combined);
+        $this->assertStringContainsString('login throttling', $combined);
+        $this->assertStringContainsString('session regeneration', $combined);
+        $this->assertStringContainsString('password reset', $combined);
+        $this->assertStringContainsString('email verification', $combined);
+        $this->assertStringContainsString('two-factor authentication', $combined);
+        $this->assertStringContainsString('passkeys', $combined);
+        $this->assertStringContainsString('Inertia is optional', $guideline);
+        $this->assertStringContainsString('dynamic target or unavailable source', $skill);
+        $this->assertStringContainsString('does not prove credential logic', $skill);
+        $this->assertStringContainsString('fe0fce8814660317df0684f2c7be3b573def67d3', $guideline);
+    }
+
     public function test_summary_fragments_and_custom_fallbacks_are_resolved(): void
     {
         $resources = $this->resources();

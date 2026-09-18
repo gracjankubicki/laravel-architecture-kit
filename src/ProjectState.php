@@ -10,7 +10,9 @@ use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
+use GracjanKubicki\ArchitectureKit\Fortify\FortifyCompatibilityResult;
 use GracjanKubicki\ArchitectureKit\Inertia\InertiaCompatibilityResult;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\FortifyRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\InertiaRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
@@ -34,6 +36,7 @@ final readonly class ProjectState
         public array $runtime,
         public ?LaravelAiCompatibilityResult $laravelAi,
         public ?InertiaCompatibilityResult $inertia,
+        public ?FortifyCompatibilityResult $fortify,
         public AuditScope $auditScope,
         public MissingTestLevel $missingTestLevel,
         public ?ProjectGraphCache $graphCache,
@@ -50,6 +53,9 @@ final readonly class ProjectState
         $inertia = in_array(Architecture::Inertia, $enabled, true)
             ? InertiaRequirement::resolve($files, $basePath)
             : null;
+        $fortify = in_array(Architecture::Fortify, $enabled, true)
+            ? FortifyRequirement::resolve($files, $basePath)
+            : null;
 
         $resources = new ArchitectureResources($packagePath, $basePath, $files, $catalog, $laravelAi);
 
@@ -63,6 +69,7 @@ final readonly class ProjectState
             $config->runtime(),
             $laravelAi,
             $inertia,
+            $fortify,
             $config->auditScope(),
             $config->missingTestLevel(),
             $config->graphCache(),
@@ -116,6 +123,10 @@ final readonly class ProjectState
 
         if ($this->inertia !== null && ! $this->inertia->supported()) {
             throw new \RuntimeException($this->inertia->message.' '.$this->inertia->remediation);
+        }
+
+        if ($this->fortify !== null && ! $this->fortify->supported()) {
+            throw new \RuntimeException($this->fortify->message.' '.$this->fortify->remediation);
         }
     }
 }

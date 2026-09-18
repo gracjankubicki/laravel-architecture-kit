@@ -96,11 +96,13 @@ class AgentOutputSchemaTest extends TestCase
             'create' => ['.ai/guidelines/architecture-kit.md'],
             'update' => [],
             'remove' => [],
-        ], true, ['profile' => 'laravel-ai@0.9']);
+        ], true, ['profile' => 'laravel-ai@0.9'], ['profile' => 'inertia@3'], ['profile' => 'fortify@1']);
 
         $this->assertSame('sync', $payload['cmd']);
         $this->assertTrue($payload['dry_run']);
         $this->assertSame('laravel-ai@0.9', $payload['laravel_ai']['profile']);
+        $this->assertSame('inertia@3', $payload['inertia']['profile']);
+        $this->assertSame('fortify@1', $payload['fortify']['profile']);
         $this->assertTrue($this->matchesSchema($payload, $agent->schema('sync')));
         $this->assertTrue($this->matchesSchema($agent->syncError('blocked'), $agent->schema('sync')));
         $this->assertTrue($this->matchesSchema($agent->syncApplyError('write failed'), $agent->schema('sync')));

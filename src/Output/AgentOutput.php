@@ -104,6 +104,7 @@ final readonly class AgentOutput
             ],
             ...($result->laravelAi !== null ? ['laravel_ai' => $result->laravelAi->toArray()] : []),
             ...($result->inertia !== null ? ['inertia' => $result->inertia->toArray()] : []),
+            ...($result->fortify !== null ? ['fortify' => $result->fortify->toArray()] : []),
             'checks' => $this->checks($result->checks),
             'trunc' => count($visibleIssues) < count($issues),
             ...($limit > 0 ? [
@@ -142,9 +143,10 @@ final readonly class AgentOutput
      * @param  array<string, array<int, string>>  $changes
      * @param  array<string, mixed>|null  $laravelAi
      * @param  array<string, mixed>|null  $inertia
+     * @param  array<string, mixed>|null  $fortify
      * @return array<string, mixed>
      */
-    public function sync(array $changes, bool $dryRun, ?array $laravelAi = null, ?array $inertia = null): array
+    public function sync(array $changes, bool $dryRun, ?array $laravelAi = null, ?array $inertia = null, ?array $fortify = null): array
     {
         return [
             'v' => 1,
@@ -153,6 +155,7 @@ final readonly class AgentOutput
             'dry_run' => $dryRun,
             ...($laravelAi !== null ? ['laravel_ai' => $laravelAi] : []),
             ...($inertia !== null ? ['inertia' => $inertia] : []),
+            ...($fortify !== null ? ['fortify' => $fortify] : []),
             'changes' => $changes,
             'next' => $dryRun ? ['rerun:sync --no-interaction'] : ['run:boost:update --no-interaction'],
         ];
@@ -161,9 +164,10 @@ final readonly class AgentOutput
     /**
      * @param  array<string, mixed>|null  $laravelAi
      * @param  array<string, mixed>|null  $inertia
+     * @param  array<string, mixed>|null  $fortify
      * @return array<string, mixed>
      */
-    public function syncError(string $message, ?array $laravelAi = null, ?array $inertia = null): array
+    public function syncError(string $message, ?array $laravelAi = null, ?array $inertia = null, ?array $fortify = null): array
     {
         return [
             'v' => 1,
@@ -173,6 +177,7 @@ final readonly class AgentOutput
             'msg' => $message,
             ...($laravelAi !== null ? ['laravel_ai' => $laravelAi] : []),
             ...($inertia !== null ? ['inertia' => $inertia] : []),
+            ...($fortify !== null ? ['fortify' => $fortify] : []),
             'next' => ['fix_preflight', 'rerun:sync --no-interaction'],
         ];
     }
@@ -180,9 +185,10 @@ final readonly class AgentOutput
     /**
      * @param  array<string, mixed>|null  $laravelAi
      * @param  array<string, mixed>|null  $inertia
+     * @param  array<string, mixed>|null  $fortify
      * @return array<string, mixed>
      */
-    public function syncApplyError(string $message, ?array $laravelAi = null, ?array $inertia = null): array
+    public function syncApplyError(string $message, ?array $laravelAi = null, ?array $inertia = null, ?array $fortify = null): array
     {
         return [
             'v' => 1,
@@ -192,6 +198,7 @@ final readonly class AgentOutput
             'msg' => $message,
             ...($laravelAi !== null ? ['laravel_ai' => $laravelAi] : []),
             ...($inertia !== null ? ['inertia' => $inertia] : []),
+            ...($fortify !== null ? ['fortify' => $fortify] : []),
             'next' => ['fix_filesystem', 'rerun:sync --no-interaction'],
         ];
     }
@@ -533,6 +540,10 @@ final readonly class AgentOutput
                     'type' => ['object', 'null'],
                     'additionalProperties' => true,
                 ],
+                'fortify' => [
+                    'type' => ['object', 'null'],
+                    'additionalProperties' => true,
+                ],
                 'checks' => [
                     'type' => 'object',
                     'additionalProperties' => ['enum' => ['ok', 'warn', 'fail']],
@@ -793,6 +804,7 @@ final readonly class AgentOutput
                         'cmd' => ['const' => 'guidelines'],
                         'laravel_ai' => ['type' => 'object', 'additionalProperties' => true],
                         'inertia' => ['type' => 'object', 'additionalProperties' => true],
+                        'fortify' => ['type' => 'object', 'additionalProperties' => true],
                         'arch' => [
                             'type' => 'array',
                             'items' => [
@@ -821,6 +833,7 @@ final readonly class AgentOutput
                         'cmd' => ['const' => 'guidelines'],
                         'laravel_ai' => ['type' => 'object', 'additionalProperties' => true],
                         'inertia' => ['type' => 'object', 'additionalProperties' => true],
+                        'fortify' => ['type' => 'object', 'additionalProperties' => true],
                         'slug' => ['type' => 'string'],
                         'label' => ['type' => 'string'],
                         'enabled' => ['type' => 'boolean'],
@@ -892,6 +905,7 @@ final readonly class AgentOutput
                         'dry_run' => ['type' => 'boolean'],
                         'laravel_ai' => $profile,
                         'inertia' => $profile,
+                        'fortify' => $profile,
                         'changes' => $changes,
                         'next' => $this->stringListSchema(),
                     ],
@@ -908,6 +922,7 @@ final readonly class AgentOutput
                         'msg' => ['type' => 'string'],
                         'laravel_ai' => $profile,
                         'inertia' => $profile,
+                        'fortify' => $profile,
                         'next' => $this->stringListSchema(),
                     ],
                     'additionalProperties' => false,
@@ -923,6 +938,7 @@ final readonly class AgentOutput
                         'msg' => ['type' => 'string'],
                         'laravel_ai' => $profile,
                         'inertia' => $profile,
+                        'fortify' => $profile,
                         'next' => $this->stringListSchema(),
                     ],
                     'additionalProperties' => false,

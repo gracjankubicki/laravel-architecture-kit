@@ -776,6 +776,53 @@ PHP;
         $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-inertia/SKILL.md');
     }
 
+    public function test_it_generates_fortify_resources_without_changing_dependencies(): void
+    {
+        $this->writeFortifyFixture('^1.0', '1.31.0');
+        $composerBefore = (new Filesystem)->get($this->tempPath.'/composer.json');
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['fortify'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $files = new Filesystem;
+        $this->assertSame($composerBefore, $files->get($this->tempPath.'/composer.json'));
+        $this->assertStringContainsString('Architecture::Fortify', $files->get($this->tempPath.'/config/architectures.php'));
+        $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-fortify/SKILL.md');
+        $this->assertFileDoesNotExist($this->tempPath.'/config/fortify.php');
+    }
+
+    public function test_it_allows_the_user_to_leave_suggested_fortify_disabled(): void
+    {
+        $this->writeFortifyFixture();
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['actions'], Architecture::promptOptions())
+            ->expectsChoice('How does this project run PHP?', 'local', $this->runtimeOptions())
+            ->expectsConfirmation('Install Architecture Kit MCP and hooks for AI agents now?', 'no')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        $config = (new Filesystem)->get($this->tempPath.'/config/architectures.php');
+        $this->assertStringContainsString('Architecture::Actions', $config);
+        $this->assertStringNotContainsString('Architecture::Fortify', $config);
+    }
+
+    public function test_it_blocks_explicit_fortify_selection_without_a_supported_runtime_dependency(): void
+    {
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Fortify]);
+
+        $this->artisan('architecture-kit:install')
+            ->expectsChoice('Which architecture patterns does this project use?', ['fortify'], Architecture::promptOptions())
+            ->expectsOutputToContain('Laravel Fortify is not declared directly in root composer.json.')
+            ->assertExitCode(1);
+
+        $this->assertFileDoesNotExist($this->tempPath.'/.ai/skills/architecture-kit-fortify/SKILL.md');
+    }
+
     public function test_it_blocks_before_config_when_architecture_kit_is_not_a_runtime_dependency(): void
     {
         $files = new Filesystem;

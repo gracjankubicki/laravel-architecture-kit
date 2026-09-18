@@ -17,7 +17,7 @@ composer create-project laravel/laravel:^12.0 "${APP_PATH}" --no-install --no-sc
 cd "${APP_PATH}"
 
 composer config repositories.architecture-kit "{\"type\":\"path\",\"url\":\"${PACKAGE_ROOT}\",\"options\":{\"symlink\":false}}"
-composer require gracjankubicki/laravel-architecture-kit:@dev laravel/ai:^0.10 --no-update --no-interaction
+composer require gracjankubicki/laravel-architecture-kit:@dev laravel/ai:^0.10 laravel/fortify:^1.0 --no-update --no-interaction
 composer require laravel/boost --dev --no-update --no-interaction
 composer update --prefer-dist --no-interaction --no-progress
 cp .env.example .env
@@ -30,7 +30,7 @@ $config = <<<'"'"'PHP'"'"'
 use GracjanKubicki\ArchitectureKit\Architecture;
 
 return [
-    "enabled" => [Architecture::LaravelAi],
+    "enabled" => [Architecture::LaravelAi, Architecture::Fortify],
     "runtime" => ["driver" => "local", "service" => null, "php" => "php", "command" => null],
 ];
 PHP;
@@ -53,11 +53,13 @@ php artisan boost:install --no-interaction
 php artisan boost:update --no-interaction
 
 test "$(find .ai/skills -path '*/architecture-kit-laravel-ai/SKILL.md' | wc -l | tr -d ' ')" -eq 1
+test "$(find .ai/skills -path '*/architecture-kit-fortify/SKILL.md' | wc -l | tr -d ' ')" -eq 1
 test -f .ai/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md
 test -f .ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md
 test -f .ai/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md
 test "$(find .agents/skills -maxdepth 1 -name 'architecture-kit-laravel-ai' | wc -l | tr -d ' ')" -eq 1
 test -f .agents/skills/architecture-kit-laravel-ai/SKILL.md
+test -f .agents/skills/architecture-kit-fortify/SKILL.md
 test -f .agents/skills/architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md
 test -f .agents/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md
 test -f .agents/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md

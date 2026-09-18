@@ -186,6 +186,24 @@ class GuidelinesCommandTest extends TestCase
         $this->assertStringContainsString('The `inertia` audit rule enforces two boundaries', $payload['md']);
     }
 
+    public function test_it_expands_the_fortify_profile_with_the_resolved_runtime_contract(): void
+    {
+        $this->writeFortifyFixture('^1.0', '1.31.0');
+        $this->writeConfig([Architecture::Fortify]);
+
+        $exit = Artisan::call('architecture-kit:guidelines', [
+            'architecture' => 'fortify',
+            '--agent' => true,
+        ]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('fortify@1', $payload['fortify']['profile']);
+        $this->assertSame('architecture-kit-fortify', $payload['skill']);
+        $this->assertStringContainsString('## Native extension contracts', $payload['md']);
+        $this->assertStringContainsString('PrepareAuthenticatedSession', $payload['md']);
+    }
+
     public function test_it_fails_when_config_is_missing(): void
     {
         (new Filesystem)->delete($this->tempPath.'/config/architectures.php');

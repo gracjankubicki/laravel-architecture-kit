@@ -59,6 +59,7 @@ class GuidelinesCommand extends Command
                 $enabled,
                 $state->laravelAi?->toArray(),
                 $state->inertia?->toArray(),
+                $state->fortify?->toArray(),
             );
 
             if ((bool) $this->option('agent')) {
@@ -111,6 +112,7 @@ class GuidelinesCommand extends Command
             'cmd' => 'guidelines',
             ...($state->laravelAi !== null ? ['laravel_ai' => $state->laravelAi->toArray()] : []),
             ...($state->inertia !== null ? ['inertia' => $state->inertia->toArray()] : []),
+            ...($state->fortify !== null ? ['fortify' => $state->fortify->toArray()] : []),
             'slug' => $architecture->slug(),
             'label' => $architecture->label(),
             'enabled' => in_array($architecture->slug(), $this->enabledSlugs($enabled), true),
@@ -134,6 +136,7 @@ class GuidelinesCommand extends Command
      * @param  array<int, Architecture|string>  $enabled
      * @param  array<string, mixed>|null  $laravelAi
      * @param  array<string, mixed>|null  $inertia
+     * @param  array<string, mixed>|null  $fortify
      * @return array<string, mixed>
      */
     private function listPayload(
@@ -142,6 +145,7 @@ class GuidelinesCommand extends Command
         array $enabled,
         ?array $laravelAi = null,
         ?array $inertia = null,
+        ?array $fortify = null,
     ): array {
         $enabledSlugs = $this->enabledSlugs($enabled);
 
@@ -151,6 +155,7 @@ class GuidelinesCommand extends Command
             'cmd' => 'guidelines',
             ...($laravelAi !== null ? ['laravel_ai' => $laravelAi] : []),
             ...($inertia !== null ? ['inertia' => $inertia] : []),
+            ...($fortify !== null ? ['fortify' => $fortify] : []),
             'arch' => array_map(fn (EnabledArchitecture $architecture): array => [
                 'slug' => $architecture->slug(),
                 'label' => $architecture->label(),

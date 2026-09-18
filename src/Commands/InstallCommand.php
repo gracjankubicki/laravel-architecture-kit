@@ -15,6 +15,7 @@ use GracjanKubicki\ArchitectureKit\Install\ComposerPackageInstaller;
 use GracjanKubicki\ArchitectureKit\Install\ComposeServices;
 use GracjanKubicki\ArchitectureKit\Install\InstallResult;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\ArchitectureKitRuntimeRequirement;
+use GracjanKubicki\ArchitectureKit\Install\Requirements\FortifyRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\InertiaRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\LaravelAiRequirement;
 use GracjanKubicki\ArchitectureKit\Install\Requirements\PhpRequirement;
@@ -77,6 +78,14 @@ class InstallCommand extends Command
 
             if (
                 ! $files->exists(config_path('architectures.php'))
+                && FortifyRequirement::resolve($files, base_path())->supported()
+                && ! in_array(Architecture::Fortify, $current, true)
+            ) {
+                $current[] = Architecture::Fortify;
+            }
+
+            if (
+                ! $files->exists(config_path('architectures.php'))
                 && ServicesRequirement::projectHasServices($files, base_path())
                 && ! in_array(Architecture::Services, $current, true)
             ) {
@@ -114,6 +123,14 @@ class InstallCommand extends Command
 
             if ($inertia !== null && ! $inertia->supported()) {
                 throw new \RuntimeException($inertia->message.' '.$inertia->remediation);
+            }
+
+            $fortify = in_array(Architecture::Fortify, $enabled, true)
+                ? FortifyRequirement::resolve($files, base_path())
+                : null;
+
+            if ($fortify !== null && ! $fortify->supported()) {
+                throw new \RuntimeException($fortify->message.' '.$fortify->remediation);
             }
 
             $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files, $catalog, $laravelAi);

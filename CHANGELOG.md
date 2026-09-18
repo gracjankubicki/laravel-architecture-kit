@@ -6,6 +6,7 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add an optional Fortify 1 architecture profile with first-install detection, explicit selection, fail-closed compatibility diagnostics, generated guidance, MCP output, and contract-aware audit checks. Native `create()`, `reset()`, `update()`, and `toResponse()` extension points remain valid without disabling whole-folder rules; confirmed registration mismatches are errors and dynamic targets remain explicit strict-blocking warnings. Architecture Kit does not install Fortify or change authentication configuration and the profile remains independent from Inertia.
 - Add an optional Inertia 3 architecture profile with first-install detection, explicit selection, compatibility diagnostics, generated guidance, MCP output, and two audit checks. Actions and Query Objects cannot depend on Inertia, and page props cannot receive an unfiltered request. Architecture Kit does not install or update Inertia, and the existing endpoint and missing-test analysis keeps its Inertia semantics when the profile is disabled.
 - Add the verified `laravel-ai@0.11` profile and the atomic `0.10 -> 0.11` upgrade guide. Install, sync, doctor, planning, MCP, and the real-package CI matrix now cover Laravel AI 0.8 through 0.11, including prompt, stream, structured-output, and version-specific queued fake behavior without contacting a provider.
 

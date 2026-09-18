@@ -1287,6 +1287,32 @@ PHP);
             ->assertExitCode(0);
     }
 
+    public function test_fortify_suppression_hides_only_the_targeted_finding(): void
+    {
+        $this->writeFortifyFixture('^1.0', '1.31.0');
+        $this->writeConfig([Architecture::Fortify]);
+        $this->writeFile('app/Actions/CreateNewUser.php', '<?php namespace App\Actions; final class CreateNewUser { public function create(array $input): object { return (object) $input; } }');
+        $this->writeFile('app/Providers/FortifyServiceProvider.php', <<<'PHP'
+<?php
+namespace App\Providers;
+final class FortifyServiceProvider
+{
+    public function boot(): void
+    {
+        // @architecture-kit-ignore fortify -- legacy binding is tracked for migration
+        \Laravel\Fortify\Fortify::createUsersUsing(\App\Actions\CreateNewUser::class);
+    }
+}
+PHP);
+        $this->writeFile('app/Exceptions/DocumentFailure.php', '<?php namespace App\Exceptions; final class DocumentFailure {}');
+
+        $this->artisan('architecture-kit:audit')
+            ->expectsOutputToContain('error folder-purity')
+            ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
+            ->doesntExpectOutputToContain('does not implement Laravel\Fortify\Contracts\CreatesNewUsers')
+            ->assertExitCode(1);
+    }
+
     public function test_invalid_inline_ignore_does_not_suppress_original_finding(): void
     {
         $this->writeConfig([

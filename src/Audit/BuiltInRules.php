@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Rules\DataObjects\DataObjectsRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\EloquentLifecycleRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Enums\EnumsRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\FormRequests\FormRequestsRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifyRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Inertia\InertiaRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\LaravelAi\LaravelAiRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ModernPhp85\ModernPhp85Rule;
@@ -43,7 +44,7 @@ final readonly class BuiltInRules
     public static function all(Filesystem $files, string $basePath, array $enabled): array
     {
         return [
-            new FolderPurityRule($enabled),
+            new FolderPurityRule($enabled, $files, $basePath),
             new ThinControllerRule,
             new ServicesRule,
             new ActionsRule,
@@ -52,6 +53,7 @@ final readonly class BuiltInRules
             new DataObjectsRule,
             new ValueObjectsRule,
             new FormRequestsRule($enabled),
+            new FortifyRule($files, $basePath),
             new EnumsRule($files, $basePath, $enabled),
             new ApiResourcesRule,
             new PortsAndAdaptersRule($files, $basePath, $enabled),
@@ -63,7 +65,7 @@ final readonly class BuiltInRules
             new RouteLogicRule,
             new ServiceLocatorRule,
             new TestabilityRule,
-            new UnenabledPatternRule($enabled),
+            new UnenabledPatternRule($enabled, $files, $basePath),
         ];
     }
 }

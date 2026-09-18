@@ -167,6 +167,64 @@ PHP);
             );
     }
 
+    public function test_fortify_guidance_and_profile_are_available_through_mcp_with_or_without_inertia(): void
+    {
+        $this->writeFortifyFixture('^1.0', '1.31.0');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Fortify]);
+
+        ArchitectureKitServer::tool(EnabledArchitectures::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('architectures.0.value', 'fortify')
+                ->where('architectures.0.skill', 'architecture-kit-fortify')
+                ->where('fortify.status', 'supported')
+                ->where('fortify.profile', 'fortify@1')
+                ->etc()
+            );
+
+        ArchitectureKitServer::tool(ArchitectureRules::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('fortify.profile', 'fortify@1')
+                ->where('guideline', fn (string $guideline): bool => str_contains($guideline, '## Native extension contracts')
+                    && str_contains($guideline, 'Inertia is optional'))
+                ->etc()
+            );
+
+        $this->writeInertiaFixture('^3.0', '3.1.0');
+        $this->writeFortifyFixture('^1.0', '1.31.0');
+        $files = new Filesystem;
+        $files->put($this->tempPath.'/composer.lock', json_encode([
+            'packages' => [
+                ['name' => 'gracjankubicki/laravel-architecture-kit', 'version' => '0.2.0'],
+                ['name' => 'inertiajs/inertia-laravel', 'version' => '3.1.0'],
+                ['name' => 'laravel/fortify', 'version' => '1.31.0'],
+            ],
+            'packages-dev' => [],
+        ], JSON_THROW_ON_ERROR));
+        $files->put($this->tempPath.'/vendor/composer/installed.php', <<<'PHP'
+<?php
+return ['versions' => [
+    'inertiajs/inertia-laravel' => ['pretty_version' => '3.1.0'],
+    'laravel/fortify' => ['pretty_version' => '1.31.0'],
+]];
+PHP);
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([
+            Architecture::Inertia,
+            Architecture::Fortify,
+        ]);
+
+        ArchitectureKitServer::tool(EnabledArchitectures::class)
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('inertia.status', 'supported')
+                ->where('inertia.profile', 'inertia@3')
+                ->where('fortify.status', 'supported')
+                ->where('fortify.profile', 'fortify@1')
+                ->etc()
+            );
+    }
+
     public function test_enabled_architectures_tool_returns_scoped_custom_audit_rules(): void
     {
         $this->writeCustomArchitecture('billing-workflows');

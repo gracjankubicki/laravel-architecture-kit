@@ -126,6 +126,35 @@ final class SyncCommandTest extends TestCase
         $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-inertia/SKILL.md');
     }
 
+    public function test_it_blocks_before_writes_when_fortify_is_incompatible(): void
+    {
+        $files = new Filesystem;
+        $this->writeFortifyFixture('^2.0', '2.0.0');
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php', $files))->write([Architecture::Fortify]);
+        $files->ensureDirectoryExists($this->tempPath.'/.ai/guidelines');
+        $files->put($this->tempPath.'/.ai/guidelines/architecture-kit.md', 'previous managed state');
+
+        $exit = Artisan::call('architecture-kit:sync', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $exit, Artisan::output());
+        $this->assertSame('unsupported_constraint', $payload['fortify']['status']);
+        $this->assertSame('previous managed state', $files->get($this->tempPath.'/.ai/guidelines/architecture-kit.md'));
+    }
+
+    public function test_it_reports_fortify_profile_when_syncing_resources(): void
+    {
+        $this->writeFortifyFixture();
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Fortify]);
+
+        $exit = Artisan::call('architecture-kit:sync', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('fortify@1', $payload['fortify']['profile']);
+        $this->assertFileExists($this->tempPath.'/.ai/skills/architecture-kit-fortify/SKILL.md');
+    }
+
     public function test_it_upgrades_generated_resources_from_profile_08_to_09(): void
     {
         $files = new Filesystem;

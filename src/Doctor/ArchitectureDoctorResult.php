@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Doctor;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Fortify\FortifyCompatibilityResult;
 use GracjanKubicki\ArchitectureKit\Inertia\InertiaCompatibilityResult;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
 
@@ -20,6 +21,7 @@ final readonly class ArchitectureDoctorResult
         public bool $boostInstalled,
         public ?LaravelAiCompatibilityResult $laravelAi = null,
         public ?InertiaCompatibilityResult $inertia = null,
+        public ?FortifyCompatibilityResult $fortify = null,
     ) {}
 
     public function ok(): bool
@@ -70,6 +72,7 @@ final readonly class ArchitectureDoctorResult
             ],
             'laravel_ai' => $this->laravelAi?->toArray(),
             'inertia' => $this->inertia?->toArray(),
+            'fortify' => $this->fortify?->toArray(),
         ];
     }
 }

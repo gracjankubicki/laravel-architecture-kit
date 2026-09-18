@@ -94,6 +94,42 @@ PHP);
         $files->put($this->tempPath.'/vendor/composer/installed.php', "<?php\nreturn ['versions' => {$installed}];\n");
     }
 
+    protected function writeFortifyFixture(
+        string $constraint = '^1.0',
+        ?string $installedVersion = '1.0.0',
+        string $section = 'require',
+        ?string $lockedVersion = null,
+    ): void {
+        $files = new Filesystem;
+        $composer = json_decode($files->get($this->tempPath.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $composer['require'] ??= [];
+        $composer['require-dev'] ??= [];
+        unset($composer['require']['laravel/fortify'], $composer['require-dev']['laravel/fortify']);
+        $composer[$section]['laravel/fortify'] = $constraint;
+        $files->put($this->tempPath.'/composer.json', json_encode($composer, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+
+        $lockedVersion ??= $installedVersion;
+        $lockSection = $section === 'require-dev' ? 'packages-dev' : 'packages';
+        $lock = [
+            'packages' => [[
+                'name' => 'gracjankubicki/laravel-architecture-kit',
+                'version' => '0.2.0',
+            ]],
+            'packages-dev' => [],
+        ];
+
+        if ($lockedVersion !== null) {
+            $lock[$lockSection][] = ['name' => 'laravel/fortify', 'version' => $lockedVersion];
+        }
+
+        $files->put($this->tempPath.'/composer.lock', json_encode($lock, JSON_THROW_ON_ERROR));
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');
+        $installed = $installedVersion === null
+            ? '[]'
+            : "['laravel/fortify' => ['pretty_version' => '{$installedVersion}']]";
+        $files->put($this->tempPath.'/vendor/composer/installed.php', "<?php\nreturn ['versions' => {$installed}];\n");
+    }
+
     /**
      * @return array<int, class-string>
      */

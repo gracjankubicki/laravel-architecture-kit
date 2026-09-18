@@ -295,6 +295,41 @@ PHP,
             ->assertExitCode(0);
     }
 
+    public function test_it_reports_the_resolved_fortify_profile_and_runtime_contract(): void
+    {
+        $this->writeFortifyFixture('^1.0', '1.31.0');
+        $this->writeCurrentResources([Architecture::Fortify]);
+
+        $exit = Artisan::call('architecture-kit:doctor', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit, Artisan::output());
+        $this->assertSame('supported', $payload['fortify']['status']);
+        $this->assertSame('fortify@1', $payload['fortify']['profile']);
+        $this->assertSame('1.31.0', $payload['fortify']['installed_version']);
+    }
+
+    public function test_it_blocks_enabled_fortify_without_a_supported_dependency(): void
+    {
+        (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Fortify]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('blocked  composer.json')
+            ->expectsOutputToContain('Laravel Fortify is not declared directly in root composer.json.')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_warns_when_fortify_is_installed_but_profile_is_disabled(): void
+    {
+        $this->writeFortifyFixture();
+        $this->writeCurrentResources([Architecture::Actions]);
+
+        $this->artisan('architecture-kit:doctor')
+            ->expectsOutputToContain('warning  composer.json')
+            ->expectsOutputToContain('laravel/fortify is declared but Architecture::Fortify is not enabled.')
+            ->assertExitCode(0);
+    }
+
     public function test_it_reports_profile_resources_as_outdated_after_laravel_ai_011_upgrade(): void
     {
         $this->writeLaravelAiFixture('^0.9', '0.9.1');

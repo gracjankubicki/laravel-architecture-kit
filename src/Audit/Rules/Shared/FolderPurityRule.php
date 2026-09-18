@@ -9,7 +9,10 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifyContractMap;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifySourceResolver;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
+use Illuminate\Filesystem\Filesystem;
 use PhpParser\Node;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
@@ -28,7 +31,11 @@ final readonly class FolderPurityRule implements AuditRule
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
-    public function __construct(private array $enabled) {}
+    public function __construct(
+        private array $enabled,
+        private ?Filesystem $files = null,
+        private ?string $basePath = null,
+    ) {}
 
     /**
      * Mirrors the gating in check(): an architecture-scoped folder is only supported
@@ -63,7 +70,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $findings = [];
 
-        if (str_starts_with($file->path, 'app/Actions/') && ! $this->looksLikeAction($nodes)) {
+        if (str_starts_with($file->path, 'app/Actions/') && ! $this->looksLikeAction($file, $nodes)) {
             $findings[] = $this->finding('error', $file->path, 1, 'app/Actions/** must contain Actions only.');
         }
 
@@ -117,7 +124,7 @@ final readonly class FolderPurityRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function looksLikeAction(array $nodes): bool
+    private function looksLikeAction(FileContext $file, array $nodes): bool
     {
         if ($this->containsEnumDeclaration($nodes)) {
             return false;
@@ -135,7 +142,12 @@ final readonly class FolderPurityRule implements AuditRule
             return false;
         }
 
-        return $this->classHasPublicMethod($class, 'handle');
+        if ($this->classHasPublicMethod($class, 'handle')) {
+            return true;
+        }
+
+        return in_array(Architecture::Fortify, $this->enabled, true)
+            && $this->fortifyResolver()->fileMatches($file, FortifyContractMap::actionContracts());
     }
 
     /**
@@ -420,5 +432,13 @@ final readonly class FolderPurityRule implements AuditRule
     private function finding(string $severity, string $path, int $line, string $message): AuditFinding
     {
         return new AuditFinding($severity, 'folder-purity', $path, $line, $message);
+    }
+
+    private function fortifyResolver(): FortifySourceResolver
+    {
+        return new FortifySourceResolver(
+            $this->files ?? new Filesystem,
+            $this->basePath ?? '',
+        );
     }
 }

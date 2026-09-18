@@ -52,11 +52,13 @@ final class DistributionContractTest extends TestCase
         $this->assertStringContainsString('composer install --no-dev', $runtimeSmoke);
         $this->assertIsString($boostSmoke);
         $this->assertStringContainsString('architecture-kit-laravel-ai/SKILL.md', $boostSmoke);
+        $this->assertStringContainsString('architecture-kit-fortify/SKILL.md', $boostSmoke);
         $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-8-to-0-9/SKILL.md', $boostSmoke);
         $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md', $boostSmoke);
         $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md', $boostSmoke);
         $this->assertStringContainsString('ai-sdk-development/SKILL.md', $boostSmoke);
         $this->assertStringContainsString('laravel/ai:^0.10', $boostSmoke);
+        $this->assertStringContainsString('laravel/fortify:^1.0', $boostSmoke);
         $this->assertIsString($workbenchSmoke);
         $this->assertStringContainsString('architecture-kit:doctor --agent', $workbenchSmoke);
         $this->assertStringContainsString('architecture-kit:audit --agent', $workbenchSmoke);
@@ -118,6 +120,7 @@ final class DistributionContractTest extends TestCase
         $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-9-to-0-10', $readme);
         $this->assertStringContainsString('architecture-kit-upgrade-laravel-ai-0-10-to-0-11', $readme);
         $this->assertStringContainsString('`0.8 -> 0.9 -> 0.10 -> 0.11`', $readme);
+        $this->assertStringContainsString('The Fortify profile keeps the package\'s native extension contracts', $readme);
         $this->assertIsString($attributes);
 
         foreach ([

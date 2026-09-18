@@ -59,4 +59,43 @@ PHP);
         $this->assertSame($catalogArchitectures, $resourceArchitectures);
         $this->assertSame($catalogArchitectures[0], $resourceArchitectures[0]);
     }
+
+    public function test_it_resolves_fortify_and_inertia_profiles_independently(): void
+    {
+        $files = new Filesystem;
+        $files->put($this->tempPath.'/config/architectures.php', <<<'PHP'
+<?php
+
+use GracjanKubicki\ArchitectureKit\Architecture;
+
+return ['enabled' => [Architecture::Inertia, Architecture::Fortify]];
+PHP);
+        $files->put($this->tempPath.'/composer.json', json_encode([
+            'require' => [
+                'inertiajs/inertia-laravel' => '^3.0',
+                'laravel/fortify' => '^1.0',
+            ],
+        ], JSON_THROW_ON_ERROR));
+        $files->put($this->tempPath.'/composer.lock', json_encode([
+            'packages' => [
+                ['name' => 'inertiajs/inertia-laravel', 'version' => '3.1.0'],
+                ['name' => 'laravel/fortify', 'version' => '1.31.0'],
+            ],
+            'packages-dev' => [],
+        ], JSON_THROW_ON_ERROR));
+        $files->ensureDirectoryExists($this->tempPath.'/vendor/composer');
+        $files->put($this->tempPath.'/vendor/composer/installed.php', <<<'PHP'
+<?php
+return ['versions' => [
+    'inertiajs/inertia-laravel' => ['pretty_version' => '3.1.0'],
+    'laravel/fortify' => ['pretty_version' => '1.31.0'],
+]];
+PHP);
+
+        $state = ProjectState::load($files, dirname(__DIR__, 2), $this->tempPath);
+
+        $this->assertSame('inertia@3', $state->inertia?->profile);
+        $this->assertSame('fortify@1', $state->fortify?->profile);
+        $state->assertCompatibility();
+    }
 }

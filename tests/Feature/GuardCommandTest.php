@@ -318,6 +318,35 @@ PHP);
         $this->assertSame(['inline' => 1, 'baseline' => 0], $payload['sup']);
     }
 
+    public function test_guard_keeps_other_findings_when_a_fortify_finding_is_suppressed(): void
+    {
+        $this->writeFortifyFixture('^1.0', '1.31.0');
+        $this->writeCurrentResources([Architecture::Fortify]);
+        $this->writeFile('app/Actions/CreateNewUser.php', '<?php namespace App\Actions; final class CreateNewUser { public function create(array $input): object { return (object) $input; } }');
+        $this->writeFile('app/Providers/FortifyServiceProvider.php', <<<'PHP'
+<?php
+namespace App\Providers;
+final class FortifyServiceProvider
+{
+    public function boot(): void
+    {
+        // @architecture-kit-ignore fortify -- legacy binding is tracked for migration
+        \Laravel\Fortify\Fortify::createUsersUsing(\App\Actions\CreateNewUser::class);
+    }
+}
+PHP);
+        $this->writeFile('app/Exceptions/DocumentFailure.php', '<?php namespace App\Exceptions; final class DocumentFailure {}');
+
+        $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame(['inline' => 1, 'baseline' => 0], $payload['sup']);
+        $this->assertContains('folder-purity', array_column($payload['find'], 'r'));
+        $this->assertNotContains('fortify', array_column($payload['find'], 'r'));
+        $this->assertNotContains('E_FORTIFY_CONTRACT_MISMATCH', array_column($payload['find'], 'm'));
+    }
+
     public function test_guard_json_fails_when_baseline_json_is_invalid(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
