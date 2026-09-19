@@ -4,6 +4,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ## Unreleased
 
+## v0.5.0 - 2026-09-19
+
 ### Added
 
 - Add an optional Fortify 1 architecture profile with first-install detection, explicit selection, fail-closed compatibility diagnostics, generated guidance, MCP output, and contract-aware audit checks. Native `create()`, `reset()`, `update()`, and `toResponse()` extension points remain valid without disabling whole-folder rules; confirmed registration mismatches are errors and dynamic targets remain explicit strict-blocking warnings. Architecture Kit does not install Fortify or change authentication configuration and the profile remains independent from Inertia.
