@@ -95,6 +95,11 @@ use Illuminate\Support\Facades\Route;
 Route::get('/shared', [\App\Http\Controllers\ProjectController::class, 'shared'])->middleware('inertia');
 Route::get('/resource', [\App\Http\Controllers\ProjectController::class, 'resource']);
 PHP);
+        $this->write('routes/ai.php', <<<'PHP'
+<?php
+use Laravel\Mcp\Facades\Mcp;
+Mcp::web('/mcp/test', \GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer::class);
+PHP);
         $this->write('bootstrap/app.php', <<<'PHP'
 <?php
 use Illuminate\Foundation\Application;
@@ -134,6 +139,12 @@ PHP);
         $routes = RouteMap::fresh($this->tempPath);
         $this->assertNull($routes->unavailable);
         $this->assertSame('App\\Http\\Middleware\\HandleInertiaRequests', $routes->context['middlewareAliases']['inertia'] ?? null);
+        $mcpRoute = array_values(array_filter(
+            $routes->entries ?? [],
+            fn ($entry): bool => $entry->uri === 'mcp/test' && in_array('POST', $entry->verbs, true),
+        ));
+        $this->assertCount(1, $mcpRoute);
+        $this->assertContains('Laravel\\Mcp\\Server\\Middleware\\AddWwwAuthenticateHeader', $mcpRoute[0]->middleware);
         $this->assertNotEmpty(array_values(array_filter(
             $routes->entries ?? [],
             fn ($entry): bool => str_starts_with((string) $entry->class, 'Laravel\\Fortify\\Http\\Controllers\\'),
@@ -149,6 +160,7 @@ PHP);
             ...array_column($result->notices, 'message'),
         ]);
 
+        $this->assertStringNotContainsString('AddWwwAuthenticateHeader', $messages);
         $appNotices = array_values(array_filter($result->notices, fn ($notice): bool => str_starts_with($notice->path, 'app/')));
         $this->assertNotContains('A_CALL_UNRESOLVED', array_column($appNotices, 'code'), $messages);
         $this->assertStringContainsString('HandleInertiaRequests.php', $messages);

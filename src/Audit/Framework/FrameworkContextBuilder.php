@@ -550,7 +550,8 @@ final class FrameworkContextBuilder
 
         return str_starts_with($class, 'Illuminate\\')
             || str_starts_with($class, 'Laravel\\Fortify\\')
-            || str_starts_with($class, 'Inertia\\');
+            || str_starts_with($class, 'Inertia\\')
+            || $class === 'Laravel\\Mcp\\Server\\Middleware\\AddWwwAuthenticateHeader';
     }
 
     /** @return list<string> */
