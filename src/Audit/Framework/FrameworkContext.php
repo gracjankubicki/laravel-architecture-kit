@@ -26,6 +26,8 @@ final readonly class FrameworkContext
      * @param  list<array{class: string, method: string}>  $fortifyPipeline
      * @param  array<string, string>  $bindings
      * @param  list<string>  $origins
+     * @param  array<string, array{model: ?string, custom: bool}>  $authGuards
+     * @param  list<string>  $routeAuthGuards
      */
     public function __construct(
         public string $status = self::EMPTY,
@@ -42,6 +44,9 @@ final readonly class FrameworkContext
         public array $bindings = [],
         public array $origins = [],
         public ?string $unavailable = null,
+        public ?string $defaultAuthGuard = null,
+        public array $authGuards = [],
+        public array $routeAuthGuards = [],
     ) {}
 
     public static function unavailable(string $reason): self

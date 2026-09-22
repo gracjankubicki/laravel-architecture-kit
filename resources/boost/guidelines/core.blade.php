@@ -10,6 +10,8 @@ If MCP is unavailable, read `.ai/guidelines/architecture-kit.md` or run `php art
 
 For full details, expand one architecture with `php artisan architecture-kit:guidelines {slug} --agent`, call the Architecture Kit MCP tool `architecture-rules`, or read the MCP resource `architecture-kit://guideline`.
 
+Guard success means that no enforced rule blocks the change. Review architectural suggestions separately. Suggestions may propose an architecture that is not enabled; do not enable it or refactor outside the agreed scope without the user's decision. Incomplete analysis identifies unresolved code, not a violation or proof of correctness. A write reached through GET or HEAD does not by itself violate an Architecture Kit rule. Keep enforcing the project's selected architecture boundaries.
+
 When Laravel AI is enabled, load exactly one generated `architecture-kit-laravel-ai` skill for project architecture policy and the official `ai-sdk-development` skill shipped by the installed `laravel/ai` package for SDK details. Do not duplicate either skill's rules in this bootstrap guideline.
 
 Before upgrading a direct Composer package, call the MCP tool `plan-upgrade` or run `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`. Load only the active atomic upgrade skill, complete and verify that edge, then rerun the planner from the new installed state.

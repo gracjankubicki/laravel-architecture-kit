@@ -35,7 +35,7 @@ class AgentOutputSchemaTest extends TestCase
         $this->assertSame('https://json-schema.org/draft/2020-12/schema', $schema['$schema']);
         $this->assertSame('Architecture Kit audit agent output', $schema['title']);
         $this->assertCount(2, $schema['oneOf']);
-        $this->assertSame(['v', 'ok', 'cmd', 'scope', 'err', 'warn', 'sup', 'trunc', 'next'], $schema['oneOf'][0]['required']);
+        $this->assertSame(['v', 'ok', 'cmd', 'scope', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'next'], $schema['oneOf'][0]['required']);
         $this->assertSame(['v', 'ok', 'cmd', 'm', 'msg', 'next'], $schema['oneOf'][1]['required']);
         $this->assertSame('audit', $schema['oneOf'][0]['properties']['cmd']['const']);
         $this->assertSame('audit', $schema['oneOf'][1]['properties']['cmd']['const']);

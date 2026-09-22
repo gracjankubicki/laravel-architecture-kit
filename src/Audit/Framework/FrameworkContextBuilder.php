@@ -58,6 +58,14 @@ final class FrameworkContextBuilder
 
     private int $methods = 0;
 
+    private ?string $defaultAuthGuard = null;
+
+    /** @var array<string, array{model: ?string, custom: bool}> */
+    private array $authGuards = [];
+
+    /** @var list<string> */
+    private array $routeAuthGuards = [];
+
     public function __construct(
         private readonly SourceIndex $sources,
         private readonly ?RouteMap $routes = null,
@@ -84,6 +92,7 @@ final class FrameworkContextBuilder
             if ($missing !== []) {
                 $this->unavailable ??= 'Laravel framework context is incomplete; missing '.implode(', ', $missing).'.';
             }
+            $this->readAuthContext($routeContext['auth'] ?? null);
         }
         $providers = $routeContext['providers'] ?? [];
         if (! is_array($providers)) {
@@ -112,10 +121,11 @@ final class FrameworkContextBuilder
                 $this->unavailable ??= $reason;
             }
         }
+        $this->routeAuthGuards = $this->routeAuthGuards();
 
         $status = $this->unavailable !== null
             ? FrameworkContext::UNAVAILABLE
-            : (($this->gatePolicies !== [] || $this->gateAbilities !== [] || $this->inertiaShares !== [] || $this->fortifyActions !== [] || $this->fortifyViews !== [] || $this->fortifyCallbacks !== [] || $this->fortifyPipeline !== [] || $this->bindings !== []) ? FrameworkContext::KNOWN : FrameworkContext::EMPTY);
+            : (($this->gatePolicies !== [] || $this->gateAbilities !== [] || $this->inertiaShares !== [] || $this->fortifyActions !== [] || $this->fortifyViews !== [] || $this->fortifyCallbacks !== [] || $this->fortifyPipeline !== [] || $this->bindings !== [] || $this->authGuards !== []) ? FrameworkContext::KNOWN : FrameworkContext::EMPTY);
 
         return new FrameworkContext(
             status: $status,
@@ -132,7 +142,48 @@ final class FrameworkContextBuilder
             bindings: $this->bindings,
             origins: array_keys($this->origins),
             unavailable: $this->unavailable,
+            defaultAuthGuard: $this->defaultAuthGuard,
+            authGuards: $this->authGuards,
+            routeAuthGuards: $this->routeAuthGuards,
         );
+    }
+
+    private function readAuthContext(mixed $auth): void
+    {
+        if (! is_array($auth)) {
+            return;
+        }
+        $this->defaultAuthGuard = is_string($auth['default'] ?? null) ? $auth['default'] : null;
+        foreach (($auth['guards'] ?? []) as $name => $guard) {
+            if (! is_string($name) || ! is_array($guard)) {
+                continue;
+            }
+            $model = is_string($guard['model'] ?? null) ? $guard['model'] : null;
+            $this->authGuards[$name] = [
+                'model' => $model,
+                'custom' => ($guard['custom'] ?? false) === true || $model === null,
+            ];
+        }
+    }
+
+    /** @return list<string> */
+    private function routeAuthGuards(): array
+    {
+        $guards = [];
+        foreach (($this->route->middleware ?? []) as $middleware) {
+            $parts = explode(':', $middleware, 2);
+            if (strtolower($parts[0]) !== 'auth') {
+                continue;
+            }
+            $names = ($parts[1] ?? '') === '' ? [$this->defaultAuthGuard] : explode(',', $parts[1]);
+            foreach ($names as $guard) {
+                if (is_string($guard) && $guard !== '') {
+                    $guards[$guard] = true;
+                }
+            }
+        }
+
+        return array_keys($guards);
     }
 
     private function visit(string $class, string $method, int $depth): void

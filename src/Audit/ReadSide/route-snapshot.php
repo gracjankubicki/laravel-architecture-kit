@@ -28,6 +28,32 @@ foreach (['laravel/framework', 'inertiajs/inertia-laravel', 'laravel/fortify'] a
         $versions[$package] = null;
     }
 }
+$authConfig = $application->make('config')->get('auth', []);
+$authProviders = [];
+foreach (($authConfig['providers'] ?? []) as $provider => $providerConfig) {
+    if (! is_string($provider) || ! is_array($providerConfig) || ! is_string($providerConfig['driver'] ?? null)) {
+        continue;
+    }
+    $authProviders[$provider] = [
+        'driver' => $providerConfig['driver'],
+        'model' => is_string($providerConfig['model'] ?? null) ? $providerConfig['model'] : null,
+    ];
+}
+$authGuards = [];
+foreach (($authConfig['guards'] ?? []) as $guard => $guardConfig) {
+    if (! is_string($guard) || ! is_array($guardConfig) || ! is_string($guardConfig['driver'] ?? null)) {
+        continue;
+    }
+    $provider = is_string($guardConfig['provider'] ?? null) ? $guardConfig['provider'] : null;
+    $providerConfig = $provider !== null ? ($authProviders[$provider] ?? null) : null;
+    $model = $providerConfig !== null && $providerConfig['driver'] === 'eloquent' ? $providerConfig['model'] : null;
+    $authGuards[$guard] = [
+        'driver' => $guardConfig['driver'],
+        'provider' => $provider,
+        'model' => $model,
+        'custom' => $model === null,
+    ];
+}
 $context = [
     'status' => 'known',
     'providers' => $providers,
@@ -35,5 +61,9 @@ $context = [
     'middlewareGroups' => $httpKernel->getMiddlewareGroups(),
     'middlewareAliases' => $httpKernel->getMiddlewareAliases(),
     'packageVersions' => $versions,
+    'auth' => [
+        'default' => is_string($authConfig['defaults']['guard'] ?? null) ? $authConfig['defaults']['guard'] : null,
+        'guards' => $authGuards,
+    ],
 ];
 echo 'ARCHITECTURE_KIT_ROUTES='.json_encode(RouteMap::fromRoutes($router->getRoutes(), $context)->snapshot(), JSON_THROW_ON_ERROR);

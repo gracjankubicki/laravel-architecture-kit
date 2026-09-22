@@ -36,7 +36,7 @@ PHP);
 
         $findings = $this->thinFindings(['App\\Providers\\AuthServiceProvider']);
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('App\\Policies\\ProjectPolicy::view', $findings[0]->message);
         $this->assertStringNotContainsString('::delete', $findings[0]->message);
     }
@@ -58,7 +58,7 @@ PHP);
             $findings = $this->thinFindings();
 
             $this->assertCount(1, $findings, $ability);
-            $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code, $ability);
+            $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code, $ability);
             $this->assertStringContainsString('ProjectPolicy::'.$ability, $findings[0]->message);
         }
     }
@@ -78,7 +78,7 @@ PHP);
 
         $findings = $this->thinFindings();
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('ProjectResource::toArray', $findings[0]->message);
     }
 
@@ -97,7 +97,7 @@ PHP);
 
         $findings = $this->thinFindings();
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('ProjectResource::toArray', $findings[0]->message);
 
         $this->write('app/Http/Resources/ProjectResource.php', <<<'PHP'
@@ -126,7 +126,7 @@ PHP);
 
         $findings = $this->thinFindings();
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('{callback}', $findings[0]->message);
         $this->assertStringNotContainsString('::unused', $findings[0]->message);
     }
@@ -147,7 +147,7 @@ PHP);
             $this->assertSame([], $this->thinFindings(), $method);
         }
         $this->controller('public function show() { return \App\Http\Resources\ProjectResource::make([])->toResponse(null); }');
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->thinFindings()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->thinFindings()[0]->code);
 
         $this->write('app/Http/Resources/ProjectResource.php', <<<'PHP'
 <?php namespace App\Http\Resources;
@@ -159,7 +159,7 @@ final class ProjectResource extends \Illuminate\Http\Resources\Json\JsonResource
 PHP);
         foreach (['resolve', 'toArray'] as $method) {
             $this->controller("public function show() { return \\App\\Http\\Resources\\ProjectResource::make([])->{$method}(); }");
-            $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->thinFindings()[0]->code, $method);
+            $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->thinFindings()[0]->code, $method);
         }
         $this->controller('public function show() { return \App\Http\Resources\ProjectResource::make([])->toResponse(null); }');
         $this->assertSame([], $this->thinFindings());
@@ -172,7 +172,7 @@ PHP);
 
         $findings = $this->thinFindings();
         $this->assertCount(1, $findings);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $findings[0]->code);
+        $this->assertSame('A_CALL_UNRESOLVED', $findings[0]->code);
         $this->assertStringContainsString('Gate ability is dynamic', $findings[0]->message);
     }
 
@@ -272,7 +272,15 @@ PHP);
             ),
         );
 
-        return array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
+        $items = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
+        foreach ($result->suggestions as $suggestion) {
+            $items[] = (object) ['path' => $suggestion->path, 'line' => $suggestion->line, 'message' => $suggestion->message.' '.$suggestion->reason.' '.implode(' -> ', $suggestion->trace).' at '.$suggestion->path.':'.$suggestion->line, 'code' => $suggestion->code];
+        }
+        foreach ($result->notices as $notice) {
+            $items[] = (object) ['path' => $notice->path, 'line' => $notice->line, 'message' => $notice->message, 'code' => $notice->code];
+        }
+
+        return $items;
     }
 
     private function write(string $path, string $source): void

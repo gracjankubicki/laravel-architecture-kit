@@ -2,7 +2,16 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
-## Unreleased
+## v0.6.0 - 2026-09-22
+
+### Added
+
+- Separate non-blocking `suggestions` and `analysis` channels from enforced audit findings in CLI, `--agent`, `--json`, and MCP output. Suggestions include placement, reason, trace, and route identity; analysis notices identify unresolved code and limits without changing error or warning counts.
+- Preserve distinct route contexts and case-insensitive method identity, and improve framework semantics for collections, query callbacks, user guards, dates, API Resources, and connection serialization.
+
+### Changed
+
+- A write reached through GET or HEAD is no longer an error or warning by itself. Existing enabled rules still enforce their boundaries, while incomplete endpoint analysis remains visible and non-blocking in `--strict`.
 
 ## v0.5.0 - 2026-09-19
 
@@ -14,7 +23,7 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Fixed
 
-- Recognize supported Laravel, Inertia 3, and Fortify 1 calls in endpoint and test-reachability analysis. The audit now follows selected policies, API Resource transformations, Inertia props and route-specific shared data, and Fortify actions or view callbacks without executing application code. Session reads remain clean, while explicit session writes on GET or HEAD routes are reported. Dynamic framework dispatch remains an incomplete-analysis warning that blocks strict mode.
+- Recognize supported Laravel, Inertia 3, and Fortify 1 calls in endpoint and test-reachability analysis. The v0.5.0 implementation reported explicit session writes on GET or HEAD routes and dynamic framework dispatch through strict-blocking warnings. The v0.6.0 policy preserves the effects but moves placement advice and unresolved analysis into `suggestions` and `analysis.notices`.
 - Recognize factories used by models extending Laravel’s standard Auth User, including aliases and local intermediate classes.
 - Recognize direct Laravel AI agent and file operations through SDK contracts, aliases, typed receivers, assignments, and bounded fluent chains instead of class-name suffixes. Unrelated `prompt()` methods and project-owned `Tool` interfaces stay clean, while unresolved calls on confirmed SDK symbols report `W_LARAVEL_AI_ANALYSIS_INCOMPLETE` and block strict mode.
 

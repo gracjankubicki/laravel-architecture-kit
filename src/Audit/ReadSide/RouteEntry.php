@@ -14,6 +14,7 @@ final readonly class RouteEntry
      * @param  array<string, string>  $constraints
      * @param  list<string>  $middleware
      * @param  list<string>  $excludedMiddleware
+     * @param  array<string, string>  $bindings
      */
     public function __construct(
         public array $verbs,
@@ -26,6 +27,7 @@ final readonly class RouteEntry
         public ?string $unresolved = null,
         public array $middleware = [],
         public array $excludedMiddleware = [],
+        public array $bindings = [],
     ) {}
 
     public static function fromRoute(Route $route): self
@@ -46,7 +48,41 @@ final readonly class RouteEntry
             $class === null ? 'Closure or unresolved route handler.' : null,
             array_values(array_filter($route->middleware(), 'is_string')),
             array_values(array_filter($route->excludedMiddleware(), 'is_string')),
+            array_filter($route->bindingFields(), 'is_string'),
         );
+    }
+
+    /** @return array<string, mixed> */
+    public function context(): array
+    {
+        return [
+            'id' => $this->identity(),
+            'uri' => $this->uri,
+            'name' => $this->name,
+            'domain' => $this->domain,
+            'verbs' => $this->verbs,
+            'middleware' => $this->middleware,
+            'excluded_middleware' => $this->excludedMiddleware,
+            'bindings' => $this->bindings,
+        ];
+    }
+
+    public function identity(): string
+    {
+        $data = [
+            $this->name,
+            $this->domain,
+            $this->uri,
+            $this->verbs,
+            $this->constraints,
+            $this->class === null ? null : strtolower(ltrim($this->class, '\\')),
+            $this->method === null ? null : strtolower($this->method),
+            $this->middleware,
+            $this->excludedMiddleware,
+            $this->bindings,
+        ];
+
+        return 'route:'.substr(hash('sha256', json_encode($data, JSON_THROW_ON_ERROR)), 0, 16);
     }
 
     /** @return array<string, mixed> */
@@ -61,6 +97,7 @@ final readonly class RouteEntry
             || ! in_array(array_keys($data), [
                 ['verbs', 'uri', 'name', 'domain', 'constraints', 'class', 'method', 'unresolved'],
                 ['verbs', 'uri', 'name', 'domain', 'constraints', 'class', 'method', 'unresolved', 'middleware', 'excludedMiddleware'],
+                ['verbs', 'uri', 'name', 'domain', 'constraints', 'class', 'method', 'unresolved', 'middleware', 'excludedMiddleware', 'bindings'],
             ], true)
             || ! is_array($data['verbs']) || ! array_is_list($data['verbs']) || ! is_string($data['uri']) || ! is_array($data['constraints'])) {
             throw new UnexpectedValueException('Invalid route entry.');
@@ -83,10 +120,14 @@ final readonly class RouteEntry
 
         $data['middleware'] ??= [];
         $data['excludedMiddleware'] ??= [];
+        $data['bindings'] ??= [];
         foreach (['middleware', 'excludedMiddleware'] as $key) {
             if (! is_array($data[$key]) || ! array_is_list($data[$key]) || array_filter($data[$key], fn (mixed $value): bool => ! is_string($value)) !== []) {
                 throw new UnexpectedValueException('Invalid route middleware.');
             }
+        }
+        if (! is_array($data['bindings']) || array_filter($data['bindings'], fn (mixed $key, mixed $value): bool => ! is_string($key) || ! is_string($value), ARRAY_FILTER_USE_BOTH) !== []) {
+            throw new UnexpectedValueException('Invalid route bindings.');
         }
 
         return new self(...$data);

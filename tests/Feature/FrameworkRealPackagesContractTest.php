@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
+use Illuminate\Database\Connection;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ use Inertia\Inertia;
 use Inertia\ResponseFactory;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use ReflectionClass;
 
 final class FrameworkRealPackagesContractTest extends TestCase
 {
@@ -33,6 +35,55 @@ final class FrameworkRealPackagesContractTest extends TestCase
         $this->assertTrue(method_exists(Features::class, 'canManageTwoFactorAuthentication'));
         $this->assertTrue(is_subclass_of(FormRequest::class, Request::class));
         $this->assertTrue(method_exists(JsonResource::class, 'resolve'));
+    }
+
+    public function test_real_runtime_and_analyzer_serialization_contracts_are_aligned(): void
+    {
+        $this->requireFrameworkPackages();
+
+        $reflection = new ReflectionClass(Connection::class);
+        $this->assertFalse($reflection->hasMethod('serialize'));
+        $this->assertFalse($reflection->hasMethod('unserialize'));
+
+        $probe = new SerializationContractProbe;
+        $serialized = serialize($probe);
+        $this->assertSame(1, $probe->serializeCalls);
+        $restored = unserialize($serialized);
+        $this->assertInstanceOf(SerializationContractProbe::class, $restored);
+        $this->assertSame(1, $restored->unserializeCalls);
+
+        $legacy = new LegacySerializationProbe;
+        $legacySerialized = serialize($legacy);
+        $this->assertSame(1, $legacy->sleepCalls);
+        $legacyRestored = unserialize($legacySerialized);
+        $this->assertInstanceOf(LegacySerializationProbe::class, $legacyRestored);
+        $this->assertSame(1, $legacyRestored->wakeupCalls);
+
+        $this->write('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model {}');
+        $this->write('app/Data/AnalyzerSerializationProbe.php', <<<'PHP'
+<?php
+namespace App\Data;
+use App\Models\Invoice;
+final class AnalyzerSerializationProbe {
+    public function __serialize(): array { Invoice::query()->update([]); return []; }
+}
+PHP);
+        $this->write('app/Http/Controllers/SerializationController.php', <<<'PHP'
+<?php
+namespace App\Http\Controllers;
+final class SerializationController {
+    public function show() { return serialize(new \App\Data\AnalyzerSerializationProbe); }
+}
+PHP);
+
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
+            [],
+            changedOnly: false,
+            routes: new RouteMap(['app\http\controllers\serializationcontroller::show' => ['GET', 'HEAD']]),
+        );
+        $this->assertCount(1, $result->suggestions);
+        $this->assertStringContainsString('AnalyzerSerializationProbe::__serialize', implode(' -> ', $result->suggestions[0]->trace));
+        $this->assertSame([], $result->notices);
     }
 
     public function test_real_laravel_route_context_drives_inertia_shared_resource_audit(): void
@@ -83,16 +134,23 @@ PHP);
         $routes = RouteMap::fresh($this->tempPath);
         $this->assertNull($routes->unavailable);
         $this->assertSame('App\\Http\\Middleware\\HandleInertiaRequests', $routes->context['middlewareAliases']['inertia'] ?? null);
+        $this->assertNotEmpty(array_values(array_filter(
+            $routes->entries ?? [],
+            fn ($entry): bool => str_starts_with((string) $entry->class, 'Laravel\\Fortify\\Http\\Controllers\\'),
+        )));
 
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions],
             changedOnly: false,
             routes: $routes,
         );
-        $findings = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
-        $messages = implode("\n", array_column($findings, 'message'));
+        $messages = implode("\n", [
+            ...array_map(fn ($suggestion): string => $suggestion->message.' '.$suggestion->reason.' '.implode(' -> ', $suggestion->trace).' at '.$suggestion->path.':'.$suggestion->line, $result->suggestions),
+            ...array_column($result->notices, 'message'),
+        ]);
 
-        $this->assertNotContains('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', array_column($findings, 'code'), $messages);
+        $appNotices = array_values(array_filter($result->notices, fn ($notice): bool => str_starts_with($notice->path, 'app/')));
+        $this->assertNotContains('A_CALL_UNRESOLVED', array_column($appNotices, 'code'), $messages);
         $this->assertStringContainsString('HandleInertiaRequests.php', $messages);
         $this->assertStringContainsString('ProjectResource::toArray', $messages);
     }
@@ -114,5 +172,43 @@ PHP);
         $files = new Filesystem;
         $files->ensureDirectoryExists(dirname($this->tempPath.'/'.$path));
         $files->put($this->tempPath.'/'.$path, $source);
+    }
+}
+
+final class SerializationContractProbe
+{
+    public int $serializeCalls = 0;
+
+    public int $unserializeCalls = 0;
+
+    public function __serialize(): array
+    {
+        $this->serializeCalls++;
+
+        return [];
+    }
+
+    public function __unserialize(array $data): void
+    {
+        $this->unserializeCalls++;
+    }
+}
+
+final class LegacySerializationProbe
+{
+    public int $sleepCalls = 0;
+
+    public int $wakeupCalls = 0;
+
+    public function __sleep(): array
+    {
+        $this->sleepCalls++;
+
+        return [];
+    }
+
+    public function __wakeup(): void
+    {
+        $this->wakeupCalls++;
     }
 }

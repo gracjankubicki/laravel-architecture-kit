@@ -341,11 +341,33 @@ final class MethodReachability
 
     private function type(SourceClass $source, Node|string|null $type): ?FrameworkValue
     {
+        if ($type instanceof Node\Name) {
+            return FrameworkValue::type($this->name($source, $type, $source->name));
+        }
         if ($type instanceof Node\NullableType) {
-            return $this->type($source, $type->type);
+            return $this->type($source, $type->type)?->nullable();
+        }
+        if ($type instanceof Node\UnionType) {
+            $values = [];
+            foreach ($type->types as $part) {
+                if ($part instanceof Node\Identifier && strtolower($part->toString()) === 'null') {
+                    $values[] = null;
+                } elseif (($value = $this->type($source, $part)) !== null) {
+                    $values[] = $value;
+                }
+            }
+
+            return FrameworkValue::union($values);
+        }
+        if ($type instanceof Node\Identifier) {
+            return match (strtolower($type->toString())) {
+                'null' => FrameworkValue::scalar()->nullable(),
+                'mixed', 'object', 'callable', 'iterable' => null,
+                default => FrameworkValue::scalar(),
+            };
         }
 
-        return $type instanceof Node\Name ? FrameworkValue::type($this->name($source, $type, $source->name)) : null;
+        return null;
     }
 
     private function name(SourceClass $source, Node\Name $name, string $runtime): string
@@ -369,14 +391,15 @@ final class MethodReachability
         foreach ($result->targets as $target) {
             $this->visit($target['class'], $target['method'], $target['arguments'] ?? [], $trace);
         }
+        $callbackResults = [];
         foreach ($result->callbacks as $callback) {
-            $this->walkCallback($callback, $trace);
+            $callbackResults[] = $this->walkCallback($callback, $trace);
         }
         if ($result->incomplete !== null) {
             $this->result->incomplete($source->file->path, $expr->getStartLine(), $result->incomplete);
         }
 
-        return $result->value;
+        return $this->resolveCallbackResults($result->value, $callbackResults);
     }
 
     /** @param list<string> $trace */
@@ -394,34 +417,77 @@ final class MethodReachability
         foreach ($value->items as $item) {
             $this->followReturnedValue($item, $source, $node, $trace);
         }
+        $this->followReturnedValue($value->element, $source, $node, $trace);
     }
 
     /** @param list<string> $trace */
-    private function walkCallback(FrameworkValue $value, array $trace): void
+    private function walkCallback(FrameworkValue $value, array $trace): ?FrameworkValue
     {
         if ($value->callback === null || $value->callbackSource === null) {
-            return;
+            return null;
         }
         $vars = $value->captures;
-        foreach ($value->callback->params as $param) {
+        foreach ($value->callback->params as $index => $param) {
             if (is_string($param->var->name)) {
-                $vars[$param->var->name] = $this->type($value->callbackSource, $param->type) ?? FrameworkValue::unknown();
+                $vars[$param->var->name] = $value->parameterTypes[$param->var->name]
+                    ?? $value->parameterTypes[$index]
+                    ?? $this->type($value->callbackSource, $param->type)
+                    ?? FrameworkValue::unknown();
             }
         }
         $returns = [];
         $this->walk($value->callback instanceof Expr\Closure ? $value->callback->stmts : [$value->callback->expr], $value->callbackSource, $vars, [...$trace, '{callback}'], $returns);
+
+        return FrameworkValue::merge($returns);
+    }
+
+    /** @param list<FrameworkValue|null> $results */
+    private function resolveCallbackResults(?FrameworkValue $value, array $results): ?FrameworkValue
+    {
+        if ($value === null) {
+            return null;
+        }
+        if ($value->type === '@callback-result') {
+            return $results[0] ?? FrameworkValue::unknown();
+        }
+        if ($value->element?->type === '@callback-result') {
+            return FrameworkValue::collection($results[0] ?? FrameworkValue::unknown());
+        }
+
+        return $value;
     }
 
     /** @return array<string, mixed> */
     private function valueKey(?FrameworkValue $value): array
     {
+        if ($value === null) {
+            return [
+                'type' => null,
+                'literal' => null,
+                'resource' => null,
+                'collection' => false,
+                'callback' => null,
+                'element' => null,
+                'nullable' => false,
+                'callback_result' => null,
+                'parameters' => [],
+                'possible_types' => [],
+                'unknown' => false,
+            ];
+        }
+
         return [
-            'type' => $value?->type,
-            'literal' => $value?->literal,
-            'resource' => $value?->resourceClass,
-            'collection' => $value?->resourceCollection,
-            'callback' => $value?->callback?->getStartLine(),
-            'unknown' => $value?->unknown,
+            'type' => $value->type,
+            'literal' => $value->literal,
+            'resource' => $value->resourceClass,
+            'collection' => $value->resourceCollection,
+            'callback' => $value->callback?->getStartLine(),
+            'element' => $value->element === null ? null : $this->valueKey($value->element),
+            'nullable' => $value->nullable,
+            'callback_result' => $value->callbackResult === null ? null : $this->valueKey($value->callbackResult),
+            'parameters' => array_map(fn (?FrameworkValue $parameter): array => $this->valueKey($parameter), $value->parameterTypes),
+            'possible_types' => $value->possibleTypes,
+            'unknown' => $value->unknown,
         ];
     }
 }

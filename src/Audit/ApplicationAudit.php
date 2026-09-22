@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerAnalysisResult;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerReadAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
@@ -98,6 +99,9 @@ final class ApplicationAudit
         $focusPaths = $this->excludePaths($focusPaths, $exclude);
         $findings = [];
         $suppressedInline = 0;
+        $suggestions = [];
+        $notices = [];
+        $analysisStatus = ControllerAnalysisResult::NOT_RUN;
         $customRuleSet = $customRules instanceof CustomRuleSet
             ? $customRules
             : CustomRuleSet::fromGlobal($customRules);
@@ -189,16 +193,18 @@ final class ApplicationAudit
             }
         }
 
-        if (in_array(Architecture::ThinControllers, $enabled, true) && in_array(Architecture::Actions, $enabled, true)) {
-            $endpointInputs = $changedFocusAvailable
-                ? $this->changedApplicationFiles($baseRef, new AuditScope([...$auditScope->directories, 'routes', 'bootstrap', 'config']), includeDeleted: true)
-                : null;
-            foreach ((new ControllerReadAudit($this->files, $this->basePath))->check($graph, $enabled, $endpointInputs, $routes) as $finding) {
-                $findingsByPath[$finding->path][] = $finding;
-                // An unchanged controller may be affected by an edited dependency.
-                // Keep inline and baseline suppression on the same shared path.
-                $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)));
-            }
+        $endpointInputs = $changedFocusAvailable
+            ? $this->changedApplicationFiles($baseRef, new AuditScope([...$auditScope->directories, 'routes', 'bootstrap', 'config']), includeDeleted: true)
+            : null;
+        $controllerAnalysis = (new ControllerReadAudit($this->files, $this->basePath))->analyze($graph, $enabled, $endpointInputs, $routes);
+        $analysisStatus = $controllerAnalysis->status;
+        $suggestions = $controllerAnalysis->suggestions;
+        $notices = $controllerAnalysis->notices;
+        foreach ($controllerAnalysis->findings as $finding) {
+            $findingsByPath[$finding->path][] = $finding;
+            // An unchanged controller may be affected by an edited dependency.
+            // Keep inline and baseline suppression on the same shared path.
+            $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)));
         }
 
         foreach ($focusFiles as $path => $file) {
@@ -220,6 +226,7 @@ final class ApplicationAudit
         }
 
         $findings = $this->withOccurrences($findings);
+        $suggestions = $this->withoutDuplicateAdvice($suggestions, $findings);
 
         usort($findings, function (AuditFinding $left, AuditFinding $right): int {
             return [$left->severityRank(), $left->path, $left->line, $left->rule]
@@ -232,7 +239,36 @@ final class ApplicationAudit
             suppressedInline: $suppressedInline,
             suppressedBaseline: $suppressedBaseline,
             cacheStatus: $plan->cacheStatus,
+            suggestions: $suggestions,
+            notices: $notices,
+            analysisStatus: $analysisStatus,
         );
+    }
+
+    /**
+     * @param  array<int, AuditSuggestion>  $suggestions
+     * @param  array<int, AuditFinding>  $findings
+     * @return array<int, AuditSuggestion>
+     */
+    private function withoutDuplicateAdvice(array $suggestions, array $findings): array
+    {
+        return array_values(array_filter($suggestions, function (AuditSuggestion $suggestion) use ($findings): bool {
+            foreach ($findings as $finding) {
+                if ($suggestion->code === 'S_MOVE_READ_TO_QUERY_OBJECT'
+                    && $finding->code === 'W_THIN_CONTROLLER_READ_SERVICE'
+                    && $finding->path === $suggestion->path) {
+                    return false;
+                }
+                if ($finding->path !== $suggestion->path || $finding->line !== $suggestion->line) {
+                    continue;
+                }
+                if ($suggestion->code === 'S_MOVE_WRITE_TO_ACTION' && str_starts_with((string) $finding->code, 'E_THIN_CONTROLLER')) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
     }
 
     /**

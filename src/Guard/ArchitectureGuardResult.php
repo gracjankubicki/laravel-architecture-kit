@@ -54,6 +54,17 @@ final readonly class ArchitectureGuardResult
                         'baseline' => 0,
                     ],
                     'findings' => [],
+                    'suggestions' => [
+                        'items' => [],
+                        'total' => 0,
+                        'truncated' => false,
+                    ],
+                    'analysis' => [
+                        'status' => 'not_run',
+                        'notices' => [],
+                        'total' => 0,
+                        'truncated' => false,
+                    ],
                     'skipped' => true,
                 ]
                 : [
@@ -76,6 +87,23 @@ final readonly class ArchitectureGuardResult
                         ],
                         $this->audit->findings,
                     ),
+                    'suggestions' => [
+                        'items' => array_map(
+                            fn ($suggestion): array => $suggestion->toArray(),
+                            $this->audit->suggestions,
+                        ),
+                        'total' => count($this->audit->suggestions),
+                        'truncated' => false,
+                    ],
+                    'analysis' => [
+                        'status' => $this->audit->analysisStatus,
+                        'notices' => array_map(
+                            fn ($notice): array => $notice->toArray(),
+                            $this->audit->notices,
+                        ),
+                        'total' => count($this->audit->notices),
+                        'truncated' => false,
+                    ],
                     // The generated hook runs `guard --json`, so leaving the status out
                     // of it would hide a rejected cache from the one caller that runs on
                     // every change an agent makes.

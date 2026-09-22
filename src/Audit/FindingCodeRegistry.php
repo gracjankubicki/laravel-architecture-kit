@@ -115,15 +115,15 @@ final readonly class FindingCodeRegistry
         ],
         'E_THIN_CONTROLLER_READ_SIDE_EFFECT' => [
             'rule' => 'thin-controller',
-            'title' => 'Read endpoint can cause a write or side effect',
-            'why' => 'GET and HEAD should not perform domain writes or dispatch external effects.',
-            'fix' => 'Follow the reported call chain and move the effect to a write endpoint and Action.',
+            'title' => 'Historical GET side-effect finding',
+            'why' => 'This code predates GH-17. A write reached through GET or HEAD is now evaluated through architecture suggestions and enabled rules, not through the HTTP verb alone.',
+            'fix' => 'Review the architectural suggestion and the enabled rules for the reported effect. Do not change GET to POST solely because this historical code exists.',
         ],
         'W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE' => [
             'rule' => 'thin-controller',
-            'title' => 'Read analysis is incomplete',
-            'why' => 'A route, call target, raw SQL statement, or bounded analysis could not be resolved; absence of a detected write is not proof of a read.',
-            'fix' => 'Inspect the reported location, make dispatch explicit, or supply a fresh RouteMap to programmatic audits. Suppress only after reviewing the boundary.',
+            'title' => 'Historical incomplete-read warning',
+            'why' => 'This code predates GH-17. Unresolved endpoint analysis now uses the non-blocking analysis channel.',
+            'fix' => 'Read the analysis notice at the reported location. It identifies unresolved code and does not require suppressing a strict-blocking warning.',
         ],
         'W_THIN_CONTROLLER_READ_SERVICE' => [
             'rule' => 'thin-controller',

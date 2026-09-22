@@ -1,5 +1,13 @@
 # Upgrade Guide
 
+## Upgrading to v0.6.0 from v0.5.x
+
+### Endpoint analysis has separate advice and uncertainty channels
+
+The audit no longer treats a write reached through GET or HEAD as an error by itself. `audit --agent`, `guard --agent`, `guard --json`, and MCP `audit-changed` add `suggestions` and `analysis`. Suggestions are non-blocking placement advice and can name an architecture that is not enabled. Analysis notices identify unresolved calls, routes, source budgets, or limits and do not fail `--strict` by themselves. Enforced findings and the existing warning policy remain unchanged.
+
+Guard success means that no enforced rule blocks the change. Review suggestions separately and keep enforcing the project's selected architecture boundaries.
+
 ## Upgrading to v0.4.0 from v0.3.x
 
 Nothing in this release changes what the audit reports for a project that changes no configuration. The wider audit scope and the `missing-test` rule are both opt-in, and the rest is additive. Three things are worth knowing before you update.

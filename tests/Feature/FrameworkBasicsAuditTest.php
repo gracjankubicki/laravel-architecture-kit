@@ -26,7 +26,9 @@ public function show(\App\Http\Requests\ProfileRequest $request): \Inertia\Respo
 }
 PHP);
 
-        $this->assertSame([], $this->thinFindings());
+        $items = $this->thinFindings();
+        $this->assertSame([], array_values(array_filter($items, fn ($item): bool => $item->code === 'S_MOVE_WRITE_TO_ACTION')));
+        $this->assertCount(1, array_values(array_filter($items, fn ($item): bool => $item->code === 'A_CALL_UNRESOLVED')));
     }
 
     public function test_session_reads_are_clean_and_explicit_mutations_on_get_are_reported(): void
@@ -35,12 +37,12 @@ PHP);
             $this->controller("public function show() { return session()->{$method}('status', 'saved'); }");
             $findings = $this->thinFindings();
             $this->assertCount(1, $findings, $method);
-            $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+            $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
             $this->assertStringContainsString('Illuminate\\Session\\Store::'.$method.'()', $findings[0]->message);
         }
 
         $this->controller("public function show() { return session(['status' => 'saved']); }");
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->thinFindings()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->thinFindings()[0]->code);
     }
 
     public function test_lookalike_session_method_is_not_treated_as_framework(): void
@@ -49,13 +51,13 @@ PHP);
         $this->write('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model {}');
         $this->controller('public function show(\App\Support\LocalStore $store) { return $store->put(); }');
 
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->thinFindings()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->thinFindings()[0]->code);
     }
 
     public function test_session_facade_mutation_is_reported_only_for_read_verbs(): void
     {
         $this->controller("public function show() { return \\Illuminate\\Support\\Facades\\Session::flash('status', 'saved'); }");
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->thinFindings()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->thinFindings()[0]->code);
 
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions],
@@ -72,7 +74,7 @@ PHP);
 
         $findings = $this->thinFindings();
         $this->assertCount(1, $findings);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $findings[0]->code);
+        $this->assertSame('A_CALL_UNRESOLVED', $findings[0]->code);
     }
 
     private function controller(string $method): void
@@ -99,7 +101,15 @@ PHP);
             ),
         );
 
-        return array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
+        $items = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
+        foreach ($result->suggestions as $suggestion) {
+            $items[] = (object) ['path' => $suggestion->path, 'line' => $suggestion->line, 'message' => $suggestion->message.' '.$suggestion->reason.' at '.$suggestion->path.':'.$suggestion->line, 'code' => $suggestion->code];
+        }
+        foreach ($result->notices as $notice) {
+            $items[] = (object) ['path' => $notice->path, 'line' => $notice->line, 'message' => $notice->message, 'code' => $notice->code];
+        }
+
+        return $items;
     }
 
     private function write(string $path, string $source): void

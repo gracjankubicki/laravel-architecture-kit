@@ -33,7 +33,7 @@ PHP);
         ]));
 
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertSame('app/Providers/FortifyServiceProvider.php', $findings[0]->path);
     }
 
@@ -197,7 +197,15 @@ PHP);
             routes: $routes,
         );
 
-        return array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
+        $items = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
+        foreach ($result->suggestions as $suggestion) {
+            $items[] = (object) ['path' => $suggestion->path, 'line' => $suggestion->line, 'message' => $suggestion->message.' '.$suggestion->reason.' '.implode(' -> ', $suggestion->trace).' at '.$suggestion->path.':'.$suggestion->line, 'code' => $suggestion->code];
+        }
+        foreach ($result->notices as $notice) {
+            $items[] = (object) ['path' => $notice->path, 'line' => $notice->line, 'message' => $notice->message, 'code' => $notice->code];
+        }
+
+        return $items;
     }
 
     private function write(string $path, string $source): void

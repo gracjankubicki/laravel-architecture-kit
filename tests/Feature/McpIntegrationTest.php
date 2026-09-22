@@ -83,6 +83,23 @@ PHP);
         }
     }
 
+    public function test_mcp_audit_exposes_non_blocking_suggestions_and_analysis(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::get("/invoices", [\App\Http\Controllers\InvoiceController::class, "show"]);');
+        $this->writeFile('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model {}');
+        $this->writeFile('app/Http/Controllers/InvoiceController.php', '<?php namespace App\Http\Controllers; final class InvoiceController { public function show(\App\Models\Invoice $invoice) { $invoice->save(); } }');
+
+        ArchitectureKitServer::tool(AuditChanged::class, ['changed' => false, 'strict' => true])
+            ->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('ok', true)
+                ->where('suggestions.items.0.code', 'S_MOVE_WRITE_TO_ACTION')
+                ->where('analysis.status', 'complete')
+                ->etc()
+            );
+    }
+
     public function test_mcp_server_version_is_read_from_composer_metadata(): void
     {
         $server = new ArchitectureKitServer(new FakeTransporter);

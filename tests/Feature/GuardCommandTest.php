@@ -162,6 +162,35 @@ PHP);
         $this->assertStringContainsString('"audit"', $output);
     }
 
+    public function test_guard_shows_non_blocking_channels_even_on_success(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model {}');
+        $this->writeFile('app/Http/Controllers/InvoiceController.php', '<?php namespace App\Http\Controllers; final class InvoiceController { public function show(\App\Models\Invoice $invoice) { $invoice->save(); } }');
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::get("/invoices", [\App\Http\Controllers\InvoiceController::class, "show"]);');
+
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--strict' => true]));
+        $this->assertStringContainsString('Architectural suggestions', Artisan::output());
+
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--json' => true, '--strict' => true]));
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $payload['audit']['suggestions']['items'][0]['code']);
+        $this->assertSame('complete', $payload['audit']['analysis']['status']);
+    }
+
+    public function test_guard_json_marks_skipped_audit_analysis_as_not_run(): void
+    {
+        $this->writeFile('config/architectures.php', <<<'PHP'
+<?php
+return ['enabled' => ['billing-workflows']];
+PHP);
+
+        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--json' => true]));
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertTrue($payload['audit']['skipped']);
+        $this->assertSame('not_run', $payload['audit']['analysis']['status']);
+    }
+
     public function test_guard_fails_on_enabled_scoped_custom_audit_rule(): void
     {
         $this->writeCustomArchitecture('billing-workflows');

@@ -21,7 +21,7 @@ final class FrameworkInertiaAuditTest extends TestCase
 
         $findings = $this->thinFindings();
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('{callback}', $findings[0]->message);
     }
 
@@ -41,7 +41,7 @@ PHP);
 
         $findings = $this->thinFindings(['App\\Providers\\AppServiceProvider']);
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('app/Providers/AppServiceProvider.php', $findings[0]->message);
     }
 
@@ -91,7 +91,7 @@ PHP);
 
         $findings = $this->thinFindings();
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('ProjectResource::toArray', $findings[0]->message);
     }
 
@@ -101,7 +101,7 @@ PHP);
 
         $findings = $this->thinFindings();
         $this->assertCount(1, $findings);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $findings[0]->code);
+        $this->assertSame('A_CALL_UNRESOLVED', $findings[0]->code);
         $this->assertStringContainsString('Inertia prop or callback is dynamic', $findings[0]->message);
     }
 
@@ -119,7 +119,7 @@ PHP);
 
         $findings = $this->thinFindings(['App\\Providers\\AppServiceProvider']);
         $this->assertCount(1, $findings);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $findings[0]->code);
+        $this->assertSame('A_CALL_UNRESOLVED', $findings[0]->code);
         $this->assertStringContainsString('Inertia prop or callback is dynamic', $findings[0]->message);
     }
 
@@ -140,7 +140,7 @@ PHP);
 
         $findings = $this->thinFindingsWithRoutes($routes);
         $this->assertCount(1, $findings);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $findings[0]->code);
+        $this->assertSame('A_CALL_UNRESOLVED', $findings[0]->code);
         $this->assertStringContainsString('alias or group is unavailable for dangerous-inertia', $findings[0]->message);
     }
 
@@ -160,7 +160,7 @@ PHP);
 
         $findings = $this->thinFindingsWithRoutes($routes);
         $this->assertCount(1, $findings);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $findings[0]->code);
+        $this->assertSame('A_SOURCE_UNAVAILABLE', $findings[0]->code);
         $this->assertStringContainsString('source is unavailable for Company\\Middleware\\HandleInertiaRequests', $findings[0]->message);
     }
 
@@ -200,14 +200,16 @@ PHP);
             new RouteEntry(['POST'], 'projects/refresh', class: 'App\\Http\\Controllers\\FrameworkController', method: 'show', middleware: ['dangerous-inertia']),
         ], context: $context);
 
-        $this->assertSame([], $this->thinFindingsWithRoutes($routes));
+        $items = $this->thinFindingsWithRoutes($routes);
+        $this->assertCount(1, $items);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $items[0]->code);
 
         $dangerousGet = new RouteMap(entries: [
             new RouteEntry(['GET', 'HEAD'], 'projects', class: 'App\\Http\\Controllers\\FrameworkController', method: 'show', middleware: ['dangerous-inertia']),
         ], context: $context);
         $findings = $this->thinFindingsWithRoutes($dangerousGet);
         $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('app/Http/Middleware/DangerousInertia.php', $findings[0]->message);
     }
 
@@ -279,7 +281,15 @@ PHP);
             routes: $routes,
         );
 
-        return array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
+        $items = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
+        foreach ($result->suggestions as $suggestion) {
+            $items[] = (object) ['path' => $suggestion->path, 'line' => $suggestion->line, 'message' => $suggestion->message.' '.$suggestion->reason.' '.implode(' -> ', $suggestion->trace).' at '.$suggestion->path.':'.$suggestion->line, 'code' => $suggestion->code];
+        }
+        foreach ($result->notices as $notice) {
+            $items[] = (object) ['path' => $notice->path, 'line' => $notice->line, 'message' => $notice->message, 'code' => $notice->code];
+        }
+
+        return $items;
     }
 
     private function write(string $path, string $source): void

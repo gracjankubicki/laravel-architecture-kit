@@ -10,6 +10,8 @@ final readonly class ApplicationAuditResult
 {
     /**
      * @param  array<int, AuditFinding>  $findings
+     * @param  array<int, AuditSuggestion>  $suggestions
+     * @param  array<int, AnalysisNotice>  $notices
      */
     public function __construct(
         public string $scope,
@@ -18,6 +20,10 @@ final readonly class ApplicationAuditResult
         public int $suppressedBaseline = 0,
         /** Appended last so existing positional construction keeps its meaning. */
         public CacheStatus $cacheStatus = CacheStatus::Disabled,
+        /** Additive channels never affect the enforced error or warning counters. */
+        public array $suggestions = [],
+        public array $notices = [],
+        public string $analysisStatus = 'not_run',
     ) {}
 
     /**

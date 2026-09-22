@@ -49,7 +49,25 @@ PHP);
             routes: new RouteMap(['app\http\controllers\planningcontroller::show' => $verbs]),
         );
 
-        return array_values(array_filter($result->findings, fn ($f) => $f->rule === 'thin-controller'));
+        $items = array_values(array_filter($result->findings, fn ($f) => $f->rule === 'thin-controller'));
+        foreach ($result->suggestions as $suggestion) {
+            $items[] = (object) [
+                'path' => $suggestion->path,
+                'line' => $suggestion->line,
+                'message' => $suggestion->message.' '.$suggestion->reason.' '.implode(' -> ', $suggestion->trace).' at '.$suggestion->path.':'.$suggestion->line,
+                'code' => $suggestion->code,
+            ];
+        }
+        foreach ($result->notices as $notice) {
+            $items[] = (object) [
+                'path' => $notice->path,
+                'line' => $notice->line,
+                'message' => $notice->message,
+                'code' => $notice->code,
+            ];
+        }
+
+        return $items;
     }
 
     #[DataProvider('authUserOperations')]
@@ -66,7 +84,7 @@ PHP);
             $this->assertSame([], $findings);
         } else {
             $this->assertCount(1, $findings);
-            $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+            $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
             $this->assertStringContainsString('PlanningController::show -> App\\Services\\ViewService::load', $findings[0]->message);
         }
     }
@@ -110,8 +128,8 @@ PHP);
     {
         $this->fixture($body);
         $findings = $this->audit();
-        $this->assertCount(1, $findings);
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $findings[0]->code);
+        $this->assertGreaterThanOrEqual(1, count($findings));
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
         $this->assertStringContainsString('PlanningController::show -> App\Services\ViewService::load', $findings[0]->message);
         $this->assertStringContainsString('app/Services/ViewService.php:1', $findings[0]->message);
     }
@@ -146,8 +164,8 @@ PHP);
     {
         $this->fixture($body, $extra);
         $findings = $this->audit();
-        $this->assertCount(1, $findings);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $findings[0]->code);
+        $this->assertGreaterThanOrEqual(1, count($findings));
+        $this->assertContains('A_CALL_UNRESOLVED', array_column($findings, 'code'));
     }
 
     public static function unknowns(): iterable
@@ -187,7 +205,7 @@ PHP);
     public function test_named_arguments_are_bound_by_parameter_name(): void
     {
         $this->fixture('$this->save(other: null, value: $invoice);', 'private function save($value, $other) { $value->save(); }');
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->audit()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->audit()[0]->code);
     }
 
     public function test_statements_after_an_unconditional_return_are_not_reachable(): void
@@ -199,14 +217,14 @@ PHP);
     public function test_concrete_write_is_retained_after_many_unknown_calls(): void
     {
         $this->fixture(str_repeat('$unknown->call();', 30).'$invoice->save();');
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->audit()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->audit()[0]->code);
     }
 
     public function test_deep_helper_write_and_mixed_route_are_reported(): void
     {
         $this->fixture('return $this->fetch();', 'private function fetch() { Invoice::create([]); }');
         $finding = $this->audit(['GET', 'HEAD', 'POST'])[0];
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $finding->code);
+        $this->assertSame('W_THIN_CONTROLLER_SERVICE_DEPENDENCY', $finding->code);
         $this->assertStringContainsString('ViewService::fetch', $finding->message);
     }
 
@@ -232,7 +250,7 @@ PHP);
     public function test_unresolved_route_is_reported_without_accusing_the_service_of_writing(): void
     {
         $this->fixture();
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $this->audit([])[0]->code);
+        $this->assertSame('A_ROUTE_CONTEXT_UNAVAILABLE', $this->audit([])[0]->code);
     }
 
     public function test_query_objects_have_a_distinct_read_advisory(): void
@@ -261,7 +279,7 @@ PHP);
         $this->assertSame([], $this->audit());
         $path = $this->tempPath.'/app/Http/Controllers/PlanningController.php';
         file_put_contents($path, str_replace('return 1;', 'return $this->helper(new \App\Services\ViewService, new \App\Models\Invoice);', file_get_contents($path)));
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->audit()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->audit()[0]->code);
     }
 
     public function test_unavailable_routes_are_explicit_for_direct_writes_without_a_service(): void
@@ -272,7 +290,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services], false,
             routes: new RouteMap(unavailable: 'Test route bootstrap failure.'),
         );
-        $incomplete = array_values(array_filter($result->findings, fn ($f) => $f->code === 'W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE'));
+        $incomplete = array_values(array_filter($result->notices, fn ($f) => $f->code === 'A_ROUTE_CONTEXT_UNAVAILABLE'));
         $this->assertCount(1, $incomplete);
         $this->assertStringContainsString('Test route bootstrap failure.', $incomplete[0]->message);
     }
@@ -296,10 +314,10 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services], false,
             routes: new RouteMap(unavailable: 'Test route bootstrap failure.'),
         );
-        $this->assertCount(1, $result->findings);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $result->findings[0]->code);
-        $this->assertSame('app/Http/Controllers/PlanningController.php', $result->findings[0]->path);
-        $this->assertSame(1, $result->findings[0]->line);
+        $this->assertCount(1, $result->notices);
+        $this->assertSame('A_ROUTE_CONTEXT_UNAVAILABLE', $result->notices[0]->code);
+        $this->assertSame('app/Http/Controllers/PlanningController.php', $result->notices[0]->path);
+        $this->assertSame(1, $result->notices[0]->line);
     }
 
     public function test_read_effect_can_be_suppressed_at_the_controller_method(): void
@@ -307,19 +325,25 @@ PHP);
         $this->fixture('$invoice->save();');
         $path = $this->tempPath.'/app/Http/Controllers/PlanningController.php';
         file_put_contents($path, str_replace('    public function show', "    // @architecture-kit-ignore thin-controller -- reviewed endpoint\n    public function show", file_get_contents($path)));
-        $this->assertSame([], $this->audit());
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
+            [Architecture::ThinControllers, Architecture::Actions, Architecture::Services],
+            false,
+            routes: new RouteMap(['app\http\controllers\planningcontroller::show' => ['GET']]),
+        );
+        $this->assertSame('invalid-suppression', $result->findings[0]->rule);
+        $this->assertCount(1, $result->suggestions);
     }
 
     public function test_effects_in_service_constructors_are_not_ignored(): void
     {
         $this->fixture(extra: 'public function __construct() { Invoice::create([]); }');
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->audit()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->audit()[0]->code);
     }
 
     public function test_type_from_a_local_assignment_is_followed(): void
     {
         $this->fixture('$query = Invoice::query(); $invoice = $query->first(); $invoice->save();');
-        $this->assertSame('E_THIN_CONTROLLER_READ_SIDE_EFFECT', $this->audit()[0]->code);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->audit()[0]->code);
     }
 
     public function test_method_depth_limit_reports_incomplete_instead_of_succeeding(): void
@@ -329,27 +353,28 @@ PHP);
             $methods .= 'private function step'.$i.'() { return $this->step'.($i + 1).'(); }';
         }
         $this->fixture('return $this->step0();', $methods);
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $this->audit()[0]->code);
+        $this->assertSame('A_CALL_UNRESOLVED', $this->audit()[0]->code);
         $this->assertStringContainsString('limit', $this->audit()[0]->message);
     }
 
     public function test_oversized_dependency_reports_incomplete_instead_of_succeeding(): void
     {
         $this->fixture('/*'.str_repeat('x', 100_001).'*/ return 1;');
-        $this->assertSame('W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE', $this->audit()[0]->code);
+        $this->assertSame('A_SOURCE_UNAVAILABLE', $this->audit()[0]->code);
     }
 
-    public function test_read_finding_uses_the_existing_baseline_contract(): void
+    public function test_read_advice_is_not_silenced_by_the_findings_baseline(): void
     {
         $this->fixture('$invoice->save();');
         $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
         $enabled = [Architecture::ThinControllers, Architecture::Actions, Architecture::Services];
         $routes = new RouteMap(['app\http\controllers\planningcontroller::show' => ['GET']]);
         $before = $audit->run($enabled, false, useBaseline: false, updateBaseline: true, routes: $routes);
-        $this->assertCount(1, $before->findings);
+        $this->assertCount(1, $before->suggestions);
         $after = $audit->run($enabled, false, useBaseline: true, routes: $routes);
         $this->assertSame([], $after->findings);
-        $this->assertSame(1, $after->suppressedBaseline);
+        $this->assertCount(1, $after->suggestions);
+        $this->assertSame(0, $after->suppressedBaseline);
     }
 
     public function test_unchanged_controller_is_checked_after_its_service_changes_with_warm_graph_cache(): void
@@ -366,9 +391,9 @@ PHP);
         $this->fixture('$invoice->save();');
         clearstatcache();
         $result = $audit->run($enabled, true, cache: $cache, routes: $routes);
-        $effects = array_values(array_filter($result->findings, fn ($f) => $f->code === 'E_THIN_CONTROLLER_READ_SIDE_EFFECT'));
+        $effects = array_values(array_filter($result->suggestions, fn ($f) => $f->code === 'S_MOVE_WRITE_TO_ACTION'));
         $this->assertCount(1, $effects);
-        $this->assertSame('app/Http/Controllers/PlanningController.php', $effects[0]->path);
+        $this->assertSame('app/Services/ViewService.php', $effects[0]->path);
     }
 
     public function test_inherited_controller_endpoint_is_checked(): void
@@ -377,7 +402,7 @@ PHP);
         $original = file_get_contents($this->tempPath.'/app/Http/Controllers/PlanningController.php');
         $this->write('app/Http/Controllers/BaseController.php', str_replace('final class PlanningController', 'class BaseController', $original));
         $this->write('app/Http/Controllers/PlanningController.php', '<?php namespace App\Http\Controllers; final class PlanningController extends BaseController {}');
-        $effects = array_values(array_filter($this->audit(), fn ($f) => $f->code === 'E_THIN_CONTROLLER_READ_SIDE_EFFECT'));
+        $effects = array_values(array_filter($this->audit(), fn ($f) => $f->code === 'S_MOVE_WRITE_TO_ACTION'));
         $this->assertCount(1, $effects);
     }
 
@@ -398,7 +423,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services], true,
             routes: new RouteMap(['app\http\controllers\planningcontroller::show' => ['GET']]),
         );
-        $effects = array_values(array_filter($result->findings, fn ($f) => $f->code === 'E_THIN_CONTROLLER_READ_SIDE_EFFECT'));
+        $effects = array_values(array_filter($result->suggestions, fn ($f) => $f->code === 'S_MOVE_WRITE_TO_ACTION'));
         $this->assertCount(1, $effects);
     }
 

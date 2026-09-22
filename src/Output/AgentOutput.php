@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Output;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\AnalysisNotice;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
+use GracjanKubicki\ArchitectureKit\Audit\AuditSuggestion;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
 use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextResult;
@@ -43,6 +45,8 @@ final readonly class AgentOutput
             ...($baselineUpdated ? ['baseline' => 'updated'] : []),
             ...($result->cacheNote() !== null ? ['cache' => $result->cacheStatus->value] : []),
             ...$this->findings($result->findings, $limit, $full),
+            ...$this->suggestions($result->suggestions, $limit),
+            ...$this->analysis($result->analysisStatus, $result->notices, $limit),
             'next' => $ok ? ['continue'] : ['fix_findings', 'rerun:audit --agent'],
         ];
 
@@ -72,6 +76,12 @@ final readonly class AgentOutput
             ],
             ...($result->audit?->cacheNote() !== null ? ['cache' => $result->audit->cacheStatus->value] : []),
             ...$findings,
+            ...$this->suggestions($result->audit === null ? [] : $result->audit->suggestions, $limit),
+            ...$this->analysis(
+                $result->audit === null ? 'not_run' : $result->audit->analysisStatus,
+                $result->audit === null ? [] : $result->audit->notices,
+                $limit,
+            ),
             'next' => $result->ok()
                 ? ['continue']
                 : ($result->audit === null ? ['run:architecture-kit:install', 'rerun:guard --agent'] : ['fix_findings', 'rerun:guard --agent']),
@@ -359,6 +369,41 @@ final readonly class AgentOutput
         ];
     }
 
+    /**
+     * @param  array<int, AuditSuggestion>  $suggestions
+     * @return array<string, mixed>
+     */
+    private function suggestions(array $suggestions, int $limit): array
+    {
+        $visible = $limit === 0 ? [] : array_slice($suggestions, 0, $limit);
+
+        return [
+            'suggestions' => [
+                'items' => array_map(fn (AuditSuggestion $suggestion): array => $suggestion->toArray(), $visible),
+                'total' => count($suggestions),
+                'truncated' => count($visible) < count($suggestions),
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<int, AnalysisNotice>  $notices
+     * @return array<string, mixed>
+     */
+    private function analysis(string $status, array $notices, int $limit): array
+    {
+        $visible = $limit === 0 ? [] : array_slice($notices, 0, $limit);
+
+        return [
+            'analysis' => [
+                'status' => $status,
+                'notices' => array_map(fn (AnalysisNotice $notice): array => $notice->toArray(), $visible),
+                'total' => count($notices),
+                'truncated' => count($visible) < count($notices),
+            ],
+        ];
+    }
+
     private function scope(string $scope): string
     {
         return str_contains($scope, 'changed') ? 'changed' : 'all';
@@ -458,7 +503,7 @@ final readonly class AgentOutput
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit audit agent output',
             'type' => 'object',
-            'required' => ['v', 'ok', 'cmd', 'scope', 'err', 'warn', 'sup', 'trunc', 'next'],
+            'required' => ['v', 'ok', 'cmd', 'scope', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'next'],
             'properties' => [
                 'v' => ['const' => 1],
                 'ok' => ['type' => 'boolean'],
@@ -470,6 +515,7 @@ final readonly class AgentOutput
                 'baseline' => ['const' => 'updated'],
                 'cache' => $this->cacheStatusSchema(),
                 ...$this->findingCollectionProperties(),
+                ...$this->adviceCollectionProperties(),
                 'next' => $this->stringListSchema(),
             ],
             'additionalProperties' => false,
@@ -487,7 +533,7 @@ final readonly class AgentOutput
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit guard agent output',
             'type' => 'object',
-            'required' => ['v', 'ok', 'cmd', 'doctor', 'agents', 'audit', 'err', 'warn', 'sup', 'trunc', 'next'],
+            'required' => ['v', 'ok', 'cmd', 'doctor', 'agents', 'audit', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'next'],
             'properties' => [
                 'v' => ['const' => 1],
                 'ok' => ['type' => 'boolean'],
@@ -500,6 +546,7 @@ final readonly class AgentOutput
                 'sup' => $this->suppressionSchema(),
                 'cache' => $this->cacheStatusSchema(),
                 ...$this->findingCollectionProperties(),
+                ...$this->adviceCollectionProperties(),
                 'next' => $this->stringListSchema(),
             ],
             'additionalProperties' => false,
@@ -1179,6 +1226,87 @@ final readonly class AgentOutput
                     ],
                     'additionalProperties' => false,
                 ],
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function adviceCollectionProperties(): array
+    {
+        $route = [
+            'type' => ['object', 'null'],
+            'required' => ['id', 'uri', 'name', 'domain', 'verbs', 'middleware', 'excluded_middleware', 'bindings'],
+            'properties' => [
+                'id' => ['type' => 'string'],
+                'uri' => ['type' => ['string', 'null']],
+                'name' => ['type' => ['string', 'null']],
+                'domain' => ['type' => ['string', 'null']],
+                'verbs' => $this->stringListSchema(),
+                'middleware' => $this->stringListSchema(),
+                'excluded_middleware' => $this->stringListSchema(),
+                'bindings' => [
+                    'type' => 'object',
+                    'additionalProperties' => ['type' => 'string'],
+                ],
+            ],
+            'additionalProperties' => false,
+        ];
+
+        return [
+            'suggestions' => [
+                'type' => 'object',
+                'required' => ['items', 'total', 'truncated'],
+                'properties' => [
+                    'items' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'required' => ['code', 'architecture', 'enabled', 'path', 'line', 'message', 'reason', 'trace', 'route'],
+                            'properties' => [
+                                'code' => ['type' => 'string'],
+                                'architecture' => ['type' => 'string'],
+                                'enabled' => ['type' => 'boolean'],
+                                'path' => ['type' => 'string'],
+                                'line' => ['type' => 'integer', 'minimum' => 1],
+                                'message' => ['type' => 'string'],
+                                'reason' => ['type' => 'string'],
+                                'trace' => $this->stringListSchema(),
+                                'route' => $route,
+                            ],
+                            'additionalProperties' => false,
+                        ],
+                    ],
+                    'total' => ['type' => 'integer', 'minimum' => 0],
+                    'truncated' => ['type' => 'boolean'],
+                ],
+                'additionalProperties' => false,
+            ],
+            'analysis' => [
+                'type' => 'object',
+                'required' => ['status', 'notices', 'total', 'truncated'],
+                'properties' => [
+                    'status' => ['enum' => ['complete', 'incomplete', 'not_run']],
+                    'notices' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'required' => ['code', 'reason', 'path', 'line', 'message', 'trace', 'route'],
+                            'properties' => [
+                                'code' => ['type' => 'string'],
+                                'reason' => ['type' => 'string'],
+                                'path' => ['type' => 'string'],
+                                'line' => ['type' => 'integer', 'minimum' => 1],
+                                'message' => ['type' => 'string'],
+                                'trace' => $this->stringListSchema(),
+                                'route' => $route,
+                            ],
+                            'additionalProperties' => false,
+                        ],
+                    ],
+                    'total' => ['type' => 'integer', 'minimum' => 0],
+                    'truncated' => ['type' => 'boolean'],
+                ],
+                'additionalProperties' => false,
             ],
         ];
     }

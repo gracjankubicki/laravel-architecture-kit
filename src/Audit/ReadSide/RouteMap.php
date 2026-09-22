@@ -66,11 +66,61 @@ final readonly class RouteMap
         ));
     }
 
+    /**
+     * Return one analysis context per distinct route registration.
+     *
+     * @return list<array{method: string, verbs: list<string>, route: ?RouteEntry}>
+     */
+    public function contextsFor(string $class, string $method): array
+    {
+        if ($this->entries !== null) {
+            $contexts = [];
+            foreach ($this->entriesFor($class, $method) as $entry) {
+                $contexts[$entry->identity()] ??= ['method' => $entry->method ?? $method, 'verbs' => $entry->verbs, 'route' => $entry];
+            }
+
+            return array_values($contexts);
+        }
+
+        $verbs = $this->verbs($class, $method);
+
+        return $verbs === [] ? [] : [['method' => $method, 'verbs' => $verbs, 'route' => null]];
+    }
+
+    /**
+     * Registered method names keyed by their case-insensitive identity.
+     *
+     * @return array<string, string>
+     */
+    public function methodsFor(string $class): array
+    {
+        $methods = [];
+        if ($this->entries !== null) {
+            foreach ($this->entries as $entry) {
+                if ($entry->class !== null && $entry->method !== null && strcasecmp($entry->class, ltrim($class, '\\')) === 0) {
+                    $methods[strtolower($entry->method)] = $entry->method;
+                }
+            }
+
+            return $methods;
+        }
+
+        $prefix = strtolower(ltrim($class, '\\')).'::';
+        foreach ($this->methods as $callback => $_verbs) {
+            if (str_starts_with($callback, $prefix)) {
+                $method = substr($callback, strlen($prefix));
+                $methods[strtolower($method)] = $method;
+            }
+        }
+
+        return $methods;
+    }
+
     /** @return array<string, mixed> */
     public function snapshot(): array
     {
         return [
-            'version' => 2,
+            'version' => 3,
             'entries' => array_map(fn (RouteEntry $entry): array => $entry->toArray(), $this->entries ?? []),
             'context' => $this->context ?? [
                 'status' => 'unavailable',
@@ -79,6 +129,7 @@ final readonly class RouteMap
                 'middlewareGroups' => [],
                 'middlewareAliases' => [],
                 'packageVersions' => [],
+                'auth' => null,
                 'unavailable' => 'Laravel framework context was not supplied with this route map.',
             ],
         ];
@@ -86,10 +137,10 @@ final readonly class RouteMap
 
     public static function fromSnapshot(mixed $data): self
     {
-        if (! is_array($data) || ! in_array($data['version'] ?? null, [1, 2], true) || ! is_array($data['entries'] ?? null) || ! array_is_list($data['entries'])) {
+        if (! is_array($data) || ! in_array($data['version'] ?? null, [1, 2, 3], true) || ! is_array($data['entries'] ?? null) || ! array_is_list($data['entries'])) {
             throw new \UnexpectedValueException('Invalid route snapshot.');
         }
-        if (($data['version'] ?? null) === 2 && ! self::validContext($data['context'] ?? null)) {
+        if (($data['version'] ?? null) >= 2 && ! self::validContext($data['context'] ?? null)) {
             throw new \UnexpectedValueException('Invalid route snapshot context.');
         }
         $entries = [];
@@ -105,7 +156,7 @@ final readonly class RouteMap
         }
         ksort($methods);
 
-        return new self($methods, entries: $entries, context: ($data['version'] ?? null) === 2 ? $data['context'] : null);
+        return new self($methods, entries: $entries, context: ($data['version'] ?? null) >= 2 ? $data['context'] : null);
     }
 
     public static function fresh(string $basePath): self
@@ -167,7 +218,34 @@ final readonly class RouteMap
                 return false;
             }
         }
+        if (array_key_exists('auth', $context) && ! self::validAuthContext($context['auth'])) {
+            return false;
+        }
 
         return ! isset($context['unavailable']) || is_string($context['unavailable']);
+    }
+
+    private static function validAuthContext(mixed $auth): bool
+    {
+        if ($auth === null) {
+            return true;
+        }
+        if (! is_array($auth)
+            || (($auth['default'] ?? null) !== null && ! is_string($auth['default']))
+            || ! is_array($auth['guards'] ?? null)) {
+            return false;
+        }
+        foreach ($auth['guards'] as $name => $guard) {
+            if (! is_string($name)
+                || ! is_array($guard)
+                || ! is_string($guard['driver'] ?? null)
+                || (($guard['provider'] ?? null) !== null && ! is_string($guard['provider']))
+                || (($guard['model'] ?? null) !== null && ! is_string($guard['model']))
+                || ! is_bool($guard['custom'] ?? false)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

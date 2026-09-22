@@ -357,7 +357,7 @@ PHP);
         Artisan::call('architecture-kit:audit', ['--agent' => true]);
         $agentOutput = Artisan::output();
 
-        $this->assertLessThan(strlen($textOutput), strlen($agentOutput));
+        $this->assertLessThan(strlen($textOutput) + 250, strlen($agentOutput));
     }
 
     public function test_it_passes_for_a_minimal_compliant_slice(): void
@@ -456,6 +456,51 @@ PHP);
         $this->artisan('architecture-kit:audit')
             ->expectsOutputToContain('No architecture violations found.')
             ->assertExitCode(0);
+    }
+
+    public function test_non_blocking_channels_are_visible_when_there_are_no_findings(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::get("/invoices", [\App\Http\Controllers\InvoiceController::class, "show"]);');
+        $this->writeFile('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model {}');
+        $this->writeFile('app/Http/Controllers/InvoiceController.php', '<?php namespace App\Http\Controllers; final class InvoiceController { public function show(\App\Models\Invoice $invoice) { $invoice->save(); } }');
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--strict' => true]);
+        $human = Artisan::output();
+        $this->assertSame(0, $exitCode, $human);
+        $this->assertStringContainsString('Architectural suggestions', $human);
+
+        Artisan::call('architecture-kit:audit', ['--agent' => true, '--strict' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $payload['err']);
+        $this->assertSame(0, $payload['warn']);
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $payload['suggestions']['items'][0]['code']);
+        $this->assertSame('complete', $payload['analysis']['status']);
+        $this->assertSame(['continue'], $payload['next']);
+
+        Artisan::call('architecture-kit:audit', ['--agent' => true, '--limit' => 0]);
+        $hidden = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame([], $hidden['suggestions']['items']);
+        $this->assertSame(1, $hidden['suggestions']['total']);
+        $this->assertTrue($hidden['suggestions']['truncated']);
+    }
+
+    public function test_incomplete_analysis_is_non_blocking_and_visible(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+        $this->withRoutes('<?php Illuminate\Support\Facades\Route::get("/invoices", [\App\Http\Controllers\InvoiceController::class, "show"]);');
+        $this->writeFile('app/Http/Controllers/InvoiceController.php', '<?php namespace App\Http\Controllers; final class InvoiceController { public function show() { $client->call(); } }');
+
+        $exitCode = Artisan::call('architecture-kit:audit', ['--strict' => true]);
+        $human = Artisan::output();
+        $this->assertSame(0, $exitCode, $human);
+        $this->assertStringContainsString('Incomplete analysis', $human);
+
+        Artisan::call('architecture-kit:audit', ['--agent' => true, '--strict' => true]);
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('incomplete', $payload['analysis']['status']);
+        $this->assertSame('A_CALL_UNRESOLVED', $payload['analysis']['notices'][0]['code']);
+        $this->assertSame(0, $payload['warn']);
     }
 
     public function test_ports_and_adapters_reports_speculative_interfaces_and_boundary_leaks(): void

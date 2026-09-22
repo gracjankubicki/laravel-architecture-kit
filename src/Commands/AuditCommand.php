@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Audit\AnalysisNotice;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
+use GracjanKubicki\ArchitectureKit\Audit\AuditSuggestion;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
 use Illuminate\Console\Command;
@@ -114,6 +116,8 @@ class AuditCommand extends Command
         }
 
         $this->newLine();
+        $this->writeSuggestions($result->suggestions);
+        $this->writeAnalysis($result->notices);
 
         if ($result->findings === []) {
             $this->line('No architecture violations found.');
@@ -142,6 +146,32 @@ class AuditCommand extends Command
         $this->line(sprintf('Suppressed: %d inline, %d baseline', $result->suppressedInline, $result->suppressedBaseline));
 
         return $ok ? self::SUCCESS : self::FAILURE;
+    }
+
+    /** @param array<int, AuditSuggestion> $suggestions */
+    private function writeSuggestions(array $suggestions): void
+    {
+        if ($suggestions === []) {
+            return;
+        }
+        $this->line('Architectural suggestions');
+        foreach ($suggestions as $suggestion) {
+            $this->line(sprintf('%s:%d  %s %s', $suggestion->path, $suggestion->line, $suggestion->architecture, $suggestion->message));
+        }
+        $this->newLine();
+    }
+
+    /** @param array<int, AnalysisNotice> $notices */
+    private function writeAnalysis(array $notices): void
+    {
+        if ($notices === []) {
+            return;
+        }
+        $this->line('Incomplete analysis');
+        foreach ($notices as $notice) {
+            $this->line(sprintf('%s:%d  %s', $notice->path, $notice->line, $notice->message));
+        }
+        $this->newLine();
     }
 
     /**

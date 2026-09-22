@@ -86,6 +86,21 @@ class GuardCommand extends Command
             }
         }
 
+        if ($result->audit !== null && $result->audit->suggestions !== []) {
+            $this->line('Architectural suggestions');
+            foreach ($result->audit->suggestions as $suggestion) {
+                $this->line(sprintf('%s:%d  %s %s', $suggestion->path, $suggestion->line, $suggestion->architecture, $suggestion->message));
+            }
+            $this->newLine();
+        }
+        if ($result->audit !== null && $result->audit->notices !== []) {
+            $this->line('Incomplete analysis');
+            foreach ($result->audit->notices as $notice) {
+                $this->line(sprintf('%s:%d  %s', $notice->path, $notice->line, $notice->message));
+            }
+            $this->newLine();
+        }
+
         if (! $result->ok()) {
             $this->newLine();
 

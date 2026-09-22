@@ -33,9 +33,9 @@ PHP);
         $cold = $run($cache);
         $warm = $run($cache);
 
-        $this->assertNotSame([], $off->findings);
-        $this->assertEquals($off->findings, $cold->findings);
-        $this->assertEquals($cold->findings, $warm->findings);
+        $this->assertNotSame([], $off->suggestions);
+        $this->assertEquals($off->suggestions, $cold->suggestions);
+        $this->assertEquals($cold->suggestions, $warm->suggestions);
         $this->assertNotContains('W_MISSING_TEST', array_column($warm->findings, 'code'));
     }
 
@@ -55,7 +55,7 @@ PHP);
             routes: $this->routes(),
         );
 
-        $this->assertContains('E_THIN_CONTROLLER_READ_SIDE_EFFECT', array_column($result->findings, 'code'));
+        $this->assertContains('S_MOVE_WRITE_TO_ACTION', array_column($result->suggestions, 'code'));
     }
 
     private function routes(): RouteMap
