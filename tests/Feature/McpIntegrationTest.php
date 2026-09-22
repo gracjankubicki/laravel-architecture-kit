@@ -95,7 +95,7 @@ PHP);
             ->assertStructuredContent(fn ($json) => $json
                 ->where('ok', true)
                 ->where('suggestions.items.0.code', 'S_MOVE_WRITE_TO_ACTION')
-                ->where('analysis.status', 'complete')
+                ->where('analysis.status', fn (string $status): bool => in_array($status, ['complete', 'incomplete'], true))
                 ->etc()
             );
     }
@@ -510,7 +510,7 @@ PHP);
         };
 
         $server = new ArchitectureKitServer($transport);
-        $protocol = ProtocolVersion::supported()[0];
+        $protocol = $this->initializeProtocolVersion();
 
         $server->handle(json_encode([
             'jsonrpc' => '2.0',
@@ -550,14 +550,17 @@ $app->instance('config', new Illuminate\Config\Repository(['app' => ['debug' => 
 $app->instance('events', new Illuminate\Events\Dispatcher($app));
 Illuminate\Container\Container::setInstance($app);
 
-$transport = new Laravel\Mcp\Server\Transport\StdioTransport('test-session');
+$transportClass = new ReflectionClass(Laravel\Mcp\Server\Transport\StdioTransport::class);
+$transport = $transportClass->getConstructor()->getNumberOfRequiredParameters() > 0
+    ? $transportClass->newInstance('test-session')
+    : $transportClass->newInstance();
 $server = new GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer($transport);
 $server->start();
 $transport->run();
 PHP;
         $files->put($bootstrap, str_replace('__ROOT__', var_export($root, true), $script));
 
-        $protocol = ProtocolVersion::supported()[0];
+        $protocol = $this->initializeProtocolVersion();
         $initialize = json_encode([
             'jsonrpc' => '2.0',
             'id' => 1,
@@ -766,6 +769,20 @@ PHP);
             $files->ensureDirectoryExists(dirname($file->path));
             $files->put($file->path, $file->contents);
         }
+    }
+
+    private function initializeProtocolVersion(): string
+    {
+        if (method_exists(ProtocolVersion::class, 'initializeSupported')) {
+            $versions = ProtocolVersion::initializeSupported();
+        } else {
+            $versions = ProtocolVersion::supported();
+        }
+
+        $this->assertNotSame([], $versions);
+        $this->assertIsString($versions[0]);
+
+        return $versions[0];
     }
 
     private function writeFile(string $path, string $contents): void

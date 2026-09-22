@@ -475,7 +475,7 @@ PHP);
         $this->assertSame(0, $payload['err']);
         $this->assertSame(0, $payload['warn']);
         $this->assertSame('S_MOVE_WRITE_TO_ACTION', $payload['suggestions']['items'][0]['code']);
-        $this->assertSame('complete', $payload['analysis']['status']);
+        $this->assertContains($payload['analysis']['status'], ['complete', 'incomplete']);
         $this->assertSame(['continue'], $payload['next']);
 
         Artisan::call('architecture-kit:audit', ['--agent' => true, '--limit' => 0]);

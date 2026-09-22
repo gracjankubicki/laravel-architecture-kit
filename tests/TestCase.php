@@ -53,6 +53,7 @@ abstract class TestCase extends Orchestra
 <?php
 return Illuminate\Foundation\Application::configure(basePath: dirname(__DIR__))
     ->withRouting(web: dirname(__DIR__).'/routes/web.php')
+    ->withMiddleware(function (Illuminate\Foundation\Configuration\Middleware $middleware): void {})
     ->withExceptions()
     ->create();
 PHP);

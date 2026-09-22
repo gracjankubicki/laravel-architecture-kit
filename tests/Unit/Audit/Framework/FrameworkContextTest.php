@@ -79,6 +79,41 @@ PHP);
         $this->assertStringContainsString('Source or memory budget exceeded', (string) $middleware->unavailable);
     }
 
+    public function test_laravel_mcp_auth_middleware_is_known_without_hiding_unknown_vendor_middleware(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/app');
+        $sources = $this->sources($files);
+        $context = [
+            'status' => 'known',
+            'providers' => [],
+            'middleware' => ['Laravel\\Mcp\\Server\\Middleware\\AddWwwAuthenticateHeader'],
+            'middlewareGroups' => [],
+            'middlewareAliases' => [],
+            'packageVersions' => [],
+        ];
+
+        $knownRoute = new RouteEntry(['GET', 'HEAD'], 'known', class: 'App\\Http\\Controllers\\KnownController', method: 'show');
+        $known = (new FrameworkContextBuilder(
+            $sources,
+            new RouteMap(entries: [$knownRoute], context: $context),
+            $knownRoute,
+        ))->build();
+
+        $this->assertSame(FrameworkContext::EMPTY, $known->status);
+        $this->assertNull($known->unavailable);
+
+        $unknownRoute = new RouteEntry(['GET', 'HEAD'], 'unknown', class: 'App\\Http\\Controllers\\UnknownController', method: 'show', middleware: ['Vendor\\Package\\Middleware\\Unknown']);
+        $unknown = (new FrameworkContextBuilder(
+            $sources,
+            new RouteMap(entries: [$unknownRoute], context: $context),
+            $unknownRoute,
+        ))->build();
+
+        $this->assertSame(FrameworkContext::UNAVAILABLE, $unknown->status);
+        $this->assertStringContainsString('Route middleware source is unavailable for Vendor\\Package\\Middleware\\Unknown.', (string) $unknown->unavailable);
+    }
+
     private function sources(Filesystem $files): SourceIndex
     {
         $graph = (new ProjectGraphLoader($files, $this->tempPath))->load();
