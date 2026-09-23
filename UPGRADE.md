@@ -1,5 +1,13 @@
 # Upgrade Guide
 
+## Upgrading to v0.6.1 from v0.6.0
+
+### Laravel MCP 1.x support
+
+No application changes are required. Architecture Kit now accepts `laravel/mcp` `^0.8.2 || ^0.9.0 || ^1.0.0`. Existing 0.8 and 0.9 installations keep their current behavior.
+
+The audit recognizes `Laravel\Mcp\Server\Middleware\AddWwwAuthenticateHeader` on real MCP routes. Unknown vendor middleware still produces an incomplete-analysis notice.
+
 ## Upgrading to v0.6.0 from v0.5.x
 
 ### Endpoint analysis has separate advice and uncertainty channels

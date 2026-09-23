@@ -2,6 +2,17 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.6.1 - 2026-09-23
+
+### Added
+
+- Support `laravel/mcp` 1.x while retaining support for 0.8 and 0.9.
+
+### Fixed
+
+- Adapt MCP protocol and stdio tests to the APIs exposed by Laravel MCP 0.x and 1.x.
+- Recognize `Laravel\Mcp\Server\Middleware\AddWwwAuthenticateHeader` on real MCP routes without hiding unresolved vendor middleware.
+
 ## v0.6.0 - 2026-09-22
 
 ### Added
