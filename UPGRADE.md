@@ -1,5 +1,15 @@
 # Upgrade Guide
 
+## Upgrading to v0.6.2 from v0.6.1
+
+No configuration or baseline-format migration is required.
+
+Container registrations through `bind`, `singleton`, and `scoped` can infer the registered contract from a closure return type. The audit reads statically visible implementation alternatives without executing the factory. Dynamic or ambiguous Fortify response bindings remain incomplete analysis when needed. Previously unresolved registrations may now reveal application effects through a recognized response implementation.
+
+Namespace-cycle findings keep the same location in full and changed audits. A baseline created by a full audit continues to suppress the same cycle in `guard --changed --strict`; new or expanded cycle components remain visible. Inline suppression belongs at that stable location. Remove duplicate workaround suppressions on other cycle edges if they are now reported as unused.
+
+If providers were excluded solely to avoid issue #18, remove that workaround and run a full audit to inspect the previously excluded code.
+
 ## Upgrading to v0.6.1 from v0.6.0
 
 ### Laravel MCP 1.x support

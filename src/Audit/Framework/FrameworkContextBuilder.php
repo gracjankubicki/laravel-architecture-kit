@@ -51,6 +51,9 @@ final class FrameworkContextBuilder
     /** @var array<string, string> */
     private array $bindings = [];
 
+    /** @var array<string, FrameworkValue> */
+    private array $bindingCandidates = [];
+
     /** @var array<string, true> */
     private array $origins = [];
 
@@ -125,7 +128,7 @@ final class FrameworkContextBuilder
 
         $status = $this->unavailable !== null
             ? FrameworkContext::UNAVAILABLE
-            : (($this->gatePolicies !== [] || $this->gateAbilities !== [] || $this->inertiaShares !== [] || $this->fortifyActions !== [] || $this->fortifyViews !== [] || $this->fortifyCallbacks !== [] || $this->fortifyPipeline !== [] || $this->bindings !== [] || $this->authGuards !== []) ? FrameworkContext::KNOWN : FrameworkContext::EMPTY);
+            : (($this->gatePolicies !== [] || $this->gateAbilities !== [] || $this->inertiaShares !== [] || $this->fortifyActions !== [] || $this->fortifyViews !== [] || $this->fortifyCallbacks !== [] || $this->fortifyPipeline !== [] || $this->bindings !== [] || $this->bindingCandidates !== [] || $this->authGuards !== []) ? FrameworkContext::KNOWN : FrameworkContext::EMPTY);
 
         return new FrameworkContext(
             status: $status,
@@ -145,6 +148,7 @@ final class FrameworkContextBuilder
             defaultAuthGuard: $this->defaultAuthGuard,
             authGuards: $this->authGuards,
             routeAuthGuards: $this->routeAuthGuards,
+            bindingCandidates: $this->bindingCandidates,
         );
     }
 
@@ -242,9 +246,36 @@ final class FrameworkContextBuilder
             }
             if ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier && $this->isContainerCall($node)) {
                 $args = array_map(fn (Node\Arg $arg): FrameworkValue => $this->value($arg->value, $source, $variables), $node->getArgs());
-                $contract = $args[0]?->literal;
-                $implementation = $args[1]?->literal;
+                $contract = ($args[0] ?? null)?->literal;
+                $implementation = ($args[1] ?? null)?->literal;
+                if (in_array(strtolower($node->name->toString()), ['bind', 'singleton', 'scoped'], true)) {
+                    $callback = count($args) === 1 ? ($args[0] ?? null) : ($args[1] ?? null);
+                    if ($callback?->callback !== null) {
+                        $contracts = $contract !== null ? [$contract] : (new ContainerBindingResolver)->contracts($callback);
+                        $candidate = (new ContainerBindingResolver)->resolve($callback);
+                        foreach ($contracts as $abstract) {
+                            $previous = $this->bindingCandidates[$abstract] ?? null;
+                            if ($previous !== null && $previous != $candidate) {
+                                $candidate = (FrameworkValue::union([$previous, $candidate]) ?? FrameworkValue::unknown())->markAmbiguous();
+                                $this->unavailable ??= 'Container binding registration is ambiguous for '.$abstract.'.';
+                            }
+                            if (isset($this->bindings[$abstract]) && $candidate->typeNames() !== [$this->bindings[$abstract]]) {
+                                $candidate = $candidate->markAmbiguous();
+                                $this->unavailable ??= 'Container binding registration is ambiguous for '.$abstract.'.';
+                            }
+                            $this->bindingCandidates[$abstract] = $candidate;
+                            if (! $candidate->isUnknown() && ! $candidate->isAmbiguous() && ! $candidate->nullable) {
+                                $this->registerUnique($this->bindings, $abstract, $candidate->typeNames()[0], 'Container binding');
+                                $implementation = $candidate->typeNames()[0];
+                            }
+                        }
+                    }
+                }
                 if (in_array(strtolower($node->name->toString()), ['bind', 'singleton', 'scoped', 'instance'], true) && $contract !== null && $implementation !== null) {
+                    if (isset($this->bindingCandidates[$contract]) && $this->bindingCandidates[$contract]->typeNames() !== [$implementation]) {
+                        $this->bindingCandidates[$contract] = $this->bindingCandidates[$contract]->markAmbiguous();
+                        $this->unavailable ??= 'Container binding registration is ambiguous for '.$contract.'.';
+                    }
                     $this->registerUnique($this->bindings, $contract, $implementation, 'Container binding');
                 } elseif (in_array(strtolower($node->name->toString()), ['bind', 'singleton', 'scoped', 'instance'], true) && $contract !== null && str_starts_with($contract, 'Laravel\\Fortify\\Contracts\\')) {
                     $this->unavailable ??= 'Fortify container binding is dynamic for '.$contract.'.';

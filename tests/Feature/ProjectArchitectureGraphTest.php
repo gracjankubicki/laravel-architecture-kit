@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 
@@ -493,6 +494,57 @@ PHP);
         $this->assertFalse(collect($second->findings)->contains(
             fn ($finding): bool => (new FindingCodeRegistry)->codeFor($finding) === 'E_LAYER_DEPENDENCY',
         ));
+    }
+
+    public function test_cycle_anchor_and_suppressions_are_stable_across_focus_and_cache(): void
+    {
+        $this->writeFile('app/Models/Image.php', '<?php namespace App\Models; final class Image { public function handle(\App\Traits\Processing $p): void {} }');
+        $this->writeFile('app/Traits/Processing.php', '<?php namespace App\Traits; final class Processing { public function handle(\App\Models\Image $p): void {} }');
+        $this->git('init -b main');
+        $this->git('config user.email architecture-kit@example.test');
+        $this->git('config user.name "Architecture Kit Tests"');
+        $this->git('add app');
+        $this->git('commit -m initial');
+        $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
+        $full = $audit->run([], false, useBaseline: false);
+        $this->assertCount(1, $full->findings);
+        $this->assertSame('app/Models/Image.php', $full->findings[0]->path);
+        $audit->run([], false, updateBaseline: true);
+        $this->writeFile('app/Traits/Processing.php', '<?php namespace App\Traits; final class Processing { public function handle(\App\Models\Image $p): void { $label = "changed"; } }');
+        $cache = new ProjectGraphCache(new Filesystem, $this->tempPath.'/cache');
+        foreach ([null, $cache, $cache] as $graphCache) {
+            $changed = $audit->run([], true, 'main', useBaseline: false, cache: $graphCache);
+            $this->assertEquals($full->findings, $changed->findings);
+            $suppressed = $audit->run([], true, 'main', cache: $graphCache);
+            $this->assertSame([], $suppressed->findings);
+            $this->assertSame(1, $suppressed->suppressedBaseline);
+        }
+        $this->writeFile('app/Models/Image.php', '<?php namespace App\Models; final class Image { /** @architecture-kit-ignore namespace-cycle */ public function handle(\App\Traits\Processing $p): void {} }');
+        $this->git('add app');
+        $this->git('commit -m inline');
+        $this->writeFile('app/Traits/Processing.php', '<?php namespace App\Traits; final class Processing { public function handle(\App\Models\Image $p): void { $label = "changed again"; } }');
+        foreach ([false, true] as $changed) {
+            $result = $audit->run([], $changed, 'main', useBaseline: false);
+            $this->assertSame([], $result->findings);
+            $this->assertSame(1, $result->suppressedInline);
+        }
+    }
+
+    public function test_baseline_does_not_hide_an_extended_or_new_cycle(): void
+    {
+        $this->writeFile('app/Models/Image.php', '<?php namespace App\Models; final class Image { public function handle(\App\Traits\Processing $p): void {} }');
+        $this->writeFile('app/Traits/Processing.php', '<?php namespace App\Traits; final class Processing { public function handle(\App\Models\Image $p): void {} }');
+        $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
+        $audit->run([], false, updateBaseline: true);
+        $this->writeFile('app/Traits/Processing.php', '<?php namespace App\Traits; final class Processing { public function handle(\App\Models\Image $p, \App\Images\Extra $extra): void {} }');
+        $this->writeFile('app/Images/Extra.php', '<?php namespace App\Images; final class Extra { public function handle(\App\Models\Image $p): void {} }');
+        $extended = $audit->run([], false);
+        $this->assertCount(1, $extended->findings);
+        $this->assertSame(0, $extended->suppressedBaseline);
+        $this->assertStringContainsString('App\\Images', $extended->findings[0]->message);
+        $this->writeFile('app/Billing/Bill.php', '<?php namespace App\Billing; final class Bill { public function handle(\App\Payments\Payment $p): void {} }');
+        $this->writeFile('app/Payments/Payment.php', '<?php namespace App\Payments; final class Payment { public function handle(\App\Billing\Bill $p): void {} }');
+        $this->assertCount(2, $audit->run([], false)->findings);
     }
 
     /** @param array<int, Architecture|string> $enabled */

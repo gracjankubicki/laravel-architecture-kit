@@ -79,6 +79,10 @@ final readonly class FortifySemantics
             return FrameworkCallResult::callbacks([$callback], FrameworkValue::type('@response'));
         }
 
+        $candidate = $this->context->bindingCandidates[$contract] ?? null;
+        if ($candidate !== null && ($candidate->isUnknown() || $candidate->isAmbiguous() || $candidate->nullable)) {
+            return new FrameworkCallResult(true, incomplete: 'Fortify response binding is dynamic or ambiguous for '.$contract.'.');
+        }
         $implementation = $this->context->bindings[$contract] ?? null;
         if ($implementation !== null) {
             foreach (['toResponse', '__invoke'] as $method) {

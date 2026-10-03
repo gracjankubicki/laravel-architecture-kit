@@ -2,6 +2,17 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.6.2 - 2026-10-03
+
+### Added
+
+- Read closure-based container registrations for `bind`, `singleton`, and `scoped`, including inferred return-type contracts and statically visible implementation alternatives. Factories are never executed; dynamic or ambiguous Fortify response bindings remain explicit incomplete analysis when used.
+
+### Fixed
+
+- Avoid missing-argument crashes while reading container registrations.
+- Keep namespace-cycle locations identical in full and changed audits, so existing baseline and inline suppressions apply in both modes without changing the baseline format.
+
 ## v0.6.1 - 2026-09-23
 
 ### Added

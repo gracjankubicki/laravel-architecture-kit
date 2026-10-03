@@ -28,6 +28,7 @@ final readonly class FrameworkContext
      * @param  list<string>  $origins
      * @param  array<string, array{model: ?string, custom: bool}>  $authGuards
      * @param  list<string>  $routeAuthGuards
+     * @param  array<string, FrameworkValue>  $bindingCandidates
      */
     public function __construct(
         public string $status = self::EMPTY,
@@ -47,6 +48,7 @@ final readonly class FrameworkContext
         public ?string $defaultAuthGuard = null,
         public array $authGuards = [],
         public array $routeAuthGuards = [],
+        public array $bindingCandidates = [],
     ) {}
 
     public static function unavailable(string $reason): self

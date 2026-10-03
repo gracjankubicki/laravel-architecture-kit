@@ -14,6 +14,33 @@ use Illuminate\Filesystem\Filesystem;
 
 final class FrameworkFortifyAuditTest extends TestCase
 {
+    public function test_inferred_response_binding_exposes_effects_and_dynamic_bindings_remain_incomplete(): void
+    {
+        $this->write('app/Models/Project.php', '<?php namespace App\Models; final class Project extends \\Illuminate\\Database\\Eloquent\\Model {}');
+        $this->write('app/Responses/LoginResponse.php', '<?php namespace App\Responses; final class LoginResponse { public function toResponse($request) { return \\App\\Models\\Project::query()->update([]); } }');
+        foreach ([
+            'fn (): \\Laravel\\Fortify\\Contracts\\LoginViewResponse => new \\App\\Responses\\LoginResponse' => true,
+            'function (): \\Laravel\\Fortify\\Contracts\\LoginViewResponse { return new \\App\\Responses\\LoginResponse; }' => true,
+            'fn (): \\Laravel\\Fortify\\Contracts\\LoginViewResponse => config("cloud") ? new \\App\\Responses\\LoginResponse : new \\App\\Responses\\OtherResponse' => false,
+            'fn (): \\Laravel\\Fortify\\Contracts\\LoginViewResponse => ExternalFactory::make()' => false,
+            'function (): \\Laravel\\Fortify\\Contracts\\LoginViewResponse { $p = new \\App\\Responses\\LoginResponse; $unused = $p = new \\App\\Responses\\OtherResponse; return $p; }' => false,
+            'function (): \\Laravel\\Fortify\\Contracts\\LoginViewResponse { $p = new \\App\\Responses\\LoginResponse; return match (true) { ($p = new \\App\\Responses\\OtherResponse) instanceof \\App\\Responses\\OtherResponse => $p, default => $p }; }' => false,
+        ] as $factory => $known) {
+            $this->write('app/Providers/FortifyServiceProvider.php', '<?php namespace App\Providers; final class FortifyServiceProvider { public function register(): void { $this->app->singleton('.$factory.'); } }');
+            $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
+                [Architecture::ThinControllers, Architecture::Actions], false,
+                routes: $this->routes([new RouteEntry(['GET', 'HEAD'], 'login', class: 'Laravel\\Fortify\\Http\\Controllers\\AuthenticatedSessionController', method: 'create')]),
+            );
+            if ($known) {
+                $this->assertNotEmpty($result->suggestions);
+                $this->assertSame([], $result->notices);
+            } else {
+                $this->assertNotEmpty($result->notices);
+                $this->assertStringContainsString('binding is dynamic or ambiguous', implode(' ', array_column($result->notices, 'message')));
+            }
+        }
+    }
+
     public function test_login_view_callback_is_checked_without_a_vendor_source_file(): void
     {
         $this->write('app/Models/Project.php', '<?php namespace App\Models; final class Project extends \Illuminate\Database\Eloquent\Model {}');

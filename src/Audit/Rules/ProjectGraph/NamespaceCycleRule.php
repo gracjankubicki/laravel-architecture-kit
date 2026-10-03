@@ -35,7 +35,7 @@ final class NamespaceCycleRule implements ProjectAuditRule
                 continue;
             }
 
-            usort($focused, fn (array $left, array $right): int => [
+            usort($cycleEdges, fn (array $left, array $right): int => [
                 $left['edge']->path,
                 $left['edge']->line,
                 $left['edge']->from,
@@ -48,7 +48,7 @@ final class NamespaceCycleRule implements ProjectAuditRule
             ]);
             sort($component);
             /** @var DependencyEdge $anchor */
-            $anchor = $focused[0]['edge'];
+            $anchor = $cycleEdges[0]['edge'];
             $findings[] = new AuditFinding(
                 severity: 'warn',
                 rule: 'namespace-cycle',
