@@ -31,8 +31,11 @@ final readonly class ArchitectureImpact
         if ($signature !== null) {
             $change ??= 'signature';
         }
-        if ($change !== null && $change !== 'signature') {
-            return self::error('E_IMPACT_CHANGE_INVALID', 'Supported change mode: signature.');
+        if ($change !== null && ! in_array($change, ['signature', 'delete'], true)) {
+            return self::error('E_IMPACT_CHANGE_INVALID', 'Supported change modes: signature, delete.');
+        }
+        if ($change === 'delete' && $signature !== null) {
+            return self::error('E_IMPACT_CHANGE_INVALID', 'Delete does not accept a proposed signature.');
         }
         if ($change === 'signature' && ! str_contains($subject, '::')) {
             return self::error('E_IMPACT_SIGNATURE_SUBJECT', 'Signature analysis requires Class::method.');
@@ -48,6 +51,9 @@ final readonly class ArchitectureImpact
         $graph = $loader->build($plan);
         [$selector, $method] = array_pad(explode('::', trim($subject), 2), 2, null);
         $matches = $this->matches($graph, $selector);
+        if ($change === 'delete' && $method === null && (str_contains($selector, '/') || str_ends_with(strtolower($selector), '.php')) && $matches !== []) {
+            $matches = [['name' => '(file) '.$matches[0]['path'], 'path' => $matches[0]['path'], 'line' => 1, 'kind' => 'file', 'role' => 'unknown']];
+        }
         if ($matches === []) {
             foreach ($graph->impactFacts as $facts) {
                 foreach ($facts->notices as $notice) {
@@ -67,7 +73,7 @@ final readonly class ArchitectureImpact
         }
         $resolved = $matches[0];
         $root = $resolved['name'];
-        $index = new ImpactIndex($graph, buildCalls: $method !== null || $resolved['kind'] === 'file');
+        $index = new ImpactIndex($graph, buildCalls: $change === 'delete' || $method !== null || $resolved['kind'] === 'file');
         $overrides = [];
         $declaration = null;
         if ($method !== null) {
@@ -89,6 +95,7 @@ final readonly class ArchitectureImpact
             $root = $declaration['symbol'];
         }
         $signatureReport = null;
+        $deleteReport = $change === 'delete' ? (new DeleteImpact)->inspect($graph, $index, $resolved, $declaration, $limit) : null;
         if ($change === 'signature' && $declaration !== null) {
             try {
                 $signatureReport = (new SignatureImpact)->inspect($index, $declaration, $signature, $limit);
@@ -160,21 +167,22 @@ final readonly class ArchitectureImpact
             'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude],
             'next' => ['inspect_relationship_evidence', 'resolve_uncertain_calls_before_dependent_decisions', 'run_selected_tests', 'run:architecture-kit:guard --changed --agent'],
         ];
-        if ($signatureReport !== null) {
+        $changeReport = $signatureReport ?? $deleteReport;
+        if ($changeReport !== null) {
             foreach ($notices as $notice) {
-                if (count($signatureReport['check']) < $limit) {
-                    $signatureReport['check'][] = ['symbol' => $notice['from'] ?? $root, 'path' => $notice['path'], 'line' => $notice['line'], 'kind' => 'uncertain', 'certainty' => 'unresolved', 'reasons' => [$notice['reason']]];
+                if (count($changeReport['check']) < $limit) {
+                    $changeReport['check'][] = ['symbol' => $notice['from'] ?? $root, 'path' => $notice['path'], 'line' => $notice['line'], 'kind' => 'uncertain', 'certainty' => 'unresolved', 'reasons' => [$notice['reason']]];
                 }
-                $signatureReport['total']['check']++;
+                $changeReport['total']['check']++;
             }
-            $signatureReport['truncated'] = $signatureReport['truncated'] || $truncated || $signatureReport['total']['check'] > $limit;
-            if ($signatureReport['truncated']) {
-                $signatureReport['status'] = 'limit';
-            } elseif ($notices !== [] && $signatureReport['status'] === 'no_proven_breaking') {
-                $signatureReport['status'] = 'check';
+            $changeReport['truncated'] = $changeReport['truncated'] || $truncated || $changeReport['total']['check'] > $limit;
+            if ($changeReport['truncated']) {
+                $changeReport['status'] = 'limit';
+            } elseif ($notices !== [] && $changeReport['status'] === 'no_proven_breaking') {
+                $changeReport['status'] = 'check';
             }
-            $signatureReport['safe_to_change'] = false;
-            $result['signature'] = $signatureReport;
+            $changeReport['safe_to_change'] = false;
+            $result[$change === 'delete' ? 'delete' : 'signature'] = $changeReport;
         }
 
         return $result;

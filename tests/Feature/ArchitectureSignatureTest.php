@@ -263,7 +263,7 @@ final class ArchitectureSignatureTest extends TestCase
         $this->assertContains('safe_to_change', $schema['required']);
         $context = (new ArchitectureKitServer(new FakeTransporter))->createContext();
         $tool = $context->tools()->first(fn ($t) => $t->name() === 'impact');
-        $this->assertSame(['signature'], $tool->toArray()['inputSchema']['properties']['change']['enum']);
+        $this->assertSame(['signature', 'delete'], $tool->toArray()['inputSchema']['properties']['change']['enum']);
         $this->assertStringContainsString('signature', $context->instructions);
         $resources = new ArchitectureResources(dirname(__DIR__, 2), $this->tempPath);
         $this->assertStringContainsString('signature', $resources->guideline([])->contents);

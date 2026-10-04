@@ -78,7 +78,9 @@ final class ImpactExtractor
             }
             $methods = [];
             foreach ($class->getMethods() as $method) {
-                $methods[strtolower($method->name->toString())] = ['name' => $method->name->toString(), 'line' => $method->getStartLine(), 'final' => $method->isFinal(), 'signature' => MethodSignature::extract($method, $name, $parents[0] ?? null)];
+                $signature = MethodSignature::extract($method, $name, $parents[0] ?? null);
+                $signature['abstract'] = $class instanceof Stmt\Interface_ || $signature['abstract'];
+                $methods[strtolower($method->name->toString())] = ['name' => $method->name->toString(), 'line' => $method->getStartLine(), 'final' => $method->isFinal(), 'signature' => $signature];
                 $this->staticContext = $method->isStatic();
                 $vars = $method->isStatic() ? [] : ['this' => ['type' => $name, 'exact' => false]];
                 foreach ($method->params as $param) {
@@ -89,7 +91,7 @@ final class ImpactExtractor
                 $this->walk($method->stmts ?? [], $file, $name, $name.'::'.$method->name->toString(), $parents[0] ?? null, $properties, $vars);
             }
             $classes[$name] = ['kind' => $class instanceof Stmt\Interface_ ? 'interface' : ($class instanceof Stmt\Trait_ ? 'trait' : 'class'),
-                'line' => $class->getStartLine(), 'final' => $class instanceof Stmt\Class_ && $class->isFinal(), 'parents' => $parents,
+                'line' => $class->getStartLine(), 'final' => $class instanceof Stmt\Class_ && $class->isFinal(), 'abstract' => $class instanceof Stmt\Class_ && $class->isAbstract(), 'parents' => $parents,
                 'traits' => $traits, 'adaptations' => $adaptations, 'properties' => $properties, 'methods' => $methods];
         }
         $this->staticContext = true;

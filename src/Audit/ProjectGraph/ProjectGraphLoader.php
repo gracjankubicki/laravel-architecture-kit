@@ -215,7 +215,7 @@ final readonly class ProjectGraphLoader
     private function signatureFor(array $scanned): GraphCacheSignature
     {
         return GraphCacheSignature::create(
-            [PackageFingerprint::current(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v2'] : [])],
+            [PackageFingerprint::current(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : [])],
             array_map(static fn (array $file): string => $file[1], $scanned),
         );
     }

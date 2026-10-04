@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('impact')]
-#[Description('Before changing a class, file or Class::method, inspect bounded direct and indirect relationships. Short names return candidates when ambiguous. Resolved, possible contract calls, references and class-only context are separate. Inspect uncertain evidence before dependent decisions. Test candidates do not prove coverage; relationships alone are not BREAKING verdicts. For a method change use change=signature, optionally supply a PHP signature without body. Breaking rows prove supported static incompatibilities; inspect check rows, types and limits. No breaking rows does not prove safety. No runtime execution. Increase limit/depth to expand a truncated report.')]
+#[Description('Before changing a class, file or Class::method, inspect bounded direct and indirect relationships. Short names return candidates when ambiguous. Resolved, possible contract calls, references and class-only context are separate. Inspect uncertain evidence before dependent decisions. Test candidates do not prove coverage; relationships alone are not BREAKING verdicts. Before removal use change=delete for a method, class or entire PHP file. It simulates removal without editing files and evaluates remaining calls, fallbacks and contracts. For a method change use change=signature, optionally supply a PHP signature without body. Breaking rows prove supported static incompatibilities; inspect check rows, types and limits. No breaking rows does not prove safety. No runtime execution. Increase limit/depth to expand a truncated report.')]
 #[IsReadOnly]
 final class Impact extends Tool
 {
@@ -27,7 +27,7 @@ final class Impact extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['change' => $schema->string()->enum(['signature']), 'signature' => $schema->string()->description('Single PHP method declaration without a body. Implies change=signature. Use fully qualified class types.'), 'subject' => $schema->string()->required(), 'limit' => $schema->integer()->min(0)->max(500)->default(20), 'depth' => $schema->integer()->min(1)->max(32)->default(4)];
+        return ['change' => $schema->string()->enum(['signature', 'delete']), 'signature' => $schema->string()->description('Single PHP method declaration without a body. Implies change=signature. Use fully qualified class types.'), 'subject' => $schema->string()->required(), 'limit' => $schema->integer()->min(0)->max(500)->default(20), 'depth' => $schema->integer()->min(1)->max(32)->default(4)];
     }
 
     public function handle(Request $request): ResponseFactory

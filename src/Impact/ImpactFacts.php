@@ -30,7 +30,7 @@ final readonly class ImpactFacts
         // Validate the complete shape, not just the envelope. Cached input is untrusted.
         foreach ($data['classes'] as $name => $class) {
             if (! is_string($name) || ! is_array($class) || ! is_string($class['kind'] ?? null) || ! is_int($class['line'] ?? null)
-                || ! is_bool($class['final'] ?? null) || ! is_array($class['parents'] ?? null) || ! is_array($class['traits'] ?? null)
+                || ! is_bool($class['final'] ?? null) || ! is_bool($class['abstract'] ?? null) || ! is_array($class['parents'] ?? null) || ! is_array($class['traits'] ?? null)
                 || ! is_bool($class['adaptations'] ?? null) || ! is_array($class['properties'] ?? null) || ! is_array($class['methods'] ?? null)) {
                 throw new UnexpectedValueException('Invalid impact class.');
             }

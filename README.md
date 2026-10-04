@@ -792,3 +792,19 @@ composer test
 composer lint
 bash tests/Smoke/workbench-commands.sh
 ```
+
+### Inspect removal before editing
+
+Use `delete` to simulate removal while leaving the rest of the project unchanged:
+
+```bash
+php artisan architecture-kit:impact 'InvoiceCalculator::calculate' --change=delete --agent
+php artisan architecture-kit:impact 'InvoiceCalculator' --change=delete --agent
+php artisan architecture-kit:impact 'app/Services/InvoiceCalculator.php' --change=delete --agent
+```
+
+MCP `impact` accepts the same `subject` with `change: "delete"`. Do not supply a proposed signature in this mode. No source is deleted or executed. A file selector removes all indexed declarations in that file, even when it contains several classes. An inherited method selector removes its actual declaration, shown in `delete.removed`.
+
+`delete.breaking` contains proved static incompatibilities in remaining calls and declarations. A surviving parent or trait method can replace a removed override; the report checks its arguments, access and required contracts, and asks you to inspect the changed body. Magic dispatch and implicit constructors remain checks. Types, imports, injections and registrations alone do not prove a PHP error. Calls inside removed code are omitted from the removal verdicts.
+
+Inspect `delete.check`, limitations and truncation before deciding. File-level functions, includes, aliases and framework dispatch are not fully modelled. A report without breaking rows does not prove that removal is safe. Test candidates do not prove coverage or PASS. Run the relevant checks after making an authorized change.

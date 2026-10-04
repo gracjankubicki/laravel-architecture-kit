@@ -18,7 +18,7 @@ final class ImpactCommand extends Command
         {--agent : Output JSON for agents}
         {--limit=20 : Maximum rows per section, 0..500}
         {--depth=4 : Maximum dependency hops, 1..32}
-        {--change= : Change mode: signature, requires Class::method}
+        {--change= : Change mode: signature for Class::method, or delete for a method/class/file}
         {--signature= : Proposed PHP method declaration without body; implies change=signature}
         {--schema : Output the JSON Schema}';
 
@@ -77,11 +77,12 @@ final class ImpactCommand extends Command
             foreach ($result['tests'] as $test) {
                 $this->line('  '.$test['path'].' ['.$test['basis'].']');
             }
-            if (isset($result['signature'])) {
-                $this->line('Signature '.$result['signature']['mode'].': '.$result['signature']['declaration'].' ['.$result['signature']['status'].']');
+            if (isset($result['signature']) || isset($result['delete'])) {
+                $report = $result['signature'] ?? $result['delete'];
+                $this->line(isset($result['signature']) ? 'Signature '.$report['mode'].': '.$report['declaration'].' ['.$report['status'].']' : 'Delete: '.implode(', ', $report['removed']).' ['.$report['status'].']');
                 foreach (['breaking', 'check', 'compatible'] as $group) {
                     $this->line(strtoupper($group).':');
-                    foreach ($result['signature'][$group] as $row) {
+                    foreach ($report[$group] as $row) {
                         $this->line('  '.$row['symbol'].' '.$row['path'].':'.$row['line'].' '.implode('; ', $row['reasons']));
                     }
                 }

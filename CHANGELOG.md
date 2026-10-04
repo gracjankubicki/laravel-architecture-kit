@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add static impact assessment for deleting a method, class or PHP file, including surviving fallbacks and required implementations, through CLI and MCP.
+
 - Add opt-in method signature inspection and static proposal comparison to CLI and MCP impact, with separate breaking, check and compatible evidence for immediate callers and declaration contracts. Preserve existing impact responses and audit graphs.
 - Add `architecture-kit:impact` and the read-only MCP `impact` tool for bounded class, file, and method relationships before a change. Reports separate resolved calls, possible contract targets, callable references, class context, test candidates, and incomplete analysis.
 - Cache optional per-file impact facts under a separate fingerprint without changing audit dependency edges or existing tool contracts. Generated guidance directs agents to inspect impact before editing.

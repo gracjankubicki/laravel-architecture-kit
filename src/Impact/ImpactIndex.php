@@ -110,7 +110,7 @@ final class ImpactIndex
         }
     }
 
-    private function receiver(?string $type): ?string
+    public function receiver(?string $type): ?string
     {
         if ($type === null || ! str_starts_with($type, '@property:')) {
             return $type;
@@ -196,10 +196,15 @@ final class ImpactIndex
             return null;
         }
         $traitMethods = [];
+        $traitRequirements = [];
         foreach ($class['traits'] as $trait) {
             $found = $this->findMethod($trait, $method, $seen, $depth + 1);
             if ($found !== null) {
-                $traitMethods[$found['symbol']] = $found;
+                if ($this->classes[strtolower($found['class'])]['methods'][strtolower($method)]['signature']['abstract']) {
+                    $traitRequirements[$found['symbol']] = $found;
+                } else {
+                    $traitMethods[$found['symbol']] = $found;
+                }
             }
         }
         if (count($traitMethods) > 1) {
@@ -215,7 +220,9 @@ final class ImpactIndex
             }
         }
 
-        return null;
+        // An abstract trait declaration is a requirement, not an implementation
+        // that replaces a concrete inherited method.
+        return $traitRequirements === [] ? null : array_values($traitRequirements)[0];
     }
 
     /** @param array<string, mixed> $call */
