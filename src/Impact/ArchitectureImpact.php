@@ -182,6 +182,10 @@ final readonly class ArchitectureImpact
             'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude],
             'next' => ['inspect_relationship_evidence', 'resolve_uncertain_calls_before_dependent_decisions', 'run_selected_tests', 'run:architecture-kit:guard --changed --agent'],
         ];
+        $result['execution'] = (new HttpRouteImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth);
+        if ($result['execution']['has_sources']) {
+            $result['snapshot'] = hash('xxh128', $result['snapshot'].$result['execution']['source_signature']);
+        }
         $changeReport = $signatureReport ?? $deleteReport ?? $moveReport;
         if ($changeReport !== null) {
             foreach ($notices as $notice) {

@@ -79,6 +79,26 @@ final class ImpactCommand extends Command
             foreach ($result['tests'] as $test) {
                 $this->line('  '.$test['path'].' ['.$test['basis'].']');
             }
+            $http = $result['execution'];
+            $this->line('HTTP declarations: '.$http['status'].'; fresh: '.($http['fresh'] ? 'yes' : 'no'));
+            foreach ($http['routes'] as $route) {
+                $this->line('  '.implode('|', $route['verbs'] ?? ['unknown']).' '.($route['uri'] ?? '(unknown URI)').' name='.($route['name'] ?? '(unnamed/unknown)').' domain='.($route['domain'] ?? '(default/unknown)').' middleware='.json_encode($route['middleware']).' ['.$route['certainty'].'] '.$route['source']['path'].':'.$route['source']['line']);
+                foreach ($route['via'] as $edge) {
+                    $this->line('    '.$edge['from'].' -> '.$edge['to'].' ['.$edge['kind'].', '.$edge['certainty'].'] '.$edge['path'].':'.$edge['line']);
+                }
+                foreach ($route['reasons'] as $reason) {
+                    $this->line('    '.$reason);
+                }
+            }
+            foreach ($http['unresolved'] as $notice) {
+                $this->warn($notice['path'].':'.$notice['line'].' '.$notice['reason']);
+            }
+            foreach ($http['limitations'] as $limitation) {
+                $this->line($limitation);
+            }
+            if ($http['truncated']) {
+                $this->warn('HTTP report is limited. Inspect source notices and boundary symbols; totals may be lower bounds.');
+            }
             if (isset($result['signature']) || isset($result['delete']) || isset($result['move'])) {
                 $report = $result['signature'] ?? $result['delete'] ?? $result['move'];
                 if (isset($result['move'])) {

@@ -101,6 +101,29 @@ final class ImpactExtractor
         return new ImpactFacts($file->path, $classes, $this->calls, $this->notices);
     }
 
+    /** Explicitly analyzes a registered route callback, leaving arbitrary callbacks unresolved.
+     */
+    public function extractCallback(FileContext $file, Expr\Closure|Expr\ArrowFunction $callback, string $from): ImpactFacts
+    {
+        $this->calls = $this->notices = [];
+        $this->nodes = 0;
+        $this->limited = false;
+        $this->staticContext = true;
+        $vars = [];
+        foreach ($callback->params as $param) {
+            if (is_string($param->var->name)) {
+                $vars[$param->var->name] = ['type' => $this->type($file, $param->type, '', null), 'exact' => false];
+            }
+        }
+        if ($callback instanceof Expr\Closure) {
+            $this->walk($callback->stmts, $file, '', $from, null, [], $vars);
+        } else {
+            $this->expression($callback->expr, $file, '', $from, null, [], $vars);
+        }
+
+        return new ImpactFacts($file->path, [], $this->calls, $this->notices);
+    }
+
     /** Check before allocating either source or parser nodes. */
     public static function sourceLimit(int $bytes): ?string
     {
