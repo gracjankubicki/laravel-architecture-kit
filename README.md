@@ -102,7 +102,7 @@ The MCP tool `impact` accepts the same `subject`, `limit`, and `depth`. Short na
 
 For a method, the query follows method calls at every hop. A caller of `CreateInvoiceAction::other()` is not a caller of `handle()` merely because both methods belong to the same class. Each relationship contains a witness chain with its kind, source file, and line. The report separates resolved static targets, possible targets through interfaces or parent types, callable references, and class-only context. Resolved targets describe source relationships, not runtime execution. Class-only imports and injected types do not seed the method traversal. Weak class references are shown at one hop and do not propagate further. Override declarations are listed as places to inspect. The report does not issue a `BREAKING` verdict.
 
-Receiver recognition supports static calls, `$this`, single named types in parameters and properties, promoted constructor properties, `new`, and recognized assignments. Branches and mutations invalidate uncertain local types. Union/intersection receivers, dynamic methods, container lookups, facades, macros, magic dispatch, callback bodies, and unsupported trait dispatch remain unresolved or outside the supported subset. A callable array or first-class callable is a reference, never evidence that it was invoked. Framework entrypoints may have no visible PHP caller; absence of callers does not establish that a method is unused. Full route, queue, and table relationships, proposed `delete`/`signature`/`move` evaluation, and continuation pages are later work.
+Receiver recognition supports static calls, `$this`, single named types in parameters and properties, promoted constructor properties, `new`, and recognized assignments. Branches and mutations invalidate uncertain local types. Union/intersection receivers, dynamic methods, container lookups, facades, macros, magic dispatch, callback bodies, and unsupported trait dispatch remain unresolved or outside the supported subset. A callable array or first-class callable is a reference, never evidence that it was invoked. Framework entrypoints may have no visible PHP caller; absence of callers does not establish that a method is unused. Full route, queue, and table relationships and continuation pages are outside the supported scope.
 
 `analysis.status` distinguishes `none`, `complete`, `incomplete`, and `limit` for the supported static scope. `complete` does not prove complete runtime reachability. Errors distinguish ambiguity, a missing subject, an out-of-scope path, a missing method, and unresolved inherited dispatch. `class_context` is separately labelled, and test candidates explicitly say that they do not prove coverage or PASS. Ordinary class-based test references can include tests outside the audit graph, as in `architecture-context`; their basis is `class_reference`.
 
@@ -111,6 +111,26 @@ Answers are bounded by `limit` per section, default 20 and maximum 500, and by `
 Impact uses the shared graph loader and cache infrastructure with a separate fingerprint and an optional per-file fact channel. Audit and guard never treat method facts as class dependency edges. The report includes cache status, configured scope, and a stat-based snapshot identifier. Edited, added, deleted, or newly excluded sources invalidate the relevant facts according to the existing graph cache contract. A change detected during analysis marks the answer incomplete and asks for a fresh query.
 
 Before editing, inspect the evidence and uncertain calls, select relevant tests, and ask before expanding the agreed change scope. Run the guard after editing. Resource sync adds these instructions to generated guidance.
+
+### Evaluate a file move or class rename
+
+Inspect uses before choosing a destination, or compare an explicit target:
+
+```bash
+php artisan architecture-kit:impact InvoiceCalculator --change=move --agent
+php artisan architecture-kit:impact 'App\Services\InvoiceCalculator' --change=move --target-class='App\Billing\InvoiceCalculator' --target-path='app/Billing/InvoiceCalculator.php' --agent
+php artisan architecture-kit:impact app/Services/InvoiceCalculator.php --change=move --target-path=app/Billing/InvoiceCalculator.php --agent
+```
+
+The MCP tool accepts `change: "move"`, `target_class`, and `target_path`. Either target starts comparison. Without targets, the report only identifies uses to inspect. It never moves files, rewrites imports, or executes project code. Method moves are rejected.
+
+A path target relocates every declaration in the file. A class target renames only the selected declaration. To rename a class in a file containing several declarations, select its FQCN rather than the file path. File-only moves preserve class names. Existing class/path collisions are reported; case-only changes require inspection. Targets must be valid PHP class names and project-relative PHP paths without traversal or external symlinks.
+
+When the class name changes, resolved `new`, static calls, inheritance, interface and trait uses of the old name outside the subject are `breaking`. Types, class references, registrations, self references and dependencies affected by a namespace change require `check`. These verdicts assume the rest of the source stays unchanged. The graph does not inventory unused imports or text-based class registrations. Inspect manual includes, functions, constants, framework dispatch and callers outside the configured scope separately. `safe_to_change` is always false.
+
+Autoload assessment reads the current `composer.json` without loading Composer code. It checks production/development PSR-4 prefixes, fallback prefixes, directory lists and exact casing. A target that contradicts a simple declared mapping is `breaking`. Class maps, manual files, authoritative maps, development-only loading, casing and incomplete configuration require `check`. Rebuild generated autoload maps after an actual change. The report includes the configuration hash and a final freshness check independent of graph cache. Concurrent configuration edits ask for a fresh query.
+
+Move analysis allows 10,000 evidence visits, Composer files up to 1 MB, 1,000 mappings, 128 directories per mapping and 256 expected paths per assessment, with PHP memory headroom checks. Limits and truncation require further inspection; absence of breaking rows does not establish safety.
 
 ## Installation
 

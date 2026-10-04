@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add static move preflight for file relocation and class or namespace renaming through CLI and MCP, with Composer autoload mapping and freshness, collisions and explicit registration limits.
+
 - Add static impact assessment for deleting a method, class or PHP file, including surviving fallbacks and required implementations, through CLI and MCP.
 
 - Add opt-in method signature inspection and static proposal comparison to CLI and MCP impact, with separate breaking, check and compatible evidence for immediate callers and declaration contracts. Preserve existing impact responses and audit graphs.

@@ -18,8 +18,10 @@ final class ImpactCommand extends Command
         {--agent : Output JSON for agents}
         {--limit=20 : Maximum rows per section, 0..500}
         {--depth=4 : Maximum dependency hops, 1..32}
-        {--change= : Change mode: signature for Class::method, or delete for a method/class/file}
+        {--change= : Change mode: signature for Class::method, delete for a method/class/file, or move for a class/file}
         {--signature= : Proposed PHP method declaration without body; implies change=signature}
+        {--target-class= : Target FQCN for change=move; rename only the selected declaration}
+        {--target-path= : Project-relative PHP target path for change=move; relocate the entire file}
         {--schema : Output the JSON Schema}';
 
     protected $description = 'Inspect static class and method relationships before a change, without executing application code.';
@@ -39,7 +41,7 @@ final class ImpactCommand extends Command
             } else {
                 $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
                 $result = (new ArchitectureImpact($files, base_path(), $state->auditScope, $state->graphCache, $state->graphConfiguration()))
-                    ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'));
+                    ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'));
             }
         } catch (Throwable $exception) {
             $result = ArchitectureImpact::error('E_IMPACT_FAILED', $exception->getMessage());
@@ -77,9 +79,14 @@ final class ImpactCommand extends Command
             foreach ($result['tests'] as $test) {
                 $this->line('  '.$test['path'].' ['.$test['basis'].']');
             }
-            if (isset($result['signature']) || isset($result['delete'])) {
-                $report = $result['signature'] ?? $result['delete'];
-                $this->line(isset($result['signature']) ? 'Signature '.$report['mode'].': '.$report['declaration'].' ['.$report['status'].']' : 'Delete: '.implode(', ', $report['removed']).' ['.$report['status'].']');
+            if (isset($result['signature']) || isset($result['delete']) || isset($result['move'])) {
+                $report = $result['signature'] ?? $result['delete'] ?? $result['move'];
+                if (isset($result['move'])) {
+                    $this->line('Move '.$report['mode'].': '.$report['source']['path'].' ['.$report['status'].']');
+                    $this->line('Target class: '.($report['target']['class'] ?? 'unchanged').'; target path: '.($report['target']['path'] ?? 'unchanged'));
+                } else {
+                    $this->line(isset($result['signature']) ? 'Signature '.$report['mode'].': '.$report['declaration'].' ['.$report['status'].']' : 'Delete: '.implode(', ', $report['removed']).' ['.$report['status'].']');
+                }
                 foreach (['breaking', 'check', 'compatible'] as $group) {
                     $this->line(strtoupper($group).':');
                     foreach ($report[$group] as $row) {

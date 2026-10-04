@@ -26,16 +26,16 @@ final readonly class ArchitectureImpact
     /** @param list<string> $exclude
      * @return array<string, mixed>
      */
-    public function inspect(string $subject, array $exclude = [], int $limit = 20, int $depth = 4, ?string $change = null, ?string $signature = null): array
+    public function inspect(string $subject, array $exclude = [], int $limit = 20, int $depth = 4, ?string $change = null, ?string $signature = null, ?string $targetClass = null, ?string $targetPath = null): array
     {
         if ($signature !== null) {
             $change ??= 'signature';
         }
-        if ($change !== null && ! in_array($change, ['signature', 'delete'], true)) {
-            return self::error('E_IMPACT_CHANGE_INVALID', 'Supported change modes: signature, delete.');
+        if ($change !== null && ! in_array($change, ['signature', 'delete', 'move'], true)) {
+            return self::error('E_IMPACT_CHANGE_INVALID', 'Supported change modes: signature, delete, move.');
         }
-        if ($change === 'delete' && $signature !== null) {
-            return self::error('E_IMPACT_CHANGE_INVALID', 'Delete does not accept a proposed signature.');
+        if (($change !== 'move' && ($targetClass !== null || $targetPath !== null)) || ($change === 'move' && ($signature !== null || str_contains($subject, '::'))) || ($change === 'delete' && $signature !== null)) {
+            return self::error('E_IMPACT_CHANGE_INVALID', 'Move targets require change=move and a class or file subject; signatures cannot be combined with move or delete.');
         }
         if ($change === 'signature' && ! str_contains($subject, '::')) {
             return self::error('E_IMPACT_SIGNATURE_SUBJECT', 'Signature analysis requires Class::method.');
@@ -51,7 +51,7 @@ final readonly class ArchitectureImpact
         $graph = $loader->build($plan);
         [$selector, $method] = array_pad(explode('::', trim($subject), 2), 2, null);
         $matches = $this->matches($graph, $selector);
-        if ($change === 'delete' && $method === null && (str_contains($selector, '/') || str_ends_with(strtolower($selector), '.php')) && $matches !== []) {
+        if (($change === 'delete' || ($change === 'move' && $targetClass === null)) && $method === null && (str_contains($selector, '/') || str_ends_with(strtolower($selector), '.php')) && $matches !== []) {
             $matches = [['name' => '(file) '.$matches[0]['path'], 'path' => $matches[0]['path'], 'line' => 1, 'kind' => 'file', 'role' => 'unknown']];
         }
         if ($matches === []) {
@@ -96,6 +96,14 @@ final readonly class ArchitectureImpact
         }
         $signatureReport = null;
         $deleteReport = $change === 'delete' ? (new DeleteImpact)->inspect($graph, $index, $resolved, $declaration, $limit) : null;
+        $moveReport = null;
+        if ($change === 'move') {
+            try {
+                $moveReport = (new MoveImpact($this->files, $this->basePath, $this->scope))->inspect($graph, $resolved, $targetClass, $targetPath, $limit);
+            } catch (InvalidArgumentException $error) {
+                return self::error('E_IMPACT_MOVE_TARGET_INVALID', $error->getMessage());
+            }
+        }
         if ($change === 'signature' && $declaration !== null) {
             try {
                 $signatureReport = (new SignatureImpact)->inspect($index, $declaration, $signature, $limit);
@@ -143,6 +151,13 @@ final readonly class ArchitectureImpact
         if ($current->files !== $plan->signature->files) {
             $notices[] = ['path' => $resolved['path'], 'line' => $resolved['line'], 'reason' => 'Project files changed during analysis. Rerun impact.'];
         }
+        if ($moveReport !== null) {
+            $autoloadNow = (new MoveAutoload($this->files, $this->basePath))->read();
+            $moveReport['autoload']['fresh'] = $autoloadNow['hash'] === $moveReport['autoload']['hash'] && $autoloadNow['state'] === $moveReport['autoload']['state'];
+            if (! $moveReport['autoload']['fresh']) {
+                $notices[] = ['path' => 'composer.json', 'line' => 1, 'reason' => 'Composer configuration changed during analysis. Rerun impact.'];
+            }
+        }
         $analysisBounded = count(array_filter($notices, static fn (array $notice): bool => str_contains(strtolower($notice['reason']), 'limit'))) > 0;
         $truncated = $analysisBounded || $incoming['limited'] || $outgoing['limited'] || count($notices) > $limit || count($tests) > $limit || count($overrides) > $limit;
         foreach (['dependents' => false, 'dependencies' => true] as $key => $direction) {
@@ -163,11 +178,11 @@ final readonly class ArchitectureImpact
                 'limitations' => ['Static relationships do not prove runtime execution or absence of callers.', 'Framework dispatch, container bindings, macros, magic calls and callback bodies are not fully resolved.', 'Test candidates are not coverage or PASS.'],
                 'limit' => $limit, 'depth' => $depth, 'truncated' => $truncated,
                 'expand' => 'Rerun impact with a larger limit/depth within 500/32, or inspect the boundary symbols. No continuation pages.'],
-            'cache' => $plan->cacheStatus->value, 'snapshot' => hash('xxh128', serialize($plan->signature->toArray())),
+            'cache' => $plan->cacheStatus->value, 'snapshot' => hash('xxh128', serialize($plan->signature->toArray()).($moveReport === null ? '' : serialize([$moveReport['autoload']['hash'], $moveReport['autoload']['state']]))),
             'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude],
             'next' => ['inspect_relationship_evidence', 'resolve_uncertain_calls_before_dependent_decisions', 'run_selected_tests', 'run:architecture-kit:guard --changed --agent'],
         ];
-        $changeReport = $signatureReport ?? $deleteReport;
+        $changeReport = $signatureReport ?? $deleteReport ?? $moveReport;
         if ($changeReport !== null) {
             foreach ($notices as $notice) {
                 if (count($changeReport['check']) < $limit) {
@@ -182,7 +197,7 @@ final readonly class ArchitectureImpact
                 $changeReport['status'] = 'check';
             }
             $changeReport['safe_to_change'] = false;
-            $result[$change === 'delete' ? 'delete' : 'signature'] = $changeReport;
+            $result[$change] = $changeReport;
         }
 
         return $result;
