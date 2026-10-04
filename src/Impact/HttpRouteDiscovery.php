@@ -105,7 +105,7 @@ final class HttpRouteDiscovery
         }
         ksort($this->states);
 
-        return ['routes' => array_values($this->records), 'notices' => $this->notices, 'limited' => $this->limited, 'signature' => hash('xxh128', serialize($this->states)), 'inputs' => $this->states, 'has_sources' => $this->records !== [] || $this->notices !== [] || count(array_filter(array_keys($this->states), fn ($path) => str_starts_with($path, 'routes/') && $this->states[$path] !== null)) > 0];
+        return ['routes' => array_values($this->records), 'notices' => $this->notices, 'limited' => $this->limited, 'signature' => hash('xxh128', serialize($this->states)), 'inputs' => $this->states, 'execution_facts' => array_map(fn ($template) => $template['execution'], $this->templates), 'has_sources' => $this->records !== [] || $this->notices !== [] || count(array_filter(array_keys($this->states), fn ($path) => str_starts_with($path, 'routes/') && $this->states[$path] !== null)) > 0];
     }
 
     /**
@@ -263,6 +263,7 @@ final class HttpRouteDiscovery
                 $file = new FileContext($path, $this->files->get($absolute));
                 try {
                     $this->templates[$path] = (new HttpRouteExtractor($this->basePath))->extract($file);
+                    $this->templates[$path]['execution'] = (new ExecutionExtractor)->extract($file);
                 } finally {
                     $file->releaseAst();
                 }

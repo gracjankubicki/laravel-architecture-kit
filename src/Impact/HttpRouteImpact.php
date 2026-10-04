@@ -20,12 +20,13 @@ final class HttpRouteImpact
      * @param  array<string, mixed>  $subject
      * @param  array<string, mixed>|null  $declaration
      * @param  list<string>  $exclude
+     * @param  array<string, mixed>|null  $sources
      * @return array<string, mixed>
      */
-    public function inspect(Filesystem $files, string $basePath, ProjectGraphSnapshot $graph, array $subject, ?array $declaration, array $exclude, int $limit, int $depth): array
+    public function inspect(Filesystem $files, string $basePath, ProjectGraphSnapshot $graph, array $subject, ?array $declaration, array $exclude, int $limit, int $depth, ?HttpRouteDiscovery $discovery = null, ?array $sources = null): array
     {
-        $discovery = new HttpRouteDiscovery($files, $basePath);
-        $sources = $discovery->discover($graph, $exclude);
+        $discovery ??= new HttpRouteDiscovery($files, $basePath);
+        $sources ??= $discovery->discover($graph, $exclude);
         $notices = $sources['notices'];
         $this->limited = $sources['limited'];
         $rows = [];

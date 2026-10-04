@@ -99,6 +99,19 @@ final class ImpactCommand extends Command
             if ($http['truncated']) {
                 $this->warn('HTTP report is limited. Inspect source notices and boundary symbols; totals may be lower bounds.');
             }
+            $this->line('Job, event and model flows: '.$http['flow_analysis']['status'].'; fresh: '.($http['flow_analysis']['fresh'] ? 'yes' : 'no'));
+            foreach ($http['flows'] as $flow) {
+                $this->line('  '.$flow['entry']['symbol'].' -> '.$flow['target'].' ['.$flow['certainty'].']');
+                foreach ($flow['via'] as $edge) {
+                    $this->line('    '.$edge['from'].' -> '.$edge['to'].' ['.$edge['kind'].', '.($edge['mode'] ?? 'call').', '.($edge['timing'] ?? 'immediate').'] '.$edge['path'].':'.$edge['line']);
+                    foreach ($edge['conditions'] as $condition) {
+                        $this->line('      '.$condition);
+                    }
+                }
+            }
+            foreach ($http['flow_analysis']['unresolved'] as $notice) {
+                $this->warn($notice['path'].':'.$notice['line'].' '.$notice['reason']);
+            }
             if (isset($result['signature']) || isset($result['delete']) || isset($result['move'])) {
                 $report = $result['signature'] ?? $result['delete'] ?? $result['move'];
                 if (isset($result['move'])) {

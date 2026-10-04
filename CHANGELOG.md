@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add source-only execution flows through job dispatch, chains, batches, event listeners and Eloquent lifecycle events, with contextual event suppression, separate execution mode and timing, independent freshness and bounded CLI/MCP reports.
+
 - Discover HTTP route declarations automatically in impact reports, with precise controller/callback invocation chains, group and resource metadata, independent source freshness and explicit static-analysis limits. Share the report through CLI and MCP without executing application code.
 
 - Add static move preflight for file relocation and class or namespace renaming through CLI and MCP, with Composer autoload mapping and freshness, collisions and explicit registration limits.

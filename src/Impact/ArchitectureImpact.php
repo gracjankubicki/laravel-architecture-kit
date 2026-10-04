@@ -182,7 +182,27 @@ final readonly class ArchitectureImpact
             'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude],
             'next' => ['inspect_relationship_evidence', 'resolve_uncertain_calls_before_dependent_decisions', 'run_selected_tests', 'run:architecture-kit:guard --changed --agent'],
         ];
-        $result['execution'] = (new HttpRouteImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth);
+        $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath);
+        $httpSources = $httpDiscovery->discover($graph, $exclude);
+        $result['execution'] = (new HttpRouteImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpDiscovery, $httpSources);
+        $flow = (new ExecutionImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpSources);
+        $result['execution']['flows'] = $flow['flows'];
+        $result['execution']['flow_analysis'] = $flow;
+        unset($result['execution']['flow_analysis']['flows']);
+        if ($flow['has_sources']) {
+            $result['execution']['has_sources'] = true;
+            $result['execution']['source_signature'] = hash('xxh128', $result['execution']['source_signature'].$flow['source_signature']);
+            $result['execution']['fresh'] = $result['execution']['fresh'] && $flow['fresh'];
+            $result['execution']['totals']['flows'] = $flow['totals']['flows'];
+            $result['execution']['truncated'] = $result['execution']['truncated'] || $flow['truncated'];
+            if ($flow['status'] === 'limit' || $result['execution']['status'] === 'limit') {
+                $result['execution']['status'] = 'limit';
+            } elseif ($flow['status'] === 'incomplete' || $result['execution']['status'] === 'incomplete') {
+                $result['execution']['status'] = 'incomplete';
+            } elseif ($flow['flows'] !== []) {
+                $result['execution']['status'] = 'complete';
+            }
+        }
         if ($result['execution']['has_sources']) {
             $result['snapshot'] = hash('xxh128', $result['snapshot'].$result['execution']['source_signature']);
         }
