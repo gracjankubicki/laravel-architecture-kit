@@ -2,6 +2,13 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- Add `architecture-kit:impact` and the read-only MCP `impact` tool for bounded class, file, and method relationships before a change. Reports separate resolved calls, possible contract targets, callable references, class context, test candidates, and incomplete analysis.
+- Cache optional per-file impact facts under a separate fingerprint without changing audit dependency edges or existing tool contracts. Generated guidance directs agents to inspect impact before editing.
+
 ## v0.6.2 - 2026-10-03
 
 ### Added

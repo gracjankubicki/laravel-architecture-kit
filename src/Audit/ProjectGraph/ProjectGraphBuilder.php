@@ -9,6 +9,8 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocationExtractor;
+use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
+use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Name;
@@ -25,7 +27,10 @@ final class ProjectGraphBuilder
     /** @var list<TestInvocation> */
     private array $testInvocations = [];
 
-    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier) {}
+    /** @var list<ImpactFacts> */
+    private array $impactFacts = [];
+
+    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier, private readonly bool $impact = false) {}
 
     /**
      * @param  array<int, FileContext>  $files
@@ -35,6 +40,7 @@ final class ProjectGraphBuilder
         $this->symbols = [];
         $this->edges = [];
         $this->testInvocations = [];
+        $this->impactFacts = [];
 
         foreach ($files as $file) {
             $this->add($file);
@@ -60,6 +66,9 @@ final class ProjectGraphBuilder
         array_push($this->symbols, ...$entry->symbols);
         array_push($this->edges, ...$entry->edges);
         array_push($this->testInvocations, ...$entry->testInvocations);
+        if ($entry->impact !== null) {
+            $this->impactFacts[] = $entry->impact;
+        }
     }
 
     /**
@@ -67,6 +76,9 @@ final class ProjectGraphBuilder
      */
     public function collect(FileContext $file): FileGraphEntry
     {
+        if ($this->impact && ($reason = ImpactExtractor::sourceLimit(strlen($file->contents))) !== null) {
+            return new FileGraphEntry([], [], impact: new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => $reason]]));
+        }
         $nodes = null;
         $symbols = [];
         $edges = [];
@@ -75,9 +87,10 @@ final class ProjectGraphBuilder
             $nodes = $file->ast();
 
             if ($nodes === null) {
-                return new FileGraphEntry([], []);
+                return new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => 'Unparseable source.']]) : null);
             }
 
+            $impactFacts = $this->impact ? (new ImpactExtractor)->extract($file) : null;
             $invocations = (new TestInvocationExtractor)->extract($file);
             $source = $this->fileSymbol($file, $nodes, $symbols);
 
@@ -89,7 +102,7 @@ final class ProjectGraphBuilder
             $file->releaseAst();
         }
 
-        return new FileGraphEntry($symbols, $this->distinct($edges), $invocations);
+        return new FileGraphEntry($symbols, $this->distinct($edges), $invocations, $impactFacts);
     }
 
     /**
@@ -174,6 +187,7 @@ final class ProjectGraphBuilder
             $this->sorted($symbols, static fn (ProjectSymbol $symbol): string => self::key($symbol->name, $symbol->path, $symbol->line)),
             $this->sorted($edges, static fn (DependencyEdge $edge): string => self::key($edge->from, $edge->to, $edge->path, $edge->line, $edge->kind)),
             $this->testInvocations,
+            $this->impactFacts,
         );
     }
 

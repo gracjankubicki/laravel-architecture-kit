@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Commands\ExplainCommand;
 use GracjanKubicki\ArchitectureKit\Commands\FileRulesCommand;
 use GracjanKubicki\ArchitectureKit\Commands\GuardCommand;
 use GracjanKubicki\ArchitectureKit\Commands\GuidelinesCommand;
+use GracjanKubicki\ArchitectureKit\Commands\ImpactCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallAgentsCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallCommand;
 use GracjanKubicki\ArchitectureKit\Commands\MakeCommand;
@@ -42,6 +43,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
 
         $this->commands([
             ArchitectureContextCommand::class,
+            ImpactCommand::class,
             AuditCommand::class,
             CacheClearCommand::class,
             DoctorCommand::class,

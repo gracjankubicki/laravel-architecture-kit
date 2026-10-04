@@ -12,6 +12,8 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphBuildPlan;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphCacheSignature;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
+use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use SplFileInfo;
@@ -29,6 +31,7 @@ final readonly class ProjectGraphLoader
          * @var array<int, string>
          */
         private array $configuration = [],
+        private bool $impact = false,
     ) {}
 
     /**
@@ -125,11 +128,17 @@ final readonly class ProjectGraphLoader
      */
     public function build(GraphBuildPlan $plan): ProjectGraphSnapshot
     {
-        $builder = new ProjectGraphBuilder;
+        $builder = new ProjectGraphBuilder(impact: $this->impact);
         $entries = $plan->reusable;
 
-        foreach ($this->contexts($this->scannedFrom($plan), $plan->toParse) as $path => $context) {
-            $entries[$path] = $builder->collect($context);
+        foreach ($plan->toParse as $path) {
+            $absolute = $plan->files[$path];
+            if ($this->impact && ($reason = ImpactExtractor::sourceLimit($this->files->size($absolute))) !== null) {
+                $entries[$path] = new FileGraphEntry([], [], impact: new ImpactFacts($path, [], [], [['line' => 1, 'reason' => $reason]]));
+
+                continue;
+            }
+            $entries[$path] = $builder->collect(new FileContext($path, $this->files->get($absolute)));
         }
 
         return $this->compose($builder, $plan, $entries);
@@ -147,10 +156,7 @@ final readonly class ProjectGraphLoader
     public function plan(array $exclude = []): GraphBuildPlan
     {
         $scanned = $this->scan($exclude);
-        $signature = GraphCacheSignature::create(
-            [PackageFingerprint::current(), implode(',', $this->scope->directories), ...$this->configuration],
-            array_map(static fn (array $file): string => $file[1], $scanned),
-        );
+        $signature = $this->signatureFor($scanned);
         $files = array_map(static fn (array $file): string => $file[0], $scanned);
 
         if ($this->cache === null) {
@@ -175,7 +181,7 @@ final readonly class ProjectGraphLoader
         foreach ($scanned as $path => $file) {
             $entry = $previous->entries[$path] ?? null;
 
-            if ($entry !== null && ($previous->signature->files[$path] ?? null) === $file[1]) {
+            if ($entry !== null && (! $this->impact || ($entry->impact !== null && $entry->impact->cacheable())) && ($previous->signature->files[$path] ?? null) === $file[1]) {
                 $reusable[$path] = $entry;
 
                 continue;
@@ -194,6 +200,23 @@ final readonly class ProjectGraphLoader
             $reusable,
             $result->status,
             stale: $toParse !== [] || count($reusable) !== count($previous->entries),
+        );
+    }
+
+    /** Recheck file state without restoring a second cached graph.
+     * @param  list<string>  $exclude
+     */
+    public function currentSignature(array $exclude = []): GraphCacheSignature
+    {
+        return $this->signatureFor($this->scan($exclude));
+    }
+
+    /** @param array<string, array{0: string, 1: string}> $scanned */
+    private function signatureFor(array $scanned): GraphCacheSignature
+    {
+        return GraphCacheSignature::create(
+            [PackageFingerprint::current(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v1'] : [])],
+            array_map(static fn (array $file): string => $file[1], $scanned),
         );
     }
 
@@ -218,28 +241,6 @@ final readonly class ProjectGraphLoader
         }
 
         return $builder->finish();
-    }
-
-    /**
-     * @return array<string, array{0: string, 1: string}>
-     */
-    private function scannedFrom(GraphBuildPlan $plan): array
-    {
-        return array_map(static fn (string $absolute): array => [$absolute, ''], $plan->files);
-    }
-
-    /**
-     * @param  array<string, array{0: string, 1: string}>  $scanned
-     * @param  array<int, string>  $paths
-     * @return iterable<string, FileContext>
-     */
-    private function contexts(array $scanned, array $paths): iterable
-    {
-        foreach ($paths as $path) {
-            if (isset($scanned[$path])) {
-                yield $path => new FileContext($path, $this->files->get($scanned[$path][0]));
-            }
-        }
     }
 
     /** @param array<int, string> $exclude */

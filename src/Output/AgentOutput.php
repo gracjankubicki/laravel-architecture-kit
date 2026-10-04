@@ -16,6 +16,7 @@ use GracjanKubicki\ArchitectureKit\Context\ImpactRanking;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
+use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldFile;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldPlan;
@@ -317,6 +318,7 @@ final readonly class AgentOutput
             'sync' => $this->syncSchema(),
             'upgrade-plan' => $this->upgradePlanSchema(),
             'architecture-context' => $this->architectureContextSchema(),
+            'impact' => ImpactSchema::get(),
             'file-rules' => $this->fileRulesSchema(),
             'make' => $this->makeSchema(),
             default => [

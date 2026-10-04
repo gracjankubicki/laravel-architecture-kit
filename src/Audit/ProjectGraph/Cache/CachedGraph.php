@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\DependencyEdge;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\FileGraphEntry;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
+use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
 use Throwable;
 
 /**
@@ -63,7 +64,7 @@ final readonly class CachedGraph
                 ];
             }
 
-            $entries[$path] = ['s' => $symbols, 'e' => $edges, 't' => array_map(fn ($invocation) => $invocation->toArray(), $entry->testInvocations)];
+            $entries[$path] = ['s' => $symbols, 'e' => $edges, 't' => array_map(fn ($invocation) => $invocation->toArray(), $entry->testInvocations), ...($entry->impact !== null ? ['i' => $entry->impact->toArray()] : [])];
         }
 
         return [
@@ -118,7 +119,8 @@ final readonly class CachedGraph
                     $edges[] = new DependencyEdge($from, $to, $path, $line, $kind, $strong);
                 }
 
-                $entries[$path] = new FileGraphEntry($symbols, $edges, array_map(fn ($value) => TestInvocation::fromArray($path, $value), $entry['t']));
+                $entries[$path] = new FileGraphEntry($symbols, $edges, array_map(fn ($value) => TestInvocation::fromArray($path, $value), $entry['t']),
+                    isset($entry['i']) ? ImpactFacts::fromArray($path, $entry['i']) : null);
             }
         } catch (Throwable) {
             // A partially written or hand-edited file is not worth diagnosing: it is

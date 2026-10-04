@@ -87,6 +87,31 @@ Route discovery boots Laravel in a fresh child PHP process, with a process-local
 
 Analysis is limited to 12 method levels, 128 method visits and 20,000 AST nodes per endpoint, 100 KB per source file and 1 MB of retained source per controller, with an additional PHP memory headroom check. A cycle or exceeded budget is incomplete analysis. Source lookup stays in the configured project graph; excluded/out-of-scope dependencies are unresolved. The graph cache also stores static test-invocation metadata. Package fingerprinting invalidates older entries; fresh route snapshots are not cached. In `--changed`, changed dependencies recheck their controller dependents; edits under routes/bootstrap/config/providers and deleted inputs recheck all controllers. Custom route-registration files outside those locations require a full audit.
 
+### Impact before a change
+
+Ask for direct and indirect relationships before changing a class, file, or method:
+
+```bash
+php artisan architecture-kit:impact InvoiceCalculator --agent
+php artisan architecture-kit:impact 'App\Services\InvoiceCalculator::calculate' --agent
+php artisan architecture-kit:impact app/Services/InvoiceCalculator.php --limit=50 --depth=8
+php artisan architecture-kit:impact --schema
+```
+
+The MCP tool `impact` accepts the same `subject`, `limit`, and `depth`. Short names return candidates when ambiguous. A path containing multiple classes also requires choosing a candidate. Method selection resolves inherited declarations and ordinary trait methods; trait adaptations or conflicting declarations remain unresolved.
+
+For a method, the query follows method calls at every hop. A caller of `CreateInvoiceAction::other()` is not a caller of `handle()` merely because both methods belong to the same class. Each relationship contains a witness chain with its kind, source file, and line. The report separates resolved static targets, possible targets through interfaces or parent types, callable references, and class-only context. Resolved targets describe source relationships, not runtime execution. Class-only imports and injected types do not seed the method traversal. Weak class references are shown at one hop and do not propagate further. Override declarations are listed as places to inspect. The report does not issue a `BREAKING` verdict.
+
+Receiver recognition supports static calls, `$this`, single named types in parameters and properties, promoted constructor properties, `new`, and recognized assignments. Branches and mutations invalidate uncertain local types. Union/intersection receivers, dynamic methods, container lookups, facades, macros, magic dispatch, callback bodies, and unsupported trait dispatch remain unresolved or outside the supported subset. A callable array or first-class callable is a reference, never evidence that it was invoked. Framework entrypoints may have no visible PHP caller; absence of callers does not establish that a method is unused. Full route, queue, and table relationships, proposed `delete`/`signature`/`move` evaluation, and continuation pages are later work.
+
+`analysis.status` distinguishes `none`, `complete`, `incomplete`, and `limit` for the supported static scope. `complete` does not prove complete runtime reachability. Errors distinguish ambiguity, a missing subject, an out-of-scope path, a missing method, and unresolved inherited dispatch. `class_context` is separately labelled, and test candidates explicitly say that they do not prove coverage or PASS. Ordinary class-based test references can include tests outside the audit graph, as in `architecture-context`; their basis is `class_reference`.
+
+Answers are bounded by `limit` per section, default 20 and maximum 500, and by `depth`, default 4 and maximum 32. Method indexing is bounded to 50,000 dispatch edges and 1,000 candidate subtypes per call. Traversal allows at most 10,000 edge visits and 1,000 queued elements per direction. Impact extraction stops after 20,000 AST visits or 100 KB per file. Source size and PHP memory headroom are checked before reading or parsing impact sources; query indices also check headroom. Hierarchy lookup stops at depth 12 and reports the boundary class. Test candidates reuse application edges and stream test files individually, with limits of 10,000 directory entries, 20 MB of source, 1,000 intermediary classes and 501 results; skipped sources make the report incomplete or limited. Transient memory-limited file facts are reparsed on the next query rather than trusted as complete. Limits are explicit in the report. Increase the query limits or inspect boundary symbols to expand an answer; internal source and index limits require narrowing the analyzed scope or inspecting the sources. There are no continuation pages.
+
+Impact uses the shared graph loader and cache infrastructure with a separate fingerprint and an optional per-file fact channel. Audit and guard never treat method facts as class dependency edges. The report includes cache status, configured scope, and a stat-based snapshot identifier. Edited, added, deleted, or newly excluded sources invalidate the relevant facts according to the existing graph cache contract. A change detected during analysis marks the answer incomplete and asks for a fresh query.
+
+Before editing, inspect the evidence and uncertain calls, select relevant tests, and ask before expanding the agreed change scope. Run the guard after editing. Resource sync adds these instructions to generated guidance.
+
 ## Installation
 
 ```bash
