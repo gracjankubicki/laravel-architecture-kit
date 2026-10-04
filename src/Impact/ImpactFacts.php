@@ -40,7 +40,7 @@ final readonly class ImpactFacts
                 }
             }
             foreach ($class['methods'] as $method => $declaration) {
-                if (! is_string($method) || ! is_array($declaration) || ! is_string($declaration['name'] ?? null) || ! is_int($declaration['line'] ?? null) || ! is_bool($declaration['final'] ?? null)) {
+                if (! is_string($method) || ! is_array($declaration) || ! is_string($declaration['name'] ?? null) || ! is_int($declaration['line'] ?? null) || ! is_bool($declaration['final'] ?? null) || ! MethodSignature::valid($declaration['signature'] ?? null)) {
                     throw new UnexpectedValueException('Invalid impact method.');
                 }
             }
@@ -48,7 +48,7 @@ final readonly class ImpactFacts
         foreach ($data['calls'] as $call) {
             if (! is_array($call) || ! is_string($call['from'] ?? null) || ! is_int($call['line'] ?? null) || ! is_string($call['kind'] ?? null)
                 || ! array_key_exists('receiver', $call) || (! is_string($call['receiver']) && $call['receiver'] !== null)
-                || ! array_key_exists('method', $call) || (! is_string($call['method']) && $call['method'] !== null) || ! is_bool($call['exact'] ?? null)) {
+                || ! array_key_exists('method', $call) || (! is_string($call['method']) && $call['method'] !== null) || ! is_bool($call['exact'] ?? null) || ! MethodSignature::validSite($call['site'] ?? null)) {
                 throw new UnexpectedValueException('Invalid impact call.');
             }
         }

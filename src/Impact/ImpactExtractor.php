@@ -24,6 +24,8 @@ final class ImpactExtractor
 
     private bool $limited = false;
 
+    private bool $staticContext = false;
+
     public function extract(FileContext $file): ImpactFacts
     {
         $this->calls = $this->notices = [];
@@ -76,7 +78,8 @@ final class ImpactExtractor
             }
             $methods = [];
             foreach ($class->getMethods() as $method) {
-                $methods[strtolower($method->name->toString())] = ['name' => $method->name->toString(), 'line' => $method->getStartLine(), 'final' => $method->isFinal()];
+                $methods[strtolower($method->name->toString())] = ['name' => $method->name->toString(), 'line' => $method->getStartLine(), 'final' => $method->isFinal(), 'signature' => MethodSignature::extract($method, $name, $parents[0] ?? null)];
+                $this->staticContext = $method->isStatic();
                 $vars = $method->isStatic() ? [] : ['this' => ['type' => $name, 'exact' => false]];
                 foreach ($method->params as $param) {
                     if (is_string($param->var->name)) {
@@ -89,6 +92,7 @@ final class ImpactExtractor
                 'line' => $class->getStartLine(), 'final' => $class instanceof Stmt\Class_ && $class->isFinal(), 'parents' => $parents,
                 'traits' => $traits, 'adaptations' => $adaptations, 'properties' => $properties, 'methods' => $methods];
         }
+        $this->staticContext = true;
         $vars = [];
         $this->walk($ast, $file, '', '(file) '.$file->path, null, [], $vars);
 
@@ -292,7 +296,7 @@ final class ImpactExtractor
                 : ['type' => $expr->class instanceof Node\Name ? $this->type($file, $expr->class, $class, $parent) : null, 'exact' => $expr->class instanceof Node\Name && strtolower($expr->class->toString()) !== 'static'];
             $method = $expr instanceof Expr\New_ ? '__construct' : ($expr->name instanceof Node\Identifier ? $expr->name->toString() : null);
             $this->calls[] = ['from' => $from, 'receiver' => $receiver['type'], 'method' => $method, 'exact' => $receiver['exact'],
-                'kind' => $expr->isFirstClassCallable() ? 'reference' : 'call', 'line' => $expr->getStartLine()];
+                'kind' => $expr->isFirstClassCallable() ? 'reference' : 'call', 'line' => $expr->getStartLine(), 'site' => MethodSignature::site($expr, $class, $this->staticContext)];
             if (! $expr->isFirstClassCallable()) {
                 foreach ($expr->getArgs() as $arg) {
                     $this->expression($arg->value, $file, $class, $from, $parent, $properties, $vars);
@@ -316,7 +320,7 @@ final class ImpactExtractor
                     ? ['type' => $this->type($file, $value->class, $class, $parent), 'exact' => true]
                     : $this->expression($value, $file, $class, $from, $parent, $properties, $vars);
                 if ($receiver['type'] !== null) {
-                    $this->calls[] = ['from' => $from, 'receiver' => $receiver['type'], 'method' => $second->value->value, 'exact' => $receiver['exact'], 'kind' => 'reference', 'line' => $expr->getStartLine()];
+                    $this->calls[] = ['from' => $from, 'receiver' => $receiver['type'], 'method' => $second->value->value, 'exact' => $receiver['exact'], 'kind' => 'reference', 'line' => $expr->getStartLine(), 'site' => ['form' => 'reference', 'class' => $class, 'static_context' => $this->staticContext, 'arguments' => []]];
 
                     return $unknown;
                 }

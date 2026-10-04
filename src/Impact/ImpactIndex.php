@@ -37,6 +37,9 @@ final class ImpactIndex
     /** @var array<string, array<string, mixed>|null> */
     private array $declarations = [];
 
+    /** @var array<string, list<array<string, mixed>>> */
+    private array $sites = [];
+
     private int $edgeCount = 0;
 
     private bool $limited = false;
@@ -141,7 +144,7 @@ final class ImpactIndex
 
     /** @param array<string, bool> $seen
      * @return list<string> */
-    private function ancestors(string $name, array $seen = [], int $depth = 0): array
+    public function ancestors(string $name, array $seen = [], int $depth = 0): array
     {
         $key = strtolower($name);
         $class = $this->classes[$key] ?? null;
@@ -187,7 +190,7 @@ final class ImpactIndex
         $seen[$key] = true;
         $own = $class['methods'][strtolower($method)] ?? null;
         if ($own !== null) {
-            return [...$own, 'symbol' => $class['name'].'::'.$own['name'], 'path' => $class['path'], 'class' => $class['name']];
+            return ['name' => $own['name'], 'line' => $own['line'], 'final' => $own['final'], 'symbol' => $class['name'].'::'.$own['name'], 'path' => $class['path'], 'class' => $class['name']];
         }
         if ($class['adaptations']) {
             return null;
@@ -225,8 +228,22 @@ final class ImpactIndex
         }
         $edge = ['from' => $call['from'], 'to' => $to, 'kind' => $call['kind'], 'certainty' => $certainty,
             'path' => $call['path'], 'line' => $call['line'], 'receiver' => $this->receiver($call['receiver'])];
+        $this->sites[$call['path'].'|'.$call['from'].'|'.$call['line'].'|'.strtolower($to)][] = $call['site'];
         $this->incoming[strtolower($to)][] = $edge;
         $this->outgoing[strtolower($call['from'])][] = $edge;
+    }
+
+    /** Signature analysis uses call evidence without adding fields to legacy edges.
+     * @return iterable<array<string, mixed>> */
+    public function signatureCalls(string $symbol): iterable
+    {
+        $offsets = [];
+        foreach ($this->edges($symbol, false) as $edge) {
+            $key = $edge['path'].'|'.$edge['from'].'|'.$edge['line'].'|'.strtolower($symbol);
+            $offset = $offsets[$key] ?? 0;
+            $offsets[$key] = $offset + 1;
+            yield [...$edge, 'site' => $this->sites[$key][$offset]];
+        }
     }
 
     public function limitReached(): bool

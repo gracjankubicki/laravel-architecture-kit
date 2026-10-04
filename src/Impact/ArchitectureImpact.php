@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Filesystem\Filesystem;
+use InvalidArgumentException;
 
 final readonly class ArchitectureImpact
 {
@@ -25,8 +26,17 @@ final readonly class ArchitectureImpact
     /** @param list<string> $exclude
      * @return array<string, mixed>
      */
-    public function inspect(string $subject, array $exclude = [], int $limit = 20, int $depth = 4): array
+    public function inspect(string $subject, array $exclude = [], int $limit = 20, int $depth = 4, ?string $change = null, ?string $signature = null): array
     {
+        if ($signature !== null) {
+            $change ??= 'signature';
+        }
+        if ($change !== null && $change !== 'signature') {
+            return self::error('E_IMPACT_CHANGE_INVALID', 'Supported change mode: signature.');
+        }
+        if ($change === 'signature' && ! str_contains($subject, '::')) {
+            return self::error('E_IMPACT_SIGNATURE_SUBJECT', 'Signature analysis requires Class::method.');
+        }
         if (trim($subject) === '') {
             return self::error('E_IMPACT_SUBJECT_REQUIRED', 'Provide a class, path, or Class::method.');
         }
@@ -59,6 +69,7 @@ final readonly class ArchitectureImpact
         $root = $resolved['name'];
         $index = new ImpactIndex($graph, buildCalls: $method !== null || $resolved['kind'] === 'file');
         $overrides = [];
+        $declaration = null;
         if ($method !== null) {
             if (! preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/D', $method)) {
                 return self::error('E_IMPACT_METHOD_INVALID', 'Use Class::method with a PHP method identifier.');
@@ -76,6 +87,14 @@ final readonly class ArchitectureImpact
             $overrides = $index->overrides($root, $method, $declaration['symbol']);
             $resolved = [...$resolved, 'requested_method' => $method, 'declaration' => $declaration];
             $root = $declaration['symbol'];
+        }
+        $signatureReport = null;
+        if ($change === 'signature' && $declaration !== null) {
+            try {
+                $signatureReport = (new SignatureImpact)->inspect($index, $declaration, $signature, $limit);
+            } catch (InvalidArgumentException $error) {
+                return self::error('E_IMPACT_SIGNATURE_INVALID', $error->getMessage());
+            }
         }
         $classIndexLimited = false;
         $classEdges = $this->classEdges($graph, $classIndexLimited, $method !== null ? $resolved['name'] : null);
@@ -126,7 +145,7 @@ final readonly class ArchitectureImpact
         }
         $hasRelationships = $incoming['resolved'] !== [] || $outgoing['resolved'] !== [] || $incoming['possible'] !== [] || $outgoing['possible'] !== [] || $incoming['references'] !== [] || $outgoing['references'] !== [];
 
-        return [
+        $result = [
             'v' => 1, 'ok' => true, 'cmd' => 'impact', 'subject' => $resolved,
             'dependents' => $incoming['resolved'], 'dependencies' => $outgoing['resolved'],
             'possible' => ['dependents' => $incoming['possible'], 'dependencies' => $outgoing['possible'], 'overrides' => array_slice($overrides, 0, $limit)],
@@ -141,6 +160,24 @@ final readonly class ArchitectureImpact
             'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude],
             'next' => ['inspect_relationship_evidence', 'resolve_uncertain_calls_before_dependent_decisions', 'run_selected_tests', 'run:architecture-kit:guard --changed --agent'],
         ];
+        if ($signatureReport !== null) {
+            foreach ($notices as $notice) {
+                if (count($signatureReport['check']) < $limit) {
+                    $signatureReport['check'][] = ['symbol' => $notice['from'] ?? $root, 'path' => $notice['path'], 'line' => $notice['line'], 'kind' => 'uncertain', 'certainty' => 'unresolved', 'reasons' => [$notice['reason']]];
+                }
+                $signatureReport['total']['check']++;
+            }
+            $signatureReport['truncated'] = $signatureReport['truncated'] || $truncated || $signatureReport['total']['check'] > $limit;
+            if ($signatureReport['truncated']) {
+                $signatureReport['status'] = 'limit';
+            } elseif ($notices !== [] && $signatureReport['status'] === 'no_proven_breaking') {
+                $signatureReport['status'] = 'check';
+            }
+            $signatureReport['safe_to_change'] = false;
+            $result['signature'] = $signatureReport;
+        }
+
+        return $result;
     }
 
     /** @return list<array<string, mixed>> */

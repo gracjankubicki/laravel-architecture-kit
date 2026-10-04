@@ -18,6 +18,8 @@ final class ImpactCommand extends Command
         {--agent : Output JSON for agents}
         {--limit=20 : Maximum rows per section, 0..500}
         {--depth=4 : Maximum dependency hops, 1..32}
+        {--change= : Change mode: signature, requires Class::method}
+        {--signature= : Proposed PHP method declaration without body; implies change=signature}
         {--schema : Output the JSON Schema}';
 
     protected $description = 'Inspect static class and method relationships before a change, without executing application code.';
@@ -37,7 +39,7 @@ final class ImpactCommand extends Command
             } else {
                 $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
                 $result = (new ArchitectureImpact($files, base_path(), $state->auditScope, $state->graphCache, $state->graphConfiguration()))
-                    ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth);
+                    ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'));
             }
         } catch (Throwable $exception) {
             $result = ArchitectureImpact::error('E_IMPACT_FAILED', $exception->getMessage());
@@ -74,6 +76,16 @@ final class ImpactCommand extends Command
             $this->line('Test candidates, not coverage or PASS:');
             foreach ($result['tests'] as $test) {
                 $this->line('  '.$test['path'].' ['.$test['basis'].']');
+            }
+            if (isset($result['signature'])) {
+                $this->line('Signature '.$result['signature']['mode'].': '.$result['signature']['declaration'].' ['.$result['signature']['status'].']');
+                foreach (['breaking', 'check', 'compatible'] as $group) {
+                    $this->line(strtoupper($group).':');
+                    foreach ($result['signature'][$group] as $row) {
+                        $this->line('  '.$row['symbol'].' '.$row['path'].':'.$row['line'].' '.implode('; ', $row['reasons']));
+                    }
+                }
+                $this->warn('No breaking rows does not prove that the change is safe. Inspect uncertainty and run selected tests.');
             }
             foreach ($result['analysis']['notices'] as $notice) {
                 $this->warn($notice['path'].':'.$notice['line'].' '.$notice['reason']);

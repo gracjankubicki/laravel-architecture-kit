@@ -233,6 +233,26 @@ Use `architecture-kit:audit --update-baseline` when adopting Architecture Kit in
 
 `architecture-kit:guard` is read-only. It combines `doctor`-equivalent generated-resource checks with the deterministic audit rules that are actually implemented. Guidance without a corresponding audit rule remains reviewer- and agent-enforced. Use `--json` for hooks and MCP tools.
 
+### Impact of a method signature change
+
+Before editing a method declaration, inspect its immediate callers and contracts:
+
+```bash
+php artisan architecture-kit:impact 'InvoiceCalculator::calculate' --change=signature --agent
+php artisan architecture-kit:impact 'InvoiceCalculator::calculate' --signature='calculate($invoice, $currency)' --agent
+php artisan architecture-kit:impact 'InvoiceCalculator::calculate' --signature='public static function calculate($invoice, $currency = "PLN")' --agent
+```
+
+MCP `impact` accepts optional `change: "signature"` and `signature` with the same result. Supplying `signature` implies the change mode. A proposal is one PHP method declaration without a body; a shorthand such as `calculate($invoice)` preserves the current visibility and static modifier. An explicit `public function ...` supplies those modifiers. The selected method name must match. Use fully qualified class types. Abstract and final flags are preserved, and proposals cannot change those flags or introduce attributes. The parser reads declarations and default expressions without evaluating them. Invalid proposals return `E_IMPACT_SIGNATURE_INVALID`; class or file subjects without a method return `E_IMPACT_SIGNATURE_SUBJECT`.
+
+The optional `signature` section separates `breaking`, `check`, and `compatible` rows. Each row has a source path, line and reason. `breaking` means a supported static incompatibility if that caller reaches the selected declaration. Examples include a missing required argument, an unknown named argument, a non-reference value passed to a new reference parameter, inaccessible visibility, or a static invocation that requires an instance. Compatible argument counts alone do not prove compatible behaviour. Extra positional arguments accepted by PHP and removed parameters need a semantic check.
+
+Only immediate callers are compared; indirect BFS users remain in the ordinary relationship sections. Possible subtype calls, callable references, unpacked arguments, trait caller scope, magic dispatch after access/static changes and unresolved dispatch require inspection. Interface and parent requirements, descendant overrides and ordinary trait declarations are included. A selector for an inherited method changes the actual declaration shown by the report, rather than adding an override in the selected child. Concrete constructors are exempt from ordinary signature compatibility; interface or abstract constructor requirements still apply. `new` calls are checked, while Laravel autowiring and container registrations need inspection.
+
+Parameter and return types are recorded with resolved names. The comparison proves only limited declaration rules, including identical types and known missing-type restrictions; other variance and runtime-value compatibility remain `check`. Changes in defaults, parameter names, references, promotion, variadic handling and return types can require inspection of the method body. Dynamic framework dispatch and callbacks remain outside the static proof.
+
+`safe_to_change` is always false: no breaking rows is not a safety guarantee or a test result. `status` distinguishes inspection, proved incompatibility, uncertain results, no proved incompatibility, and limits. Per-section totals and truncation are explicit; `limit=0` retains totals. Signature comparisons have a 10,000-visit and PHP memory budget in addition to ordinary impact limits. The cache has a separate updated impact fingerprint and validates the added declaration and call-site facts. Existing impact calls without either option retain the previous response shape and do not add the signature section.
+
 ### Project Architecture Graph
 
 Architecture Kit parses every non-excluded PHP file in the audited scope into one deterministic graph. The scope is `app/` unless the project widens it. It records project classes, interfaces, traits and enums plus evidenced dependencies such as constructor and method types, inheritance, implementations, instantiation, static calls, class constants, enum cases and traits. Imports alone are not dependencies. Role classification follows architecture path segments in both top-level and domain-first layouts.
