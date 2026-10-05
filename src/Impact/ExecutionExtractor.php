@@ -39,7 +39,7 @@ final class ExecutionExtractor
         $this->scheduleAttributes = [];
         $this->schedulePending = [];
         $this->callbackParameter = null;
-        $this->result = ['classes' => [], 'operations' => [], 'calls' => [], 'notices' => [], 'paths' => [], 'returns' => [], 'limited' => false];
+        $this->result = ['classes' => [], 'class_declarations' => [], 'operations' => [], 'calls' => [], 'notices' => [], 'paths' => [], 'returns' => [], 'limited' => false];
         $nodes = $file->ast();
         if ($nodes === null) {
             $this->notice(null, 'Unparseable execution source.');
@@ -68,7 +68,7 @@ final class ExecutionExtractor
                     continue;
                 }
                 $name = $node->namespacedName->toString();
-                $meta = ['name' => $name, 'path' => $this->file->path, 'line' => $node->getStartLine(), 'parents' => [], 'traits' => [], 'properties' => [], 'methods' => [], 'attributes' => [], 'abstract' => $node instanceof Stmt\Class_ && $node->isAbstract(), 'kind' => $node instanceof Stmt\Interface_ ? 'interface' : ($node instanceof Stmt\Trait_ ? 'trait' : 'class')];
+                $meta = ['name' => $name, 'path' => $this->file->path, 'line' => $node->getStartLine(), 'offset' => $node->getStartFilePos(), 'parents' => [], 'traits' => [], 'properties' => [], 'methods' => [], 'attributes' => [], 'abstract' => $node instanceof Stmt\Class_ && $node->isAbstract(), 'kind' => $node instanceof Stmt\Interface_ ? 'interface' : ($node instanceof Stmt\Trait_ ? 'trait' : ($node instanceof Stmt\Enum_ ? 'enum' : 'class'))];
                 if ($node instanceof Stmt\Class_ && $node->extends !== null) {
                     $meta['parents'][] = $this->file->resolvedName($node->extends);
                     $this->parents[strtolower($name)] = $meta['parents'][0];
@@ -121,6 +121,7 @@ final class ExecutionExtractor
                     $meta['methods'][strtolower($method->name->toString())] = ['symbol' => $symbol, 'name' => $method->name->toString(), 'public' => $method->isPublic(), 'abstract' => $node instanceof Stmt\Interface_ || $method->isAbstract(), 'parameter' => isset($method->params[0]) ? $this->types($method->params[0]->type, $name) : [], 'returns' => $this->result['returns'][$symbol] ?? [], 'conditional_return' => count(array_filter($method->stmts ?? [], fn ($s) => $s instanceof Stmt\Return_)) !== 1, 'source' => $this->site($method)];
                 }
                 $this->result['classes'][strtolower($name)] = $meta;
+                $this->result['class_declarations'][] = $meta;
 
                 continue;
             }

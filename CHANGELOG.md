@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add literal declaration search through CLI and MCP, with kind filters, stable candidates, explicit impact/path selectors, static configuration, source boundaries and freshness.
+
 - Table searches in `impact` CLI/MCP with exact or literal substring matching, connection/effect filters, source operations and bounded caller/HTTP/console/async paths. Shared DATA semantics, global uncertainty and freshness remain explicit.
 
 - Add source-only DATA effects to CLI/MCP impact reports: separate subject and consumer paths, Eloquent relations/pivots/scopes/builders, Query Builder joins/subqueries, literal SQL and named or anonymous migrations. Preserve connection identity, preparation boundaries, partial effects, limits and source freshness without connecting processes through shared tables.

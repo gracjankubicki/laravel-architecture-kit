@@ -911,3 +911,24 @@ The report does not inspect migration history or claim that a migration was appl
 Recognized effects coexist with `data.unresolved`. A known `orders` query with a dynamic join retains the `orders` read and marks the remaining table set incomplete. Literal SQL is lexically recognized with comments, quoted identifiers, joins, subqueries and CTE aliases. Unsupported syntax, procedures, raw query fragments and dynamic SQL are inspection boundaries, not guessed table lists. The recognizer is not a SQL validator and makes no exhaustive dialect claim.
 
 `status`, `totals`, `truncated`, `fresh`, `source_signature` and `limitations` describe the DATA channel independently. `limit=0` hides rows but retains totals; source/traversal limits make totals lower bounds. Empty limited or unresolved results do not prove absence of effects. Freshness includes source discovery, models, migration files and Composer source declarations, using paths, mtime and size. New DATA inputs participate in the impact snapshot when DATA sources exist. Equal-stat edits remain outside the freshness guarantee. Sources are reread only while their discovered stat and safe path remain valid; symlinks and vendor are excluded. No analyzed PHP, SQL or migration is executed for DATA recognition. Name-based table search is a separate feature.
+
+### Find a starting point
+
+Use `architecture-kit:search` or the read-only MCP `search` tool when you know only part of a name, path, route or command:
+
+```bash
+php artisan architecture-kit:search invoice --agent
+php artisan architecture-kit:search /invoices --kind=route
+php artisan architecture-kit:search --kind=job --limit=50
+php artisan architecture-kit:search --schema
+```
+
+MCP accepts `query`, `kind` and `limit`. Matching is a case-insensitive literal substring, not a regular expression or fuzzy match. Exact full names, short class names, method names, paths, route names/URLs and command names sort first. Other results use stable name/kind/path/line ordering. Distinct source declarations remain separate; the tool never chooses a candidate automatically.
+
+Kinds are `class`, `interface`, `trait`, `enum`, `method`, `file`, `route`, `command`, `job`, `controller`, `model`, `action`, `query`, `service`, `listener`, `event`, `policy`, `request`, `resource` and `test`. PHP kinds come from declarations. Application kinds currently use the corresponding conventional directory segments; tests also recognize `tests/`. Job candidates require an inherited queue contract, Dispatchable trait or a resolved supported dispatch witness. A `Jobs` directory alone adds only a placement note. Route and command candidates are source declarations, not proof of runtime registration or execution.
+
+Choose a candidate explicitly. Pass its `selector` to `impact` or `path`. `selector_scope=symbol` selects a class/method; `file` includes the whole file and may include other route or command callbacks. Duplicate class names use the broader file selector so an ambiguous name is not silently resolved. Read `notes` before following a selector. Tables remain available through `impact` with `table`.
+
+Empty `query` requires `kind`. `limit` is 0..500 and only limits displayed candidates/notices. `total`, `ambiguous` and `truncated` remain available at limit zero. `status` distinguishes found/no matches from incomplete analysis, analysis limits and stale inputs. `total_is_lower_bound` means analysis stopped early; an empty candidate list then does not prove absence. Known candidates can coexist with unresolved notices.
+
+Search shares the existing source readers and impact graph cache under a separate source-only fingerprint. It parses `config/architectures.php` as a returned array without requiring it or loading project classes. Static `audit.paths`, `audit.exclude`, `audit.cache` and `audit.missing_test` are supported. Dynamic audit settings, executable configuration statements, unsafe paths and symlink configuration are rejected explicitly. An absent configuration uses default analysis settings; existing tools retain their loading behavior. Additional PHP sources follow existing safe Laravel/Composer registration discovery. `.env`, vendor, node_modules, Git internals and symlink sources are not read. Freshness checks paths, mtime and size, including config; equal-stat edits are outside the guarantee. Search does not bootstrap or invoke the analyzed application itself; an Artisan or MCP host may already have booted Laravel before calling the tool.

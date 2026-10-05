@@ -19,6 +19,7 @@ use GracjanKubicki\ArchitectureKit\Commands\MakeCommand;
 use GracjanKubicki\ArchitectureKit\Commands\McpCommand;
 use GracjanKubicki\ArchitectureKit\Commands\PathCommand;
 use GracjanKubicki\ArchitectureKit\Commands\PlanCommand;
+use GracjanKubicki\ArchitectureKit\Commands\SearchCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SyncCommand;
 use GracjanKubicki\ArchitectureKit\Commands\UpgradePlanCommand;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
@@ -46,6 +47,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
             ArchitectureContextCommand::class,
             ImpactCommand::class,
             PathCommand::class,
+            SearchCommand::class,
             AuditCommand::class,
             CacheClearCommand::class,
             DoctorCommand::class,

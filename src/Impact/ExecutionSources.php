@@ -35,7 +35,7 @@ final class ExecutionSources
     private array $exclude = [];
 
     /** @param list<string> $additionalDirectories */
-    public function __construct(private readonly Filesystem $files, private readonly string $basePath, array $additionalDirectories = [])
+    public function __construct(private readonly Filesystem $files, private readonly string $basePath, array $additionalDirectories = [], private readonly bool $retainDeclarations = false)
     {
         array_push($this->directories, ...$additionalDirectories);
     }
@@ -79,6 +79,7 @@ final class ExecutionSources
         $result = ['classes' => [], 'calls' => [], 'operations' => [], 'notices' => [], 'limited' => false];
         $seen = [];
         $analyzed = [];
+        $declarations = [];
         for ($i = 0; $i < count($queue); $i++) {
             $path = $this->normalize($queue[$i]);
             if ($path === null || isset($seen[$path])) {
@@ -120,6 +121,9 @@ final class ExecutionSources
                 $this->bytes += $stat[1];
                 $analyzed[] = $path;
                 $result['classes'] = [...$result['classes'], ...$facts['classes']];
+                if ($this->retainDeclarations) {
+                    array_push($declarations, ...($facts['class_declarations'] ?? array_values($facts['classes'])));
+                }
                 array_push($result['calls'], ...$facts['calls']);
                 array_push($result['operations'], ...$facts['operations']);
                 array_push($this->notices, ...$facts['notices']);
@@ -185,7 +189,7 @@ final class ExecutionSources
         }
         ksort($this->states);
 
-        return [...$result, 'notices' => $this->notices, 'limited' => $this->limited, 'inputs' => $this->states, 'analyzed_paths' => $analyzed, 'signature' => hash('xxh128', serialize($this->states))];
+        return [...$result, 'notices' => $this->notices, 'limited' => $this->limited, 'inputs' => $this->states, 'analyzed_paths' => $analyzed, 'class_declarations' => $declarations, 'signature' => hash('xxh128', serialize($this->states))];
     }
 
     public function fresh(): bool
