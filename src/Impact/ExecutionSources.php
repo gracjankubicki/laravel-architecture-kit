@@ -44,7 +44,7 @@ final class ExecutionSources
     public function discover(ProjectGraphSnapshot $graph, array $exclude, array $httpInputs = [], array $shared = []): array
     {
         $this->exclude = $exclude;
-        $queue = ['composer.json', 'bootstrap/app.php', 'bootstrap/providers.php', ...array_keys($httpInputs)];
+        $queue = ['routes/console.php', 'app/Console/Kernel.php', 'composer.json', 'bootstrap/app.php', 'bootstrap/providers.php', ...array_keys($httpInputs)];
         foreach ($graph->impactFacts as $facts) {
             $queue[] = $facts->path;
         }
@@ -88,6 +88,10 @@ final class ExecutionSources
             }
             $stat = $this->states[$path];
             if ($stat === null) {
+                if (! in_array($path, ['routes/console.php', 'app/Console/Kernel.php', 'bootstrap/app.php', 'bootstrap/providers.php'], true)) {
+                    $this->notice($path, 'Execution source input is missing.');
+                }
+
                 continue;
             }
             if (count($seen) > 10000 || $this->bytes + $stat[1] > 10000000 || ($reason = ImpactExtractor::sourceLimit($stat[1])) !== null) {
@@ -123,6 +127,35 @@ final class ExecutionSources
                     }
                 }
                 foreach ($facts['operations'] as $operation) {
+                    $consolePaths = [];
+                    if ($operation['kind'] === 'console_registration') {
+                        $consolePaths = match ($operation['method']) {
+                            'withcommands' => ($operation['args']['commands'] ?? $operation['args'][0] ?? []) ?: ['app/Console/Commands'],
+                            'withrouting' => [$operation['args']['commands'] ?? $operation['args'][3] ?? null],
+                            default => [],
+                        };
+                    } elseif ($operation['kind'] === 'console_candidate' && in_array($operation['method'], ['load', 'addcommandpaths', 'addcommandroutepaths'], true)) {
+                        // Reading a candidate path is safe; semantic registration still checks its owner.
+                        $consolePaths = $operation['args'][0] ?? [];
+                    }
+                    foreach (is_array($consolePaths) ? $consolePaths : [$consolePaths] as $consolePath) {
+                        if (! is_string($consolePath) || str_contains($consolePath, '\\')) {
+                            continue;
+                        }
+                        $consolePath = $this->normalize($consolePath);
+                        if ($consolePath === null) {
+                            continue;
+                        }
+                        if (str_ends_with($consolePath, '.php')) {
+                            $queue[] = $consolePath;
+                        } elseif (! in_array($consolePath, $this->directories, true)) {
+                            $this->directories[] = $consolePath;
+                            if (! is_dir($this->basePath.'/'.$consolePath) && $consolePath !== 'app/Console/Commands') {
+                                $this->notice($consolePath, 'Console registration source directory is missing.');
+                            }
+                            array_push($queue, ...$this->listing([$consolePath]));
+                        }
+                    }
                     if ($operation['kind'] === 'discovery') {
                         $paths = $operation['args']['discover'] ?? $operation['args'][0] ?? null;
                         if (is_array($paths)) {

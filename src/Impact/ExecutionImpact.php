@@ -42,6 +42,15 @@ final class ExecutionImpact
                 $targetSymbols[strtolower($method['symbol'])] = true;
             }
         }
+        if ($subject['kind'] === 'file') {
+            foreach ($links->out as $edges) {
+                foreach ($edges as $edge) {
+                    if (str_starts_with($edge['to'], '(callback) '.$subject['path'].':')) {
+                        $targetSymbols[strtolower($edge['to'])] = true;
+                    }
+                }
+            }
+        }
         if ($declaration !== null) {
             $targetSymbols = [strtolower($declaration['symbol']) => true];
         }
@@ -105,8 +114,8 @@ final class ExecutionImpact
         $notices = array_values($unique);
         $rows = array_values($rows);
         $truncated = $limited || count($rows) > $limit || count($notices) > $limit;
-        $active = $reachedNotices !== [] || $limited || $links->seeds !== [] || $links->registrations !== [] || array_filter($facts['operations'], fn ($o) => in_array($o['kind'], ['dispatch', 'event', 'quiet', 'discovery'], true)) !== [];
+        $active = $reachedNotices !== [] || $limited || $links->seeds !== [] || $links->registrations !== [] || array_filter($facts['operations'], fn ($o) => in_array($o['kind'], ['dispatch', 'event', 'quiet', 'discovery', 'console_candidate', 'console_registration', 'console_closure', 'schedule'], true)) !== [];
 
-        return ['flows' => array_slice($rows, 0, $limit), 'unresolved' => $active ? array_slice($notices, 0, $limit) : [], 'totals' => ['flows' => count($rows), 'unresolved' => $active ? count($notices) : 0], 'status' => ! $active ? 'none' : ($truncated ? 'limit' : ($notices !== [] || count(array_filter($rows, fn ($r) => $r['certainty'] === 'possible')) > 0 ? 'incomplete' : ($rows === [] ? 'none' : 'complete'))), 'truncated' => $active && $truncated, 'has_sources' => $active, 'source_signature' => $facts['signature'], 'fresh' => $fresh, 'limitations' => ['Source dispatch and registration witnesses do not prove runtime execution, queue configuration, retries or provider activation.', 'Chains have conditional order; batches have independent branches. Conditions, propagation and cancellation are not evaluated.', 'Model event suppression is path-local; deferred execution starts a separate event context.', 'Freshness uses paths, mtime and size. Edits preserving mtime and size are outside this guarantee.', 'Query budgets: 1000 queued path states, 10000 edge visits, requested depth and PHP memory headroom; limited totals are lower bounds.']];
+        return ['flows' => array_slice($rows, 0, $limit), 'unresolved' => $active ? array_slice($notices, 0, $limit) : [], 'totals' => ['flows' => count($rows), 'unresolved' => $active ? count($notices) : 0], 'status' => ! $active ? 'none' : ($truncated ? 'limit' : ($notices !== [] || count(array_filter($rows, fn ($r) => $r['certainty'] === 'possible')) > 0 ? 'incomplete' : ($rows === [] ? 'none' : 'complete'))), 'truncated' => $active && $truncated, 'has_sources' => $active, 'source_signature' => $facts['signature'], 'fresh' => $fresh, 'limitations' => ['Console and scheduler sources do not prove active command registration, due tasks, subprocess success or worker success.', 'Source dispatch and registration witnesses do not prove runtime execution, queue configuration, retries or provider activation.', 'Chains have conditional order; batches have independent branches. Conditions, propagation and cancellation are not evaluated.', 'Model event suppression is path-local; deferred execution starts a separate event context.', 'Freshness uses paths, mtime and size. Edits preserving mtime and size are outside this guarantee.', 'Query budgets: 1000 queued path states, 10000 edge visits, requested depth and PHP memory headroom; limited totals are lower bounds.']];
     }
 }

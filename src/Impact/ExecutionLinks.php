@@ -9,6 +9,8 @@ use Illuminate\Support\Str;
 /** Source witnesses with contextual execution conditions, separate from call graph verdicts. */
 final class ExecutionLinks
 {
+    use ConsoleExecutionLinks;
+
     /** @var array<string, mixed> */
     private array $classes;
 
@@ -103,6 +105,7 @@ final class ExecutionLinks
                 $this->unknown[strtolower($call['from'])][] = [...$call['source'], 'reason' => 'Execution call receiver/method is unresolved: '.($call['receiver'] ?? '(unknown)').'::'.$call['method']];
             }
         }
+        $this->consoleLinks($facts);
         $configured = [];
         foreach ($facts['operations'] as $op) {
             if ($op['kind'] === 'dispatch_options') {

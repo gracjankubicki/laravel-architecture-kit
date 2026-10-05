@@ -18,6 +18,14 @@ final class ExecutionExtractor
 
     private FileContext $file;
 
+    /** @var array<string, mixed> */
+    private array $scheduleAttributes = [];
+
+    private ?string $callbackParameter = null;
+
+    /** @var array<string, array<string, mixed>> */
+    private array $schedulePending = [];
+
     private int $visits = 0;
 
     /** @var array<string, string> */
@@ -28,6 +36,9 @@ final class ExecutionExtractor
     {
         $this->file = $file;
         $this->visits = 0;
+        $this->scheduleAttributes = [];
+        $this->schedulePending = [];
+        $this->callbackParameter = null;
         $this->result = ['classes' => [], 'operations' => [], 'calls' => [], 'notices' => [], 'paths' => [], 'returns' => [], 'limited' => false];
         $nodes = $file->ast();
         if ($nodes === null) {
@@ -72,7 +83,11 @@ final class ExecutionExtractor
                 }
                 foreach ($node->attrGroups as $group) {
                     foreach ($group->attrs as $attribute) {
-                        $meta['attributes'][$this->file->resolvedName($attribute->name)] = array_map(fn ($arg) => $this->value($arg->value, $from, $name, [], [], $depth + 1), $attribute->args);
+                        $values = [];
+                        foreach ($attribute->args as $arg) {
+                            $values[$arg->name?->toString() ?? count($values)] = $this->value($arg->value, $from, $name, [], [], $depth + 1);
+                        }
+                        $meta['attributes'][$this->file->resolvedName($attribute->name)] = $values;
                     }
                 }
                 $classVars = ['this' => ['type' => 'object', 'class' => $name]];
@@ -170,6 +185,8 @@ final class ExecutionExtractor
             return null;
         }
         if ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction) {
+            $injectedParameter = $this->callbackParameter;
+            $this->callbackParameter = null;
             $symbol = '(callback) '.$this->file->path.':'.$expr->getStartFilePos();
             if ($expr instanceof Expr\Closure) {
                 $captures = [];
@@ -189,7 +206,7 @@ final class ExecutionExtractor
             }
             foreach ($expr->params as $param) {
                 if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
-                    $vars[$param->var->name] = $this->typed($param->type, $class);
+                    $vars[$param->var->name] = $this->typed($param->type, $class) ?? ($injectedParameter === null ? null : ['type' => 'object', 'class' => $injectedParameter]);
                 }
             }
             $this->walk($expr instanceof Expr\Closure ? $expr->stmts : [$expr->expr], $symbol, $class, $vars, [], $depth + 1);
@@ -235,10 +252,29 @@ final class ExecutionExtractor
             }
             $method = $expr instanceof Expr\FuncCall ? ($expr->name instanceof Node\Name ? $this->file->resolvedName($expr->name) : '') : (($expr instanceof Expr\StaticCall || $expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall) && $expr->name instanceof Node\Identifier ? $expr->name->toString() : '');
             $receiver = $expr instanceof Expr\StaticCall ? ($expr->class instanceof Node\Name ? ['type' => 'class', 'class' => $this->name($expr->class, $class)] : null) : (($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall) ? $this->value($expr->var, $from, $class, $vars, $conditions, $depth + 1) : null);
+            $ownerHint = is_array($receiver) ? ($receiver['class'] ?? null) : null;
+            $savedAttributes = $this->scheduleAttributes;
+            if (strtolower($method) === 'group' && ($receiver['type'] ?? '') === 'schedule_attributes') {
+                $this->scheduleAttributes = $receiver['options'];
+                unset($this->schedulePending[$from]);
+            }
             $args = [];
             foreach ($expr->getArgs() as $arg) {
-                $args[$arg->name?->toString() ?? count($args)] = $this->value($arg->value, $from, $class, $vars, $conditions, $depth + 1);
+                $argumentVars = $vars;
+                $savedParameter = $this->callbackParameter;
+                if ($ownerHint === 'Illuminate\\Foundation\\Configuration\\ApplicationBuilder' && strtolower($method) === 'withschedule') {
+                    $this->callbackParameter = 'Illuminate\\Console\\Scheduling\\Schedule';
+                }
+                if (($ownerHint === 'Illuminate\\Support\\Facades\\Artisan' || $this->kernelOwner($ownerHint)) && strtolower($method) === 'command') {
+                    $argumentVars['this'] = ['type' => 'object', 'class' => 'Illuminate\\Foundation\\Console\\ClosureCommand'];
+                }
+                if (strtolower($method) === 'group' && ($receiver['type'] ?? '') === 'schedule_attributes') {
+                    $this->callbackParameter = 'Illuminate\\Console\\Scheduling\\Schedule';
+                }
+                $args[$arg->name?->toString() ?? count($args)] = $this->value($arg->value, $from, $class, $argumentVars, $conditions, $depth + 1);
+                $this->callbackParameter = $savedParameter;
             }
+            $this->scheduleAttributes = $savedAttributes;
             $owner = is_array($receiver) ? ($receiver['class'] ?? null) : null;
             $short = $expr instanceof Expr\FuncCall && $method === 'dispatch_sync' ? 'dispatchsync' : strtolower($method);
             // Keep application methods whose names also belong to Laravel APIs.
@@ -262,6 +298,61 @@ final class ExecutionExtractor
                 $this->result['operations'][] = ['kind' => 'application', ...$op];
 
                 return ['type' => 'object', 'class' => 'Illuminate\Foundation\Configuration\ApplicationBuilder'];
+            }
+            if ($owner === 'Illuminate\Foundation\Configuration\ApplicationBuilder' && in_array($short, ['withcommands', 'withrouting', 'withschedule'], true)) {
+                $this->result['operations'][] = ['kind' => 'console_registration', ...$op];
+            }
+            if (($owner === 'Illuminate\Support\Facades\Artisan' || $this->kernelOwner($owner)) && $short === 'command') {
+                $this->result['operations'][] = ['kind' => 'console_closure', ...$op];
+
+                return ['type' => 'console_closure', 'registration_site' => $site, 'options' => []];
+            }
+            if (($receiver['type'] ?? '') === 'console_closure') {
+                $receiver['options'][$short] = $args;
+                $this->result['operations'][] = ['kind' => 'console_closure_options', ...$op, 'registration_site' => $receiver['registration_site'], 'options' => $receiver['options']];
+
+                return $receiver;
+            }
+            if (in_array($short, ['call', 'queue', 'callsilent', 'callsilently', 'command', 'commands', 'load', 'registercommand', 'addcommands', 'addcommandpaths', 'addcommandroutepaths'], true) && $owner !== null) {
+                $this->result['operations'][] = ['kind' => 'console_candidate', ...$op];
+            }
+            $schedule = in_array($owner, ['Illuminate\Support\Facades\Schedule', 'Illuminate\Console\Scheduling\Schedule'], true);
+            if ($schedule && in_array($short, ['command', 'job', 'call', 'exec'], true)) {
+                $options = $this->schedulePending[$from] ?? $this->scheduleAttributes;
+                unset($this->schedulePending[$from]);
+                $this->result['operations'][] = ['kind' => 'schedule', ...$op, 'options' => $options];
+
+                return ['type' => 'schedule_event', 'schedule_site' => $site, 'options' => $options];
+            }
+            if ($schedule || in_array($receiver['type'] ?? '', ['schedule_event', 'schedule_attributes'], true)) {
+                if ($short === 'group') {
+                    $this->result['operations'][] = ['kind' => 'schedule_group', ...$op];
+
+                    return null;
+                }
+                $descriptor = $receiver;
+                $descriptor['type'] ??= 'schedule_attributes';
+                // A typed Schedule starts an attributes builder, not an application object.
+                if ($schedule) {
+                    $descriptor['type'] = 'schedule_attributes';
+                }
+                $descriptor['options'] ??= $this->schedulePending[$from] ?? $this->scheduleAttributes;
+                if (in_array($short, ['before', 'after', 'then', 'onsuccess', 'onfailure', 'when', 'skip', 'thenwithoutput', 'onsuccesswithoutput', 'onfailurewithoutput'], true)) {
+                    $descriptor['options']['callbacks'][] = ['method' => $short, 'value' => $args['callback'] ?? $args[0] ?? null, 'source' => $site];
+                } else {
+                    $descriptor['options'][$short] = $args === [] ? true : $args;
+                }
+                if ($descriptor['type'] === 'schedule_event' && in_array($short, ['name', 'description', 'withoutoverlapping', 'ononeserver'], true)) {
+                    $descriptor['options']['attribute_calls'][] = ['method' => $short, 'args' => $args, 'source' => $site];
+                }
+                if ($descriptor['type'] === 'schedule_attributes') {
+                    $this->schedulePending[$from] = $descriptor['options'];
+                }
+                if (isset($descriptor['schedule_site'])) {
+                    $this->result['operations'][] = ['kind' => 'schedule_options', ...$op, 'schedule_site' => $descriptor['schedule_site'], 'options' => $descriptor['options']];
+                }
+
+                return $descriptor;
             }
             if ($owner === 'Illuminate\Foundation\Configuration\ApplicationBuilder') {
                 return $receiver;
@@ -337,14 +428,18 @@ final class ExecutionExtractor
             if ($owner !== null && in_array($short, ['create', 'firstorcreate', 'updateorcreate', 'find', 'findorfail', 'first'], true)) {
                 return ['type' => 'object', 'class' => $owner];
             }
-            if ($global && in_array($short, ['base_path', 'app_path'], true) && is_string($args[0] ?? null)) {
-                return ($short === 'app_path' ? 'app/' : '').$args[0];
+            if ($global && in_array($short, ['base_path', 'app_path'], true) && is_string($args[0] ?? '')) {
+                return ($short === 'app_path' ? 'app/' : '').($args[0] ?? '');
+            }
+
+            if ($global && $short === 'dirname' && is_string($args[0] ?? null) && is_int($args[1] ?? 1)) {
+                return dirname($args[0], $args[1] ?? 1);
             }
 
             return null;
         }
         if ($expr instanceof Expr\Include_) {
-            $path = $this->literal($expr->expr, $class, $vars);
+            $path = $this->value($expr->expr, $from, $class, $vars, $conditions, $depth + 1);
             if (is_string($path)) {
                 $this->result['paths'][] = $path;
             } else {
@@ -369,6 +464,9 @@ final class ExecutionExtractor
     /** @param array<string, mixed> $vars */
     private function literal(Expr $expr, string $class, array $vars): mixed
     {
+        if ($expr instanceof Node\Scalar\MagicConst\Dir) {
+            return dirname($this->file->path) === '.' ? '' : dirname($this->file->path);
+        }
         if ($expr instanceof Node\Scalar\String_ || $expr instanceof Node\Scalar\Int_) {
             return $expr->value;
         }
@@ -413,6 +511,18 @@ final class ExecutionExtractor
         }
 
         return null;
+    }
+
+    private function kernelOwner(?string $owner): bool
+    {
+        for ($i = 0; $owner !== null && $i < 32; $i++) {
+            if ($owner === 'Illuminate\Foundation\Console\Kernel') {
+                return true;
+            }
+            $owner = $this->parents[strtolower($owner)] ?? null;
+        }
+
+        return false;
     }
 
     private function name(Node\Name $name, string $class): string

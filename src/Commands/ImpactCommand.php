@@ -99,7 +99,7 @@ final class ImpactCommand extends Command
             if ($http['truncated']) {
                 $this->warn('HTTP report is limited. Inspect source notices and boundary symbols; totals may be lower bounds.');
             }
-            $this->line('Job, event and model flows: '.$http['flow_analysis']['status'].'; fresh: '.($http['flow_analysis']['fresh'] ? 'yes' : 'no'));
+            $this->line('Console, scheduler, job, event and model flows: '.$http['flow_analysis']['status'].'; fresh: '.($http['flow_analysis']['fresh'] ? 'yes' : 'no'));
             foreach ($http['flows'] as $flow) {
                 $this->line('  '.$flow['entry']['symbol'].' -> '.$flow['target'].' ['.$flow['certainty'].']');
                 foreach ($flow['via'] as $edge) {
