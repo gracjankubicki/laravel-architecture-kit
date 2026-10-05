@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifyContractMap;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifySourceResolver;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use Illuminate\Filesystem\Filesystem;
 
 final readonly class UnenabledPatternRule implements AuditRule
@@ -21,6 +22,7 @@ final readonly class UnenabledPatternRule implements AuditRule
         private array $enabled,
         private ?Filesystem $files = null,
         private ?string $basePath = null,
+        private ?ProjectClassification $classification = null,
     ) {}
 
     /**
@@ -29,7 +31,7 @@ final readonly class UnenabledPatternRule implements AuditRule
     public function supports(string $path, array $enabled): bool
     {
         return str_starts_with($path, 'app/Http/Responses/')
-            || str_starts_with($path, 'app/Services/');
+            || ($this->classification?->kindMatches($path, 'service', str_starts_with($path, 'app/Services/')) ?? str_starts_with($path, 'app/Services/'));
     }
 
     /**
@@ -48,7 +50,7 @@ final readonly class UnenabledPatternRule implements AuditRule
 
         if (
             ! in_array(Architecture::Services, $this->enabled, true)
-            && str_starts_with($file->path, 'app/Services/')
+            && ($this->classification?->kindMatches($file->path, 'service', str_starts_with($file->path, 'app/Services/')) ?? str_starts_with($file->path, 'app/Services/'))
         ) {
             $findings[] = $this->finding('warn', $file->path, 1, 'Services are not enabled; prefer an enabled architecture boundary.');
         }

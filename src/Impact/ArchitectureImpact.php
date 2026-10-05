@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
+use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -243,9 +244,11 @@ final readonly class ArchitectureImpact
             }
         }
         $hasRelationships = $incoming['resolved'] !== [] || $outgoing['resolved'] !== [] || $incoming['possible'] !== [] || $outgoing['possible'] !== [] || $incoming['references'] !== [] || $outgoing['references'] !== [];
+        $classificationNames = $resolved['kind'] === 'file' ? array_map(static fn ($symbol) => $symbol->name, $graph->symbolsAt($resolved['path'])) : [$resolved['name']];
 
         $result = [
             'v' => 1, 'ok' => true, 'cmd' => 'impact', 'subject' => $resolved,
+            'classification' => ClassificationReport::graph($loader->classification, $graph, $limit, [...$classificationNames, ...array_column([...$incoming['resolved'], ...$incoming['possible'], ...$outgoing['resolved'], ...$outgoing['possible']], 'symbol')]),
             'dependents' => $incoming['resolved'], 'dependencies' => $outgoing['resolved'],
             'possible' => ['dependents' => $incoming['possible'], 'dependencies' => $outgoing['possible'], 'overrides' => array_slice($overrides, 0, $limit)],
             'references' => ['dependents' => $incoming['references'], 'dependencies' => $outgoing['references']],

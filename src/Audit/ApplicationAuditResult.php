@@ -12,6 +12,7 @@ final readonly class ApplicationAuditResult
      * @param  array<int, AuditFinding>  $findings
      * @param  array<int, AuditSuggestion>  $suggestions
      * @param  array<int, AnalysisNotice>  $notices
+     * @param  array<string, mixed>  $classification
      */
     public function __construct(
         public string $scope,
@@ -24,6 +25,7 @@ final readonly class ApplicationAuditResult
         public array $suggestions = [],
         public array $notices = [],
         public string $analysisStatus = 'not_run',
+        public array $classification = [],
     ) {}
 
     /**

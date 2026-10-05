@@ -38,6 +38,7 @@ final readonly class AgentOutput
             'ok' => $ok,
             'cmd' => 'audit',
             'scope' => $this->scope($result->scope),
+            ...($result->classification !== [] ? ['classification' => $result->classification] : []),
             'err' => $result->errors(),
             'warn' => $result->warnings(),
             'sup' => [
@@ -268,6 +269,7 @@ final readonly class AgentOutput
             'v' => 1,
             'ok' => true,
             'cmd' => 'architecture-context',
+            ...($context->classification !== [] ? ['classification' => $context->classification] : []),
             'subject' => [
                 'name' => $context->subject->name,
                 'path' => $context->subject->path,
@@ -512,6 +514,7 @@ final readonly class AgentOutput
                 'v' => ['const' => 1],
                 'ok' => ['type' => 'boolean'],
                 'cmd' => ['const' => 'audit'],
+                'classification' => ['type' => 'object'],
                 'scope' => ['enum' => ['changed', 'all']],
                 'err' => ['type' => 'integer', 'minimum' => 0],
                 'warn' => ['type' => 'integer', 'minimum' => 0],
@@ -635,12 +638,14 @@ final readonly class AgentOutput
             'v' => 1,
             'ok' => true,
             'cmd' => 'file-rules',
+            'classification' => $guidance['classification'] ?? [],
             'path' => $guidance['path'],
             'scope' => $guidance['in_scope'] ? 'application' : 'outside_application',
             'arch' => array_map(
                 fn (array $architecture): array => [
                     'slug' => $architecture['slug'],
                     'governs' => $architecture['governs'],
+                    'placement' => $architecture['placement'],
                     'enforcement' => $architecture['enforcement'],
                     'rules' => $architecture['rules'],
                     'skill' => $architecture['skill'],
@@ -731,6 +736,7 @@ final readonly class AgentOutput
                     'v' => ['const' => 1],
                     'ok' => ['const' => true],
                     'cmd' => ['const' => 'file-rules'],
+                    'classification' => ['type' => 'array', 'items' => ['type' => 'object']],
                     'path' => ['type' => 'string'],
                     'scope' => ['enum' => ['application', 'outside_application']],
                     'arch' => [
@@ -740,6 +746,7 @@ final readonly class AgentOutput
                             'required' => ['slug', 'governs', 'enforcement', 'rules', 'skill'],
                             'properties' => [
                                 'slug' => ['type' => 'string'],
+                                'placement' => ['type' => 'array', 'items' => ['type' => 'string']],
                                 'governs' => ['type' => 'boolean'],
                                 'enforcement' => ['enum' => ['enforced', 'advisory']],
                                 'rules' => $this->stringListSchema(),
@@ -1149,6 +1156,7 @@ final readonly class AgentOutput
                 'v' => ['const' => 1],
                 'ok' => ['const' => true],
                 'cmd' => ['const' => 'architecture-context'],
+                'classification' => ['type' => 'object'],
                 'subject' => [
                     'type' => 'object',
                     'required' => ['name', 'path', 'line', 'kind', 'role'],

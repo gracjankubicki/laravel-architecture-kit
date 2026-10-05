@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use PhpParser\Node;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
@@ -15,16 +16,18 @@ use PhpParser\NodeVisitorAbstract;
 
 final readonly class TestabilityRule implements AuditRule
 {
+    public function __construct(private ?ProjectClassification $classification = null) {}
+
     /**
      * @param  array<int, mixed>  $enabled
      */
     public function supports(string $path, array $enabled): bool
     {
-        return str_starts_with($path, 'app/Http/Controllers/')
-            || str_starts_with($path, 'app/Services/')
-            || str_starts_with($path, 'app/Actions/')
-            || str_starts_with($path, 'app/Queries/')
-            || str_starts_with($path, 'app/Http/Resources/')
+        return ($this->classification?->kindMatches($path, 'controller', str_starts_with($path, 'app/Http/Controllers/')) ?? str_starts_with($path, 'app/Http/Controllers/'))
+            || ($this->classification?->kindMatches($path, 'service', str_starts_with($path, 'app/Services/')) ?? str_starts_with($path, 'app/Services/'))
+            || ($this->classification?->kindMatches($path, 'action', str_starts_with($path, 'app/Actions/')) ?? str_starts_with($path, 'app/Actions/'))
+            || ($this->classification?->kindMatches($path, 'query', str_starts_with($path, 'app/Queries/')) ?? str_starts_with($path, 'app/Queries/'))
+            || ($this->classification?->kindMatches($path, 'resource', str_starts_with($path, 'app/Http/Resources/')) ?? str_starts_with($path, 'app/Http/Resources/'))
             || str_contains($path, 'Payload');
     }
 

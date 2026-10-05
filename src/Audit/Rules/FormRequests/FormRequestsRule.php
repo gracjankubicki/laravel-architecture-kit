@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use PhpParser\Node;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
@@ -17,14 +18,14 @@ final readonly class FormRequestsRule implements AuditRule
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
-    public function __construct(private array $enabled) {}
+    public function __construct(private array $enabled, private ?ProjectClassification $classification = null) {}
 
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
     public function supports(string $path, array $enabled): bool
     {
-        return str_starts_with($path, 'app/Http/Requests/')
+        return ($this->classification?->kindMatches($path, 'request', str_starts_with($path, 'app/Http/Requests/')) ?? str_starts_with($path, 'app/Http/Requests/'))
             || in_array(Architecture::DataObjects, $enabled, true);
     }
 
@@ -46,7 +47,7 @@ final readonly class FormRequestsRule implements AuditRule
             return [];
         }
 
-        if (str_starts_with($file->path, 'app/Http/Requests/') && $this->classExtendsAny($class, ['EmailVerificationRequest'])) {
+        if (($this->classification?->kindMatches($file->path, 'request', str_starts_with($file->path, 'app/Http/Requests/')) ?? str_starts_with($file->path, 'app/Http/Requests/')) && $this->classExtendsAny($class, ['EmailVerificationRequest'])) {
             $findings[] = $this->finding(
                 'error',
                 $file->path,

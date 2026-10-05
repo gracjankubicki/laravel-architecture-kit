@@ -4,9 +4,19 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Architecture;
 
+use GracjanKubicki\ArchitectureKit\Classification\ClassificationMappings;
+use Illuminate\Filesystem\Filesystem;
+
 final readonly class RoleClassifier
 {
     public const TEST = 'test';
+
+    public function __construct(public ClassificationMappings $mappings = new ClassificationMappings) {}
+
+    public static function forProject(Filesystem $files, string $base): self
+    {
+        return new self(ClassificationMappings::load($files, $base));
+    }
 
     public function classify(string $path, string $name, string $kind, bool $hasMethods = true): string
     {
@@ -14,12 +24,45 @@ final readonly class RoleClassifier
         if (self::isTestPath($path)) {
             return self::TEST;
         }
+        if ($kind === 'file') {
+            return 'unknown';
+        }
 
-        if ($kind === 'interface' && $this->isPort($path, $name, $hasMethods)) {
+        $mapping = $kind === 'file' ? [] : $this->mappings->roleMapping($path, $name);
+        if (isset($mapping['role'])) {
+            return $mapping['role'];
+        }
+        $short = substr($name, (int) strrpos('\\'.$name, '\\'));
+        if ($kind === 'interface' && $this->isPort($path, $short, $hasMethods)) {
             return 'port';
         }
 
         return $this->roleFromPath($path);
+    }
+
+    /** @return array<string, mixed> */
+    public function describe(string $path, string $name, string $phpKind, bool $hasMethods = true): array
+    {
+        $test = self::isTestPath($path);
+        $mapping = $test || $phpKind === 'file' ? [] : $this->mappings->roleMapping($path, $name);
+        $module = $this->mappings->module($path, $name);
+        $kind = $test ? 'test' : ($mapping['kind'] ?? ($phpKind === 'file' ? null : $this->defaultKind($path)));
+
+        return ['role' => $phpKind === 'file' ? ($test ? self::TEST : 'unknown') : $this->classify($path, $name, $phpKind, $hasMethods),
+            'application_kind' => $kind, 'php_kind' => $phpKind, 'module' => $module['module'], 'module_parents' => $module['parents'],
+            'provenance' => ['classification' => $mapping['source'] ?? ($test || $phpKind === 'file' ? 'invariant' : 'default_convention'), 'module' => $module['source'] ?? 'unassigned']];
+    }
+
+    private function defaultKind(string $path): ?string
+    {
+        $kinds = ['Actions' => 'action', 'Queries' => 'query', 'Controllers' => 'controller', 'Models' => 'model', 'Services' => 'service', 'Jobs' => 'job', 'Listeners' => 'listener', 'Events' => 'event', 'Policies' => 'policy', 'Requests' => 'request', 'Resources' => 'resource', 'Data' => 'data', 'ValueObjects' => 'value-object', 'Enums' => 'enum', 'Exceptions' => 'exception', 'Builders' => 'builder', 'Contracts' => 'port', 'Ports' => 'port', 'Providers' => 'provider'];
+        foreach (array_reverse(explode('/', $path)) as $segment) {
+            if (isset($kinds[$segment])) {
+                return $kinds[$segment];
+            }
+        }
+
+        return null;
     }
 
     /**

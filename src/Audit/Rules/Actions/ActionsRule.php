@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use PhpParser\Node;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
@@ -17,12 +18,14 @@ use PhpParser\NodeVisitorAbstract;
 
 final readonly class ActionsRule implements AuditRule
 {
+    public function __construct(private ?ProjectClassification $classification = null) {}
+
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
     public function supports(string $path, array $enabled): bool
     {
-        return str_starts_with($path, 'app/Actions/')
+        return ($this->classification?->kindMatches($path, 'action', str_starts_with($path, 'app/Actions/')) ?? str_starts_with($path, 'app/Actions/'))
             && in_array(Architecture::Actions, $enabled, true);
     }
 

@@ -27,6 +27,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\TestabilityRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\UnenabledPatternRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ThinControllers\ThinControllerRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use Illuminate\Filesystem\Filesystem;
 
 /**
@@ -37,35 +38,58 @@ use Illuminate\Filesystem\Filesystem;
  */
 final readonly class BuiltInRules
 {
+    /** @param array<int, Architecture|string> $enabled
+     * @return list<AuditFinding>
+     */
+    public static function check(AuditRule $rule, FileContext $file, array $enabled, ProjectClassification $classification): array
+    {
+        if ($classification->roles->mappings->roles === []) {
+            return $rule->check($file);
+        }
+        if (! in_array($rule::class, [ActionsRule::class, QueryObjectsRule::class, FolderPurityRule::class, ThinControllerRule::class, ServicesRule::class, CustomEloquentBuildersRule::class, DataObjectsRule::class, ValueObjectsRule::class, FormRequestsRule::class, ApiResourcesRule::class, UnenabledPatternRule::class, TestabilityRule::class, InertiaRule::class, EnumsRule::class, PortsAndAdaptersRule::class], true)) {
+            return $rule->check($file);
+        }
+        $findings = [];
+        foreach ($classification->views($file) as $view) {
+            $classification->prime($view);
+            if ($rule->supports($view->path, $enabled)) {
+                array_push($findings, ...$rule->check($view));
+            }
+        }
+        $classification->prime($file);
+
+        return $findings;
+    }
+
     /**
      * @param  array<int, Architecture|string>  $enabled
      * @return array<int, AuditRule>
      */
-    public static function all(Filesystem $files, string $basePath, array $enabled): array
+    public static function all(Filesystem $files, string $basePath, array $enabled, ?ProjectClassification $classification = null): array
     {
         return [
-            new FolderPurityRule($enabled, $files, $basePath),
-            new ThinControllerRule,
-            new ServicesRule,
-            new ActionsRule,
-            new QueryObjectsRule,
-            new CustomEloquentBuildersRule,
-            new DataObjectsRule,
-            new ValueObjectsRule,
-            new FormRequestsRule($enabled),
+            new FolderPurityRule($enabled, $files, $basePath, $classification),
+            new ThinControllerRule($classification),
+            new ServicesRule($classification),
+            new ActionsRule($classification),
+            new QueryObjectsRule($classification),
+            new CustomEloquentBuildersRule($classification),
+            new DataObjectsRule($classification),
+            new ValueObjectsRule($classification),
+            new FormRequestsRule($enabled, $classification),
             new FortifyRule($files, $basePath),
-            new EnumsRule($files, $basePath, $enabled),
-            new ApiResourcesRule,
-            new PortsAndAdaptersRule($files, $basePath, $enabled),
+            new EnumsRule($files, $basePath, $enabled, $classification),
+            new ApiResourcesRule($classification),
+            new PortsAndAdaptersRule($files, $basePath, $enabled, $classification?->roles),
             new ModernPhp85Rule,
             new LaravelAiRule($files, $basePath),
-            new InertiaRule,
+            new InertiaRule($classification),
             new EloquentLifecycleRule($files, $basePath),
-            new SaloonRule,
+            new SaloonRule($classification),
             new RouteLogicRule,
             new ServiceLocatorRule,
-            new TestabilityRule,
-            new UnenabledPatternRule($enabled, $files, $basePath),
+            new TestabilityRule($classification),
+            new UnenabledPatternRule($enabled, $files, $basePath, $classification),
         ];
     }
 }

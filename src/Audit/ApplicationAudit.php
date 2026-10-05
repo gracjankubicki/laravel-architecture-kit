@@ -13,9 +13,12 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerAnalysisResult;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerReadAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\UnknownRoleRule;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestReachability;
+use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
@@ -107,11 +110,16 @@ final class ApplicationAudit
             : CustomRuleSet::fromGlobal($customRules);
         $customAuditRules = (new RuleRegistry($customRuleSet->rulesFor($enabled)))->customRules();
         $knownRules = $this->knownRules($customRuleSet);
-        $rules = array_merge($this->builtInRules($enabled), $customAuditRules);
+        $classification = new ProjectClassification($this->files, $this->basePath);
+        $declaredClassification = $classification->roles->mappings->roles !== [] || $classification->roles->mappings->modules !== [] || $classification->roles->mappings->unknownLevel !== 'off';
+        if ($declaredClassification && $routes === null) {
+            $routes = new RouteMap(unavailable: 'Declared classification analysis does not boot the application. Supply an explicit RouteMap for endpoint read analysis.');
+        }
+        $rules = array_merge($this->builtInRules($enabled, $classification), $customAuditRules);
         $changedFocusAvailable = $changedOnly && str_starts_with($scopeLabel, 'changed application files');
         $focusPathSet = array_fill_keys($focusPaths, true);
         $focusFiles = [];
-        $graphBuilder = new ProjectGraphBuilder;
+
         $memoryLimitBytes = $this->configuredMemoryLimitBytes();
         $processedFiles = 0;
 
@@ -119,6 +127,7 @@ final class ApplicationAudit
         $findingsByPath = [];
 
         $loader = new ProjectGraphLoader($this->files, $this->basePath, $auditScope, $cache, $cacheConfiguration);
+        $graphBuilder = new ProjectGraphBuilder(roles: $loader->classification);
         // Decided from stat alone, before a single file is opened. Without a cache every
         // path lands in `toParse`, which is the behaviour this loop always had.
         $plan = $loader->plan($exclude);
@@ -152,11 +161,12 @@ final class ApplicationAudit
                 if ($parseFindings !== []) {
                     $findingsByPath[$file->path] = $parseFindings;
                 } else {
+                    $classification->prime($file);
                     $fileFindings = [];
 
                     foreach ($rules as $rule) {
                         if ($this->appliesTo($rule, $file->path, $auditScope) && $rule->supports($file->path, $enabled)) {
-                            array_push($fileFindings, ...$rule->check($file));
+                            array_push($fileFindings, ...BuiltInRules::check($rule, $file, $enabled, $classification));
                         }
                     }
 
@@ -186,7 +196,7 @@ final class ApplicationAudit
             $reachability = $testReachability->analyze($graph, $routes);
         }
 
-        foreach ((new ProjectRuleSet($missingTestLevel, $reachability))->rules() as $rule) {
+        foreach ([...(new ProjectRuleSet($missingTestLevel, $reachability))->rules(), new UnknownRoleRule($loader->classification->mappings->unknownLevel)] as $rule) {
             foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
                 $findingsByPath[$finding->path][] = $finding;
                 $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)));
@@ -196,7 +206,7 @@ final class ApplicationAudit
         $endpointInputs = $changedFocusAvailable
             ? $this->changedApplicationFiles($baseRef, new AuditScope([...$auditScope->directories, 'routes', 'bootstrap', 'config']), includeDeleted: true)
             : null;
-        $controllerAnalysis = (new ControllerReadAudit($this->files, $this->basePath))->analyze($graph, $enabled, $endpointInputs, $routes);
+        $controllerAnalysis = (new ControllerReadAudit($this->files, $this->basePath, $classification))->analyze($graph, $enabled, $endpointInputs, $routes);
         $analysisStatus = $controllerAnalysis->status;
         $suggestions = $controllerAnalysis->suggestions;
         $notices = $controllerAnalysis->notices;
@@ -242,6 +252,7 @@ final class ApplicationAudit
             suggestions: $suggestions,
             notices: $notices,
             analysisStatus: $analysisStatus,
+            classification: $declaredClassification ? ClassificationReport::graph($loader->classification, $graph) : [],
         );
     }
 
@@ -329,9 +340,9 @@ final class ApplicationAudit
      * @param  array<int, Architecture|string>  $enabled
      * @return array<int, AuditRule>
      */
-    private function builtInRules(array $enabled): array
+    private function builtInRules(array $enabled, ?ProjectClassification $classification = null): array
     {
-        return BuiltInRules::all($this->files, $this->basePath, $enabled);
+        return BuiltInRules::all($this->files, $this->basePath, $enabled, $classification);
     }
 
     /**

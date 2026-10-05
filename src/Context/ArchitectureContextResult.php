@@ -29,6 +29,8 @@ final readonly class ArchitectureContextResult
         // would otherwise start passing tests where inspect is expected.
         public array $tests = [],
         public CacheStatus $cacheStatus = CacheStatus::Disabled,
+        /** @var array<string, mixed> */
+        public array $classification = [],
     ) {}
 
     /**

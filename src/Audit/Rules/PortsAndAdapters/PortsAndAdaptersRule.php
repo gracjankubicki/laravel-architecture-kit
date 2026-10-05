@@ -140,11 +140,9 @@ final readonly class PortsAndAdaptersRule implements AuditRule
 
     private function looksLikeApplicationPort(string $path, Stmt\Interface_ $interface): bool
     {
-        return $this->roles->isPort(
-            path: $path,
-            name: $interface->name->toString(),
-            hasMethods: $interface->getMethods() !== [],
-        );
+        $name = isset($interface->namespacedName) ? $interface->namespacedName->toString() : $interface->name->toString();
+
+        return $this->roles->classify($path, $name, 'interface', $interface->getMethods() !== []) === 'port';
     }
 
     /**

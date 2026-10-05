@@ -953,3 +953,37 @@ For example, when A calls B and C, both call D, and D calls A, outgoing resolved
 `reach.status`, `fresh`, `total_is_lower_bound`, `analysis_budget`, source notices, `scope` and requested depth describe analysis boundaries separately from display limits. Internal per-channel row limits are 1000, code traversal budgets are 10000 visits and 1000 queued symbols, and execution/DATA retain their documented source, path and memory limits. A limit means incomplete analysis and lower bounds. Inspect boundary symbols, increase depth within 32, narrow configured scope or increase memory and start a new report. Zero means no recognized links in this scope, not absence of runtime users. Test candidates are not coverage or PASS. Class/file queries also retain unresolved calls in their declared methods and reached code symbols.
 
 Settings use the static source-only reader described for search, without requiring project configuration. The graph/cache and existing source readers are reused without expanding audit scope or executing analyzed code. Freshness checks project PHP/composer metadata, configuration and file additions/removals using paths, mtime and size; equal-stat edits are outside the guarantee. This conservative inventory reads names/stats, not extra source contents, and excludes vendor, node_modules, Git internals, `.env`, symlinks and report storage. Tests preserved by the graph when missing-test is enabled remain freshness inputs even when an exclusion matches them. It has a 20000-entry and memory budget. Report persistence/readback has bounded size and memory; inability to preserve a report returns an explicit error, never a complete zero result. Artisan/MCP hosts may already have booted Laravel before calling the analyzer.
+
+
+### Declare roles and modules for existing directories
+
+An application can keep its current layout and declare what each location contains in `config/architectures.php`:
+
+```php
+'audit' => [
+    'classification' => [
+        'roles' => [
+            ['path' => 'app/Billing/UseCases', 'role' => 'application', 'kind' => 'action'],
+            ['namespace' => 'App\\Billing\\Readers', 'role' => 'application', 'kind' => 'query'],
+            ['pattern' => 'app/*/Readers', 'role' => 'application', 'kind' => 'query'],
+        ],
+        'modules' => [
+            ['name' => 'Billing', 'path' => 'app/Billing'],
+            ['name' => 'Refunds', 'path' => 'app/Billing/Refunds'],
+        ],
+        'unknown_role' => 'off', // off, warn or error
+    ],
+],
+```
+
+`app/Billing/UseCases/Pay.php` is an application action in Billing. A class under `app/Billing/Refunds` belongs to Refunds and retains Billing as its parent. `app/Models/User.php` stays a shared model without a module unless explicitly assigned. Existing models inside modules are supported.
+
+Selectors are directory prefixes, namespace prefixes, or directory globs. `*` matches one complete directory segment; `**` matches zero or more. A literal selector wins over globs. The most specific literal prefix wins in its selector family. Conflicting matching globs, path and namespace declarations, or module owners fail explicitly. Use `parent` to declare a module parent when directory nesting does not express it. Missing parents and cycles fail.
+
+Supported roles are `domain`, `application`, `adapter`, `infrastructure`, `composition`, `port`, `unknown` and `test`. Supported application kinds are `action`, `query`, `controller`, `model`, `service`, `job`, `listener`, `event`, `policy`, `request`, `resource`, `data`, `value-object`, `enum`, `exception`, `builder`, `port`, `provider` and `test`. PHP declaration kinds such as class, interface, trait and enum remain separate. Tests keep their test classification. A classless file remains unknown or test rather than receiving an artificial layer.
+
+Declarations override directory conventions, without enabling a profile or extending `audit.paths`. Actions and Queries receive their enabled rules wherever declared. Unknown means an unrecognized architectural layer, not a missing action/query label. `unknown_role` defaults to off. Audit, context, search, impact, reach and file rules expose classification provenance. Module relations distinguish intra-module, inter-module and unassigned links with a source path and line. These structural witnesses are not module dependency policy or runtime proof. Output limits can truncate the classification rows.
+
+With classification declarations, configuration must be a static returned array. Literal data, package Architecture/MissingTestLevel enum cases and class-name strings are supported. Dynamic calls and application constants fail without execution. Legacy configuration without declarations keeps its existing behavior. Graph cache keys include the mapping fingerprint. When role/module declarations or unknown-layer reporting are active, audit does not boot the application to discover endpoints. Pass an explicit RouteMap to the programmatic audit for endpoint read analysis; otherwise the report marks that channel incomplete.
+
+An agent can propose organization while working on related code. For example, it may suggest placing existing payment actions in `app/Billing/Actions` and invoice readers in `app/Billing/Queries`. The proposal must list files, reasons, uncertainties, reference and registration changes, and test consequences. It respects the current layout, stays separate from accepted declarations and requires approval before execution. Models remain in `app/Models` by default. Module scaffolding is not provided.

@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifyContractMap;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifySourceResolver;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use Illuminate\Filesystem\Filesystem;
 use PhpParser\Node;
 use PhpParser\Node\Name;
@@ -35,6 +36,7 @@ final readonly class FolderPurityRule implements AuditRule
         private array $enabled,
         private ?Filesystem $files = null,
         private ?string $basePath = null,
+        private ?ProjectClassification $classification = null,
     ) {}
 
     /**
@@ -46,15 +48,15 @@ final readonly class FolderPurityRule implements AuditRule
      */
     public function supports(string $path, array $enabled): bool
     {
-        return str_starts_with($path, 'app/Actions/')
-            || (in_array(Architecture::Services, $enabled, true) && str_starts_with($path, 'app/Services/'))
-            || str_starts_with($path, 'app/Data/')
-            || (in_array(Architecture::ValueObjects, $enabled, true) && $this->isValueObjectPath($path))
-            || str_starts_with($path, 'app/Enums/')
-            || str_starts_with($path, 'app/Exceptions/')
-            || str_starts_with($path, 'app/Http/Resources/')
-            || str_starts_with($path, 'app/Queries/')
-            || (in_array(Architecture::CustomEloquentBuilders, $enabled, true) && str_starts_with($path, 'app/Models/Builders/'));
+        return ($this->classification?->kindMatches($path, 'action', str_starts_with($path, 'app/Actions/')) ?? str_starts_with($path, 'app/Actions/'))
+            || (in_array(Architecture::Services, $enabled, true) && ($this->classification?->kindMatches($path, 'service', str_starts_with($path, 'app/Services/')) ?? str_starts_with($path, 'app/Services/')))
+            || ($this->classification?->kindMatches($path, 'data', str_starts_with($path, 'app/Data/')) ?? str_starts_with($path, 'app/Data/'))
+            || (in_array(Architecture::ValueObjects, $enabled, true) && ($this->classification?->kindMatches($path, 'value-object', $this->isValueObjectPath($path)) ?? $this->isValueObjectPath($path)))
+            || ($this->classification?->kindMatches($path, 'enum', str_starts_with($path, 'app/Enums/')) ?? str_starts_with($path, 'app/Enums/'))
+            || ($this->classification?->kindMatches($path, 'exception', str_starts_with($path, 'app/Exceptions/')) ?? str_starts_with($path, 'app/Exceptions/'))
+            || ($this->classification?->kindMatches($path, 'resource', str_starts_with($path, 'app/Http/Resources/')) ?? str_starts_with($path, 'app/Http/Resources/'))
+            || ($this->classification?->kindMatches($path, 'query', str_starts_with($path, 'app/Queries/')) ?? str_starts_with($path, 'app/Queries/'))
+            || (in_array(Architecture::CustomEloquentBuilders, $enabled, true) && ($this->classification?->kindMatches($path, 'builder', str_starts_with($path, 'app/Models/Builders/')) ?? str_starts_with($path, 'app/Models/Builders/')));
     }
 
     /**
@@ -70,49 +72,49 @@ final readonly class FolderPurityRule implements AuditRule
 
         $findings = [];
 
-        if (str_starts_with($file->path, 'app/Actions/') && ! $this->looksLikeAction($file, $nodes)) {
-            $findings[] = $this->finding('error', $file->path, 1, 'app/Actions/** must contain Actions only.');
+        if (($this->classification?->kindMatches($file->path, 'action', str_starts_with($file->path, 'app/Actions/')) ?? str_starts_with($file->path, 'app/Actions/')) && ! $this->looksLikeAction($file, $nodes)) {
+            $findings[] = $this->finding('error', $file->path, 1, ($this->classification?->roles->mappings->roles !== [] && $this->classification !== null ? 'Declared action locations must contain Actions only.' : 'app/Actions/** must contain Actions only.'));
         }
 
         if (
             in_array(Architecture::Services, $this->enabled, true)
-            && str_starts_with($file->path, 'app/Services/')
+            && ($this->classification?->kindMatches($file->path, 'service', str_starts_with($file->path, 'app/Services/')) ?? str_starts_with($file->path, 'app/Services/'))
             && ! $this->looksLikeService($nodes)
         ) {
             $findings[] = $this->finding('error', $file->path, 1, 'app/Services/** must contain Services only.');
         }
 
-        if (str_starts_with($file->path, 'app/Data/') && ! $this->looksLikeDataObject($nodes)) {
+        if (($this->classification?->kindMatches($file->path, 'data', str_starts_with($file->path, 'app/Data/')) ?? str_starts_with($file->path, 'app/Data/')) && ! $this->looksLikeDataObject($nodes)) {
             $findings[] = $this->finding('error', $file->path, 1, 'app/Data/** must contain Data Objects, DTOs, and Result objects only.');
         }
 
         if (
             in_array(Architecture::ValueObjects, $this->enabled, true)
-            && $this->isValueObjectPath($file->path)
+            && ($this->classification?->kindMatches($file->path, 'value-object', $this->isValueObjectPath($file->path)) ?? $this->isValueObjectPath($file->path))
             && ! $this->looksLikeValueObject($nodes)
         ) {
             $findings[] = $this->finding('error', $file->path, 1, 'Value Object folders must contain final readonly Value Object classes only.');
         }
 
-        if (str_starts_with($file->path, 'app/Enums/') && ! $this->looksLikeEnum($nodes)) {
+        if (($this->classification?->kindMatches($file->path, 'enum', str_starts_with($file->path, 'app/Enums/')) ?? str_starts_with($file->path, 'app/Enums/')) && ! $this->looksLikeEnum($nodes)) {
             $findings[] = $this->finding('error', $file->path, 1, 'app/Enums/** must contain Enums only.');
         }
 
-        if (str_starts_with($file->path, 'app/Exceptions/') && ! $this->looksLikeException($nodes)) {
+        if (($this->classification?->kindMatches($file->path, 'exception', str_starts_with($file->path, 'app/Exceptions/')) ?? str_starts_with($file->path, 'app/Exceptions/')) && ! $this->looksLikeException($nodes)) {
             $findings[] = $this->finding('error', $file->path, 1, 'app/Exceptions/** must contain Exceptions only.');
         }
 
-        if (str_starts_with($file->path, 'app/Http/Resources/') && ! $this->looksLikeApiResource($nodes)) {
+        if (($this->classification?->kindMatches($file->path, 'resource', str_starts_with($file->path, 'app/Http/Resources/')) ?? str_starts_with($file->path, 'app/Http/Resources/')) && ! $this->looksLikeApiResource($nodes)) {
             $findings[] = $this->finding('error', $file->path, 1, 'app/Http/Resources/** must contain API Resources and Resource Collections only.');
         }
 
-        if (str_starts_with($file->path, 'app/Queries/') && ! $this->looksLikeQueryObject($nodes)) {
-            $findings[] = $this->finding('error', $file->path, 1, 'app/Queries/** must contain Query Objects only.');
+        if (($this->classification?->kindMatches($file->path, 'query', str_starts_with($file->path, 'app/Queries/')) ?? str_starts_with($file->path, 'app/Queries/')) && ! $this->looksLikeQueryObject($nodes)) {
+            $findings[] = $this->finding('error', $file->path, 1, ($this->classification?->roles->mappings->roles !== [] && $this->classification !== null ? 'Declared query locations must contain Query Objects only.' : 'app/Queries/** must contain Query Objects only.'));
         }
 
         if (
             in_array(Architecture::CustomEloquentBuilders, $this->enabled, true)
-            && str_starts_with($file->path, 'app/Models/Builders/')
+            && ($this->classification?->kindMatches($file->path, 'builder', str_starts_with($file->path, 'app/Models/Builders/')) ?? str_starts_with($file->path, 'app/Models/Builders/'))
             && ! $this->looksLikeCustomEloquentBuilder($nodes)
         ) {
             $findings[] = $this->finding('error', $file->path, 1, 'app/Models/Builders/** must contain final custom Eloquent Builder classes only.');

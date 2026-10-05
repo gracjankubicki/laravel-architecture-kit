@@ -17,7 +17,7 @@ final class ArchitectureDiscovery
 {
     private bool $candidateLimited = false;
 
-    public const KINDS = ['class', 'interface', 'trait', 'enum', 'method', 'file', 'route', 'command', 'job', 'controller', 'model', 'action', 'query', 'service', 'listener', 'event', 'policy', 'request', 'resource', 'test'];
+    public const KINDS = ['class', 'interface', 'trait', 'enum', 'method', 'file', 'route', 'command', 'job', 'controller', 'model', 'action', 'query', 'service', 'listener', 'event', 'policy', 'request', 'resource', 'test', 'data', 'value-object', 'exception', 'builder', 'port', 'provider'];
 
     public function __construct(private readonly Filesystem $files, private readonly string $basePath) {}
 
@@ -64,10 +64,15 @@ final class ArchitectureDiscovery
                     $limited = true;
                     break;
                 }
+                $classification = $loader->classification->describe($class['path'], $class['name'], $class['kind'], $class['methods'] !== []);
+                $declared = $loader->classification->mappings->roleMapping($class['path'], $class['name']);
                 $types = [$class['kind']];
+                if (isset($declared['kind']) && in_array($classification['application_kind'], self::KINDS, true)) {
+                    $types[] = $classification['application_kind'];
+                }
                 $hints = [];
                 foreach (['Controllers' => 'controller', 'Models' => 'model', 'Actions' => 'action', 'Queries' => 'query', 'Services' => 'service', 'Listeners' => 'listener', 'Events' => 'event', 'Policies' => 'policy', 'Requests' => 'request', 'Resources' => 'resource', 'Tests' => 'test'] as $folder => $type) {
-                    if (str_contains('/'.$class['path'], '/'.$folder.'/') || $type === 'test' && str_starts_with($class['path'], 'tests/')) {
+                    if ((! isset($declared['kind']) || $declared['kind'] === $type) && (str_contains('/'.$class['path'], '/'.$folder.'/') || $type === 'test' && str_starts_with($class['path'], 'tests/'))) {
                         $types[] = $type;
                     }
                 }
@@ -81,10 +86,10 @@ final class ArchitectureDiscovery
                     $types[] = 'job';
                 }
                 $duplicate = $names[strtolower($class['name'])] > 1;
-                $notes = [...$hints, ...($duplicate ? ['Duplicate class name: use the broader file selector and inspect each declaration.'] : [])];
-                $this->add($rows, $class['name'], $class['kind'], $class, $types, $duplicate ? $class['path'] : $class['name'], $duplicate ? 'file' : 'symbol', $notes, [substr($class['name'], (int) strrpos('\\'.$class['name'], '\\'))]);
+                $notes = [...$hints, ...(isset($declared['kind']) ? ['Project-declared application kind is classification, not proof of a framework contract or runtime execution.'] : []), ...($duplicate ? ['Duplicate class name: use the broader file selector and inspect each declaration.'] : [])];
+                $this->add($rows, $class['name'], $class['kind'], $class, $types, $duplicate ? $class['path'] : $class['name'], $duplicate ? 'file' : 'symbol', $notes, [substr($class['name'], (int) strrpos('\\'.$class['name'], '\\'))], $classification);
                 foreach ($class['methods'] as $method) {
-                    $this->add($rows, $method['symbol'], 'method', $method['source'], ['method'], $duplicate ? $class['path'] : $method['symbol'], $duplicate ? 'file' : 'symbol', $notes, [$method['name']]);
+                    $this->add($rows, $method['symbol'], 'method', $method['source'], ['method'], $duplicate ? $class['path'] : $method['symbol'], $duplicate ? 'file' : 'symbol', $notes, [$method['name']], $classification);
                 }
             }
             foreach ($facts['analyzed_paths'] as $path) {
@@ -154,8 +159,9 @@ final class ArchitectureDiscovery
      * @param  list<string>  $kinds
      * @param  list<string>  $notes
      * @param  list<string>  $aliases
+     * @param  array<string, mixed>  $classification
      */
-    private function add(array &$rows, string $name, string $kind, array $source, array $kinds, ?string $selector, string $scope, array $notes = [], array $aliases = []): void
+    private function add(array &$rows, string $name, string $kind, array $source, array $kinds, ?string $selector, string $scope, array $notes = [], array $aliases = [], array $classification = []): void
     {
         if (count($rows) >= 50000 || ImpactExtractor::sourceLimit(0) !== null) {
             $this->candidateLimited = true;
@@ -163,7 +169,7 @@ final class ArchitectureDiscovery
             return;
         }
         $id = hash('xxh128', serialize([$name, $kind, $source['path'], $source['line'], $source['offset'] ?? null]));
-        $rows[$id] = ['id' => $id, 'name' => $name, 'kind' => $kind, 'kinds' => array_values(array_unique($kinds)), 'path' => $source['path'], 'line' => $source['line'], 'selector' => $selector, 'selector_scope' => $scope, 'supported' => $selector !== null, 'notes' => $notes, 'aliases' => $aliases];
+        $rows[$id] = ['id' => $id, 'name' => $name, 'kind' => $kind, 'kinds' => array_values(array_unique($kinds)), 'path' => $source['path'], 'line' => $source['line'], 'selector' => $selector, 'selector_scope' => $scope, 'supported' => $selector !== null, 'notes' => $notes, 'aliases' => $aliases, 'classification' => $classification];
     }
 
     /** @return array<string, mixed> */

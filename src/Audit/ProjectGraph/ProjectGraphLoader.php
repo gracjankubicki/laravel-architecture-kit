@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CachedGraph;
@@ -20,6 +21,8 @@ use SplFileInfo;
 
 final readonly class ProjectGraphLoader
 {
+    public RoleClassifier $classification;
+
     public function __construct(
         private Filesystem $files,
         private string $basePath,
@@ -33,7 +36,9 @@ final readonly class ProjectGraphLoader
         private array $configuration = [],
         private bool $impact = false,
         private bool $sourceOnly = false,
-    ) {}
+    ) {
+        $this->classification = RoleClassifier::forProject($files, $basePath);
+    }
 
     /**
      * @param  array<int, string>  $exclude
@@ -132,7 +137,7 @@ final readonly class ProjectGraphLoader
      */
     public function build(GraphBuildPlan $plan): ProjectGraphSnapshot
     {
-        $builder = new ProjectGraphBuilder(impact: $this->impact);
+        $builder = new ProjectGraphBuilder(roles: $this->classification, impact: $this->impact);
         $entries = $plan->reusable;
 
         foreach ($plan->toParse as $path) {
@@ -240,7 +245,7 @@ final readonly class ProjectGraphLoader
     private function signatureFor(array $scanned): GraphCacheSignature
     {
         return GraphCacheSignature::create(
-            [PackageFingerprint::current(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : [])],
+            [PackageFingerprint::current(), $this->classification->mappings->fingerprint(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : [])],
             array_map(static fn (array $file): string => $file[1], $scanned),
         );
     }

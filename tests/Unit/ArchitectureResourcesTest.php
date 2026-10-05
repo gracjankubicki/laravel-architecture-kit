@@ -43,6 +43,17 @@ class ArchitectureResourcesTest extends TestCase
         }
     }
 
+    public function test_generated_guidance_requires_approval_for_contextual_module_proposals(): void
+    {
+        $resources = $this->resources();
+        $enabled = [Architecture::Actions];
+        $this->assertStringContainsString('Respect declared roles, kinds and modules from file-rules', $resources->guideline($enabled)->contents);
+        $text = $resources->fullGuideline($enabled);
+        foreach (['during a related change', 'Keep models in app/Models by default', 'Require user approval before moving files or editing declarations', 'list the affected files, reasons, uncertainties', 'proposal separate from accepted project declarations'] as $expected) {
+            $this->assertStringContainsString(strtolower($expected), strtolower($text));
+        }
+    }
+
     public function test_compact_guideline_stays_within_token_budget(): void
     {
         $resources = $this->resources();

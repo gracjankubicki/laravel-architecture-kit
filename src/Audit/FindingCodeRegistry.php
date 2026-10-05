@@ -8,6 +8,7 @@ final readonly class FindingCodeRegistry
 {
     /** @var array<string, array{title: string, why: string, fix: string}> */
     private const RULE_CATALOG = [
+        'unknown-role' => ['title' => 'Unknown architectural layer', 'why' => 'The project enabled reporting for elements without a recognized layer.', 'fix' => 'Declare the intended role or verify the existing directory convention.'],
         'actions' => ['title' => 'Action boundary violation', 'why' => 'Actions define named application use cases and must keep framework adapters out of workflow code.', 'fix' => 'Move adapter concerns out of the Action and keep the use case explicit.'],
         'api-resource' => ['title' => 'API Resource boundary violation', 'why' => 'Resources must format loaded data rather than query or load it.', 'fix' => 'Load data before creating the Resource and keep presentation-only mapping here.'],
         'custom-eloquent-builders' => ['title' => 'Custom Eloquent Builder violation', 'why' => 'Builder folders are reserved for typed query vocabulary.', 'fix' => 'Keep only final Eloquent Builder classes and query behavior in this folder.'],

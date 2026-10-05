@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\BuiltInRules;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\RuleRegistry;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
@@ -22,16 +23,20 @@ use Illuminate\Filesystem\Filesystem;
  */
 final readonly class FileGuidance
 {
+    private ProjectClassification $classification;
+
     public function __construct(
         private Filesystem $files,
         private string $basePath,
         private ArchitectureCatalog $catalog,
         private AuditScope $scope = new AuditScope,
-    ) {}
+    ) {
+        $this->classification = new ProjectClassification($files, $basePath);
+    }
 
     /**
      * @param  array<int, Architecture|string>  $enabled
-     * @return array{path: string, in_scope: bool, architectures: array<int, array<string, mixed>>, rules: array<int, string>, project_rules: array<int, string>, global_rules: array<int, string>}
+     * @return array{path: string, in_scope: bool, architectures: array<int, array<string, mixed>>, rules: array<int, string>, project_rules: array<int, string>, global_rules: array<int, string>, classification: list<array<string, mixed>>}
      */
     public function for(string $path, array $enabled, CustomRuleSet $customRules): array
     {
@@ -65,12 +70,13 @@ final readonly class FileGuidance
         sort($rules);
 
         return [
+            'classification' => $inScope ? $this->classification->file($path) : [],
             'path' => $path,
             'in_scope' => $inScope,
             'architectures' => $architectures,
             'rules' => $rules,
             'project_rules' => $project,
-            'global_rules' => $inScope ? RuleCoverage::globalRules() : [],
+            'global_rules' => $inScope ? [...RuleCoverage::globalRules(), ...($this->classification->roles->mappings->unknownLevel !== 'off' ? ['unknown-role'] : [])] : [],
         ];
     }
 
@@ -84,6 +90,10 @@ final readonly class FileGuidance
         $advisory = ! RuleCoverage::isKnownArchitecture($slug) || RuleCoverage::isAdvisoryOnly($slug);
         $placements = $this->placements($architecture);
         $governs = $this->matchesPlacement($path, $placements);
+        $mappedKind = ['actions' => 'action', 'query-objects' => 'query', 'thin-controllers' => 'controller', 'services' => 'service', 'custom-eloquent-builders' => 'builder', 'data-objects' => 'data', 'value-objects' => 'value-object', 'enums' => 'enum', 'form-requests' => 'request', 'api-resources' => 'resource', 'ports-and-adapters' => 'port'][$slug] ?? null;
+        if ($mappedKind !== null) {
+            $governs = $this->classification->kindMatches($path, $mappedKind, $governs);
+        }
         $rules = array_values(array_intersect(RuleCoverage::rulesForArchitecture($slug), $supported));
 
         if (! $governs) {
@@ -123,7 +133,7 @@ final readonly class FileGuidance
         $builtIn = [];
         $project = [];
 
-        foreach (BuiltInRules::all($this->files, $this->basePath, $enabled) as $rule) {
+        foreach (BuiltInRules::all($this->files, $this->basePath, $enabled, $this->classification) as $rule) {
             if ($rule->supports($path, $enabled)) {
                 array_push($builtIn, ...RuleCoverage::slugsFor($rule));
             }
@@ -152,7 +162,22 @@ final readonly class FileGuidance
             return [];
         }
 
-        return array_values(array_filter(array_map('trim', explode(',', $placement))));
+        $paths = array_values(array_filter(array_map('trim', explode(',', $placement))));
+        $kind = ['actions' => 'action', 'query-objects' => 'query', 'thin-controllers' => 'controller', 'services' => 'service', 'custom-eloquent-builders' => 'builder', 'data-objects' => 'data', 'value-objects' => 'value-object', 'enums' => 'enum', 'form-requests' => 'request', 'api-resources' => 'resource', 'ports-and-adapters' => 'port'][$architecture->slug()] ?? null;
+        if ($kind !== null) {
+            $paths = array_values(array_filter($paths, function (string $path) use ($kind): bool {
+                $mapping = $this->classification->roles->mappings->roleMapping(rtrim($path, '/').'/__placement__.php', '');
+
+                return ! isset($mapping['kind']) || $mapping['kind'] === $kind;
+            }));
+            foreach ($this->classification->roles->mappings->roles as $row) {
+                if (($row['kind'] ?? null) === $kind) {
+                    $paths[] = $row['path'] ?? $row['pattern'] ?? 'namespace:'.$row['namespace'];
+                }
+            }
+        }
+
+        return array_values(array_unique($paths));
     }
 
     /**

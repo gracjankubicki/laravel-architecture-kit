@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Name;
@@ -18,12 +19,14 @@ use PhpParser\NodeVisitorAbstract;
 
 final readonly class ServicesRule implements AuditRule
 {
+    public function __construct(private ?ProjectClassification $classification = null) {}
+
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
     public function supports(string $path, array $enabled): bool
     {
-        return str_starts_with($path, 'app/Services/')
+        return ($this->classification?->kindMatches($path, 'service', str_starts_with($path, 'app/Services/')) ?? str_starts_with($path, 'app/Services/'))
             && in_array(Architecture::Services, $enabled, true);
     }
 

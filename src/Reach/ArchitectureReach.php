@@ -113,7 +113,7 @@ final readonly class ArchitectureReach
      */
     private function page(array $report, string $id, int $limit, int $page): array
     {
-        $paths = [['dependents'], ['dependencies'], ['possible', 'dependents'], ['possible', 'dependencies'], ['possible', 'overrides'], ['references', 'dependents'], ['references', 'dependencies'], ['class_context', 'dependents'], ['class_context', 'dependencies'], ['tests'], ['analysis', 'notices'], ['execution', 'routes'], ['execution', 'flows'], ['execution', 'unresolved'], ['execution', 'flow_analysis', 'unresolved'], ['data', 'outgoing'], ['data', 'consumers'], ['data', 'unresolved'], ['reach', 'layer_crossings']];
+        $paths = [['classification', 'symbols'], ['classification', 'module_relations'], ['dependents'], ['dependencies'], ['possible', 'dependents'], ['possible', 'dependencies'], ['possible', 'overrides'], ['references', 'dependents'], ['references', 'dependencies'], ['class_context', 'dependents'], ['class_context', 'dependencies'], ['tests'], ['analysis', 'notices'], ['execution', 'routes'], ['execution', 'flows'], ['execution', 'unresolved'], ['execution', 'flow_analysis', 'unresolved'], ['data', 'outgoing'], ['data', 'consumers'], ['data', 'unresolved'], ['reach', 'layer_crossings']];
         $max = 0;
         foreach ($paths as $path) {
             $rows = &$report;

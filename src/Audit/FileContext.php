@@ -24,6 +24,18 @@ final class FileContext
         public readonly string $contents,
     ) {}
 
+    /** A declaration view reuses resolved nodes and original source locations.
+     * @param  list<Node>  $nodes
+     */
+    public function withAst(array $nodes): self
+    {
+        $view = new self($this->path, $this->contents);
+        $view->ast = $nodes;
+        $view->parsed = true;
+
+        return $view;
+    }
+
     /**
      * @return array<int, Node>|null
      */

@@ -13,6 +13,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
+use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
 use Illuminate\Filesystem\Filesystem;
 
 final readonly class ArchitectureContext
@@ -91,6 +92,7 @@ final readonly class ArchitectureContext
                 || count($tests) < count($allTests)
                 || count($inspect) < count($allInspect),
             cacheStatus: $plan->cacheStatus,
+            classification: ClassificationReport::graph($loader->classification, $graph, $limit, [$resolved->name]),
         );
     }
 

@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Classification\DeclaredConfiguration;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
@@ -205,7 +206,7 @@ final class ArchitectureConfig
             return $this->loadedConfig = [];
         }
 
-        $config = require $this->path;
+        $config = DeclaredConfiguration::read($this->files->get($this->path)) ?? require $this->path;
 
         if (! is_array($config)) {
             throw new InvalidArgumentException('config/architectures.php must return an array.');

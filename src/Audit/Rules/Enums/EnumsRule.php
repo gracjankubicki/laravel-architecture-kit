@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -26,6 +27,7 @@ final readonly class EnumsRule implements AuditRule
         private Filesystem $files,
         private string $basePath,
         private array $enabled,
+        private ?ProjectClassification $classification = null,
     ) {}
 
     /**
@@ -53,7 +55,7 @@ final readonly class EnumsRule implements AuditRule
             $findings[] = $this->finding('warn', $file->path, $line, 'Finite request values should use backed enums and Rule::enum().');
         }
 
-        if (str_starts_with($file->path, 'app/Models/')) {
+        if (($this->classification?->kindMatches($file->path, 'model', str_starts_with($file->path, 'app/Models/')) ?? str_starts_with($file->path, 'app/Models/'))) {
             foreach ($this->modelEnumConstantLines($nodes) as $line) {
                 $findings[] = $this->finding('warn', $file->path, $line, 'Finite model type sets should be backed enums with Eloquent casts.');
             }
@@ -63,7 +65,7 @@ final readonly class EnumsRule implements AuditRule
 
         if (
             in_array(Architecture::ApiResources, $this->enabled, true)
-            && str_starts_with($file->path, 'app/Http/Resources/')
+            && ($this->classification?->kindMatches($file->path, 'resource', str_starts_with($file->path, 'app/Http/Resources/')) ?? str_starts_with($file->path, 'app/Http/Resources/'))
         ) {
             foreach ($this->rawEnumLikeApiResourceLines($nodes) as $line) {
                 $findings[] = $this->finding(

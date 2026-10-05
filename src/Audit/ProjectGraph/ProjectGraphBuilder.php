@@ -266,7 +266,7 @@ final class ProjectGraphBuilder
                     line: $node->getStartLine(),
                     namespace: $this->namespaceOf($source),
                     kind: $kind,
-                    role: $this->roles->classify($file->path, $node->name->toString(), $kind, $hasMethods),
+                    role: $this->roles->describe($file->path, $source, $kind, $hasMethods)['role'],
                     hasMethods: $node->getMethods() !== [],
                 );
             }

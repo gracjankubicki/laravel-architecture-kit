@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use PhpParser\Node;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -19,13 +20,15 @@ use PhpParser\NodeVisitorAbstract;
 
 final readonly class QueryObjectsRule implements AuditRule
 {
+    public function __construct(private ?ProjectClassification $classification = null) {}
+
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
     public function supports(string $path, array $enabled): bool
     {
         return in_array(Architecture::QueryObjects, $enabled, true)
-            && (str_starts_with($path, 'app/Queries/') || str_starts_with($path, 'app/Http/Controllers/'));
+            && (($this->classification?->kindMatches($path, 'query', str_starts_with($path, 'app/Queries/')) ?? str_starts_with($path, 'app/Queries/')) || ($this->classification?->kindMatches($path, 'controller', str_starts_with($path, 'app/Http/Controllers/')) ?? str_starts_with($path, 'app/Http/Controllers/')));
     }
 
     /**
@@ -39,7 +42,7 @@ final readonly class QueryObjectsRule implements AuditRule
             return [];
         }
 
-        if (str_starts_with($file->path, 'app/Queries/')) {
+        if ($this->classification?->kindMatches($file->path, 'query', str_starts_with($file->path, 'app/Queries/')) ?? str_starts_with($file->path, 'app/Queries/')) {
             return $this->queryObjectFindings($file->path, $nodes);
         }
 

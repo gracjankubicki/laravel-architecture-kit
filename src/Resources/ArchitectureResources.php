@@ -268,6 +268,7 @@ final class ArchitectureResources
         return implode("\n", [
             'This file is a compact index of enabled Architecture Kit rules. Full rules are available on demand through skills, the MCP tool `architecture-rules`, the MCP resource `architecture-kit://guideline`, or `php artisan architecture-kit:guidelines {slug} --agent`.',
             'Before coding, the first Architecture Kit MCP call MUST be `enabled-architectures`. If MCP is unavailable, read this file or run `php artisan architecture-kit:guidelines --agent` before coding.',
+            'Respect declared roles, kinds and modules from file-rules. For organization proposals, follow the project classification section in the expanded guidelines.',
             'Before changing an existing PHP symbol, call MCP `architecture-context` or run `php artisan architecture-kit:context {FQCN-or-path} --agent`, then inspect the returned dependencies, dependents, violations, and files.',
             'Before changing a class, file or method, use MCP `impact` or `php artisan architecture-kit:impact {class-or-path-or-Class::method} --agent`. Inspect execution.routes and execution.flows for HTTP, Artisan, scheduler, job, event and model paths. Read mode, timing, conditions, uncertainty, limits and freshness. Dispatch, registration and test candidates do not prove execution, worker success or coverage. Model suppression is path-local. For move, delete or signature preflight use change=move/delete/signature with the proposed targets or signature. No breaking rows does not prove safety. To ask how A reaches B, use MCP `path(from, to)` or `php artisan architecture-kit:path A B --agent`. Select classes, methods or files. Read dependency paths separately from execution, with found, status, limits, freshness and external boundaries. Strong/weak is not repair cost. Vendor is unread. Ask before expanding the agreed scope.',
             'Before upgrading a direct Composer package, call MCP `plan-upgrade` or run `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`, then load only the active atomic upgrade skill.',
@@ -279,6 +280,10 @@ final class ArchitectureResources
     {
         return <<<'MARKDOWN'
 This project MUST follow the enabled Architecture Kit patterns globally.
+
+Project classification and organization proposals:
+
+Use classification from file-rules, architecture-context, search and impact as the shared source for declared roles, application kinds and module ownership. PHP kind is separate. Read provenance; declarations do not prove compliance or enable profiles. Declared roles and kinds override default placement conventions below. Respect existing directories. During a related change, you may propose a named module with Actions and Queries subdirectories, but list the affected files, reasons, uncertainties, references and registration changes, and test consequences. Keep this proposal separate from accepted project declarations. Require user approval before moving files or editing declarations. Keep models in app/Models by default; shared models may remain unassigned. Respect models already inside modules. Never scaffold or reorganize modules as an unrelated cleanup.
 
 Before changing application architecture:
 

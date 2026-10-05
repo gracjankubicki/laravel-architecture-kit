@@ -10,11 +10,12 @@ use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditSuggestion;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContextBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use Illuminate\Filesystem\Filesystem;
 
 final readonly class ControllerReadAudit
 {
-    public function __construct(private Filesystem $files, private string $basePath) {}
+    public function __construct(private Filesystem $files, private string $basePath, private ?ProjectClassification $classification = null) {}
 
     /**
      * Compatibility adapter for callers that only consume enforced findings.
@@ -36,7 +37,7 @@ final readonly class ControllerReadAudit
     {
         $hasController = (bool) array_filter(
             $graph->symbols,
-            fn ($symbol): bool => $symbol->kind === 'class' && str_starts_with($symbol->path, 'app/Http/Controllers/'),
+            fn ($symbol): bool => $symbol->kind === 'class' && ($this->classification?->kindMatches($symbol->path, 'controller', str_starts_with($symbol->path, 'app/Http/Controllers/')) ?? str_starts_with($symbol->path, 'app/Http/Controllers/')),
         );
         if ($routes === null && ! $hasController) {
             return new ControllerAnalysisResult(status: ControllerAnalysisResult::NOT_RUN);
@@ -51,7 +52,7 @@ final readonly class ControllerReadAudit
 
         foreach ($graph->symbols as $symbol) {
             if ($symbol->kind !== 'class'
-                || ! str_starts_with($symbol->path, 'app/Http/Controllers/')
+                || ! ($this->classification?->kindMatches($symbol->path, 'controller', str_starts_with($symbol->path, 'app/Http/Controllers/')) ?? str_starts_with($symbol->path, 'app/Http/Controllers/'))
                 || ($focusPaths !== null && ! in_array($symbol->path, $focusPaths, true))) {
                 continue;
             }

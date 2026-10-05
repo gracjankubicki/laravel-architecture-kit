@@ -19,7 +19,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('file-rules')]
-#[Description('Return only the architecture rules that govern one file path, including whether each is enforced or advisory. The file does not have to exist yet.')]
+#[Description('Return only the architecture rules that govern one file path, including whether each is enforced or advisory. Returns declared or conventional role, application kind, PHP kind, module and provenance. Custom kind declarations govern rules and placements without enabling profiles. The file does not have to exist yet; namespace-only declarations require source.')]
 #[IsReadOnly]
 class FileRules extends Tool
 {

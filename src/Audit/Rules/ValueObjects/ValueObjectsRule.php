@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use PhpParser\Node;
 use PhpParser\Node\Name;
 use PhpParser\Node\Stmt;
@@ -16,6 +17,8 @@ use PhpParser\NodeVisitorAbstract;
 
 final readonly class ValueObjectsRule implements AuditRule
 {
+    public function __construct(private ?ProjectClassification $classification = null) {}
+
     /**
      * Suffixes that restate what the folder already says. Scaffolding reads the same
      * list, so a generated class cannot be rejected by the rule that defines it.
@@ -30,7 +33,7 @@ final readonly class ValueObjectsRule implements AuditRule
     public function supports(string $path, array $enabled): bool
     {
         return in_array(Architecture::ValueObjects, $enabled, true)
-            && $this->isValueObjectPath($path);
+            && ($this->classification?->kindMatches($path, 'value-object', $this->isValueObjectPath($path)) ?? $this->isValueObjectPath($path));
     }
 
     /**

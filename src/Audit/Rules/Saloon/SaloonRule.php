@@ -18,18 +18,19 @@ use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\RawSaloonResponseCh
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\RequestCheck;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\SaloonInsideTransactionCheck;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\SecurityCheck;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 
 final readonly class SaloonRule implements AuditRule
 {
     /** @var array<int, FileCheck> */
     private array $checks;
 
-    public function __construct()
+    public function __construct(?ProjectClassification $classification = null)
     {
         $paths = new IntegrationPaths;
         $this->checks = [
             new RawHttpCheck($paths), new AdapterBoundaryCheck($paths), new IntegrationFolderCheck($paths), new ConnectorCheck($paths),
-            new RequestCheck($paths), new SecurityCheck, new RawSaloonResponseCheck($paths), new IntegrationDtoLeakCheck($paths), new SaloonInsideTransactionCheck,
+            new RequestCheck($paths), new SecurityCheck, new RawSaloonResponseCheck($paths), new IntegrationDtoLeakCheck($paths, $classification?->roles), new SaloonInsideTransactionCheck,
         ];
     }
 
