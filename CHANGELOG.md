@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add source-only A-to-B path queries for class, method and file endpoints through CLI and MCP. Separate dependency and execution paths, preserve Laravel conditions, stop at unread external boundaries, and explain exact layer violation witnesses.
+
 - Trace registered Artisan commands and scheduled command, job and callback tasks in impact reports, with aliases, inherited handlers, registration sources, schedule options, filter short-circuit and separate task/worker success conditions. Preserve source-only CLI/MCP analysis and explicit uncertainty.
 
 - Add source-only execution flows through job dispatch, chains, batches, event listeners and Eloquent lifecycle events, with contextual event suppression, separate execution mode and timing, independent freshness and bounded CLI/MCP reports.

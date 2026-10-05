@@ -17,6 +17,7 @@ use GracjanKubicki\ArchitectureKit\Commands\InstallAgentsCommand;
 use GracjanKubicki\ArchitectureKit\Commands\InstallCommand;
 use GracjanKubicki\ArchitectureKit\Commands\MakeCommand;
 use GracjanKubicki\ArchitectureKit\Commands\McpCommand;
+use GracjanKubicki\ArchitectureKit\Commands\PathCommand;
 use GracjanKubicki\ArchitectureKit\Commands\PlanCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SyncCommand;
 use GracjanKubicki\ArchitectureKit\Commands\UpgradePlanCommand;
@@ -44,6 +45,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
         $this->commands([
             ArchitectureContextCommand::class,
             ImpactCommand::class,
+            PathCommand::class,
             AuditCommand::class,
             CacheClearCommand::class,
             DoctorCommand::class,

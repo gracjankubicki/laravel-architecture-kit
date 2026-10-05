@@ -17,6 +17,7 @@ use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
+use GracjanKubicki\ArchitectureKit\Impact\PathSchema;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldFile;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldPlan;
@@ -319,6 +320,7 @@ final readonly class AgentOutput
             'upgrade-plan' => $this->upgradePlanSchema(),
             'architecture-context' => $this->architectureContextSchema(),
             'impact' => ImpactSchema::get(),
+            'path' => PathSchema::get(),
             'file-rules' => $this->fileRulesSchema(),
             'make' => $this->makeSchema(),
             default => [
@@ -788,6 +790,7 @@ final readonly class AgentOutput
                                 'line' => ['type' => ['integer', 'null']],
                                 'symbol' => ['type' => ['string', 'null']],
                                 'role' => ['type' => ['string', 'null']],
+                                'dependency' => ['type' => 'object'],
                             ],
                             'additionalProperties' => false,
                         ],

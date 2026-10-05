@@ -20,6 +20,8 @@ final readonly class FindingOccurrence
         public ?string $symbol = null,
         /** Role of that symbol, used to say where the behaviour belongs. */
         public ?string $role = null,
+        /** @var array<string, mixed>|null */
+        public ?array $dependency = null,
     ) {}
 
     /**
@@ -32,6 +34,7 @@ final readonly class FindingOccurrence
             'line' => $this->line,
             'symbol' => $this->symbol,
             'role' => $this->role,
+            ...($this->dependency === null ? [] : ['dependency' => $this->dependency]),
         ];
     }
 }

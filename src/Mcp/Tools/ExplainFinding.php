@@ -48,7 +48,7 @@ class ExplainFinding extends Tool
         }
 
         $code = strtoupper($code);
-        $explanation = (new FindingCodeRegistry)->explain($code, $this->occurrence($request));
+        $explanation = (new FindingCodeRegistry)->explain($code, $this->occurrence($request, $code));
 
         return Response::structured($explanation === null
             ? [
@@ -67,7 +67,7 @@ class ExplainFinding extends Tool
             ]);
     }
 
-    private function occurrence(Request $request): ?FindingOccurrence
+    private function occurrence(Request $request, string $code): ?FindingOccurrence
     {
         $path = $request->get('path');
 
@@ -79,6 +79,6 @@ class ExplainFinding extends Tool
 
         // Same resolver as the command: resolving this twice is how the two drifted.
         return (new FindingOccurrenceResolver($this->files(), $this->packagePath(), base_path()))
-            ->resolve(trim($path), is_numeric($line) ? (int) $line : null);
+            ->resolve(trim($path), is_numeric($line) ? (int) $line : null, $code);
     }
 }

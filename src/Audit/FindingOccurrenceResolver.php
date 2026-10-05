@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
+use GracjanKubicki\ArchitectureKit\Impact\LayerFindingContext;
 use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
@@ -26,21 +28,37 @@ final readonly class FindingOccurrenceResolver
         private string $basePath,
     ) {}
 
-    public function resolve(string $path, ?int $line): FindingOccurrence
+    public function resolve(string $path, ?int $line, ?string $code = null): FindingOccurrence
     {
         $path = ProjectPath::relative(
             $this->basePath,
             str_starts_with($path, '/') ? $path : $this->basePath.'/'.$path,
         );
-        $symbol = $this->symbolAt($path, $line);
+        $symbol = $code === 'E_LAYER_DEPENDENCY' ? null : $this->symbolAt($path, $line);
 
-        return new FindingOccurrence($path, $line, $symbol?->name, $symbol?->role);
+        $dependency = null;
+        if ($code === 'E_LAYER_DEPENDENCY') {
+            try {
+                $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope());
+                $plan = $loader->plan([]);
+                $graph = $loader->build($plan);
+                $symbol = $this->symbolAt($path, $line, $graph);
+                $dependency = (new LayerFindingContext)->inspect($graph, $path, $line);
+                if ($loader->currentSignature([])->files !== $plan->signature->files) {
+                    $dependency['status'] = 'stale';
+                }
+            } catch (Throwable) {
+                $dependency = ['status' => 'unresolved', 'reported_edges' => [], 'context_paths' => [], 'limited' => false, 'limitations' => ['Reported connection could not be resolved from project sources.']];
+            }
+        }
+
+        return new FindingOccurrence($path, $line, $symbol?->name, $symbol?->role, $dependency);
     }
 
-    private function symbolAt(string $path, ?int $line): ?ProjectSymbol
+    private function symbolAt(string $path, ?int $line, ?ProjectGraphSnapshot $graph = null): ?ProjectSymbol
     {
         try {
-            $graph = (new ProjectGraphLoader($this->files, $this->basePath, $this->scope()))->load([]);
+            $graph ??= (new ProjectGraphLoader($this->files, $this->basePath, $this->scope()))->load([]);
             $symbols = $graph->symbolsAt($path);
 
             if ($symbols === []) {

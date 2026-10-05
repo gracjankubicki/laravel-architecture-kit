@@ -15,6 +15,7 @@ use GracjanKubicki\ArchitectureKit\Mcp\Tools\ExplainFinding;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\FileRules;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Guard;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Impact;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\Path;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\PlanUpgrade;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Scaffold;
 use Laravel\Mcp\Server;
@@ -42,6 +43,7 @@ MARKDOWN;
         ArchitectureRules::class,
         ArchitectureContext::class,
         Impact::class,
+        Path::class,
         FileRules::class,
         Scaffold::class,
         Doctor::class,

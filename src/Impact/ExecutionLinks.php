@@ -39,11 +39,18 @@ final class ExecutionLinks
     private bool $unknownHandlers = false;
 
     /** @param array<string, mixed> $facts */
-    public function __construct(array $facts)
+    public function __construct(array $facts, private bool $externalBoundaries = false)
     {
         $this->classes = $facts['classes'];
         $this->notices = $facts['notices'];
         $this->limited = $facts['limited'];
+        if ($externalBoundaries) {
+            foreach ($this->classes as $class) {
+                if ($class['adaptations'] ?? false) {
+                    $this->notices[] = ['path' => $class['path'], 'line' => $class['line'], 'reason' => 'Trait adaptations are unresolved in execution paths: '.$class['name']];
+                }
+            }
+        }
         foreach ($facts['operations'] as $op) {
             if (! $this->room()) {
                 break;
@@ -77,6 +84,14 @@ final class ExecutionLinks
             }
         }
         $this->classRegistrations($facts['operations']);
+        $modeledModelSites = [];
+        if ($externalBoundaries) {
+            foreach ($facts['operations'] as $op) {
+                if (in_array($op['kind'], ['model_operation', 'model_listen', 'observe', 'quiet'], true) && $this->isModel($op['owner'] ?? null)) {
+                    $modeledModelSites[$op['source']['path'].':'.$op['source']['offset']] = true;
+                }
+            }
+        }
         foreach ($facts['calls'] as $call) {
             if (! $this->room()) {
                 break;
@@ -103,6 +118,10 @@ final class ExecutionLinks
                 // External Laravel trait methods are represented by semantic edges.
             } elseif ($call['receiver'] === null || isset($this->classes[strtolower($call['receiver'])]) && ! $this->isModel($call['receiver'])) {
                 $this->unknown[strtolower($call['from'])][] = [...$call['source'], 'reason' => 'Execution call receiver/method is unresolved: '.($call['receiver'] ?? '(unknown)').'::'.$call['method']];
+            } elseif ($externalBoundaries && ! isset($this->classes[strtolower($call['receiver'])])) {
+                $this->edge($call['from'], $call['receiver'].'::'.$call['method'], 'external-call', $call['source'], [...$call['conditions'], 'Receiver source is outside the analyzed project; declaration and runtime dispatch are unverified.'], ['external' => true]);
+            } elseif ($externalBoundaries && ! isset($modeledModelSites[$call['source']['path'].':'.$call['source']['offset']])) {
+                $this->unknown[strtolower($call['from'])][] = [...$call['source'], 'reason' => 'Execution model receiver/method is unresolved: '.$call['receiver'].'::'.$call['method']];
             }
         }
         $this->consoleLinks($facts);
@@ -162,6 +181,17 @@ final class ExecutionLinks
                 }
             } elseif ($op['kind'] === 'model_operation' && $this->isModel($op['owner'])) {
                 $this->modelOperation($op);
+            }
+        }
+        if ($externalBoundaries) {
+            foreach ($this->out as $key => $edges) {
+                $semantic = [];
+                foreach ($edges as $edge) {
+                    if (! in_array($edge['kind'], ['call', 'new', 'callback', 'external-call'], true)) {
+                        $semantic[$edge['path'].':'.$edge['offset']] = true;
+                    }
+                }
+                $this->out[$key] = array_values(array_filter($edges, fn ($edge) => ! ($edge['external'] ?? false) || ! isset($semantic[$edge['path'].':'.$edge['offset']])));
             }
         }
     }
@@ -233,6 +263,9 @@ final class ExecutionLinks
         if (isset($class['methods'][strtolower($method)])) {
             return $class['methods'][strtolower($method)];
         }
+        if ($this->externalBoundaries && ($class['adaptations'] ?? false)) {
+            return null;
+        }
         foreach ([...($class['traits'] ?? []), ...($class['parents'] ?? [])] as $ancestor) {
             $found = $this->method($ancestor, $method, $seen);
             if ($found !== null) {
@@ -254,6 +287,9 @@ final class ExecutionLinks
         $seen[$key] = true;
         $class = $this->classes[$key] ?? null;
         $methods = $class['methods'] ?? [];
+        if ($this->externalBoundaries && ($class['adaptations'] ?? false)) {
+            return array_values($methods);
+        }
         foreach ([...($class['traits'] ?? []), ...($class['parents'] ?? [])] as $ancestor) {
             foreach ($this->methods($ancestor, $seen) as $method) {
                 $methods[strtolower($method['name'])] ??= $method;

@@ -53,7 +53,7 @@ class ExplainCommand extends Command
             return self::FAILURE;
         }
 
-        $explanation = $codes->explain($code, $this->occurrence());
+        $explanation = $codes->explain($code, $this->occurrence($code));
 
         if ($explanation === null) {
             $payload = [
@@ -95,6 +95,16 @@ class ExplainCommand extends Command
         $this->newLine();
         $this->line('Why: '.$payload['why']);
         $this->line('Fix: '.$payload['fix']);
+        if (isset($payload['occurrence']['dependency'])) {
+            $context = $payload['occurrence']['dependency'];
+            $this->line('Reported layer connections: '.$context['status']);
+            foreach ($context['reported_edges'] as $edge) {
+                $this->line('  '.$edge['from'].' -> '.$edge['to'].' ['.$edge['kind'].', '.$edge['strength'].'] '.$edge['path'].':'.$edge['line']);
+            }
+            foreach ($context['limitations'] as $limitation) {
+                $this->line($limitation);
+            }
+        }
 
         if (isset($payload['proposal']) && is_array($payload['proposal'])) {
             $this->newLine();
@@ -105,7 +115,7 @@ class ExplainCommand extends Command
         return self::SUCCESS;
     }
 
-    private function occurrence(): ?FindingOccurrence
+    private function occurrence(string $code): ?FindingOccurrence
     {
         $path = $this->option('path');
 
@@ -116,7 +126,7 @@ class ExplainCommand extends Command
         $line = $this->option('line');
 
         return (new FindingOccurrenceResolver(new Filesystem, dirname(__DIR__, 2), base_path()))
-            ->resolve(trim($path), is_numeric($line) ? (int) $line : null);
+            ->resolve(trim($path), is_numeric($line) ? (int) $line : null, $code);
     }
 
     /**

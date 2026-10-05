@@ -77,6 +77,9 @@ final class ExecutionExtractor
                     $meta['parents'][] = $this->file->resolvedName($parent);
                 }
                 foreach ($node->getTraitUses() as $use) {
+                    if ($use->adaptations !== []) {
+                        $meta['adaptations'] = true;
+                    }
                     foreach ($use->traits as $trait) {
                         $meta['traits'][] = $this->file->resolvedName($trait);
                     }

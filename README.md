@@ -134,7 +134,25 @@ Impact uses the shared graph loader and cache infrastructure with a separate fin
 
 Before editing, inspect the evidence and uncertain calls, select relevant tests, and ask before expanding the agreed change scope. Run the guard after editing. Resource sync adds these instructions to generated guidance.
 
-### Evaluate a file move or class rename
+### Find paths between two endpoints
+
+```bash
+php artisan architecture-kit:path 'OrderController::store' 'PaymentService::charge' --agent
+php artisan architecture-kit:path app/Http/Controllers/OrderController.php 'PaymentService' --limit=10 --depth=12
+php artisan architecture-kit:path --schema
+```
+
+MCP `path` accepts `from`, `to`, `limit` and `depth`. Each endpoint can be a fully qualified class, unambiguous short class name, `Class::method`, or project PHP file. A file selects all its declarations and witnessed callbacks or framework entry points. A class selects its available methods for the execution channel. Inherited methods resolve to their declaring symbol. External endpoints require an observed external-call witness and an exact name. No application code runs and vendor sources are excluded.
+
+`dependencies.paths` contains structural class dependencies. Method selectors project onto the owning class here, so a path does not prove that the selected methods call each other. Each edge carries its kind and strong/weak classification. Strength is not repair cost.
+
+`execution.paths` contains ordinary method calls and supported HTTP, Artisan, scheduler, job, event and model transitions. Each path preserves call-site locations, certainty, conditions, execution mode and timing. Synthetic entry points have source locations; unread external declarations have a null location. External calls stop traversal and appear in `external_boundaries` unless the external symbol is the requested target.
+
+Each channel returns `found` independently of `status`. Status is `found`, `no_path`, `incomplete`, `limit` or `stale`. `no_path` means no path in the analyzed graph, not runtime impossibility. Unknown calls and source notices remain visible even with no paths. Limits take precedence over stale status when freshness cannot be established within the budget; inspect `fresh` separately. Multiple simple paths are bounded by the requested depth, 1,000 queued states, 10,000 edge visits and PHP memory headroom. `limit` defaults to 20, permits 0 through 500, and caps paths, boundaries and notices per channel; `depth` defaults to 8 and permits 1 through 32. Limited totals are lower bounds. Increase limits or inspect boundary symbols; there are no continuation pages. Freshness checks source paths, mtime and size; edits preserving both stat values are outside the guarantee.
+
+For `E_LAYER_DEPENDENCY`, pass the reported path and line to `explain-finding` or `architecture-kit:explain`. The additive `occurrence.dependency.reported_edges` identifies forbidden direct strong edges at that exact location. Several edges at one line remain separate, and a missing line or changed source returns unresolved evidence. `context_paths` supplies additional bounded context. Cutting one path does not prove that every violation disappears.
+
+## Evaluate a file move or class rename
 
 Inspect uses before choosing a destination, or compare an explicit target:
 

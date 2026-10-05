@@ -74,6 +74,7 @@ final class ExecutionSources
         array_push($queue, ...$this->listing());
         $result = ['classes' => [], 'calls' => [], 'operations' => [], 'notices' => [], 'limited' => false];
         $seen = [];
+        $analyzed = [];
         for ($i = 0; $i < count($queue); $i++) {
             $path = $this->normalize($queue[$i]);
             if ($path === null || isset($seen[$path])) {
@@ -108,6 +109,7 @@ final class ExecutionSources
                     $file->releaseAst();
                 }
                 $this->bytes += $stat[1];
+                $analyzed[] = $path;
                 $result['classes'] = [...$result['classes'], ...$facts['classes']];
                 array_push($result['calls'], ...$facts['calls']);
                 array_push($result['operations'], ...$facts['operations']);
@@ -174,7 +176,7 @@ final class ExecutionSources
         }
         ksort($this->states);
 
-        return [...$result, 'notices' => $this->notices, 'limited' => $this->limited, 'inputs' => $this->states, 'signature' => hash('xxh128', serialize($this->states))];
+        return [...$result, 'notices' => $this->notices, 'limited' => $this->limited, 'inputs' => $this->states, 'analyzed_paths' => $analyzed, 'signature' => hash('xxh128', serialize($this->states))];
     }
 
     public function fresh(): bool

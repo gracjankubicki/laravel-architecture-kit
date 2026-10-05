@@ -365,7 +365,7 @@ final class ImpactExtractor
                 $vars = $branch;
             }
         }
-        if ($expr instanceof Expr\FuncCall) {
+        if ($expr instanceof Expr\FuncCall && ! $expr->isFirstClassCallable()) {
             foreach ($expr->getArgs() as $arg) {
                 if ($arg->value instanceof Expr\Variable && is_string($arg->value->name)) {
                     $vars[$arg->value->name] = $unknown;
