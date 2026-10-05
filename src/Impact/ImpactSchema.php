@@ -15,7 +15,7 @@ final readonly class ImpactSchema
 
         return ['$schema' => 'https://json-schema.org/draft/2020-12/schema', 'title' => 'Architecture Kit impact agent output', 'oneOf' => [
             ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'subject', 'dependents', 'dependencies', 'possible', 'references', 'class_context', 'tests', 'analysis', 'cache', 'snapshot', 'scope', 'next'],
-                'properties' => [...$base, 'ok' => ['const' => true], 'subject' => ['type' => 'object'], 'dependents' => $rows, 'dependencies' => $rows,
+                'properties' => [...$base, 'reach' => ['type' => 'object'], 'ok' => ['const' => true], 'subject' => ['type' => 'object'], 'dependents' => $rows, 'dependencies' => $rows,
                     'possible' => ['type' => 'object', 'required' => ['dependents', 'dependencies', 'overrides'], 'properties' => ['dependents' => $rows, 'dependencies' => $rows, 'overrides' => $rows], 'additionalProperties' => false],
                     'references' => ['type' => 'object', 'required' => ['dependents', 'dependencies'], 'properties' => ['dependents' => $rows, 'dependencies' => $rows], 'additionalProperties' => false],
                     'class_context' => ['type' => 'object'], 'tests' => $rows, 'analysis' => ['type' => 'object', 'required' => ['status', 'notices', 'notice_total', 'limitations', 'limit', 'depth', 'truncated', 'expand'], 'properties' => [

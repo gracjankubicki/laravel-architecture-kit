@@ -40,11 +40,14 @@ final class ImpactIndex
     /** @var array<string, list<array<string, mixed>>> */
     private array $sites = [];
 
+    /** @var array<string, list<array<string, mixed>>> */
+    private array $localUnresolved = [];
+
     private int $edgeCount = 0;
 
     private bool $limited = false;
 
-    public function __construct(ProjectGraphSnapshot $graph, bool $buildCalls = true)
+    public function __construct(ProjectGraphSnapshot $graph, bool $buildCalls = true, bool $collectLocalNotices = false)
     {
         foreach ($graph->impactFacts as $facts) {
             foreach ($facts->classes as $name => $class) {
@@ -85,7 +88,11 @@ final class ImpactIndex
             }
             $receiver = $this->receiver($call['receiver']);
             if ($receiver === null || $call['method'] === null) {
-                $this->unknownByMethod[strtolower($call['method'] ?? '*')][] = $this->unresolvedCall($call, $receiver);
+                $notice = $this->unresolvedCall($call, $receiver);
+                $this->unknownByMethod[strtolower($call['method'] ?? '*')][] = $notice;
+                if ($collectLocalNotices) {
+                    $this->localUnresolved[strtolower($call['from'])][] = $notice;
+                }
 
                 continue;
             }
@@ -93,7 +100,11 @@ final class ImpactIndex
             if ($declared !== null) {
                 $this->edge($call, $declared['symbol'], 'resolved');
             } elseif ($call['method'] !== '__construct' || ! isset($this->classes[strtolower($receiver)])) {
-                $this->unresolvedByFrom[strtolower($call['from'])][] = $this->unresolvedCall($call, $receiver);
+                $notice = $this->unresolvedCall($call, $receiver);
+                $this->unresolvedByFrom[strtolower($call['from'])][] = $notice;
+                if ($collectLocalNotices) {
+                    $this->localUnresolved[strtolower($call['from'])][] = $notice;
+                }
             }
             if (! $call['exact'] && ! ($declared['final'] ?? false)) {
                 $candidates = $this->descendants[strtolower($receiver)] ?? [];
@@ -302,6 +313,12 @@ final class ImpactIndex
             : [...($this->unknownByMethod[strtolower($method)] ?? []), ...($this->unknownByMethod['*'] ?? [])];
 
         return [...($includeGlobal ? $this->notices : []), ...($this->unresolvedByFrom[strtolower($symbol)] ?? []), ...$unknown];
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function localUnresolved(string $symbol): array
+    {
+        return $this->localUnresolved[strtolower($symbol)] ?? [];
     }
 
     /** @return list<array<string, mixed>> */

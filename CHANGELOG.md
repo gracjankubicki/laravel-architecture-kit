@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add source-only reach reports through CLI/MCP with unique direct/indirect counts, distinct code/entry/DATA units, informational layer witnesses, immutable continuation pages and explicit analysis/freshness limits. Preserve legacy impact calls.
+
 - Add literal declaration search through CLI and MCP, with kind filters, stable candidates, explicit impact/path selectors, static configuration, source boundaries and freshness.
 
 - Table searches in `impact` CLI/MCP with exact or literal substring matching, connection/effect filters, source operations and bounded caller/HTTP/console/async paths. Shared DATA semantics, global uncertainty and freshness remain explicit.

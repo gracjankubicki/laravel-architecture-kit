@@ -22,6 +22,7 @@ final readonly class ArchitectureImpact
         private AuditScope $scope = new AuditScope,
         private ?ProjectGraphCache $cache = null,
         private array $cacheConfiguration = [],
+        private bool $reachMode = false,
     ) {}
 
     /** @param list<string> $exclude
@@ -36,7 +37,7 @@ final readonly class ArchitectureImpact
             if (! in_array($tableMatch ?? 'exact', ['exact', 'contains'], true) || ($operation !== null && ! in_array($operation, ['read', 'write', 'schema', 'schema-read'], true)) || ($connection !== null && ! in_array($connection, ['default', 'dynamic'], true) && (! str_starts_with($connection, 'named:') || strlen($connection) <= 6 || preg_match('/[\x00-\x1f\x7f]/', $connection)))) {
                 return self::error('E_IMPACT_TABLE_FILTER_INVALID', 'Use exact/contains, read/write/schema/schema-read, and default/dynamic/named:connection filters.');
             }
-            if ($limit < 0 || $limit > 500 || $depth < 1 || $depth > 32) {
+            if ($limit < 0 || $limit > ($this->reachMode ? 1000 : 500) || $depth < 1 || $depth > 32) {
                 return self::error('E_IMPACT_LIMIT_INVALID', 'Use limit 0..500 and depth 1..32.');
             }
             $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true);
@@ -68,10 +69,10 @@ final readonly class ArchitectureImpact
         if (trim($subject) === '') {
             return self::error('E_IMPACT_SUBJECT_REQUIRED', 'Provide a class, path, or Class::method.');
         }
-        if ($limit < 0 || $limit > 500 || $depth < 1 || $depth > 32) {
+        if ($limit < 0 || $limit > ($this->reachMode ? 1000 : 500) || $depth < 1 || $depth > 32) {
             return self::error('E_IMPACT_LIMIT_INVALID', 'Use limit 0..500 and depth 1..32.');
         }
-        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true);
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: $this->reachMode);
         $plan = $loader->plan($exclude);
         $graph = $loader->build($plan);
         [$selector, $method] = array_pad(explode('::', trim($subject), 2), 2, null);
@@ -93,7 +94,7 @@ final readonly class ArchitectureImpact
                 $matches = [['name' => '(file) '.$migrationPath, 'path' => $migrationPath, 'line' => 1, 'kind' => 'file', 'role' => 'unknown']];
             }
         }
-        if (($change === 'delete' || ($change === 'move' && $targetClass === null)) && $method === null && (str_contains($selector, '/') || str_ends_with(strtolower($selector), '.php')) && $matches !== []) {
+        if (($this->reachMode || $change === 'delete' || ($change === 'move' && $targetClass === null)) && $method === null && (str_contains($selector, '/') || str_ends_with(strtolower($selector), '.php')) && $matches !== []) {
             $matches = [['name' => '(file) '.$matches[0]['path'], 'path' => $matches[0]['path'], 'line' => 1, 'kind' => 'file', 'role' => 'unknown']];
         }
         if ($matches === []) {
@@ -115,7 +116,7 @@ final readonly class ArchitectureImpact
         }
         $resolved = $matches[0];
         $root = $resolved['name'];
-        $index = new ImpactIndex($graph, buildCalls: $change === 'delete' || $method !== null || $resolved['kind'] === 'file');
+        $index = new ImpactIndex($graph, buildCalls: $this->reachMode || $change === 'delete' || $method !== null || $resolved['kind'] === 'file', collectLocalNotices: $this->reachMode);
         $overrides = [];
         $declaration = null;
         if ($method !== null) {
@@ -156,9 +157,43 @@ final readonly class ArchitectureImpact
         $classIndexLimited = false;
         $classEdges = $this->classEdges($graph, $classIndexLimited, $method !== null ? $resolved['name'] : null);
         $methodChannel = $method !== null || $resolved['kind'] === 'file';
-        $incoming = ! $methodChannel ? $this->walk($root, $classEdges, false, $limit, $depth) : $this->walk($root, $index, false, $limit, $depth);
-        $outgoing = ! $methodChannel ? $this->walk($root, $classEdges, true, $limit, $depth) : $this->walk($root, $index, true, $limit, $depth);
+        $roots = [$root];
+        $fileEdges = null;
+        if ($this->reachMode && $resolved['kind'] === 'file') {
+            $fileEdges = $classEdges;
+            foreach ($index->classes as $class) {
+                if ($class['path'] === $resolved['path']) {
+                    $roots[] = $class['name'];
+                    foreach ($class['methods'] as $member) {
+                        $roots[] = $class['name'].'::'.$member['name'];
+                    }
+                }
+            }
+        }
+        $incoming = $this->walk($root, $methodChannel ? $index : $classEdges, false, $limit, $depth, $roots, $fileEdges);
+        $outgoing = $this->walk($root, $methodChannel ? $index : $classEdges, true, $limit, $depth, $roots, $fileEdges);
         $notices = $index->unresolved($root, $method);
+        if ($this->reachMode) {
+            array_push($notices, ...$index->notices, ...$incoming['boundaries'], ...$outgoing['boundaries']);
+            $noticeSymbols = array_fill_keys(array_map('strtolower', $roots), true);
+            foreach ([...$incoming['resolved'], ...$incoming['possible'], ...$outgoing['resolved'], ...$outgoing['possible']] as $row) {
+                $noticeSymbols[strtolower($row['symbol'])] = true;
+            }
+            $noticeVisits = 0;
+            foreach (array_keys($noticeSymbols) as $symbol) {
+                array_push($notices, ...$index->localUnresolved($symbol));
+                if (! isset($index->classes[$symbol])) {
+                    continue;
+                }
+                foreach ($index->classes[$symbol]['methods'] as $member) {
+                    if (++$noticeVisits > 10000 || ImpactExtractor::sourceLimit(0) !== null) {
+                        $notices[] = ['path' => $index->classes[$symbol]['path'], 'line' => $member['line'], 'reason' => 'Reach method uncertainty indexing limit reached. Inspect this class separately.'];
+                        break 2;
+                    }
+                    array_push($notices, ...$index->localUnresolved($index->classes[$symbol]['name'].'::'.$member['name']));
+                }
+            }
+        }
         if ($classIndexLimited) {
             $notices[] = ['path' => '(project)', 'line' => 1, 'reason' => 'Class impact index memory limit reached.'];
         }
@@ -224,7 +259,7 @@ final readonly class ArchitectureImpact
             'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude],
             'next' => ['inspect_relationship_evidence', 'resolve_uncertain_calls_before_dependent_decisions', 'run_selected_tests', 'run:architecture-kit:guard --changed --agent'],
         ];
-        $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath);
+        $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath, sourceOnly: $this->reachMode);
         $httpSources = $httpDiscovery->discover($graph, $exclude);
         $result['execution'] = (new HttpRouteImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpDiscovery, $httpSources);
         $flow = (new ExecutionImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpSources);
@@ -268,6 +303,14 @@ final readonly class ArchitectureImpact
             }
             $changeReport['safe_to_change'] = false;
             $result[$change] = $changeReport;
+        }
+
+        if ($this->reachMode) {
+            $roles = [];
+            foreach ($graph->symbols as $symbol) {
+                $roles[strtolower($symbol->name)] = $symbol->role;
+            }
+            $result['reach'] = ['roles' => $roles, 'edges' => [...$incoming['witness_edges'], ...$outgoing['witness_edges']], 'code_limited' => $incoming['limited'] || $outgoing['limited'] || $analysisBounded || $index->limitReached(), 'fresh' => $current->files === $plan->signature->files];
         }
 
         return $result;
@@ -325,40 +368,62 @@ final readonly class ArchitectureImpact
     }
 
     /** @param ImpactIndex|array<string, array<string, list<array<string, mixed>>>> $index
+     * @param  list<string>  $roots
+     * @param  array<string, array<string, list<array<string, mixed>>>>|null  $structural
      * @return array<string, mixed>
      */
-    private function walk(string $root, ImpactIndex|array $index, bool $outgoing, int $limit, int $depth): array
+    private function walk(string $root, ImpactIndex|array $index, bool $outgoing, int $limit, int $depth, array $roots = [], ?array $structural = null): array
     {
-        $queue = [[$root, [], false]];
-        $visited = [strtolower($root).'|resolved' => true];
+        $roots = $roots ?: [$root];
+        $rootKeys = array_fill_keys(array_map('strtolower', $roots), true);
+        $queue = array_map(static fn (string $seed): array => [$seed, [], false], $roots);
+        $visited = [];
         $groups = ['resolved' => [], 'possible' => [], 'references' => []];
         $limited = false;
+        $boundaries = [];
+        $witnessEdges = [];
         $visits = 0;
         for ($i = 0; $i < count($queue); $i++) {
             [$current, $via, $possible] = $queue[$i];
             $edges = $index instanceof ImpactIndex ? $index->edges($current, $outgoing) : ($index[$outgoing ? 'out' : 'in'][strtolower($current)] ?? []);
+            if ($structural !== null) {
+                array_push($edges, ...($structural[$outgoing ? 'out' : 'in'][strtolower($current)] ?? []));
+            }
             if (count($via) >= $depth) {
                 if ($edges !== []) {
                     $limited = true;
+                    if ($this->reachMode) {
+                        $edge = $edges[0];
+                        $boundaries[] = ['from' => $current, 'path' => $edge['path'], 'line' => $edge['line'], 'reason' => 'Code traversal depth limit reached at '.$current.'. Inspect boundary symbol or increase depth.'];
+                    }
                 }
 
                 continue;
             }
             foreach ($edges as $edge) {
-                if (++$visits > 10000 || count($queue) > 1000) {
+                if (++$visits > 10000 || count($queue) > 1000 || ($this->reachMode && ImpactExtractor::sourceLimit(0) !== null)) {
                     $limited = true;
+                    if ($this->reachMode) {
+                        $boundaries[] = ['from' => $current, 'path' => $edge['path'], 'line' => $edge['line'], 'reason' => 'Code traversal visit/queue/memory limit reached at '.$current.'. Narrow scope or increase memory.'];
+                    }
                     break 2;
                 }
                 $symbol = $edge[$outgoing ? 'to' : 'from'];
                 $category = $edge['kind'] === 'reference' ? 'references' : ($possible || $edge['certainty'] === 'possible' ? 'possible' : 'resolved');
+                if ($this->reachMode) {
+                    $witnessEdges[] = [...$edge, 'certainty' => $category];
+                }
                 $key = strtolower($symbol).'|'.$category;
-                if (isset($visited[$key]) || strcasecmp($symbol, $root) === 0) {
+                if (isset($visited[$key]) || isset($rootKeys[strtolower($symbol)])) {
                     continue;
                 }
                 $visited[$key] = true;
                 $trace = [...$via, $edge];
                 if (count($groups[$category]) >= $limit) {
                     $limited = true;
+                    if ($this->reachMode && count($boundaries) < 1000) {
+                        $boundaries[] = ['from' => $current, 'path' => $edge['path'], 'line' => $edge['line'], 'reason' => 'Code result analysis limit reached at '.$symbol.'. Inspect boundary symbol in a new report.'];
+                    }
 
                     continue;
                 }
@@ -370,7 +435,7 @@ final readonly class ArchitectureImpact
             }
         }
 
-        return [...$groups, 'limited' => $limited];
+        return [...$groups, 'limited' => $limited, 'boundaries' => $boundaries, 'witness_edges' => $witnessEdges];
     }
 
     /** @param array<string, array<string, list<array<string, mixed>>>> $indices
