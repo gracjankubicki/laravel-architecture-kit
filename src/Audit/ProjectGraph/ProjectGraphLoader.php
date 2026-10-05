@@ -32,6 +32,7 @@ final readonly class ProjectGraphLoader
          */
         private array $configuration = [],
         private bool $impact = false,
+        private bool $sourceOnly = false,
     ) {}
 
     /**
@@ -91,6 +92,9 @@ final readonly class ProjectGraphLoader
                 }
 
                 $path = ProjectPath::relative($this->basePath, $file->getPathname());
+                if ($this->sourceOnly && ! $this->safeSource($path)) {
+                    continue;
+                }
 
                 // A test file stays in the graph even when an exclusion pattern matches
                 // it: the scope only contains tests/ because the missing-test rule needs
@@ -133,6 +137,11 @@ final readonly class ProjectGraphLoader
 
         foreach ($plan->toParse as $path) {
             $absolute = $plan->files[$path];
+            if ($this->sourceOnly && (! $this->safeSource($path) || ! $this->files->isFile($absolute) || GraphCacheSignature::stat((int) $this->files->lastModified($absolute), (int) $this->files->size($absolute)) !== ($plan->signature->files[$path] ?? null))) {
+                $entries[$path] = new FileGraphEntry([], [], impact: new ImpactFacts($path, [], [], [['line' => 1, 'reason' => 'Source changed or became unsafe before graph reading.']]));
+
+                continue;
+            }
             if ($this->impact && ($reason = ImpactExtractor::sourceLimit($this->files->size($absolute))) !== null) {
                 $entries[$path] = new FileGraphEntry([], [], impact: new ImpactFacts($path, [], [], [['line' => 1, 'reason' => $reason]]));
 
@@ -142,6 +151,22 @@ final readonly class ProjectGraphLoader
         }
 
         return $this->compose($builder, $plan, $entries);
+    }
+
+    private function safeSource(string $path): bool
+    {
+        if (! str_ends_with($path, '.php') || preg_match('~(^|/)(\.\.|vendor|node_modules|\.git)(/|$)~', $path) || str_contains($path, "\0")) {
+            return false;
+        }
+        $cursor = $this->basePath;
+        foreach (explode('/', $path) as $part) {
+            $cursor .= '/'.$part;
+            if (is_link($cursor)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

@@ -68,7 +68,7 @@ final class HttpRouteDiscovery
      */
     private array $exclude;
 
-    public function __construct(private readonly Filesystem $files, private readonly string $basePath) {}
+    public function __construct(private readonly Filesystem $files, private readonly string $basePath, private readonly bool $sourceOnly = false) {}
 
     /**
      * @param  list<string>  $exclude
@@ -186,6 +186,12 @@ final class HttpRouteDiscovery
             return;
         }
         $path = substr($normalized, strlen($base) + 1);
+        if ($this->sourceOnly && ! $this->safeSource($path)) {
+            $this->states[$path] = $this->stat($path);
+            $this->notice($path, 1, 'HTTP source omitted: table analysis reads only safe project PHP files, without symlinks.');
+
+            return;
+        }
         if (str_starts_with($path, 'vendor/') || str_starts_with($path, 'bootstrap/cache/')) {
             $this->notice($path, 1, 'External or generated HTTP sources are not analyzed.');
 
@@ -260,6 +266,11 @@ final class HttpRouteDiscovery
                     return;
                 }
                 $this->bytes += $size;
+                if ($this->sourceOnly && (! $this->safeSource($path) || $this->stat($path) !== $this->states[$path])) {
+                    $this->notice($path, 1, 'HTTP source changed or became unsafe before reading.');
+
+                    return;
+                }
                 $file = new FileContext($path, $this->files->get($absolute));
                 try {
                     $this->templates[$path] = (new HttpRouteExtractor($this->basePath))->extract($file);
@@ -350,6 +361,11 @@ final class HttpRouteDiscovery
         $path = 'composer.json';
         $this->states[$path] = $this->stat($path);
         try {
+            if ($this->sourceOnly && ! $this->safeSource($path, allowComposer: true)) {
+                $this->notice($path, 1, 'HTTP Composer source omitted: unsafe project path.');
+
+                return;
+            }
             if (! $this->files->isFile($this->basePath.'/'.$path) || $this->files->size($this->basePath.'/'.$path) > 100000) {
                 throw new \RuntimeException;
             }
@@ -373,6 +389,22 @@ final class HttpRouteDiscovery
         } catch (Throwable) {
         }
         $this->notice('bootstrap/providers.php', 1, 'Provider source could not be resolved from project Composer PSR-4 mappings: '.$class);
+    }
+
+    private function safeSource(string $path, bool $allowComposer = false): bool
+    {
+        if ((! str_ends_with($path, '.php') && ! ($allowComposer && $path === 'composer.json')) || preg_match('~(^|/)(\.\.|vendor|node_modules|\.git)(/|$)~', $path)) {
+            return false;
+        }
+        $cursor = $this->basePath;
+        foreach (explode('/', $path) as $part) {
+            $cursor .= '/'.$part;
+            if (is_link($cursor)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

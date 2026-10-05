@@ -14,7 +14,7 @@ use Throwable;
 final class ImpactCommand extends Command
 {
     protected $signature = 'architecture-kit:impact
-        {subject? : FQCN, short class name, project PHP path, or Class::method}
+        {subject? : FQCN, short class name, project PHP path, or Class::method; omit with --table}
         {--agent : Output JSON for agents}
         {--limit=20 : Maximum rows per section, 0..500}
         {--depth=4 : Maximum dependency hops, 1..32}
@@ -22,9 +22,13 @@ final class ImpactCommand extends Command
         {--signature= : Proposed PHP method declaration without body; implies change=signature}
         {--target-class= : Target FQCN for change=move; rename only the selected declaration}
         {--target-path= : Project-relative PHP target path for change=move; relocate the entire file}
+        {--table= : Find DATA uses of a table instead of a symbol}
+        {--table-match= : Table name matching: exact (default) or contains}
+        {--connection= : Table connection filter: default, dynamic, or named:name}
+        {--operation= : Table effect filter: read, write, schema, or schema-read}
         {--schema : Output the JSON Schema}';
 
-    protected $description = 'Inspect static class and method relationships before a change, without executing application code.';
+    protected $description = 'Inspect symbol relationships or database table uses without executing application code.';
 
     public function handle(Filesystem $files): int
     {
@@ -41,7 +45,7 @@ final class ImpactCommand extends Command
             } else {
                 $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
                 $result = (new ArchitectureImpact($files, base_path(), $state->auditScope, $state->graphCache, $state->graphConfiguration()))
-                    ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'));
+                    ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('table'), $this->option('table-match'), $this->option('connection'), $this->option('operation'));
             }
         } catch (Throwable $exception) {
             $result = ArchitectureImpact::error('E_IMPACT_FAILED', $exception->getMessage());
@@ -52,6 +56,35 @@ final class ImpactCommand extends Command
             $this->error($result['msg']);
             foreach ($result['candidates'] ?? [] as $candidate) {
                 $this->line($candidate['name'].'  '.$candidate['path'].':'.$candidate['line']);
+            }
+        } elseif (isset($result['table_report'])) {
+            $report = $result['table_report'];
+            $this->info('Architecture Kit table uses');
+            $this->line('Table: '.$report['query']['table'].' ['.$report['query']['match'].']; status: '.$report['status'].'; fresh: '.($report['fresh'] ? 'yes' : 'no'));
+            $this->line('Totals: '.json_encode($report['totals']));
+            foreach ($report['usages'] as $usage) {
+                $this->line($usage['connection']['kind'].':'.($usage['connection']['name'] ?? '?').'/'.$usage['table'].' ['.$usage['kind'].', '.$usage['operation'].'] '.$usage['path'].':'.$usage['line']);
+                foreach ($usage['paths'] as $path) {
+                    $this->line('  '.$path['entry']['kind'].' '.$path['entry']['symbol']);
+                    foreach ($path['via'] as $edge) {
+                        $this->line('    '.$edge['from'].' -> '.$edge['to'].' ['.$edge['kind'].', '.($edge['mode'] ?? 'call').', '.($edge['timing'] ?? 'immediate').'] '.$edge['path'].':'.$edge['line']);
+                        foreach ($edge['conditions'] as $condition) {
+                            $this->line('      '.$condition);
+                        }
+                    }
+                }
+                foreach ($usage['conditions'] as $condition) {
+                    $this->line('  '.$condition);
+                }
+                if ($usage['paths_truncated']) {
+                    $this->warn('Usage paths are limited; inspect source boundaries.');
+                }
+            }
+            foreach ($report['unresolved'] as $notice) {
+                $this->warn($notice['path'].':'.$notice['line'].' '.$notice['reason']);
+            }
+            foreach ($report['limitations'] as $limitation) {
+                $this->line($limitation);
             }
         } else {
             $this->info('Architecture Kit Impact');

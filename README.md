@@ -870,6 +870,26 @@ MCP `impact` accepts the same `subject` with `change: "delete"`. Do not supply a
 Inspect `delete.check`, limitations and truncation before deciding. File-level functions, includes, aliases and framework dispatch are not fully modelled. A report without breaking rows does not prove that removal is safe. Test candidates do not prove coverage or PASS. Run the relevant checks after making an authorized change.
 
 
+### Find uses of a database table
+
+Start from a table when you need its source reads, writes or schema declarations:
+
+```bash
+php artisan architecture-kit:impact --table=orders --agent
+php artisan architecture-kit:impact --table=orders --connection=named:crm --operation=write --agent
+php artisan architecture-kit:impact --table=orders --table-match=contains --limit=100 --depth=16
+```
+
+For MCP `impact`, omit `subject` and provide `table: "orders"`. Optional filters are `table_match: "exact" | "contains"`, `connection: "default" | "dynamic" | "named:connection"`, and `operation: "read" | "write" | "schema" | "schema-read"`. A table query cannot be combined with a symbol or a change proposal. Invalid filters return an error before analysis. Existing symbol calls remain unchanged.
+
+`exact` compares the full source table name, including any schema qualifier, case-sensitively. `orders` does not match `archived_orders` or `public.orders`; query `public.orders` explicitly. `contains` is a literal substring, so `%` and `*` are not wildcards. Results include all connections unless filtered. A named connection called `default` is queried as `named:default`, separately from the unresolved configured default connection. A dynamic connection never matches a named connection filter. These source labels do not identify physical databases.
+
+`table_report.tables` lists distinct table/connection pairs. `usages` contains DATA operations with source `path`/`line`, conditions, migration `up`/`down`, and separate query preparation witnesses. Each usage keeps a local operation `via` and bounded `paths` from callers or recognized HTTP, command, schedule, job and event contexts. Paths retain queue modes, timing and conditions. A usage needs no discovered entrypoint. A callback declaration can appear with an explicit invocation condition; its presence does not prove an invocation. Same-table users never become execution paths through that table. Paths do not establish runtime execution, statement order or data dependence.
+
+`unresolved` describes global source boundaries, not guessed uses of the searched table. Known matches remain available beside these notices. `status: "none"` means no matches were detected in the completed source query. Empty `incomplete` or `limit` results do not prove absence. `totals` counts detected tables, usages, paths and unresolved notices before display limits; source or traversal limits make these lower bounds. `limit` applies per section and per usage's `paths`; `path_total` and `paths_truncated` explain hidden paths. `depth` bounds caller traversal; a preserved local DATA witness can be longer. Increase limits or inspect boundary symbols rather than treating a partial report as exhaustive.
+
+Sources, safety guards and operation semantics are shared with DATA. The query builds or restores the existing project graph once and extracts DATA once, without a separate table cache, executing PHP/SQL/migrations, reading `.env` or expanding the architectural audit scope. `fresh`, `source_signature` and the impact `snapshot` include the discovered DATA and HTTP inputs. Freshness uses paths, mtime and size; equal-stat edits remain outside the guarantee.
+
 ### Database effects in impact reports
 
 `architecture-kit:impact` and MCP `impact` include a `data` section for class, method and file subjects. `data.outgoing` lists source effects reachable from the subject. `data.consumers` lists effects in methods that use it. Each consumer keeps two separate witnesses: `subject_via` reaches the selected element, and `via` reaches the database operation from that consumer. A consumer effect does not prove that its query depends on the selected return value or runs after it. `preparation_via` records a continuous custom query construction witness separately from the operation path; `preparation_paths` retains additional construction witnesses. Two processes using the same table never become an execution path through that table.

@@ -6,7 +6,6 @@ namespace GracjanKubicki\ArchitectureKit\Impact;
 
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use Illuminate\Filesystem\Filesystem;
-use Throwable;
 
 /** Table effects are leaves. They never participate in execution adjacency. */
 final class DataImpact
@@ -18,49 +17,13 @@ final class DataImpact
      */
     public function inspect(Filesystem $files, string $basePath, ProjectGraphSnapshot $graph, array $subject, ?array $declaration, array $exclude, int $limit, int $depth): array
     {
-        $sources = new ExecutionSources($files, $basePath, ['database/migrations']);
-        $facts = $sources->discover($graph, $exclude);
-        $catalog = new DataCatalog;
-        $limited = $facts['limited'];
-        foreach ($facts['analyzed_paths'] as $path) {
-            if (ImpactExtractor::sourceLimit(0) !== null) {
-                $limited = true;
-                break;
-            }
-            try {
-                $file = $sources->read($path);
-                if ($file === null) {
-                    $catalog->notices[] = ['path' => $path, 'line' => 1, 'reason' => 'DATA input changed or is unavailable.'];
-
-                    continue;
-                }
-                $catalog->collect($file);
-                $file->releaseAst();
-            } catch (Throwable) {
-                $catalog->notices[] = ['path' => $path, 'line' => 1, 'reason' => 'DATA source cannot be read.'];
-            }
-        }
-        $extractor = new DataExtractor($catalog, $sources);
-        foreach ($facts['analyzed_paths'] as $path) {
-            if (ImpactExtractor::sourceLimit(0) !== null) {
-                $limited = true;
-                break;
-            }
-            try {
-                $file = $sources->read($path);
-                if ($file === null) {
-                    $catalog->notices[] = ['path' => $path, 'line' => 1, 'reason' => 'DATA input changed or is unavailable.'];
-
-                    continue;
-                }
-                $extractor->extract($file);
-                $file->releaseAst();
-            } catch (Throwable) {
-                $catalog->notices[] = ['path' => $path, 'line' => 1, 'reason' => 'DATA extraction is incomplete.'];
-            }
-        }
-        $links = new ExecutionLinks($facts);
-        $limited = $limited || $extractor->limited || $links->limited;
+        $analysis = DataAnalysis::collect($files, $basePath, $graph, $exclude);
+        $sources = $analysis->sources;
+        $facts = $analysis->facts;
+        $catalog = $analysis->catalog;
+        $extractor = $analysis->extractor;
+        $links = $analysis->links;
+        $limited = $analysis->limited;
         $targets = [];
         foreach ($catalog->classes as $class) {
             if (($subject['kind'] === 'file' && $class['path'] === $subject['path']) || strcasecmp($class['name'], $subject['name']) === 0) {

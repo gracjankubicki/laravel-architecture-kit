@@ -27,8 +27,32 @@ final readonly class ArchitectureImpact
     /** @param list<string> $exclude
      * @return array<string, mixed>
      */
-    public function inspect(string $subject, array $exclude = [], int $limit = 20, int $depth = 4, ?string $change = null, ?string $signature = null, ?string $targetClass = null, ?string $targetPath = null): array
+    public function inspect(string $subject, array $exclude = [], int $limit = 20, int $depth = 4, ?string $change = null, ?string $signature = null, ?string $targetClass = null, ?string $targetPath = null, ?string $table = null, ?string $tableMatch = null, ?string $connection = null, ?string $operation = null): array
     {
+        if ($table !== null) {
+            if (trim($table) === '' || strlen($table) > 512 || preg_match('/[\x00-\x1f\x7f]/', $table) || trim($subject) !== '' || $change !== null || $signature !== null || $targetClass !== null || $targetPath !== null) {
+                return self::error('E_IMPACT_TABLE_INVALID', 'Provide a non-empty table name without a symbol or change proposal.');
+            }
+            if (! in_array($tableMatch ?? 'exact', ['exact', 'contains'], true) || ($operation !== null && ! in_array($operation, ['read', 'write', 'schema', 'schema-read'], true)) || ($connection !== null && ! in_array($connection, ['default', 'dynamic'], true) && (! str_starts_with($connection, 'named:') || strlen($connection) <= 6 || preg_match('/[\x00-\x1f\x7f]/', $connection)))) {
+                return self::error('E_IMPACT_TABLE_FILTER_INVALID', 'Use exact/contains, read/write/schema/schema-read, and default/dynamic/named:connection filters.');
+            }
+            if ($limit < 0 || $limit > 500 || $depth < 1 || $depth > 32) {
+                return self::error('E_IMPACT_LIMIT_INVALID', 'Use limit 0..500 and depth 1..32.');
+            }
+            $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true);
+            $plan = $loader->plan($exclude);
+            $graph = $loader->build($plan);
+            $report = (new TableImpact)->inspect($this->files, $this->basePath, $graph, $exclude, $table, $tableMatch ?? 'exact', $connection, $operation, $limit, $depth);
+            if ($loader->currentSignature($exclude)->files !== $plan->signature->files) {
+                $report['fresh'] = false;
+                $report['status'] = $report['status'] === 'limit' ? 'limit' : 'incomplete';
+            }
+
+            return ['v' => 1, 'cmd' => 'impact', 'ok' => true, 'table_report' => $report, 'cache' => $plan->cacheStatus->value, 'snapshot' => hash('xxh128', serialize($plan->signature->files).$report['source_signature']), 'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude], 'next' => ['Inspect usage source and each path condition. Unresolved boundaries are global, not proven table matches.', 'Increase limit/depth within 500/32 or inspect boundary symbols; no continuation pages.']];
+        }
+        if ($tableMatch !== null || $connection !== null || $operation !== null) {
+            return self::error('E_IMPACT_TABLE_FILTER_INVALID', 'Table filters require a table query.');
+        }
         if ($signature !== null) {
             $change ??= 'signature';
         }
