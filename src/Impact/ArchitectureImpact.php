@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 final readonly class ArchitectureImpact
@@ -51,6 +52,23 @@ final readonly class ArchitectureImpact
         $graph = $loader->build($plan);
         [$selector, $method] = array_pad(explode('::', trim($subject), 2), 2, null);
         $matches = $this->matches($graph, $selector);
+        if ($matches === [] && $method === null) {
+            $migrationPath = str_replace('\\', '/', $selector);
+            $base = rtrim(str_replace('\\', '/', $this->basePath), '/').'/';
+            if (str_starts_with($migrationPath, $base)) {
+                $migrationPath = substr($migrationPath, strlen($base));
+            }
+            $migrationPath = preg_replace('~^(\\./)+~', '', $migrationPath) ?? $migrationPath;
+            $safe = str_starts_with($migrationPath, 'database/migrations/') && str_ends_with($migrationPath, '.php') && ! preg_match('~(^|/)(\\.\\.|vendor|node_modules|\\.git)(/|$)~', $migrationPath) && ! str_contains($migrationPath, "\0");
+            $cursor = $this->basePath;
+            foreach (explode('/', $migrationPath) as $part) {
+                $cursor .= '/'.$part;
+                $safe = $safe && ! is_link($cursor);
+            }
+            if ($safe && ! Str::is($exclude, $migrationPath) && $this->files->isFile($this->basePath.'/'.$migrationPath)) {
+                $matches = [['name' => '(file) '.$migrationPath, 'path' => $migrationPath, 'line' => 1, 'kind' => 'file', 'role' => 'unknown']];
+            }
+        }
         if (($change === 'delete' || ($change === 'move' && $targetClass === null)) && $method === null && (str_contains($selector, '/') || str_ends_with(strtolower($selector), '.php')) && $matches !== []) {
             $matches = [['name' => '(file) '.$matches[0]['path'], 'path' => $matches[0]['path'], 'line' => 1, 'kind' => 'file', 'role' => 'unknown']];
         }
@@ -205,6 +223,10 @@ final readonly class ArchitectureImpact
         }
         if ($result['execution']['has_sources']) {
             $result['snapshot'] = hash('xxh128', $result['snapshot'].$result['execution']['source_signature']);
+        }
+        $result['data'] = (new DataImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth);
+        if ($result['data']['has_sources']) {
+            $result['snapshot'] = hash('xxh128', $result['snapshot'].$result['data']['source_signature']);
         }
         $changeReport = $signatureReport ?? $deleteReport ?? $moveReport;
         if ($changeReport !== null) {

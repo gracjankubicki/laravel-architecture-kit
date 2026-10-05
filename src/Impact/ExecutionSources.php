@@ -34,7 +34,11 @@ final class ExecutionSources
     /** @var list<string> */
     private array $exclude = [];
 
-    public function __construct(private readonly Filesystem $files, private readonly string $basePath) {}
+    /** @param list<string> $additionalDirectories */
+    public function __construct(private readonly Filesystem $files, private readonly string $basePath, array $additionalDirectories = [])
+    {
+        array_push($this->directories, ...$additionalDirectories);
+    }
 
     /** @param list<string> $exclude
      * @param  array<string, mixed>  $httpInputs
@@ -85,6 +89,11 @@ final class ExecutionSources
                 $this->states[$path] = isset($shared[$path]) ? ($httpInputs[$path] ?? null) : $this->stat($path);
             }
             if (! $this->safe($path) || Str::is($this->exclude, $path) || $path === 'composer.json') {
+                continue;
+            }
+            if (! str_ends_with(strtolower($path), '.php')) {
+                $this->notice($path, 'Only PHP source inputs are read; non-PHP input is unresolved.');
+
                 continue;
             }
             $stat = $this->states[$path];
@@ -197,6 +206,19 @@ final class ExecutionSources
         ksort($now);
 
         return ! $this->limited && $before === $now;
+    }
+
+    /** Read only a previously discovered, unchanged, safe PHP input. */
+    public function read(string $path): ?FileContext
+    {
+        $state = $this->stat($path);
+        if (! str_ends_with(strtolower($path), '.php') || $state === null || ! isset($this->states[$path]) || $state !== $this->states[$path] || ImpactExtractor::sourceLimit($state[1]) !== null) {
+            $this->notice($path, 'Source changed or cannot be safely reread.');
+
+            return null;
+        }
+
+        return new FileContext($path, $this->files->get($this->basePath.'/'.$path));
     }
 
     /** @param list<string>|null $directories

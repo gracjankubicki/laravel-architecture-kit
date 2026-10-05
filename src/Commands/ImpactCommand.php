@@ -79,6 +79,19 @@ final class ImpactCommand extends Command
             foreach ($result['tests'] as $test) {
                 $this->line('  '.$test['path'].' ['.$test['basis'].']');
             }
+            $data = $result['data'];
+            $this->line('DATA: '.$data['status'].'; fresh: '.($data['fresh'] ? 'yes' : 'no'));
+            foreach (['outgoing', 'consumers'] as $direction) {
+                foreach ($data[$direction] as $effect) {
+                    $this->line('  '.$direction.' '.$effect['connection']['kind'].':'.($effect['connection']['name'] ?? '?').'/'.$effect['table'].' ['.$effect['kind'].', '.$effect['operation'].'] '.$effect['path'].':'.$effect['line']);
+                    foreach ($effect['via'] as $edge) {
+                        $this->line('    '.$edge['from'].' -> '.$edge['to'].' ['.$edge['kind'].'] '.$edge['path'].':'.$edge['line']);
+                    }
+                }
+            }
+            foreach ($data['unresolved'] as $notice) {
+                $this->warn($notice['path'].':'.$notice['line'].' '.$notice['reason']);
+            }
             $http = $result['execution'];
             $this->line('HTTP declarations: '.$http['status'].'; fresh: '.($http['fresh'] ? 'yes' : 'no'));
             foreach ($http['routes'] as $route) {

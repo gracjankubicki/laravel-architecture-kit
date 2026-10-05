@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add source-only DATA effects to CLI/MCP impact reports: separate subject and consumer paths, Eloquent relations/pivots/scopes/builders, Query Builder joins/subqueries, literal SQL and named or anonymous migrations. Preserve connection identity, preparation boundaries, partial effects, limits and source freshness without connecting processes through shared tables.
+
 - Add source-only A-to-B path queries for class, method and file endpoints through CLI and MCP. Separate dependency and execution paths, preserve Laravel conditions, stop at unread external boundaries, and explain exact layer violation witnesses.
 
 - Trace registered Artisan commands and scheduled command, job and callback tasks in impact reports, with aliases, inherited handlers, registration sources, schedule options, filter short-circuit and separate task/worker success conditions. Preserve source-only CLI/MCP analysis and explicit uncertainty.
