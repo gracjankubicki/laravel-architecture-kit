@@ -1,6 +1,7 @@
 /vendor
 /composer.lock
 /build
+/workbench/storage/framework/cache/architecture-kit/
 /.idea
 /.phpunit.cache
 /.phpunit.result.cache
