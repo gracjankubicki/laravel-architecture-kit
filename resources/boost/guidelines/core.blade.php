@@ -27,3 +27,5 @@ php artisan architecture-kit:install
 ```
 
 After Composer updates, regenerate managed resources explicitly with `php artisan architecture-kit:sync --no-interaction`, then run normal `php artisan boost:update --no-interaction`.
+
+For package contract changes, use MCP public-api or architecture-kit:public-api with a Git before revision. Read partial/freshness/check rows and explicit 0.x policy; this does not approve or publish a release.

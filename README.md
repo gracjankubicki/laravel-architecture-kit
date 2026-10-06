@@ -987,3 +987,23 @@ Declarations override directory conventions, without enabling a profile or exten
 With classification declarations, configuration must be a static returned array. Literal data, package Architecture/MissingTestLevel enum cases and class-name strings are supported. Dynamic calls and application constants fail without execution. Legacy configuration without declarations keeps its existing behavior. Graph cache keys include the mapping fingerprint. When role/module declarations or unknown-layer reporting are active, audit does not boot the application to discover endpoints. Pass an explicit RouteMap to the programmatic audit for endpoint read analysis; otherwise the report marks that channel incomplete.
 
 An agent can propose organization while working on related code. For example, it may suggest placing existing payment actions in `app/Billing/Actions` and invoice readers in `app/Billing/Queries`. The proposal must list files, reasons, uncertainties, reference and registration changes, and test consequences. It respects the current layout, stays separate from accepted declarations and requires approval before execution. Models remain in `app/Models` by default. Module scaffolding is not provided.
+
+### Package public API comparison
+
+Compare a package Git revision with working files, including uncommitted changes, or with another revision. The command reads production Composer autoload declarations and PHP, Artisan, published config/migrations, event identities/payloads and declared MCP input/output schemas. It requires a package checkout with Git history; a vendor installation is insufficient.
+
+```bash
+php artisan architecture-kit:public-api v1.2.3 --agent --current-version=1.2.3
+php artisan architecture-kit:public-api v1.2.3 --to=v1.3.0 --agent
+php artisan architecture-kit:public-api HEAD --public-path=src/Contracts --limit=20 --agent
+php artisan architecture-kit:public-api v0.6.2 --current-version=0.6.2 --zero-policy=breaking-minor --agent
+php artisan architecture-kit:public-api --schema
+```
+
+MCP `public-api` accepts `from`, `to` (default `working`), `public_paths`, `current_version`, `zero_policy` and `limit`. Both interfaces use the same report. `public_paths` restricts the production surface and does not make private or `@internal` declarations public.
+
+Each change includes its element, before/after declaration and source, reasons and verdict: `breaking`, `compatible`, `check` or `internal`. Inherited members are reported on the public class that exposes them, even when their base class is internal. Internal types in public signatures expose only their type identity; their other members remain internal. Changes to implementation, configuration values and published migrations require inspection. Declarations do not prove behavioural compatibility or existing installation safety.
+
+`sources` identifies both revisions and content fingerprints. Read `analysis.status`, `fresh`, `total_is_lower_bound`, `notice_total` and `notices`; dynamic declarations, parse failures, external inheritance and unsupported autoload forms make analysis incomplete. Working-source changes require a new report. `limit` only sizes displayed changes and notices; totals and version evidence use the recognized inventory. Source budgets are 3000 files, 16 MiB total, 1 MiB per file, 10000 API entries, inheritance depth 32 and 15 seconds per Git process. Memory budgets can stop parsing earlier. Symlinks, environment files and vendor sources are unread.
+
+For a stable `x.y.z`, proved incompatibilities establish a minimum major component and recognized extensions a minimum minor component. A `0.x` project must choose `breaking-minor` or `breaking-major`; compatible extensions establish a minimum minor under either policy. Without a policy, no component is guessed. Unchanged declarations never prove patch. `semver.release_ready` is always false: inspect check rows, run consumer tests and review the release. The report never checks out a revision, runs studied code/migrations, changes the version or publishes a package. Ordinary application audit remains unchanged.

@@ -19,6 +19,7 @@ use GracjanKubicki\ArchitectureKit\Commands\MakeCommand;
 use GracjanKubicki\ArchitectureKit\Commands\McpCommand;
 use GracjanKubicki\ArchitectureKit\Commands\PathCommand;
 use GracjanKubicki\ArchitectureKit\Commands\PlanCommand;
+use GracjanKubicki\ArchitectureKit\Commands\PublicApiCommand;
 use GracjanKubicki\ArchitectureKit\Commands\ReachCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SearchCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SyncCommand;
@@ -50,6 +51,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
             PathCommand::class,
             SearchCommand::class,
             ReachCommand::class,
+            PublicApiCommand::class,
             AuditCommand::class,
             CacheClearCommand::class,
             DoctorCommand::class,
