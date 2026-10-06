@@ -1008,6 +1008,57 @@ Each change includes its element, before/after declaration and source, reasons a
 
 For a stable `x.y.z`, proved incompatibilities establish a minimum major component and recognized extensions a minimum minor component. A `0.x` project must choose `breaking-minor` or `breaking-major`; compatible extensions establish a minimum minor under either policy. Without a policy, no component is guessed. Unchanged declarations never prove patch. `semver.release_ready` is always false: inspect check rows, run consumer tests and review the release. The report never checks out a revision, runs studied code/migrations, changes the version or publishes a package. Ordinary application audit remains unchanged.
 
+
+## Declare and migrate toward target architecture
+
+Create `.architecture-kit/target.json` to describe the architecture you want for a selected area. The target is separate from `config/architectures.php`, which continues to govern the current audit. Its default mode is informational.
+
+```json
+{
+  "id": "billing",
+  "version": "1",
+  "paths": ["app"],
+  "classification": {
+    "roles": [{"path": "app/Billing/Actions", "role": "application", "kind": "action"}],
+    "modules": [{"path": "app/Billing", "name": "Billing"}]
+  },
+  "placements": [
+    {"kind": "action", "paths": ["app/Billing/Actions"]},
+    {"kind": "model", "paths": ["app/Models"]}
+  ],
+  "dependencies": [
+    {"from": {"role": "application"}, "allow": [{"role": "domain"}, {"role": "port"}, {"role": "application"}]}
+  ],
+  "mode": "info",
+  "only": "all"
+}
+```
+
+For example, `app/Actions/CreateInvoice.php` can remain where it is while the report identifies `app/Billing/Actions` as its destination. `Invoice` can stay in `app/Models`. Classification uses the same directory, namespace and whole-segment pattern declarations as current project classification. It does not enable architecture profiles. Placements select a kind, optionally a module, and may constrain the role. The module-specific placement takes precedence. Conflicting selectors or placement roles produce a configuration error. Dependency policies apply together: every matching policy must allow a dependency. An empty `allow` list forbids all recognized project dependencies from that selector.
+
+```shell
+php artisan architecture-kit:target --agent
+php artisan architecture-kit:target 'App\Actions\CreateInvoice::handle' --agent
+php artisan architecture-kit:target app/Billing/Actions/NewInvoice.php --agent
+php artisan architecture-kit:target --schema
+php artisan architecture-kit:guard --target --agent
+```
+
+MCP `architecture-target` accepts `subject` and `limit`. MCP `guard` accepts `target: true` to add this separate gate. CLI and MCP return the same source report. `file-rules` adds the target report when a declaration exists, including guidance for a future PHP file. A future namespace is not guessed. Without a target file these paths preserve their existing behavior.
+
+Each element has `current`, `expected`, source path and line, issues, and a status of `conformant`, `migration`, `requires_check` or `outside_scope`. Known dependencies come before callers in `migration_order`. Cycles require a joint migration decision. The order is a proposal and never moves or edits code. Missing, external, dynamic or unrecognized dependencies remain explicit uncertainty. Existing PHP files without classes remain file elements requiring inspection; unparseable existing sources are not future files. Source uncertainty notices accompany their affected elements with file-level scope. Blocking fails on incomplete structure or dependency analysis, stale inputs or covered elements requiring inspection. Informational and warning modes report that uncertainty without blocking.
+
+Current audit findings remain in `audit` with their rule, source and `suppression` of `inline`, `baseline` or null. They also appear next to related elements, with file-level witness scope. `audit_divergence` names the current rule requiring a separate decision, even when a target element is conformant. This does not prove that every finding corresponds to the selected class in a file with several classes. Suppression remains unresolved and never fixes target issues. Custom audit rules, runtime route registration and runtime-dependent test reachability are not executed; current-audit limits are separate from target compliance.
+
+Choose `mode: "warn"` to report warning counts, or `mode: "block"` to fail the target command and opt-in target guard. Choose `only: "new"` after accepting a reference. The ordinary guard never adds the target implicitly, and target warnings do not inherit ordinary `--strict` behavior.
+
+The report returns `reference_candidate` as data with `accepted: false`. Review the complete candidate, save that object manually as a project-relative JSON file, then set `accepted: true` and a nonempty `accepted_by` identifying the human approval. Set `reference` in the target to that path. No package command or MCP tool writes or accepts a reference. The ordinary audit baseline cannot serve as this reference.
+
+Only a fresh candidate with complete structure and dependency analysis can be accepted. Separate runtime limits of the current audit do not make the target itself incomplete. References bind the target id, version, declarations, target paths and analysis configuration. Changing placement, classification, audit scope or excludes invalidates comparison; changing only mode, only or the reference location does not. New-only rejects a missing, unaccepted, incomplete or incompatible reference. Removed/unobserved sources and outside-scope elements are not fixed issues. Partial analysis and uncertain elements cannot contribute resolved issues. A conformant transition claims code improvement only when the source declaration or path also changed. Changing scope or relaxing the target cannot claim code improvement.
+
+Analysis reads frozen bounded source bytes without booting project PHP or requiring Git. Current audit uses its own scope and excludes; target analysis covers the declared target area even if the ordinary audit excludes it. `analysis` reports freshness, scope, completeness, lower bounds and display truncation. `limit` is 0..500 displayed rows per channel and does not change totals or the full reference candidate. Source budgets are 10,000 listing entries, 3,000 files, 1 MB per file, 16 MB total and available memory. Dependency policy evaluation stops at 100,000 checks and reports a lower bound. Target JSON is limited to 100 KB; references to 1 MB. An oversized candidate is omitted with an explicit notice, never truncated into an acceptable reference. Inspect notices and rerun stale sources before acting.
+
+
 ### Compare architecture across revisions
 
 Use `revision-diff` to see how the application's architecture changed between a Git revision and working sources, including dirty and untracked files, or between two commits. It reads both states without checking out either version or booting their application code.

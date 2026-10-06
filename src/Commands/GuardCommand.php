@@ -15,6 +15,7 @@ class GuardCommand extends Command
     protected $signature = 'architecture-kit:guard
         {--changed : Audit only changed and untracked application files when git is available}
         {--base= : Git base ref for changed-file audit, for example origin/main}
+        {--target : Include the separate desired architecture gate}
         {--strict : Treat warnings as failures}
         {--json : Output machine-readable JSON for hooks and MCP}
         {--agent : Output token-efficient JSON for AI agents}
@@ -39,6 +40,7 @@ class GuardCommand extends Command
                 changedOnly: (bool) $this->option('changed'),
                 baseRef: $this->option('base') !== null ? (string) $this->option('base') : null,
                 strict: (bool) $this->option('strict'),
+                includeTarget: (bool) $this->option('target'),
             );
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent') || (bool) $this->option('json')) {
@@ -77,6 +79,9 @@ class GuardCommand extends Command
         if ($result->audit === null) {
             $this->line('Audit: skipped because config is invalid.');
         } else {
+            if ($result->target !== null) {
+                $this->line('Target: '.json_encode($result->target['gate'] ?? $result->target, JSON_THROW_ON_ERROR));
+            }
             $this->line('Audit: '.$result->audit->scope);
             $this->line(sprintf('Findings: %d error(s), %d warning(s)', $result->audit->errors(), $result->audit->warnings()));
             $this->line(sprintf('Suppressed: %d inline, %d baseline', $result->audit->suppressedInline, $result->audit->suppressedBaseline));

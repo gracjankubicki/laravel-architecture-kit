@@ -11,15 +11,18 @@ use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 
 final readonly class ArchitectureGuardResult
 {
+    /** @param array<string, mixed>|null $target */
     public function __construct(
         public ArchitectureDoctorResult $doctor,
         public ?ApplicationAuditResult $audit,
         public bool $strict,
+        public ?array $target = null,
     ) {}
 
     public function ok(): bool
     {
-        return $this->doctor->ok()
+        return ($this->target === null || ($this->target['ok'] && ($this->target['gate']['ok'] ?? true)))
+            && $this->doctor->ok()
             && $this->audit !== null
             && $this->audit->errors() === 0
             && (! $this->strict || $this->audit->warnings() === 0);
@@ -32,6 +35,7 @@ final readonly class ArchitectureGuardResult
     {
         return [
             'ok' => $this->ok(),
+            ...($this->target === null ? [] : ['target' => $this->target]),
             'doctor' => $this->doctor->toArray(),
             'agents' => [
                 'ok' => $this->agentsOk(),

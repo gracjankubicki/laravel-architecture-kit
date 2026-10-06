@@ -56,14 +56,14 @@ trait UsesArchitectureKitState
         );
     }
 
-    protected function guard(ProjectState $state, bool $changedOnly, ?string $baseRef, bool $strict): ArchitectureGuardResult
+    protected function guard(ProjectState $state, bool $changedOnly, ?string $baseRef, bool $strict, bool $includeTarget = false): ArchitectureGuardResult
     {
         return (new ArchitectureGuard(
             files: $this->files(),
             packagePath: $this->packagePath(),
             basePath: base_path(),
             console: null,
-        ))->run($changedOnly, $baseRef, $strict, $state);
+        ))->run($changedOnly, $baseRef, $strict, $state, $includeTarget);
     }
 
     /**

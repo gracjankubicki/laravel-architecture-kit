@@ -30,6 +30,7 @@ class Guard extends Tool
         return [
             'changed' => $schema->boolean()->default(true),
             'base' => $schema->string()->nullable(),
+            'target' => $schema->boolean()->default(false),
             'strict' => $schema->boolean()->default(true),
             'limit' => $schema->integer()->min(0)->default(20),
             'full' => $schema->boolean()->default(false),
@@ -38,7 +39,7 @@ class Guard extends Tool
 
     public function handle(Request $request): ResponseFactory
     {
-        if (($message = $this->invalidInput($request, ['changed' => 'boolean', 'base' => 'string', 'strict' => 'boolean', 'limit' => 'integer', 'full' => 'boolean'])) !== null) {
+        if (($message = $this->invalidInput($request, ['changed' => 'boolean', 'base' => 'string', 'strict' => 'boolean', 'limit' => 'integer', 'full' => 'boolean', 'target' => 'boolean'])) !== null) {
             return $this->inputError('guard', $message);
         }
 
@@ -52,6 +53,7 @@ class Guard extends Tool
                 changedOnly: $request->get('changed', true),
                 baseRef: $request->get('base'),
                 strict: $request->get('strict', true),
+                includeTarget: $request->get('target', false),
             ), $agent->limit($request->get('limit', 20)), $request->get('full', false)));
         } catch (Throwable $exception) {
             return Response::structured($agent->error('guard', $exception->getMessage()));

@@ -13,6 +13,8 @@ use GracjanKubicki\ArchitectureKit\Audit\RuleRegistry;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
+use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
+use GracjanKubicki\ArchitectureKit\Target\TargetDefinition;
 use Illuminate\Filesystem\Filesystem;
 
 /**
@@ -36,7 +38,7 @@ final readonly class FileGuidance
 
     /**
      * @param  array<int, Architecture|string>  $enabled
-     * @return array{path: string, in_scope: bool, architectures: array<int, array<string, mixed>>, rules: array<int, string>, project_rules: array<int, string>, global_rules: array<int, string>, classification: list<array<string, mixed>>}
+     * @return array{path: string, in_scope: bool, architectures: array<int, array<string, mixed>>, rules: array<int, string>, project_rules: array<int, string>, global_rules: array<int, string>, classification: list<array<string, mixed>>, target?: array<string, mixed>}
      */
     public function for(string $path, array $enabled, CustomRuleSet $customRules): array
     {
@@ -70,6 +72,7 @@ final readonly class FileGuidance
         sort($rules);
 
         return [
+            ...(is_file($this->basePath.'/'.TargetDefinition::PATH) ? ['target' => (new ArchitectureTarget($this->basePath))->inspect($path)] : []),
             'classification' => $inScope ? $this->classification->file($path) : [],
             'path' => $path,
             'in_scope' => $inScope,

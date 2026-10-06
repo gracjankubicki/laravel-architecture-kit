@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Revision;
 
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
+use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\FileGraphEntry;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
@@ -42,10 +43,10 @@ final readonly class RevisionFacts
     ) {}
 
     /** @param array<string, array{fingerprint: string, entry: FileGraphEntry, shapes: array<string, string>}> $reuse */
-    public static function collect(SourceSnapshot $source, RevisionConfiguration $configuration, array $reuse = []): self
+    public static function collect(SourceSnapshot $source, RevisionConfiguration $configuration, array $reuse = [], ?AuditScope $scopeOverride = null, bool $includeExcluded = false): self
     {
         $started = hrtime(true);
-        $scope = $configuration->scope();
+        $scope = $scopeOverride ?? $configuration->scope();
         $roles = new RoleClassifier($configuration->mappings() ?? new ClassificationMappings);
         $builder = new ProjectGraphBuilder($roles, true, preserveOccurrences: true);
         $notices = [...$source->notices, ...$configuration->notices];
@@ -55,14 +56,14 @@ final readonly class RevisionFacts
             if (! str_ends_with(strtolower($path), '.php') || ($scope !== null && ! $scope->covers($path))) {
                 continue;
             }
-            if (Str::is($configuration->excludes(), $path) && ! ($scope?->isTestPath($path) ?? false)) {
+            if (! $includeExcluded && Str::is($configuration->excludes(), $path) && ! ($scope?->isTestPath($path) ?? false)) {
                 continue;
             }
             if (($reason = ImpactExtractor::sourceLimit(strlen($contents))) !== null) {
                 $notices[] = ['path' => $path, 'line' => 1, 'reason' => $reason];
                 break;
             }
-            $fingerprint = hash('sha256', serialize([$path, $contents, $configuration->fingerprint]));
+            $fingerprint = hash('sha256', serialize([$path, $contents, $configuration->fingerprint, $scopeOverride?->directories, $includeExcluded]));
             if (($reuse[$path]['fingerprint'] ?? null) === $fingerprint) {
                 $entry = $reuse[$path]['entry'];
                 $shapes = $reuse[$path]['shapes'];
@@ -142,8 +143,9 @@ final readonly class RevisionFacts
         $files = new Filesystem;
         // The virtual root normalizes __DIR__/base_path in declarations. It is never read or written.
         $base = '/__architecture_revision__';
-        $http = (new HttpRouteDiscovery($files, $base, true, $inputs))->discover($graph, $configuration->excludes());
-        $data = DataAnalysis::collect($files, $base, $graph, $configuration->excludes(), $http, $inputs);
+        $excludes = $includeExcluded ? [] : $configuration->excludes();
+        $http = (new HttpRouteDiscovery($files, $base, true, $inputs))->discover($graph, $excludes);
+        $data = DataAnalysis::collect($files, $base, $graph, $excludes, $http, $inputs);
         $ruleSources = self::ruleSources($configuration->values['rules'] ?? [], $data, $source);
         foreach ($ruleSources as $rule) {
             if ($rule['status'] !== 'declared') {

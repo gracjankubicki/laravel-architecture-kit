@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Declare target architecture through safe static JSON and inspect migration through shared CLI/MCP reports, future-file guidance and an opt-in guard. Preserve current audit and suppression witnesses, require human-accepted references for new-only enforcement, and prevent scope/configuration changes or incomplete analysis from claiming code improvement.
+
 - Compare architecture across Git and working revisions through opt-in CLI/MCP, with source-only per-state or explicit shared configuration, separate structural/Laravel/DATA witnesses, move evidence, candidate mappings, scope changes and partial/freshness limits.
 
 - Add opt-in package public API comparison across Git/working sources, including production Composer PHP, Laravel and declared MCP contracts, internal exposures, partial evidence and explicit version policy.

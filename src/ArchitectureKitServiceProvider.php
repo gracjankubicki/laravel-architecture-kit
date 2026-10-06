@@ -24,6 +24,7 @@ use GracjanKubicki\ArchitectureKit\Commands\ReachCommand;
 use GracjanKubicki\ArchitectureKit\Commands\RevisionDiffCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SearchCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SyncCommand;
+use GracjanKubicki\ArchitectureKit\Commands\TargetCommand;
 use GracjanKubicki\ArchitectureKit\Commands\UpgradePlanCommand;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use Illuminate\Support\ServiceProvider;
@@ -54,6 +55,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
             ReachCommand::class,
             PublicApiCommand::class,
             RevisionDiffCommand::class,
+            TargetCommand::class,
             AuditCommand::class,
             CacheClearCommand::class,
             DoctorCommand::class,
