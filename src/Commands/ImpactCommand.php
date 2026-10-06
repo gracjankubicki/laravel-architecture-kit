@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
-use GracjanKubicki\ArchitectureKit\ProjectState;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -43,8 +43,8 @@ final class ImpactCommand extends Command
             if ((! is_int($limit) && (! is_string($limit) || ! ctype_digit($limit))) || (! is_int($depth) && (! is_string($depth) || ! ctype_digit($depth)))) {
                 $result = ArchitectureImpact::error('E_IMPACT_LIMIT_INVALID', 'Limits must be non-negative integers.');
             } else {
-                $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
-                $result = (new ArchitectureImpact($files, base_path(), $state->auditScope, $state->graphCache, $state->graphConfiguration()))
+                $state = DiscoverySettings::load($files, base_path());
+                $result = (new ArchitectureImpact($files, base_path(), $state->scope, $state->cache, $state->fingerprint))
                     ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('table'), $this->option('table-match'), $this->option('connection'), $this->option('operation'));
             }
         } catch (Throwable $exception) {
@@ -144,6 +144,27 @@ final class ImpactCommand extends Command
             }
             if ($http['truncated']) {
                 $this->warn('HTTP report is limited. Inspect source notices and boundary symbols; totals may be lower bounds.');
+            }
+            $authorization = $http['authorization'];
+            $this->line('Authorization: '.$authorization['status'].'; fresh: '.($authorization['fresh'] ? 'yes' : 'no'));
+            foreach ($authorization['rules'] as $rule) {
+                $this->line('  '.$rule['symbol'].' ['.$rule['kind'].']; recognized sites: '.$rule['recognized_site_count'].($rule['count_is_lower_bound'] ? ' (lower bound)' : ''));
+            }
+            foreach ($authorization['checks'] as $check) {
+                $this->line('  '.$check['from'].' ['.$check['operation'].', '.$check['result'].', '.$check['usage'].', '.$check['denial_handling'].'] '.$check['source']['path'].':'.$check['source']['line']);
+            }
+            foreach (['outgoing', 'consumers'] as $direction) {
+                foreach ($authorization[$direction] as $path) {
+                    foreach ($path['via'] as $edge) {
+                        $this->line('    '.$direction.' '.$edge['from'].' -> '.$edge['to'].' ['.$edge['kind'].'] '.$edge['path'].':'.$edge['line']);
+                        foreach ($edge['conditions'] as $condition) {
+                            $this->line('      '.$condition);
+                        }
+                    }
+                }
+            }
+            foreach ($authorization['unresolved'] as $notice) {
+                $this->warn($notice['path'].':'.$notice['line'].' '.$notice['reason']);
             }
             $this->line('Console, scheduler, job, event and model flows: '.$http['flow_analysis']['status'].'; fresh: '.($http['flow_analysis']['fresh'] ? 'yes' : 'no'));
             foreach ($http['flows'] as $flow) {

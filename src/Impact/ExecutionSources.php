@@ -121,7 +121,13 @@ final class ExecutionSources
                 }
                 $this->bytes += $stat[1];
                 $analyzed[] = $path;
-                $result['classes'] = [...$result['classes'], ...$facts['classes']];
+                foreach ($facts['classes'] as $key => $class) {
+                    if (isset($result['classes'][$key]) && $result['classes'][$key]['path'] !== $class['path']) {
+                        $class['ambiguous'] = true;
+                        $this->notice($path, 'Duplicate execution class declaration: '.$class['name']);
+                    }
+                    $result['classes'][$key] = $class;
+                }
                 if ($this->retainDeclarations) {
                     array_push($declarations, ...($facts['class_declarations'] ?? array_values($facts['classes'])));
                 }

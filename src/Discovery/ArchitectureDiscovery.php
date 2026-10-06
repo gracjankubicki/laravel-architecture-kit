@@ -43,6 +43,7 @@ final class ArchitectureDiscovery
             $sources = new ExecutionSources($this->files, $this->basePath, $settings->scope->directories, retainDeclarations: true);
             $facts = $sources->discover($graph, $exclude, $http['inputs'], $http['execution_facts']);
             $links = new ExecutionLinks($facts, externalBoundaries: true);
+            $links->authorizationHttp($http['routes'], $facts);
             $notices = [...$links->notices, ...$http['notices']];
             $rows = [];
             $limited = $links->limited || $http['limited'];

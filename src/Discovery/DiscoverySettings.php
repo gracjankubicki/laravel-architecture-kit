@@ -50,6 +50,9 @@ final readonly class DiscoverySettings
                 throw new InvalidArgumentException('Analysis configuration exceeds 100 KB.');
             }
             $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($files->get($base.'/'.$path)) ?? [];
+            if (count($ast) === 1 && $ast[0] instanceof Stmt\Namespace_) {
+                $ast = $ast[0]->stmts;
+            }
             $returned = false;
             foreach ($ast as $node) {
                 if ($node instanceof Stmt\Declare_ || $node instanceof Stmt\Use_ || $node instanceof Stmt\Nop) {

@@ -11,7 +11,7 @@ final readonly class ImpactSchema
     {
         $rows = ['type' => 'array', 'items' => ['type' => 'object']];
         $base = ['v' => ['const' => 1], 'cmd' => ['const' => 'impact'], 'ok' => ['type' => 'boolean']];
-        $flowProperties = ['flows' => $rows, 'flow_analysis' => ['type' => 'object']];
+        $flowProperties = ['authorization' => ['type' => 'object'], 'flows' => $rows, 'flow_analysis' => ['type' => 'object']];
 
         return ['$schema' => 'https://json-schema.org/draft/2020-12/schema', 'title' => 'Architecture Kit impact agent output', 'oneOf' => [
             ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'subject', 'dependents', 'dependencies', 'possible', 'references', 'class_context', 'tests', 'analysis', 'cache', 'snapshot', 'scope', 'next'],

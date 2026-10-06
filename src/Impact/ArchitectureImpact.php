@@ -73,7 +73,7 @@ final readonly class ArchitectureImpact
         if ($limit < 0 || $limit > ($this->reachMode ? 1000 : 500) || $depth < 1 || $depth > 32) {
             return self::error('E_IMPACT_LIMIT_INVALID', 'Use limit 0..500 and depth 1..32.');
         }
-        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: $this->reachMode);
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true);
         $plan = $loader->plan($exclude);
         $graph = $loader->build($plan);
         [$selector, $method] = array_pad(explode('::', trim($subject), 2), 2, null);
@@ -262,13 +262,14 @@ final readonly class ArchitectureImpact
             'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude],
             'next' => ['inspect_relationship_evidence', 'resolve_uncertain_calls_before_dependent_decisions', 'run_selected_tests', 'run:architecture-kit:guard --changed --agent'],
         ];
-        $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath, sourceOnly: $this->reachMode);
+        $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath, sourceOnly: true);
         $httpSources = $httpDiscovery->discover($graph, $exclude);
         $result['execution'] = (new HttpRouteImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpDiscovery, $httpSources);
         $flow = (new ExecutionImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpSources);
+        $result['execution']['authorization'] = $flow['authorization'];
         $result['execution']['flows'] = $flow['flows'];
         $result['execution']['flow_analysis'] = $flow;
-        unset($result['execution']['flow_analysis']['flows']);
+        unset($result['execution']['flow_analysis']['flows'], $result['execution']['flow_analysis']['authorization']);
         if ($flow['has_sources']) {
             $result['execution']['has_sources'] = true;
             $result['execution']['source_signature'] = hash('xxh128', $result['execution']['source_signature'].$flow['source_signature']);

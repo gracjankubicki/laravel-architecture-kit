@@ -301,8 +301,8 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $execution = $this->query(files: $files)['execution'];
         $this->assertSame(1, $files->reads);
         $shared = array_values(array_filter($execution['routes'], fn ($r) => $r['source']['path'] === 'extra/shared.php'));
-        $this->assertCount(2, $shared);
-        $this->assertSame(['/a/shared', '/b/shared'], array_column($shared, 'uri'));
+        $this->assertCount(1, $shared);
+        $this->assertSame(['/a/shared'], array_column($shared, 'uri'));
         $this->assertStringContainsString('symlink', implode(' ', array_column($execution['unresolved'], 'reason')));
     }
 

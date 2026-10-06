@@ -195,7 +195,7 @@ final class HttpRouteDiscovery
         $path = substr($normalized, strlen($base) + 1);
         if ($this->sourceOnly && ! $this->safeSource($path)) {
             $this->states[$path] = $this->stat($path);
-            $this->notice($path, 1, 'HTTP source omitted: table analysis reads only safe project PHP files, without symlinks.');
+            $this->notice($path, 1, 'External, generated or symlink HTTP source omitted: analysis reads only safe project PHP files.');
 
             return;
         }

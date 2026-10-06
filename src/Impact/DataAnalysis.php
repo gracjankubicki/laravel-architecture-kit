@@ -62,6 +62,7 @@ final readonly class DataAnalysis
             }
         }
         $links = new ExecutionLinks($facts);
+        $links->authorizationHttp($httpSources['routes'] ?? [], $facts);
         $limited = $limited || $extractor->limited || $links->limited;
 
         return new self($sources, $facts, $catalog, $extractor, $links, $limited);

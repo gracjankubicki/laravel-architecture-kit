@@ -27,14 +27,15 @@ final readonly class ArchitecturePath
             return self::error('E_PATH_LIMIT_INVALID', 'Use limit 0..500 and depth 1..32.');
         }
         $exclude = [...$exclude, 'vendor/*'];
-        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true);
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true);
         $plan = $loader->plan($exclude);
         $graph = $loader->build($plan);
-        $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath);
+        $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath, sourceOnly: true);
         $http = $httpDiscovery->discover($graph, $exclude);
         $sources = new ExecutionSources($this->files, $this->basePath);
         $facts = $sources->discover($graph, $exclude, $http['inputs'], $http['execution_facts']);
         $links = new ExecutionLinks($facts, externalBoundaries: true);
+        $links->authorizationHttp($http['routes'], $facts);
         $locations = $classes = [];
         foreach ($graph->symbols as $symbol) {
             $classes[strtolower($symbol->name).'|'.$symbol->path] = ['name' => $symbol->name, 'path' => $symbol->path, 'line' => $symbol->line];
@@ -67,7 +68,7 @@ final readonly class ArchitecturePath
             foreach ($edges as $edge) {
                 foreach (['from', 'to'] as $side) {
                     if (str_starts_with($edge[$side], '(')) {
-                        $locations[strtolower($edge[$side])] ??= ['path' => $edge['path'], 'line' => $edge['line']];
+                        $locations[strtolower($edge[$side])] ??= $side === 'to' && is_array($edge['registration'] ?? null) ? $edge['registration'] : ['path' => $edge['path'], 'line' => $edge['line']];
                     }
                 }
             }

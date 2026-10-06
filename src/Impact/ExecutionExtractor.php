@@ -28,6 +28,9 @@ final class ExecutionExtractor
 
     private int $visits = 0;
 
+    /** @var array<int, array<string, mixed>> */
+    private array $authorizationContexts = [];
+
     /** @var array<string, string> */
     private array $parents = [];
 
@@ -36,6 +39,7 @@ final class ExecutionExtractor
     {
         $this->file = $file;
         $this->visits = 0;
+        $this->authorizationContexts = [];
         $this->scheduleAttributes = [];
         $this->schedulePending = [];
         $this->callbackParameter = null;
@@ -44,6 +48,7 @@ final class ExecutionExtractor
         if ($nodes === null) {
             $this->notice(null, 'Unparseable execution source.');
         } else {
+            $this->authorizationContext($nodes);
             $this->walk($nodes, '(file) '.$file->path, '', [], []);
         }
 
@@ -118,7 +123,7 @@ final class ExecutionExtractor
                     }
                     $symbol = $name.'::'.$method->name->toString();
                     $methodVars = $this->walk($method->stmts ?? [], $symbol, $name, $methodVars, [], $depth + 1);
-                    $meta['methods'][strtolower($method->name->toString())] = ['symbol' => $symbol, 'name' => $method->name->toString(), 'public' => $method->isPublic(), 'abstract' => $node instanceof Stmt\Interface_ || $method->isAbstract(), 'parameter' => isset($method->params[0]) ? $this->types($method->params[0]->type, $name) : [], 'returns' => $this->result['returns'][$symbol] ?? [], 'conditional_return' => count(array_filter($method->stmts ?? [], fn ($s) => $s instanceof Stmt\Return_)) !== 1, 'source' => $this->site($method)];
+                    $meta['methods'][strtolower($method->name->toString())] = ['symbol' => $symbol, 'name' => $method->name->toString(), 'public' => $method->isPublic(), 'abstract' => $node instanceof Stmt\Interface_ || $method->isAbstract(), 'parameter' => isset($method->params[0]) ? $this->types($method->params[0]->type, $name) : [], 'returns' => $this->result['returns'][$symbol] ?? [], 'parameters' => array_map(fn ($p) => ['name' => is_string($p->var->name) ? $p->var->name : '', 'types' => $this->types($p->type, $name), 'nullable' => AuthorizationSignature::allowsGuests($p), 'route_resolvable' => AuthorizationSignature::routeResolvable($p->type)], $method->params), 'conditional_return' => count(array_filter($method->stmts ?? [], fn ($s) => $s instanceof Stmt\Return_)) !== 1, 'source' => $this->site($method)];
                 }
                 $this->result['classes'][strtolower($name)] = $meta;
                 $this->result['class_declarations'][] = $meta;
@@ -215,7 +220,7 @@ final class ExecutionExtractor
             }
             $this->walk($expr instanceof Expr\Closure ? $expr->stmts : [$expr->expr], $symbol, $class, $vars, [], $depth + 1);
 
-            return ['type' => 'callback', 'symbol' => $symbol, 'source' => $this->site($expr), 'events' => isset($expr->params[0]) ? $this->types($expr->params[0]->type, $class) : []];
+            return ['type' => 'callback', 'symbol' => $symbol, 'source' => $this->site($expr), 'guest' => isset($expr->params[0]) && AuthorizationSignature::allowsGuests($expr->params[0]), 'events' => isset($expr->params[0]) ? $this->types($expr->params[0]->type, $class) : []];
         }
         if ($expr instanceof Expr\Array_) {
             $array = [];
@@ -266,6 +271,9 @@ final class ExecutionExtractor
             foreach ($expr->getArgs() as $arg) {
                 $argumentVars = $vars;
                 $savedParameter = $this->callbackParameter;
+                if ($ownerHint === 'Illuminate\\Foundation\\Configuration\\ApplicationBuilder' && strtolower($method) === 'withmiddleware') {
+                    $this->callbackParameter = 'Illuminate\\Foundation\\Configuration\\Middleware';
+                }
                 if ($ownerHint === 'Illuminate\\Foundation\\Configuration\\ApplicationBuilder' && strtolower($method) === 'withschedule') {
                     $this->callbackParameter = 'Illuminate\\Console\\Scheduling\\Schedule';
                 }
@@ -287,9 +295,27 @@ final class ExecutionExtractor
             }
             $site = $this->site($expr);
             $op = ['from' => $from, 'source' => $site, 'conditions' => $conditions, 'method' => $short, 'owner' => $owner, 'receiver' => $receiver, 'args' => $args];
+            if (in_array($short, ['authorize', 'authorizeforuser', 'authorizeresource', 'allows', 'denies', 'check', 'inspect', 'any', 'none', 'can', 'cannot', 'cant', 'canany', 'allowif', 'denyif', 'policy', 'define', 'before', 'after', 'guesspolicynamesusing', 'foruser'], true)) {
+                $this->result['operations'][] = ['kind' => 'authorization_candidate', ...$op, ...($this->authorizationContexts[$expr->getStartFilePos()] ?? [])];
+                if ($short === 'foruser' && in_array($owner, ['Illuminate\Support\Facades\Gate', 'Illuminate\Contracts\Auth\Access\Gate', 'Illuminate\Auth\Access\Gate'], true)) {
+                    return ['type' => 'object', 'class' => $owner, 'authorization_user' => $args['user'] ?? $args[0] ?? null];
+                }
+            }
+            if ($owner === 'Illuminate\Foundation\Configuration\Middleware' && $short === 'alias') {
+                $this->result['operations'][] = ['kind' => 'middleware_alias', ...$op];
+            }
             $bus = $owner === 'Illuminate\Support\Facades\Bus' || in_array($owner, ['Illuminate\Contracts\Bus\Dispatcher', 'Illuminate\Contracts\Bus\QueueingDispatcher', 'Illuminate\Bus\Dispatcher'], true);
             $events = $owner === 'Illuminate\Support\Facades\Event' || in_array($owner, ['Illuminate\Contracts\Events\Dispatcher', 'Illuminate\Events\Dispatcher'], true);
             $global = $expr instanceof Expr\FuncCall && ! str_contains($method, '\\');
+            if ($global && $short === 'auth') {
+                return ['type' => 'object', 'class' => 'Illuminate\Contracts\Auth\Guard'];
+            }
+            if ($short === 'user' && (in_array($owner, ['Illuminate\Http\Request', 'Illuminate\Foundation\Http\FormRequest', 'Illuminate\Contracts\Auth\Guard', 'Illuminate\Support\Facades\Auth'], true) || $owner !== null && in_array($this->parents[strtolower($owner)] ?? null, ['Illuminate\Http\Request', 'Illuminate\Foundation\Http\FormRequest'], true))) {
+                return ['type' => 'object', 'class' => 'Illuminate\Contracts\Auth\Access\Authorizable'];
+            }
+            if ($global && in_array($short, ['app', 'resolve'], true) && is_string($args[0] ?? null)) {
+                return ['type' => 'object', 'class' => $args[0]];
+            }
             if ($bus && $short === 'map') {
                 $this->result['operations'][] = ['kind' => 'bus_map', ...$op];
 
@@ -463,6 +489,44 @@ final class ExecutionExtractor
         }
 
         return $this->literal($expr, $class, $vars);
+    }
+
+    /** @param list<Node> $nodes
+     * @param  list<string>  $caught
+     */
+    private function authorizationContext(array $nodes, string $usage = 'requires_check', array $caught = [], int $depth = 0): void
+    {
+        foreach ($nodes as $node) {
+            if (! $this->room($node, $depth)) {
+                break;
+            }
+            if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction || $node instanceof Stmt\ClassMethod) {
+                $caught = [];
+                $usage = 'requires_check';
+            }
+            if ($node instanceof Stmt\Expression) {
+                $usage = $node->expr instanceof Expr\Assign ? 'assigned_requires_check' : 'ignored';
+            } elseif ($node instanceof Stmt\Return_) {
+                $usage = 'returned';
+            }
+            if ($node instanceof Expr\CallLike) {
+                $this->authorizationContexts[$node->getStartFilePos()] = ['usage' => $usage, 'caught' => $caught];
+            }
+            foreach ($node->getSubNodeNames() as $key) {
+                $child = $node->$key;
+                $children = $child instanceof Node ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($v) => $v instanceof Node)) : []);
+                $nextCaught = $caught;
+                if ($node instanceof Stmt\TryCatch && $key === 'stmts') {
+                    foreach ($node->catches as $catch) {
+                        foreach ($catch->types as $type) {
+                            $nextCaught[] = $this->file->resolvedName($type);
+                        }
+                    }
+                }
+                $nextUsage = $node instanceof Node\Arg ? 'argument_requires_check' : ($key === 'cond' && ($node instanceof Stmt\If_ || $node instanceof Stmt\ElseIf_ || $node instanceof Expr\Ternary || $node instanceof Stmt\While_) ? 'conditional_branch' : $usage);
+                $this->authorizationContext($children, $nextUsage, $nextCaught, $depth + 1);
+            }
+        }
     }
 
     /** @param array<string, mixed> $vars */

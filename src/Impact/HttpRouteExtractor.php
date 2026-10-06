@@ -276,6 +276,15 @@ final class HttpRouteExtractor
                 }
 
                 return;
+            } elseif ($method === 'can') {
+                $ability = $this->value($this->argument($args, 0, 'ability'));
+                $models = $this->value($this->argument($args, 1, 'models'));
+                if (is_string($ability) && ($models === null || is_string($models))) {
+                    $context = $this->attributes($context, ['middleware' => ['can:'.$ability.($models === null ? '' : ','.$models)]], $site);
+                } else {
+                    $this->notice($site, 'Dynamic route authorization is unresolved.');
+                    $context['possible'] = true;
+                }
             } elseif (in_array($method, ['prefix', 'name', 'as', 'domain', 'middleware', 'withoutMiddleware', 'namespace', 'controller', 'where'], true)) {
                 $key = match ($method) {
                     'name', 'as' => 'name', 'withoutMiddleware' => 'excluded_middleware', 'where' => 'constraints', default => $method
@@ -506,6 +515,27 @@ final class HttpRouteExtractor
         }
     }
 
+    /** @return list<string> */
+    private function callbackTypes(?Node $type): array
+    {
+        if ($type instanceof Node\Name) {
+            return [$this->file->resolvedName($type)];
+        }
+        if ($type instanceof Node\NullableType) {
+            return $this->callbackTypes($type->type);
+        }
+        if ($type instanceof Node\UnionType) {
+            $types = [];
+            foreach ($type->types as $part) {
+                array_push($types, ...$this->callbackTypes($part));
+            }
+
+            return $types;
+        }
+
+        return [];
+    }
+
     /**
      * @param  list<string>|null  $verbs
      * @param  array<string, mixed>  $context
@@ -521,7 +551,11 @@ final class HttpRouteExtractor
             foreach ($facts->notices as $notice) {
                 $this->notice($action, $notice['reason']);
             }
-            $handler = ['callback' => $from];
+            $parameters = [];
+            foreach ($action->params as $param) {
+                $parameters[] = ['name' => is_string($param->var->name) ? $param->var->name : '', 'types' => $this->callbackTypes($param->type), 'nullable' => AuthorizationSignature::allowsGuests($param), 'route_resolvable' => AuthorizationSignature::routeResolvable($param->type)];
+            }
+            $handler = ['callback' => $from, 'parameters' => $parameters];
         } elseif ($handler === null) {
             $value = $this->value($action);
             if (is_array($value) && count($value) === 2 && is_string($value[0] ?? null) && is_string($value[1] ?? null)) {

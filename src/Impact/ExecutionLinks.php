@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 /** Source witnesses with contextual execution conditions, separate from call graph verdicts. */
 final class ExecutionLinks
 {
+    use AuthorizationLinks;
     use ConsoleExecutionLinks;
 
     /** @var array<string, mixed> */
@@ -125,6 +126,7 @@ final class ExecutionLinks
             }
         }
         $this->consoleLinks($facts);
+        $this->authorizationLinks($facts);
         $configured = [];
         foreach ($facts['operations'] as $op) {
             if ($op['kind'] === 'dispatch_options') {
@@ -212,6 +214,10 @@ final class ExecutionLinks
     {
         $method = strtolower($method);
 
+        if ($this->authorizationGate($owner) && in_array($method, ['authorize', 'allows', 'denies', 'check', 'inspect', 'any', 'none', 'allowif', 'denyif', 'foruser', 'policy', 'define', 'before', 'after', 'guesspolicynamesusing'], true) || $this->inherits($owner, 'Illuminate\Foundation\Auth\Access\AuthorizesRequests') && in_array($method, ['authorize', 'authorizeforuser', 'authorizeresource'], true) || ($this->inherits($owner, 'Illuminate\Foundation\Auth\Access\Authorizable') || $this->inherits($owner, 'Illuminate\Foundation\Auth\User') || $this->inherits($owner, 'Illuminate\Contracts\Auth\Access\Authorizable')) && in_array($method, ['can', 'cannot', 'cant', 'canany'], true)) {
+            return true;
+        }
+
         return in_array($method, ['dispatch', 'dispatchsync', 'dispatchnow', 'dispatchafterresponse', 'dispatchif', 'dispatchunless', 'withchain'], true)
             && ($this->inherits($owner, 'Illuminate\Foundation\Bus\Dispatchable') || $this->inherits($owner, 'Illuminate\Foundation\Queue\Queueable') || $this->isEventClass($owner));
     }
@@ -260,6 +266,9 @@ final class ExecutionLinks
         }
         $seen[$key] = true;
         $class = $this->classes[$key] ?? null;
+        if ($class['ambiguous'] ?? false) {
+            return null;
+        }
         if (isset($class['methods'][strtolower($method)])) {
             return $class['methods'][strtolower($method)];
         }
@@ -767,6 +776,7 @@ final class ExecutionLinks
         $this->out[strtolower($from)][] = ['from' => $from, 'to' => $to, 'kind' => $kind, ...$source, 'conditions' => array_values(array_unique($conditions)), 'certainty' => $conditions === [] ? 'declared' : 'possible', ...$meta];
     }
 
+    /** @phpstan-impure */
     private function room(): bool
     {
         if (++$this->visits > 100000 || ImpactExtractor::sourceLimit(0) !== null) {
