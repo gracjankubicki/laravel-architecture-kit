@@ -48,3 +48,11 @@ if (($schema["title"] ?? null) !== "Architecture Kit architecture context agent 
     throw new RuntimeException("Workbench architecture context did not publish its structured contract.");
 }
 '
+
+impact_schema="$(php vendor/bin/testbench architecture-kit:impact --schema 2>&1)"
+printf '%s' "${impact_schema}" | php -r '
+$schema = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
+if (($schema["title"] ?? null) !== "Architecture Kit impact agent output" || !isset($schema["oneOf"][0]["properties"]["pagination"])) {
+    throw new RuntimeException("Workbench impact did not publish its proposal continuation schema.");
+}
+'

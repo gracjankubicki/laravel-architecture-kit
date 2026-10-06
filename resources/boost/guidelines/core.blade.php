@@ -1,5 +1,7 @@
 ## Architecture Kit
 
+Before deleting, moving or changing a method signature, call impact with the intended change and concrete signature or target_class/target_path when known. Include demonstrated follow-up edits in the authorized task and inspect unresolved source before dependent decisions. An impact finding does not require another approval for work already authorized. For a known ordinary edit use architecture-context. Inspect incoming/outgoing execution directions; caller siblings and shared tables never connect processes. For immutable proposal pages use impact page=1, then pagination.next report_id/page/limit without subject or proposal. Restart after changed source metadata; dispatch and candidate tests do not prove execution or PASS.
+
 This package can generate project-specific Architecture Kit guidance for AI coding agents.
 
 If this project contains `.ai/guidelines/architecture-kit.md`, you MUST follow it before adding or changing application architecture.

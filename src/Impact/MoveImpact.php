@@ -88,7 +88,7 @@ final class MoveImpact
             }
         }
         if ($targetClass !== null && ($subject['kind'] === 'file' || $classes === [])) {
-            throw new InvalidArgumentException('Renaming requires a selected class declaration; a classless file cannot receive target_class.');
+            throw new InvalidArgumentException('target_class requires an explicit class selector. For a file-only move use target_path without target_class; classless files cannot be renamed.');
         }
         $changed = $subject['kind'] === 'file' ? $classes : [$subject['name']];
         $changedKeys = array_map('strtolower', $changed);

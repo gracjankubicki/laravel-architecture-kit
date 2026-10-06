@@ -58,6 +58,19 @@ final class ArchitectureSignatureTest extends TestCase
         $this->assertFalse($result['signature']['safe_to_change']);
     }
 
+    public function test_class_and_file_overviews_require_explicit_method_selection(): void
+    {
+        $this->fixture();
+        foreach (['Calculator', 'app/Calculator.php'] as $subject) {
+            $result = $this->query(subject: $subject);
+            $this->assertTrue($result['ok'], json_encode($result));
+            $this->assertSame(['App\\Calculator::calculate'], array_column($result['signature_overview']['methods'], 'symbol'));
+            $this->assertArrayNotHasKey('signature', $result);
+            $this->assertFalse($result['signature_overview']['safe_to_change']);
+        }
+        $this->assertSame('E_IMPACT_SIGNATURE_SUBJECT', $this->query('calculate()', 'Calculator')['m']);
+    }
+
     public function test_required_optional_variadic_and_named_argument_changes(): void
     {
         $this->fixture();

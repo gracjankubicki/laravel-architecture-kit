@@ -24,7 +24,12 @@ final readonly class ArchitectureReach
         try {
             $store = new ReachReports($this->files, $this->base);
             if ($reportId !== null) {
-                return $this->page($store->load($reportId), $reportId, $limit, $page);
+                $saved = $store->load($reportId);
+                if (($saved['cmd'] ?? null) !== 'reach') {
+                    return self::error('E_REACH_INPUT', 'This report belongs to another tool. Start a new reach analysis.');
+                }
+
+                return $this->page($saved, $reportId, $limit, $page);
             }
             $settings = DiscoverySettings::load($this->files, $this->base);
             $before = $store->signature($settings->exclude);

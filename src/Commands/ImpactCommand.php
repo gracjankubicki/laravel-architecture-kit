@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
+use GracjanKubicki\ArchitectureKit\Impact\ImpactPages;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
@@ -26,6 +27,8 @@ final class ImpactCommand extends Command
         {--table-match= : Table name matching: exact (default) or contains}
         {--connection= : Table connection filter: default, dynamic, or named:name}
         {--operation= : Table effect filter: read, write, schema, or schema-read}
+        {--report= : Continue an immutable proposal report without subject or proposal}
+        {--page= : Start immutable proposal paging at 1, or read a saved page}
         {--schema : Output the JSON Schema}';
 
     protected $description = 'Inspect symbol relationships or database table uses without executing application code.';
@@ -42,6 +45,15 @@ final class ImpactCommand extends Command
             $depth = $this->option('depth');
             if ((! is_int($limit) && (! is_string($limit) || ! ctype_digit($limit))) || (! is_int($depth) && (! is_string($depth) || ! ctype_digit($depth)))) {
                 $result = ArchitectureImpact::error('E_IMPACT_LIMIT_INVALID', 'Limits must be non-negative integers.');
+            } elseif ($this->option('report') !== null || $this->option('page') !== null) {
+                $page = $this->option('page') ?? '1';
+                if ($this->option('report') !== null && $this->input->hasParameterOption('--depth')) {
+                    throw new \InvalidArgumentException('Continuation uses the saved analysis depth.');
+                }
+                $filters = [$this->option('table'), $this->option('table-match'), $this->option('connection'), $this->option('operation')];
+                $result = ! is_string($page) || ! ctype_digit($page) || array_filter($filters, fn ($value) => $value !== null) !== []
+                    ? ArchitectureImpact::error('E_IMPACT_PAGE_INPUT', 'Use integer page; proposal pagination cannot be combined with table filters.')
+                    : (new ImpactPages($files, base_path()))->inspect((string) ($this->argument('subject') ?? ''), (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('report'), (int) $page);
             } else {
                 $state = DiscoverySettings::load($files, base_path());
                 $result = (new ArchitectureImpact($files, base_path(), $state->scope, $state->cache, $state->fingerprint))
@@ -90,6 +102,9 @@ final class ImpactCommand extends Command
             $this->info('Architecture Kit Impact');
             $this->line('Subject: '.($result['subject']['declaration']['symbol'] ?? $result['subject']['name']));
             $this->line('Analysis: '.$result['analysis']['status'].'; cache: '.$result['cache']);
+            if (isset($result['pagination'])) {
+                $this->line('Saved proposal pages: '.json_encode($result['pagination'], JSON_THROW_ON_ERROR));
+            }
             foreach (['Dependents' => $result['dependents'], 'Dependencies' => $result['dependencies'],
                 'Possible dependents through contracts' => $result['possible']['dependents'], 'Possible dependencies through contracts' => $result['possible']['dependencies'],
                 'Overrides to inspect' => $result['possible']['overrides'], 'Callable references, not executions' => [...$result['references']['dependents'], ...$result['references']['dependencies']]] as $label => $rows) {
@@ -101,7 +116,7 @@ final class ImpactCommand extends Command
                     }
                 }
                 if ($rows === []) {
-                    $this->line('  none detected');
+                    $this->line(isset($result['pagination']) ? '  none displayed on this page' : '  none detected');
                 }
             }
             $this->line('Class context, not method calls:');
@@ -109,6 +124,12 @@ final class ImpactCommand extends Command
                 $this->line('  '.$edge['from'].' -> '.$edge['to'].' ['.$edge['kind'].'] '.$edge['path'].':'.$edge['line']);
             }
             $this->line('Test candidates, not coverage or PASS:');
+            if (isset($result['signature_overview'])) {
+                $this->line('Signature overview: select one method explicitly before comparing a proposal.');
+                foreach ($result['signature_overview']['methods'] as $method) {
+                    $this->line('  '.$method['symbol'].' '.$method['path'].':'.$method['line']);
+                }
+            }
             foreach ($result['tests'] as $test) {
                 $this->line('  '.$test['path'].' ['.$test['basis'].']');
             }
@@ -168,7 +189,7 @@ final class ImpactCommand extends Command
             }
             $this->line('Console, scheduler, job, event and model flows: '.$http['flow_analysis']['status'].'; fresh: '.($http['flow_analysis']['fresh'] ? 'yes' : 'no'));
             foreach ($http['flows'] as $flow) {
-                $this->line('  '.$flow['entry']['symbol'].' -> '.$flow['target'].' ['.$flow['certainty'].']');
+                $this->line('  '.$flow['entry']['symbol'].' -> '.$flow['target'].' ['.$flow['direction'].', '.$flow['certainty'].']');
                 foreach ($flow['via'] as $edge) {
                     $this->line('    '.$edge['from'].' -> '.$edge['to'].' ['.$edge['kind'].', '.($edge['mode'] ?? 'call').', '.($edge['timing'] ?? 'immediate').'] '.$edge['path'].':'.$edge['line']);
                     foreach ($edge['conditions'] as $condition) {

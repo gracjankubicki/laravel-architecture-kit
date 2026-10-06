@@ -52,6 +52,43 @@ final class ArchitectureExecutionTest extends TestCase
         return array_values(array_filter($result['execution']['flows'], fn ($row) => $row['entry']['kind'] === 'http'));
     }
 
+    public function test_subject_outgoing_dispatch_paths_do_not_expand_other_caller_methods(): void
+    {
+        $this->fixture();
+        $this->write('app/Controller.php', 'namespace App; class Controller { public function store() { Service::send(); Service::other(); } public function other() {} }');
+        $this->write('app/Service.php', 'namespace App; class Service { public static function send() { event(new Created); } public static function other() { OtherJob::dispatch(); } }');
+        $this->write('app/OtherJob.php', 'namespace App; class OtherJob implements \\Illuminate\\Contracts\\Queue\\ShouldQueue { use \\Illuminate\\Foundation\\Bus\\Dispatchable; public function handle() {} }');
+        // Avoid a callback cycle back to the subject while preserving a downstream call.
+        $this->write('app/Job.php', 'namespace App; class Job implements \\Illuminate\\Contracts\\Queue\\ShouldQueue { use \\Illuminate\\Foundation\\Bus\\Dispatchable; public function handle() { Sink::save(); } }');
+        $this->write('app/Sink.php', 'namespace App; class Sink { public static function save() {} }');
+        $result = $this->query('Service::send');
+        $rows = array_values(array_filter($result['execution']['flows'], fn ($row) => $row['direction'] === 'outgoing'));
+        $this->assertNotEmpty($rows);
+        $this->assertContains('App\\Sink::save', array_column($rows, 'target'));
+        $this->assertNotContains('App\\OtherJob::handle', array_column($rows, 'target'));
+        foreach ($rows as $row) {
+            $this->assertSame('App\\Service::send', $row['entry']['symbol']);
+            $this->assertSame('subject', $row['entry']['kind']);
+        }
+        $this->assertNotEmpty($result['execution']['routes']);
+        $classRows = array_values(array_filter($this->query('Service')['execution']['flows'], fn ($row) => $row['direction'] === 'outgoing'));
+        $this->assertContains('App\\OtherJob::handle', array_column($classRows, 'target'));
+    }
+
+    public function test_outgoing_paths_preserve_quiet_context_and_dispatch_execution_mode(): void
+    {
+        $this->fixture();
+        $this->write('app/Order.php', 'namespace App; #[\\Illuminate\\Database\\Eloquent\\Attributes\\ObservedBy([Observer::class])] class Order extends \\Illuminate\\Database\\Eloquent\\Model {}');
+        $this->write('app/Observer.php', 'namespace App; class Observer { public function created(Order $o) { Service::other(); } }');
+        $this->write('app/Controller.php', 'namespace App; class Controller { public function store() { Order::withoutEvents(function () { Order::create([]); Job::dispatchSync(); }); } public function other() {} }');
+        $rows = array_values(array_filter($this->query('Controller::store')['execution']['flows'], fn ($row) => $row['direction'] === 'outgoing'));
+        $this->assertContains('App\\Job::handle', array_column($rows, 'target'));
+        $this->assertNotContains('App\\Observer::created', array_column($rows, 'target'));
+        $job = array_values(array_filter($rows, fn ($row) => $row['target'] === 'App\\Job::handle'))[0];
+        $this->assertContains('synchronous', array_column($job['via'], 'mode'));
+        $this->assertSame([], $this->query('Controller::other')['execution']['flows']);
+    }
+
     public function test_http_event_listener_job_chain_is_precise_for_method_class_and_file(): void
     {
         $this->fixture();

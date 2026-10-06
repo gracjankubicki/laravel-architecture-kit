@@ -64,7 +64,7 @@ final readonly class ArchitectureImpact
         if (($change !== 'move' && ($targetClass !== null || $targetPath !== null)) || ($change === 'move' && ($signature !== null || str_contains($subject, '::'))) || ($change === 'delete' && $signature !== null)) {
             return self::error('E_IMPACT_CHANGE_INVALID', 'Move targets require change=move and a class or file subject; signatures cannot be combined with move or delete.');
         }
-        if ($change === 'signature' && ! str_contains($subject, '::')) {
+        if ($change === 'signature' && $signature !== null && ! str_contains($subject, '::')) {
             return self::error('E_IMPACT_SIGNATURE_SUBJECT', 'Signature analysis requires Class::method.');
         }
         if (trim($subject) === '') {
@@ -95,7 +95,7 @@ final readonly class ArchitectureImpact
                 $matches = [['name' => '(file) '.$migrationPath, 'path' => $migrationPath, 'line' => 1, 'kind' => 'file', 'role' => 'unknown']];
             }
         }
-        if (($this->reachMode || $change === 'delete' || ($change === 'move' && $targetClass === null)) && $method === null && (str_contains($selector, '/') || str_ends_with(strtolower($selector), '.php')) && $matches !== []) {
+        if (($this->reachMode || $change === 'delete' || ($change === 'signature' && $signature === null) || ($change === 'move' && $targetClass === null)) && $method === null && (str_contains($selector, '/') || str_ends_with(strtolower($selector), '.php')) && $matches !== []) {
             $matches = [['name' => '(file) '.$matches[0]['path'], 'path' => $matches[0]['path'], 'line' => 1, 'kind' => 'file', 'role' => 'unknown']];
         }
         if ($matches === []) {
@@ -117,7 +117,7 @@ final readonly class ArchitectureImpact
         }
         $resolved = $matches[0];
         $root = $resolved['name'];
-        $index = new ImpactIndex($graph, buildCalls: $this->reachMode || $change === 'delete' || $method !== null || $resolved['kind'] === 'file', collectLocalNotices: $this->reachMode);
+        $index = new ImpactIndex($graph, buildCalls: $this->reachMode || $change === 'delete' || $change === 'signature' || $method !== null || $resolved['kind'] === 'file', collectLocalNotices: $this->reachMode);
         $overrides = [];
         $declaration = null;
         if ($method !== null) {
@@ -315,6 +315,29 @@ final readonly class ArchitectureImpact
                 $roles[strtolower($symbol->name)] = $symbol->role;
             }
             $result['reach'] = ['roles' => $roles, 'edges' => [...$incoming['witness_edges'], ...$outgoing['witness_edges']], 'code_limited' => $incoming['limited'] || $outgoing['limited'] || $analysisBounded || $index->limitReached(), 'fresh' => $current->files === $plan->signature->files];
+        }
+
+        if ($change === 'signature' && $declaration === null) {
+            $methods = [];
+            $methodTotal = 0;
+            $overviewLimited = false;
+            foreach ($index->classes as $class) {
+                if (($resolved['kind'] === 'file' && $class['path'] !== $resolved['path']) || ($resolved['kind'] !== 'file' && strcasecmp($class['name'], $resolved['name']) !== 0)) {
+                    continue;
+                }
+                foreach ($class['methods'] as $member) {
+                    if (++$methodTotal > 1000 || ImpactExtractor::sourceLimit(0) !== null) {
+                        $overviewLimited = true;
+                        break 2;
+                    }
+                    if (count($methods) >= $limit) {
+                        continue;
+                    }
+                    $symbol = $class['name'].'::'.$member['name'];
+                    $methods[] = ['symbol' => $symbol, 'path' => $class['path'], 'line' => $member['line'], 'next' => ['subject' => $symbol, 'change' => 'signature'], 'reason' => 'Inspect callers and inherited contracts for this method; no method or proposed signature was selected.'];
+                }
+            }
+            $result['signature_overview'] = ['methods' => $methods, 'total' => $methodTotal, 'total_is_lower_bound' => $overviewLimited || $index->limitReached(), 'truncated' => $overviewLimited || $methodTotal > $limit, 'safe_to_change' => false];
         }
 
         return $result;

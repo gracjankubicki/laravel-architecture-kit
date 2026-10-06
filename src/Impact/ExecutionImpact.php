@@ -67,25 +67,39 @@ final class ExecutionImpact
                 $limited = true;
                 break;
             }
-            $queue[] = [$seed['symbol'], false, [], $seed, []];
+            $queue[] = [$seed['symbol'], false, [], $seed, [], 'incoming'];
+        }
+        foreach ($links->out as $key => $edges) {
+            if (! isset($targetSymbols[$key]) || $edges === []) {
+                continue;
+            }
+            if (count($queue) >= 1000 || ImpactExtractor::sourceLimit(0) !== null) {
+                $limited = true;
+                break;
+            }
+            $symbol = $edges[0]['from'];
+            $seed = ['symbol' => $symbol, 'kind' => 'subject', 'source' => ['path' => $subject['path'], 'line' => $declaration['line'] ?? $subject['line']]];
+            $queue[] = [$symbol, false, [], $seed, [], 'outgoing'];
         }
         $rows = [];
         $reachedNotices = [];
         $visits = 0;
         for ($i = 0; $i < count($queue); $i++) {
-            [$symbol, $quiet, $via, $seed, $seen] = $queue[$i];
+            [$symbol, $quiet, $via, $seed, $seen, $direction] = $queue[$i];
             $key = strtolower($symbol).'|'.($quiet ? 'quiet' : 'normal');
             if (isset($seen[$key])) {
                 continue;
             }
             $seen[$key] = true;
             array_push($reachedNotices, ...($links->unknown[strtolower($symbol)] ?? []));
-            $semantic = array_filter($via, fn ($e) => ! in_array($e['kind'], ['call', 'new', 'callback'], true));
-            if (isset($targetSymbols[strtolower($symbol)]) && $via !== [] && $semantic !== []) {
-                $id = hash('xxh128', serialize([$seed['route']['id'] ?? $seed['symbol'], array_map(fn ($e) => [$e['from'], $e['to'], $e['path'], $e['offset'], $e['kind'], $e['mode'] ?? null, $e['timing'] ?? null, $e['conditions']], $via)]));
-                $rows[$id] = ['id' => $id, 'entry' => $seed, 'target' => $symbol, 'certainty' => count(array_filter($via, fn ($e) => $e['certainty'] === 'possible')) > 0 || ($seed['route']['certainty'] ?? '') === 'possible' ? 'possible' : 'declared', 'via' => $via];
+            $semantic = array_filter($via, fn ($e) => ! in_array($e['kind'], ['call', 'new', 'callback'], true) && ($direction !== 'outgoing' || ! ($e['authorization'] ?? false)));
+            if (($direction === 'outgoing' || isset($targetSymbols[strtolower($symbol)])) && $via !== [] && $semantic !== []) {
+                $id = hash('xxh128', serialize([$direction, $seed['route']['id'] ?? $seed['symbol'], array_map(fn ($e) => [$e['from'], $e['to'], $e['path'], $e['offset'], $e['kind'], $e['mode'] ?? null, $e['timing'] ?? null, $e['conditions']], $via)]));
+                $rows[$id] = ['id' => $id, 'direction' => $direction, 'entry' => $seed, 'target' => $symbol, 'certainty' => count(array_filter($via, fn ($e) => $e['certainty'] === 'possible')) > 0 || ($seed['route']['certainty'] ?? '') === 'possible' ? 'possible' : 'declared', 'via' => $via];
 
-                continue;
+                if ($direction === 'incoming') {
+                    continue;
+                }
             }
             $edges = $links->out[strtolower($symbol)] ?? [];
             if (count($via) >= $depth) {
@@ -102,7 +116,7 @@ final class ExecutionImpact
                     continue;
                 }
                 $nextQuiet = ($edge['reset_quiet'] ?? false) ? false : ($quiet || ($edge['quiet'] ?? false));
-                $queue[] = [$edge['to'], $nextQuiet, [...$via, $edge], $seed, $seen];
+                $queue[] = [$edge['to'], $nextQuiet, [...$via, $edge], $seed, $seen, $direction];
             }
         }
         $fresh = $sources->fresh();
