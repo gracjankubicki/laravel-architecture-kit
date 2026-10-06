@@ -30,7 +30,7 @@ final class ProjectGraphBuilder
     /** @var list<ImpactFacts> */
     private array $impactFacts = [];
 
-    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier, private readonly bool $impact = false) {}
+    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier, private readonly bool $impact = false, private readonly bool $preserveOccurrences = false) {}
 
     /**
      * @param  array<int, FileContext>  $files
@@ -125,7 +125,11 @@ final class ProjectGraphBuilder
                 continue;
             }
 
-            $unique[strtolower(implode('|', [$edge->from, $edge->to, $edge->path, (string) $edge->line, $edge->kind]))] = $edge;
+            if ($this->preserveOccurrences) {
+                $unique[] = $edge;
+            } else {
+                $unique[strtolower(implode('|', [$edge->from, $edge->to, $edge->path, (string) $edge->line, $edge->kind]))] = $edge;
+            }
         }
 
         return array_values($unique);

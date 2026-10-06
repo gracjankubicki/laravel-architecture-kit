@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Impact;
 
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
+use GracjanKubicki\ArchitectureKit\Revision\SnapshotInputs;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
@@ -68,7 +69,7 @@ final class HttpRouteDiscovery
      */
     private array $exclude;
 
-    public function __construct(private readonly Filesystem $files, private readonly string $basePath, private readonly bool $sourceOnly = false) {}
+    public function __construct(private readonly Filesystem $files, private readonly string $basePath, private readonly bool $sourceOnly = false, private readonly ?SnapshotInputs $snapshot = null) {}
 
     /**
      * @param  list<string>  $exclude
@@ -131,6 +132,12 @@ final class HttpRouteDiscovery
     private function roots(): array
     {
         $roots = ['bootstrap/app.php', 'bootstrap/providers.php', ...$this->providers];
+        if ($this->snapshot !== null) {
+            $roots = array_values(array_unique([...$roots, ...$this->snapshot->listing(['routes', 'app/Providers'])]));
+            sort($roots);
+
+            return $roots;
+        }
         $entries = 0;
         foreach (['routes', 'app/Providers'] as $directory) {
             $absolute = $this->basePath.'/'.$directory;
@@ -205,8 +212,8 @@ final class HttpRouteDiscovery
             }
         }
         $this->states[$path] ??= $this->stat($path);
-        $real = realpath($this->basePath.'/'.$path);
-        $realBase = realpath($this->basePath);
+        $real = $this->snapshot === null ? realpath($this->basePath.'/'.$path) : false;
+        $realBase = $this->snapshot === null ? realpath($this->basePath) : false;
         if ($real !== false) {
             if ($realBase === false || ! str_starts_with($real, $realBase.DIRECTORY_SEPARATOR)) {
                 $this->notice($path, 1, 'HTTP source symlink resolves outside the project.');
@@ -242,22 +249,22 @@ final class HttpRouteDiscovery
         $this->states[$path] ??= $this->stat($path);
         if (! isset($this->templates[$path])) {
             $absolute = $this->basePath.'/'.$path;
-            if (! $this->files->isFile($absolute)) {
+            if (! ($this->snapshot !== null ? $this->snapshot->read($path) !== null : $this->files->isFile($absolute))) {
                 if (! in_array($path, ['bootstrap/app.php', 'bootstrap/providers.php'], true)) {
                     $this->notice($path, 1, 'HTTP source is missing.');
                 }
 
                 return;
             }
-            $real = realpath($absolute);
-            $base = realpath($this->basePath);
+            $real = $this->snapshot === null ? realpath($absolute) : $absolute;
+            $base = $this->snapshot === null ? realpath($this->basePath) : $this->basePath;
             if ($real === false || $base === false || ! str_starts_with($real, $base.DIRECTORY_SEPARATOR)) {
                 $this->notice($path, 1, 'HTTP source symlink resolves outside the project.');
 
                 return;
             }
             try {
-                $size = $this->files->size($absolute);
+                $size = ($this->snapshot !== null ? strlen($this->snapshot->read($path) ?? '') : $this->files->size($absolute));
                 $reason = ImpactExtractor::sourceLimit($size);
                 if ($reason !== null || $this->bytes + $size > 20_000_000) {
                     $this->limited = true;
@@ -271,7 +278,7 @@ final class HttpRouteDiscovery
 
                     return;
                 }
-                $file = new FileContext($path, $this->files->get($absolute));
+                $file = new FileContext($path, ($this->snapshot?->read($path) ?? ($this->snapshot === null ? $this->files->get($absolute) : '')));
                 try {
                     $this->templates[$path] = (new HttpRouteExtractor($this->basePath))->extract($file);
                     $this->templates[$path]['execution'] = (new ExecutionExtractor)->extract($file);
@@ -366,10 +373,10 @@ final class HttpRouteDiscovery
 
                 return;
             }
-            if (! $this->files->isFile($this->basePath.'/'.$path) || $this->files->size($this->basePath.'/'.$path) > 100000) {
+            if (! ($this->snapshot !== null ? $this->snapshot->read($path) !== null : $this->files->isFile($this->basePath.'/'.$path)) || ($this->snapshot !== null ? strlen($this->snapshot->read($path) ?? '') : $this->files->size($this->basePath.'/'.$path)) > 100000) {
                 throw new \RuntimeException;
             }
-            $config = json_decode($this->files->get($this->basePath.'/'.$path), true, 32, JSON_THROW_ON_ERROR);
+            $config = json_decode(($this->snapshot?->read($path) ?? ($this->snapshot === null ? $this->files->get($this->basePath.'/'.$path) : '')), true, 32, JSON_THROW_ON_ERROR);
             $maps = $config['autoload']['psr-4'] ?? [];
             foreach ($maps as $prefix => $directories) {
                 if (! is_string($prefix) || ! str_starts_with($class, $prefix)) {
@@ -395,6 +402,9 @@ final class HttpRouteDiscovery
     {
         if ((! str_ends_with($path, '.php') && ! ($allowComposer && $path === 'composer.json')) || preg_match('~(^|/)(\.\.|vendor|node_modules|\.git)(/|$)~', $path)) {
             return false;
+        }
+        if ($this->snapshot !== null) {
+            return SnapshotInputs::safe($path);
         }
         $cursor = $this->basePath;
         foreach (explode('/', $path) as $part) {
@@ -439,6 +449,9 @@ final class HttpRouteDiscovery
      */
     private function stat(string $path): ?array
     {
+        if ($this->snapshot !== null) {
+            return $this->snapshot->stat($path);
+        }
         clearstatcache(true, $this->basePath.'/'.$path);
         $stat = @stat($this->basePath.'/'.$path);
 

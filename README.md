@@ -1007,3 +1007,38 @@ Each change includes its element, before/after declaration and source, reasons a
 `sources` identifies both revisions and content fingerprints. Read `analysis.status`, `fresh`, `total_is_lower_bound`, `notice_total` and `notices`; dynamic declarations, parse failures, external inheritance and unsupported autoload forms make analysis incomplete. Working-source changes require a new report. `limit` only sizes displayed changes and notices; totals and version evidence use the recognized inventory. Source budgets are 3000 files, 16 MiB total, 1 MiB per file, 10000 API entries, inheritance depth 32 and 15 seconds per Git process. Memory budgets can stop parsing earlier. Symlinks, environment files and vendor sources are unread.
 
 For a stable `x.y.z`, proved incompatibilities establish a minimum major component and recognized extensions a minimum minor component. A `0.x` project must choose `breaking-minor` or `breaking-major`; compatible extensions establish a minimum minor under either policy. Without a policy, no component is guessed. Unchanged declarations never prove patch. `semver.release_ready` is always false: inspect check rows, run consumer tests and review the release. The report never checks out a revision, runs studied code/migrations, changes the version or publishes a package. Ordinary application audit remains unchanged.
+
+### Compare architecture across revisions
+
+Use `revision-diff` to see how the application's architecture changed between a Git revision and working sources, including dirty and untracked files, or between two commits. It reads both states without checking out either version or booting their application code.
+
+```sh
+php artisan architecture-kit:revision-diff HEAD --agent
+php artisan architecture-kit:revision-diff v1.0.0 --to=v1.1.0 --agent
+php artisan architecture-kit:revision-diff HEAD --shared-config=before --agent
+php artisan architecture-kit:revision-diff HEAD --pair='App\OldAction=App\NewAction' --agent
+php artisan architecture-kit:revision-diff --schema
+```
+
+MCP `revision-diff` accepts `from`, `to`, `shared_config`, `manual_pairs` and `limit`. `manual_pairs` maps old symbol names to new names. Both interfaces use the same comparison; timing metrics vary per invocation. `limit` is 0..500 displayed rows per channel, including candidate pairs. Totals remain counts of the recognized differences before display truncation.
+
+The report separates these differences:
+
+| Channel | What it shows |
+| --- | --- |
+| `symbols` | Added, removed, moved or renamed classes, methods and PHP files, with role, application kind, module and source evidence. |
+| `structure` | Code dependency witnesses and method call sites. Repeated calls remain distinct occurrences. |
+| `http` | Recognized HTTP declarations and handlers, including registration witnesses and certainty. |
+| `execution` | Recognized Artisan, scheduler, job, event and model lifecycle links, with mode, timing and conditions. |
+| `data` | Recognized table effects, connections, read/write/schema operations and helper paths. |
+| `transitions` | Layer and module crossings between known declarations. A crossing is not an architecture quality verdict. |
+| `configuration` | Scope, excludes, mapping, rule settings and enabled profile changes. |
+| `rule_sources` | Source changes of statically configured custom rules. Rule code is never instantiated or run. |
+
+Each state normally uses its own `config/architectures.php`. The source-only decoder accepts literal arrays and package `Architecture`/`MissingTestLevel` enum cases. Dynamic calls, application constants and conditional or executable configuration remain unresolved. Missing configuration uses package defaults. An unreadable existing configuration is not replaced with today's configuration. `--shared-config=before` or `after` explicitly applies the selected state's settings to both sides; `configuration_sources` still identifies each state's own settings.
+
+A path removed from scope is reported as `scope_left`, rather than deleted code. An element entering scope uses `scope_entered`. Incomplete analysis may show `not_observed_before` or `not_observed_after`; those labels do not prove an addition or deletion. Read `analysis.channels` and the before/after source identities, completeness and freshness. Unresolved execution calls retain their source witnesses in the execution channel and side-tagged notices; they make that channel incomplete.
+
+Same symbol identities, unique declaration evidence and explicit manual pairs preserve relations across moves. Similar or ambiguous declarations remain `candidates`. Source lines, offsets and generated callback coordinates are ignored for comparison identity and retained as witnesses. Changing certainty or conditions remains visible. A new comment does not create a relation; removing one of two identical calls still removes one occurrence.
+
+`metrics` records elapsed time and parsed/reused file graph contributions. Compatible facts are reused in memory with content, path and configuration fingerprints. The comparison does not write the application's graph cache. Source, memory and candidate limits produce partial reports with known rows and notices. Working freshness checks paths, mtime and size and revalidates source content. Detected changes require rerunning the report; equal-stat edits remain outside the stat guarantee. Missing differences never prove identical runtime behaviour or SQL. External declarations and unrecognized dynamic registrations remain boundaries. Ordinary application audits retain their existing behaviour.

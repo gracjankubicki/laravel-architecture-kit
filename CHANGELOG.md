@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Compare architecture across Git and working revisions through opt-in CLI/MCP, with source-only per-state or explicit shared configuration, separate structural/Laravel/DATA witnesses, move evidence, candidate mappings, scope changes and partial/freshness limits.
+
 - Add opt-in package public API comparison across Git/working sources, including production Composer PHP, Laravel and declared MCP contracts, internal exposures, partial evidence and explicit version policy.
 
 - Declare directory, namespace and glob roles, application kinds and named modules. Share classification, provenance and module relationships across audit, context, search, impact, reach and file rules; support optional unknown-layer reporting and contextual organization proposals. Keep default findings and shared models unchanged.

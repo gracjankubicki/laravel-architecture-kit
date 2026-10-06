@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Impact;
 
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
+use GracjanKubicki\ArchitectureKit\Revision\SnapshotInputs;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -35,7 +36,7 @@ final class ExecutionSources
     private array $exclude = [];
 
     /** @param list<string> $additionalDirectories */
-    public function __construct(private readonly Filesystem $files, private readonly string $basePath, array $additionalDirectories = [], private readonly bool $retainDeclarations = false)
+    public function __construct(private readonly Filesystem $files, private readonly string $basePath, array $additionalDirectories = [], private readonly bool $retainDeclarations = false, private readonly ?SnapshotInputs $snapshot = null)
     {
         array_push($this->directories, ...$additionalDirectories);
     }
@@ -53,9 +54,9 @@ final class ExecutionSources
             $queue[] = $facts->path;
         }
         $this->states['composer.json'] = $this->stat('composer.json');
-        if ($this->safe('composer.json') && $this->files->isFile($this->basePath.'/composer.json') && ($this->states['composer.json'][1] ?? 0) <= 100000) {
+        if ($this->safe('composer.json') && ($this->snapshot !== null ? $this->snapshot->read('composer.json') !== null : $this->files->isFile($this->basePath.'/composer.json')) && ($this->states['composer.json'][1] ?? 0) <= 100000) {
             try {
-                $composer = json_decode($this->files->get($this->basePath.'/composer.json'), true, 32, JSON_THROW_ON_ERROR);
+                $composer = json_decode(($this->snapshot?->read('composer.json') ?? ($this->snapshot === null ? $this->files->get($this->basePath.'/composer.json') : '')), true, 32, JSON_THROW_ON_ERROR);
                 foreach (['autoload', 'autoload-dev'] as $section) {
                     foreach ($composer[$section]['psr-4'] ?? [] as $paths) {
                         foreach ((array) $paths as $path) {
@@ -113,7 +114,7 @@ final class ExecutionSources
             try {
                 $facts = $shared[$path] ?? null;
                 if ($facts === null) {
-                    $contents = $this->files->get($this->basePath.'/'.$path);
+                    $contents = ($this->snapshot?->read($path) ?? ($this->snapshot === null ? $this->files->get($this->basePath.'/'.$path) : ''));
                     $file = new FileContext($path, $contents);
                     $facts = (new ExecutionExtractor)->extract($file);
                     $file->releaseAst();
@@ -165,7 +166,7 @@ final class ExecutionSources
                             $queue[] = $consolePath;
                         } elseif (! in_array($consolePath, $this->directories, true)) {
                             $this->directories[] = $consolePath;
-                            if (! is_dir($this->basePath.'/'.$consolePath) && $consolePath !== 'app/Console/Commands') {
+                            if (! ($this->snapshot !== null ? $this->snapshot->stat($consolePath) !== null : is_dir($this->basePath.'/'.$consolePath)) && $consolePath !== 'app/Console/Commands') {
                                 $this->notice($consolePath, 'Console registration source directory is missing.');
                             }
                             array_push($queue, ...$this->listing([$consolePath]));
@@ -222,7 +223,7 @@ final class ExecutionSources
             return null;
         }
 
-        return new FileContext($path, $this->files->get($this->basePath.'/'.$path));
+        return new FileContext($path, ($this->snapshot?->read($path) ?? ($this->snapshot === null ? $this->files->get($this->basePath.'/'.$path) : '')));
     }
 
     /** @param list<string>|null $directories
@@ -231,6 +232,13 @@ final class ExecutionSources
     private function listing(?array $directories = null): array
     {
         $paths = [];
+        if ($this->snapshot !== null) {
+            foreach ($directories ?? $this->directories as $directory) {
+                $this->states[$directory] = $this->snapshot->stat($directory);
+            }
+
+            return $this->snapshot->listing($directories ?? $this->directories);
+        }
         foreach ($directories ?? $this->directories as $directory) {
             $directory = rtrim($directory, '/');
             $this->states[$directory] = $this->stat($directory);
@@ -283,6 +291,9 @@ final class ExecutionSources
         if ($path === '' || str_starts_with($path, '/') || str_starts_with($path, 'bootstrap/cache/') || str_contains($path, "\0") || preg_match('~(^|/)(\.\.|vendor|node_modules|\.git)(/|$)~', $path)) {
             return false;
         }
+        if ($this->snapshot !== null) {
+            return SnapshotInputs::safe($path);
+        }
         $cursor = $this->basePath;
         foreach (explode('/', $path) as $part) {
             $cursor .= '/'.$part;
@@ -297,6 +308,9 @@ final class ExecutionSources
     /** @return array<int>|null */
     private function stat(string $path): ?array
     {
+        if ($this->snapshot !== null) {
+            return $this->snapshot->stat($path);
+        }
         clearstatcache(true, $this->basePath.'/'.$path);
         if (! $this->safe($path) || ! file_exists($this->basePath.'/'.$path)) {
             return null;

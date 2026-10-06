@@ -19,6 +19,7 @@ use GracjanKubicki\ArchitectureKit\Mcp\Tools\Path;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\PlanUpgrade;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\PublicApi;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Reach;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\RevisionDiff;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Scaffold;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Search;
 use Laravel\Mcp\Server;
@@ -52,6 +53,7 @@ MARKDOWN;
         Search::class,
         Reach::class,
         PublicApi::class,
+        RevisionDiff::class,
         FileRules::class,
         Scaffold::class,
         Doctor::class,

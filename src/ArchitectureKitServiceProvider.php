@@ -21,6 +21,7 @@ use GracjanKubicki\ArchitectureKit\Commands\PathCommand;
 use GracjanKubicki\ArchitectureKit\Commands\PlanCommand;
 use GracjanKubicki\ArchitectureKit\Commands\PublicApiCommand;
 use GracjanKubicki\ArchitectureKit\Commands\ReachCommand;
+use GracjanKubicki\ArchitectureKit\Commands\RevisionDiffCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SearchCommand;
 use GracjanKubicki\ArchitectureKit\Commands\SyncCommand;
 use GracjanKubicki\ArchitectureKit\Commands\UpgradePlanCommand;
@@ -52,6 +53,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
             SearchCommand::class,
             ReachCommand::class,
             PublicApiCommand::class,
+            RevisionDiffCommand::class,
             AuditCommand::class,
             CacheClearCommand::class,
             DoctorCommand::class,

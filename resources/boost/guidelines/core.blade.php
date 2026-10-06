@@ -28,4 +28,6 @@ php artisan architecture-kit:install
 
 After Composer updates, regenerate managed resources explicitly with `php artisan architecture-kit:sync --no-interaction`, then run normal `php artisan boost:update --no-interaction`.
 
+To compare implemented architecture changes, use MCP revision-diff or architecture-kit:revision-diff with a Git before revision. Read separate structural/HTTP/execution/DATA channels, per-state configuration, source identities, completeness, freshness and candidate pairs. Scope loss is not deletion; shared configuration and manual pairs must be explicit. Differences do not judge runtime compatibility or architecture quality.
+
 For package contract changes, use MCP public-api or architecture-kit:public-api with a Git before revision. Read partial/freshness/check rows and explicit 0.x policy; this does not approve or publish a release.

@@ -30,6 +30,37 @@ final readonly class DeclaredConfiguration
         if ($returned === null) {
             return null;
         }
+        $config = self::evaluate($ast, $returned);
+        new ClassificationMappings($config['audit']['classification']);
+
+        return $config;
+    }
+
+    /** Decode historical configuration without opting it into runtime configuration semantics.
+     * @return array<string, mixed> */
+    public static function readSource(string $source): array
+    {
+        if (strlen($source) > 100000) {
+            throw new InvalidArgumentException('Architecture configuration exceeds 100 KB.');
+        }
+        $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($source) ?? [];
+        foreach ($ast as $statement) {
+            if (! ($statement instanceof Node\Stmt\Use_ || $statement instanceof Node\Stmt\GroupUse || $statement instanceof Node\Stmt\Nop || $statement instanceof Node\Stmt\Return_ || ($statement instanceof Node\Stmt\Declare_ && $statement->stmts === null))) {
+                throw new InvalidArgumentException('Historical configuration contains executable or conditional statements.');
+            }
+        }
+        $returns = array_values(array_filter($ast, static fn (Node $node): bool => $node instanceof Node\Stmt\Return_));
+        if (count($returns) !== 1 || ! $returns[0]->expr instanceof Node\Expr\Array_) {
+            throw new InvalidArgumentException('Historical configuration requires one top-level literal array return.');
+        }
+
+        return self::evaluate($ast, $returns[0]->expr);
+    }
+
+    /** @param list<Node> $ast
+     * @return array<string, mixed> */
+    private static function evaluate(array $ast, Node\Expr\Array_ $returned): array
+    {
         $traverser = new NodeTraverser(new NameResolver);
         $traverser->traverse($ast);
         $evaluator = new ConstExprEvaluator(static function (Node\Expr $expression): mixed {
@@ -57,7 +88,6 @@ final readonly class DeclaredConfiguration
         if (! is_array($config)) {
             throw new InvalidArgumentException('Declared configuration must return an array.');
         }
-        new ClassificationMappings($config['audit']['classification']);
 
         return $config;
     }

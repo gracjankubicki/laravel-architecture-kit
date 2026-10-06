@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
+use GracjanKubicki\ArchitectureKit\Revision\SnapshotInputs;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
 
@@ -17,9 +18,9 @@ final readonly class DataAnalysis
     /** @param list<string> $exclude
      * @param  array<string, mixed>  $httpSources
      */
-    public static function collect(Filesystem $files, string $basePath, ProjectGraphSnapshot $graph, array $exclude, array $httpSources = []): self
+    public static function collect(Filesystem $files, string $basePath, ProjectGraphSnapshot $graph, array $exclude, array $httpSources = [], ?SnapshotInputs $snapshot = null): self
     {
-        $sources = new ExecutionSources($files, $basePath, ['database/migrations']);
+        $sources = new ExecutionSources($files, $basePath, ['database/migrations'], snapshot: $snapshot);
         $facts = $sources->discover($graph, $exclude, $httpSources['inputs'] ?? [], $httpSources['execution_facts'] ?? []);
         $catalog = new DataCatalog;
         $limited = $facts['limited'];
