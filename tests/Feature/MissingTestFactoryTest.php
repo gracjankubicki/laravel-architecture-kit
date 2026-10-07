@@ -198,6 +198,78 @@ CODE);
         $this->assertNotContains('database/factories/OtherFactory.php', array_column($appOnly->findings, 'path'));
     }
 
+    public function test_auxiliary_factories_do_not_expand_audit_and_refresh_with_warm_cache(): void
+    {
+        $this->fixtures('use \\Illuminate\\Database\\Eloquent\\Factories\\HasFactory;');
+        $files = new Filesystem;
+        $audit = new ApplicationAudit($files, $this->tempPath);
+        $cache = new ProjectGraphCache($files, $this->tempPath);
+        $run = fn ($cache) => $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache);
+        $this->assertSame([], $run(null)->findings);
+        $this->assertSame([], $run($cache)->findings);
+        $this->assertSame([], $run($cache)->findings);
+        $graph = (new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests']), $cache))->load();
+        $this->assertNull($graph->symbol('Database\\Factories\\UserFactory'));
+        $this->write('database/factories/UserFactory.php', '<?php namespace Database\\Factories; throw new \\RuntimeException("Do not execute"); class UserFactory {}');
+        $changed = $run($cache);
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($changed->findings, 'code'));
+        $this->assertEquals($run(null)->findings, $changed->findings);
+        unlink($this->tempPath.'/database/factories/UserFactory.php');
+        $this->assertEquals($run(null)->findings, $run($cache)->findings);
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($run($cache)->findings, 'code'));
+    }
+
+    public function test_auxiliary_custom_mapping_attribute_and_parent_are_read_statically(): void
+    {
+        $this->fixtures('use \\Illuminate\\Database\\Eloquent\\Factories\\HasFactory;');
+        $this->write('composer.json', json_encode(['autoload-dev' => ['psr-4' => ['Fixture\\' => 'support/']]], JSON_THROW_ON_ERROR));
+        $this->write('app/Models/User.php', '<?php namespace App\\Models; #[\\Illuminate\\Database\\Eloquent\\Attributes\\UseFactory(\\Fixture\\UserFactory::class)] class User extends \\Illuminate\\Database\\Eloquent\\Model { use \\Illuminate\\Database\\Eloquent\\Factories\\HasFactory; }');
+        $this->write('support/UserFactory.php', '<?php namespace Fixture; throw new \\RuntimeException("Do not execute"); class UserFactory extends BaseFactory {}');
+        $this->write('support/BaseFactory.php', '<?php namespace Fixture; class BaseFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}');
+        $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
+        $this->assertSame([], $audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings);
+        $this->write('support/BaseFactory.php', '<?php namespace Fixture; class BaseFactory {}');
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+    }
+
+    public function test_auxiliary_missing_parse_budget_and_ambiguous_sources_are_incomplete(): void
+    {
+        $this->fixtures('use \\Illuminate\\Database\\Eloquent\\Factories\\HasFactory;');
+        $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
+        foreach (['<?php invalid syntax', '<?php /*'.str_repeat('x', 100_001).'*/'] as $source) {
+            $this->write('database/factories/UserFactory.php', $source);
+            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+        }
+        $source = '<?php namespace Database\\Factories; class UserFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}';
+        $this->write('database/factories/UserFactory.php', $source);
+        $this->write('support/UserFactory.php', $source);
+        $this->write('composer.json', json_encode(['autoload-dev' => ['psr-4' => ['Database\\Factories\\' => ['database/factories/', 'support/']]]], JSON_THROW_ON_ERROR));
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+        foreach (['../outside/', 'vendor/factories/', '/tmp/factories/'] as $directory) {
+            $this->write('composer.json', json_encode(['autoload-dev' => ['psr-4' => ['Database\\Factories\\' => $directory]]], JSON_THROW_ON_ERROR));
+            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+        }
+    }
+
+    public function test_auxiliary_lookup_rejects_symlink_escape_and_malformed_mapping(): void
+    {
+        $this->fixtures('use \\Illuminate\\Database\\Eloquent\\Factories\\HasFactory;');
+        $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
+        $outside = tempnam(sys_get_temp_dir(), 'gh20-');
+        try {
+            file_put_contents($outside, '<?php namespace Database\\Factories; class UserFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}');
+            unlink($this->tempPath.'/database/factories/UserFactory.php');
+            symlink($outside, $this->tempPath.'/database/factories/UserFactory.php');
+            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+        } finally {
+            unlink($this->tempPath.'/database/factories/UserFactory.php');
+            unlink($outside);
+        }
+        $this->write('database/factories/UserFactory.php', '<?php namespace Database\\Factories; class UserFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}');
+        $this->write('composer.json', '{"autoload-dev":{"psr-4":123}}');
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+    }
+
     private function authFixture(string $parent = 'Authenticatable', string $imports = 'use Illuminate\\Foundation\\Auth\\User as Authenticatable;', bool $intermediate = false, string $body = ''): void
     {
         $this->fixtures('');

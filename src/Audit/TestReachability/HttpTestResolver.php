@@ -21,6 +21,18 @@ final readonly class HttpTestResolver
             return $matches;
         }
         $entry = $matches[0];
+        if ($call->uri !== null && str_contains($call->uri, TestInvocationExtractor::SYMBOLIC)) {
+            $address = explode('?', explode('#', $call->uri, 2)[0], 2)[0];
+            $address = preg_replace('#^https?://[^/]+#i', '', $address) ?? $address;
+            $segments = explode('/', trim($address, '/'));
+            $template = explode('/', trim($entry->uri, '/'));
+            foreach ($segments as $i => $segment) {
+                if (str_contains($segment, TestInvocationExtractor::SYMBOLIC)
+                    && ($segment !== TestInvocationExtractor::SYMBOLIC || ! preg_match('/^\{[^}]+\}$/', $template[$i] ?? ''))) {
+                    return 'Symbolic HTTP value is not a complete route parameter segment.';
+                }
+            }
+        }
 
         return $entry->class !== null && $entry->method !== null ? $entry : ($entry->unresolved ?? 'Unresolved route handler.');
     }
@@ -76,6 +88,9 @@ final readonly class HttpTestResolver
             $address = $match[2] ?? '/';
         }
         $path = rtrim('/'.ltrim($address, '/'), '/') ?: '/';
+        if ($domain !== null && str_contains($domain, TestInvocationExtractor::SYMBOLIC)) {
+            return 'Dynamic HTTP host cannot be resolved.';
+        }
         $symbolic = str_contains($path, TestInvocationExtractor::SYMBOLIC);
         $candidates = [];
         foreach ($this->routes->entries as $entry) {

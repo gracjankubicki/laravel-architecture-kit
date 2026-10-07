@@ -47,6 +47,7 @@ final readonly class TestReachability
         $memoOrigins = [];
         $contexts = [];
         $overrides = [];
+        $artisan = null;
         $factoryNamespace = 'Database\\Factories\\';
         $configurations = array_values(array_filter($graph->testInvocations, fn (TestInvocation $call): bool => $call->kind === 'factory-config'));
         if ($configurations !== []) {
@@ -69,7 +70,7 @@ final readonly class TestReachability
                 continue;
             }
             $sources = new SourceIndex($this->files, $this->basePath, $graph);
-            if ($call->kind === 'http' && $call->context !== '@pest') {
+            if (in_array($call->kind, ['http', 'artisan'], true) && $call->context !== '@pest') {
                 $context = $call->context ?? '';
                 $contexts[$context] ??= $sources->isA($context, 'Illuminate\\Foundation\\Testing\\TestCase');
                 if (! $contexts[$context]) {
@@ -80,8 +81,8 @@ final readonly class TestReachability
                     continue;
                 }
             }
-            if ($call->kind === 'http' && $call->context !== '@pest' && $call->context !== null && $call->dispatch !== null && ($overrides[$call->context.'::'.$call->dispatch] ??= $sources->method($call->context, $call->dispatch) !== null)) {
-                $result->incomplete($call->path, $call->line, 'Project override of HTTP dispatch method '.$call->dispatch.'.');
+            if (in_array($call->kind, ['http', 'artisan'], true) && $call->context !== '@pest' && $call->context !== null && $call->dispatch !== null && ($overrides[$call->context.'::'.$call->dispatch] ??= $sources->method($call->context, $call->dispatch) !== null)) {
+                $result->incomplete($call->path, $call->line, 'Project override of '.$call->kind.' dispatch method '.$call->dispatch.'.');
 
                 continue;
             }
@@ -102,6 +103,29 @@ final readonly class TestReachability
                         $result->incomplete($call->path, $call->line, substr($diagnostic->message, strlen('Test relationship analysis is incomplete: ')), $memoOrigins[$key]);
                     }
                 }
+
+                continue;
+            }
+            if ($call->kind === 'artisan') {
+                if ($call->dispatch === 'call' && $sources->inScope('Illuminate\\Support\\Facades\\Artisan')) {
+                    $result->incomplete($call->path, $call->line, 'Project Artisan facade shadows the standard dispatch.');
+
+                    continue;
+                }
+                $artisan ??= new ArtisanTestResolver($this->files, $this->basePath, $graph);
+                $handler = $artisan->resolve($call);
+                if (is_string($handler)) {
+                    $result->incomplete($call->path, $call->line, $handler, $artisan->paths);
+
+                    continue;
+                }
+                [$class, $method] = $handler;
+                $sources->loadAuxiliary($class);
+                $resolved = (new MethodReachability($sources, $factories))->analyze($class, $method, $call->path, $call->line);
+                if ($sources->get($class) === null) {
+                    $resolved->incomplete($call->path, $call->line, $sources->unavailableReason($class) ?? 'Artisan handler source is unavailable.');
+                }
+                $result->merge($resolved, [$call->path, ...$sources->paths(), ...$artisan->paths]);
 
                 continue;
             }

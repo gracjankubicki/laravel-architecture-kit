@@ -105,6 +105,14 @@ final class TestInvocationExtractor
             if ($active && $node instanceof Expr\Assign && $node->var instanceof Expr\Variable && is_string($node->var->name)) {
                 $variables[$node->var->name] = $this->value($node->expr, $variables);
             }
+            if ($active && $node instanceof Expr\StaticCall && $node->class instanceof Node\Name
+                && $file->resolvedName($node->class) === 'Illuminate\\Support\\Facades\\Artisan'
+                && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'call' && ! $node->isFirstClassCallable()) {
+                $command = $this->value($node->getArgs()[0]->value ?? null, $variables);
+                $this->sourceOffsets[] = max(0, $node->getStartFilePos());
+                $result[] = new TestInvocation($file->path, $node->getStartLine(), 'artisan', $context,
+                    reason: $command === null ? 'Dynamic Artisan command selector.' : null, dispatch: 'call', command: $command);
+            }
             if ($active && $node instanceof Expr\StaticCall && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'factory' && ! $node->isFirstClassCallable()) {
                 $this->sourceOffsets[] = max(0, $node->getStartFilePos());
                 $result[] = new TestInvocation($file->path, $node->getStartLine(), 'factory', $context, model: $node->class instanceof Node\Name ? $file->resolvedName($node->class) : null, reason: $node->class instanceof Node\Name ? null : 'Dynamic factory receiver.');
@@ -138,6 +146,12 @@ final class TestInvocationExtractor
                         unset($this->activeHelpers[$key]);
                     }
                     $method = null;
+                }
+                if ($method === 'artisan') {
+                    $command = $this->value($node->getArgs()[0]->value ?? null, $variables);
+                    $this->sourceOffsets[] = max(0, $node->getStartFilePos());
+                    $result[] = new TestInvocation($file->path, $node->getStartLine(), 'artisan', $context,
+                        reason: $command === null ? 'Dynamic Artisan command selector.' : null, dispatch: 'artisan', command: $command);
                 }
                 if ($method !== null && in_array($method, ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'getjson', 'postjson', 'putjson', 'patchjson', 'deletejson', 'headjson', 'optionsjson', 'json', 'call'], true)) {
                     $args = $node->getArgs();
@@ -214,6 +228,21 @@ final class TestInvocationExtractor
         }
         if ($node instanceof Expr\PropertyFetch && $node->name instanceof Node\Identifier && $node->name->toString() === 'id') {
             return self::SYMBOLIC;
+        }
+        if ($node instanceof Expr\Cast\Int_) {
+            $value = $this->value($node->expr, $variables);
+
+            return $value !== null && ! str_contains($value, self::SYMBOLIC) ? (string) (int) $value : self::SYMBOLIC;
+        }
+        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name
+            && ! $node->isFirstClassCallable()
+            && $node->name->getAttribute('namespacedName') === null
+            && in_array(strtolower(($node->name->getAttribute('resolvedName') ?? $node->name)->toString()), ['rawurlencode', 'urlencode'], true)
+            && count($node->getArgs()) === 1 && ! $node->getArgs()[0]->unpack) {
+            $value = $this->value($node->getArgs()[0]->value, $variables);
+
+            return $value !== null && ! str_contains($value, self::SYMBOLIC)
+                ? (strtolower(($node->name->getAttribute('resolvedName') ?? $node->name)->toString()) === 'urlencode' ? urlencode($value) : rawurlencode($value)) : self::SYMBOLIC;
         }
         if ($node instanceof Expr\BinaryOp\Concat) {
             $left = $this->value($node->left, $variables);

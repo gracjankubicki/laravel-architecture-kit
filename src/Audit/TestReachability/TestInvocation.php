@@ -22,6 +22,7 @@ final readonly class TestInvocation
         public ?string $model = null,
         public ?string $reason = null,
         public ?string $dispatch = null,
+        public ?string $command = null,
     ) {}
 
     /** @return array<string, mixed> */
@@ -32,17 +33,17 @@ final readonly class TestInvocation
         return [
             'line' => $this->line, 'kind' => $this->kind, 'context' => $this->context,
             'verb' => $this->verb, 'uri' => $this->uri, 'route' => $this->route,
-            'parameters' => $this->parameters, 'model' => $this->model, 'reason' => $this->reason, 'dispatch' => $this->dispatch,
+            'parameters' => $this->parameters, 'model' => $this->model, 'reason' => $this->reason, 'dispatch' => $this->dispatch, 'command' => $this->command,
         ];
     }
 
     public static function fromArray(string $path, mixed $data): self
     {
-        if (! is_array($data) || array_keys($data) !== ['line', 'kind', 'context', 'verb', 'uri', 'route', 'parameters', 'model', 'reason', 'dispatch']
-            || ! is_int($data['line']) || $data['line'] < 1 || ! in_array($data['kind'], ['http', 'factory', 'factory-config'], true) || ! is_array($data['parameters'])) {
+        if (! is_array($data) || array_keys($data) !== ['line', 'kind', 'context', 'verb', 'uri', 'route', 'parameters', 'model', 'reason', 'dispatch', 'command']
+            || ! is_int($data['line']) || $data['line'] < 1 || ! in_array($data['kind'], ['http', 'factory', 'factory-config', 'artisan'], true) || ! is_array($data['parameters'])) {
             throw new UnexpectedValueException('Invalid test invocation.');
         }
-        foreach (['context', 'verb', 'uri', 'route', 'model', 'reason', 'dispatch'] as $key) {
+        foreach (['context', 'verb', 'uri', 'route', 'model', 'reason', 'dispatch', 'command'] as $key) {
             if ($data[$key] !== null && ! is_string($data[$key])) {
                 throw new UnexpectedValueException('Invalid invocation field.');
             }

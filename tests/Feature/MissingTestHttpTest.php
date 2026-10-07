@@ -81,6 +81,35 @@ CODE);
         $this->assertSame(['app/Actions/Calculator.php', 'app/Actions/DeleteProject.php', 'app/Services/Projects.php'], array_column($this->audit($routes)->findings, 'path'));
     }
 
+    public function test_response_ids_keys_and_encoded_ids_reach_only_the_selected_action(): void
+    {
+        foreach ([
+            '$created = $this->postJson("/projects", []); $id = (int) $created->json("id"); $this->deleteJson("/projects/{$id}");',
+            '$id = (int) $model->getKey(); $this->deleteJson("/projects/".$id);',
+            '$id = rawurlencode($model->getKey()); $this->deleteJson("/projects/".$id);',
+        ] as $body) {
+            $routes = $this->fixture('<?php it("delete", function () { '.$body.' });');
+            $missing = array_values(array_filter($this->audit($routes)->findings, fn ($finding) => $finding->code === 'W_MISSING_TEST'));
+            $this->assertNotContains('app/Actions/DeleteProject.php', array_column($missing, 'path'));
+            $this->assertContains('app/Actions/UpdateProject.php', array_column($missing, 'path'));
+        }
+    }
+
+    public function test_unbounded_response_id_prefix_and_partial_segment_remain_incomplete(): void
+    {
+        foreach ([
+            '$id = $created->json("id"); $this->deleteJson("/projects/{$id}");',
+            '$prefix = $created->json("prefix"); $this->deleteJson("{$prefix}/projects/123");',
+            '$id = (int) $created->json("id"); $this->deleteJson("/projects/item-{$id}");',
+            '$id = (int) $created->json("id"); $this->deleteJson("https://{$id}/projects/123");',
+        ] as $body) {
+            $routes = $this->fixture('<?php it("delete", function () { '.$body.' });');
+            $findings = $this->audit($routes)->findings;
+            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($findings, 'code'));
+            $this->assertContains('app/Actions/DeleteProject.php', array_column($findings, 'path'));
+        }
+    }
+
     public function test_dynamic_url_reports_source_without_hiding_unrelated_classes(): void
     {
         $routes = $this->fixture("<?php\nit('updates', function () { \$this->put(\$url, []); });");

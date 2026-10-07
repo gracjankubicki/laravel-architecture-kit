@@ -140,7 +140,7 @@ trait ConsoleExecutionLinks
             }
         }
         foreach ($this->consoleCommands as $name => $commands) {
-            if (count(array_unique(array_column($commands, 'handler'))) > 1) {
+            if (count(array_unique(array_map(fn (array $command): string => ($command['class'] ?? '').'::'.$command['handler'], $commands))) > 1) {
                 foreach ($commands as $command) {
                     $this->notice($command['op'], 'Console registration conflict for '.$name.'; runtime order is unresolved.');
                 }
@@ -223,16 +223,16 @@ trait ConsoleExecutionLinks
 
             return;
         }
-        $root = '(console) '.$name.'@'.$op['source']['path'].':'.$op['source']['offset'].':'.$handler;
+        $root = '(console) '.$name.'@'.$op['source']['path'].':'.$op['source']['offset'].':'.$handler.($class !== null ? ':'.$class : '');
         $conditions = [...$op['conditions'], 'Source registration requires runtime console activation and command selection.'];
         foreach ($this->consoleCommands[$name] ?? [] as $existing) {
-            if ($existing['handler'] === $handler && $existing['op']['source'] === $op['source']) {
+            if ($existing['handler'] === $handler && $existing['class'] === $class && $existing['op']['source'] === $op['source']) {
                 return;
             }
         }
         $this->consoleCommands[$name][] = ['handler' => $handler, 'class' => $class, 'op' => $op];
         $this->edge($root, $handler, 'console-handler', $op['source'], $conditions, ['command' => $name, 'mode' => 'console-entry', 'timing' => 'command-selected']);
-        $this->seeds[strtolower($root)] = ['symbol' => $root, 'kind' => 'console', 'source' => $op['source'], 'command' => $name];
+        $this->seeds[strtolower($root)] = ['symbol' => $root, 'kind' => 'console', 'source' => $op['source'], 'command' => $name, 'runtime_class' => $class];
     }
 
     /** @param array<string, mixed> $op

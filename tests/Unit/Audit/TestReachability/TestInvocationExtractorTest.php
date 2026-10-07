@@ -72,6 +72,49 @@ CODE);
         $this->assertNull(CachedGraph::fromArray($data));
     }
 
+    public function test_artisan_codec_and_inactive_or_lookalike_calls(): void
+    {
+        $calls = (new TestInvocationExtractor)->extract(new FileContext('tests/Test.php', <<<'CODE'
+<?php
+use Illuminate\Support\Facades\Artisan as Console;
+use function Pest\Laravel\artisan as runCommand;
+it('runs', function () {
+    Console::call('invoices:send'); $this->artisan('invoices:other'); runCommand('invoices:pest');
+    Console::call(...); $this->artisan(...); $other->artisan('fake'); \App\Artisan::call('fake');
+    $inactive = fn () => Console::call('inactive');
+});
+CODE));
+        $this->assertSame(['artisan', 'artisan', 'artisan'], array_column($calls, 'kind'));
+        $this->assertSame(['invoices:send', 'invoices:other', 'invoices:pest'], array_column($calls, 'command'));
+        foreach ($calls as $call) {
+            $this->assertEquals($call, TestInvocation::fromArray($call->path, $call->toArray()));
+        }
+        $signature = new GraphCacheSignature('test', ['tests/Test.php' => '1:1']);
+        $cache = new CachedGraph($signature, ['tests/Test.php' => new FileGraphEntry([], [], $calls)]);
+        $this->assertEquals($cache, CachedGraph::fromArray($cache->toArray()));
+        $data = $cache->toArray();
+        $data['entries']['tests/Test.php']['t'][0]['command'] = [];
+        $this->assertNull(CachedGraph::fromArray($data));
+    }
+
+    public function test_namespaced_encoding_shadow_does_not_establish_segment_bounds(): void
+    {
+        $calls = (new TestInvocationExtractor)->extract(new FileContext('tests/Test.php', <<<'CODE'
+<?php
+namespace Tests;
+function rawurlencode($value) { return $value; }
+class Example extends \Tests\TestCase {
+    public function test_call() {
+        $this->delete('/projects/'.rawurlencode($id));
+        $this->delete('/projects/'.\rawurlencode($id));
+    }
+}
+CODE));
+        $this->assertNull($calls[0]->uri);
+        $this->assertNotNull($calls[0]->reason);
+        $this->assertSame('/projects/'.TestInvocationExtractor::SYMBOLIC, $calls[1]->uri);
+    }
+
     public function test_a_factory_configuration_is_kept_outside_tests_without_http_facts(): void
     {
         $calls = (new TestInvocationExtractor)->extract(new FileContext('app/Providers/AppServiceProvider.php', <<<'CODE'

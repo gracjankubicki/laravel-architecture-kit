@@ -83,6 +83,33 @@ PHP);
         }
     }
 
+    public function test_artisan_and_auxiliary_factory_analysis_has_cli_mcp_and_strict_parity(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $this->writeFile('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn']];");
+        $this->writeFile('bootstrap/app.php', '<?php return Illuminate\\Foundation\\Application::configure();');
+        $this->writeFile('app/Actions/Send.php', '<?php namespace App\\Actions; class Send { public function handle() {} }');
+        $this->writeFile('app/Actions/Unused.php', '<?php namespace App\\Actions; class Unused { public function handle() {} }');
+        $this->writeFile('app/Console/Commands/Send.php', '<?php namespace App\\Console\\Commands; class Send extends \\Illuminate\\Console\\Command { protected $signature = "send"; public function handle(\\App\\Actions\\Send $action) { $action->handle(); } }');
+        $this->writeFile('app/Models/User.php', '<?php namespace App\\Models; class User extends \\Illuminate\\Database\\Eloquent\\Model { use \\Illuminate\\Database\\Eloquent\\Factories\\HasFactory; }');
+        $this->writeFile('database/factories/UserFactory.php', '<?php namespace Database\\Factories; throw new \\RuntimeException("Do not execute"); class UserFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}');
+        $this->writeFile('tests/Feature/SendTest.php', '<?php it("send", function () { \\App\\Models\\User::factory(); \\Illuminate\\Support\\Facades\\Artisan::call("send"); \\Illuminate\\Support\\Facades\\Artisan::call($unknown); });');
+        $this->assertSame(1, Artisan::call('architecture-kit:audit', ['--agent' => true, '--strict' => true]));
+        $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($payload['find'], 'm'));
+        $this->assertContains('app/Actions/Unused.php', array_column($payload['find'], 'p'));
+        $this->assertNotContains('app/Actions/Send.php', array_column($payload['find'], 'p'));
+        $this->assertNotContains('database/factories/UserFactory.php', array_column($payload['find'], 'p'));
+        foreach ([AuditChanged::class, Guard::class] as $tool) {
+            ArchitectureKitServer::tool($tool, ['changed' => false, 'strict' => true])
+                ->assertOk()
+                ->assertStructuredContent(fn ($json) => $json
+                    ->where('ok', false)
+                    ->where('find', $payload['find'])
+                    ->etc());
+        }
+    }
+
     public function test_mcp_audit_exposes_non_blocking_suggestions_and_analysis(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);

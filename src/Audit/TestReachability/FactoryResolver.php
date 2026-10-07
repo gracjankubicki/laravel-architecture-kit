@@ -98,8 +98,7 @@ final readonly class FactoryResolver
                 }
             }
         }
-        if ($this->sources->get($factory) === null) {
-            // database is not pulled into scope automatically; no finding about its classes.
+        if ($this->sources->loadAuxiliary($factory) === null) {
             $result->incomplete($path, $line, $this->sources->unavailableReason($factory) ?? 'Factory source is unavailable in the audit scope: '.$factory.'.');
         } elseif (! $this->sources->isA($factory, 'Illuminate\\Database\\Eloquent\\Factories\\Factory')) {
             $result->incomplete($path, $line, $this->sources->unavailableReason($factory) ?? 'Resolved class is not a Laravel factory: '.$factory.'.');

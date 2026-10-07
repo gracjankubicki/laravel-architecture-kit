@@ -387,11 +387,15 @@ The `missing-test` rule reports architecture elements without a statically ident
 ],
 ```
 
-The rule combines existing transitive class references with Laravel HTTP and factory analysis. It applies across architectures and supports classless Pest tests.
+The rule combines existing transitive class references with Laravel HTTP, Artisan and factory analysis. It applies across architectures and supports classless Pest tests.
 
 HTTP calls use a fresh route map to select the handler by verb and address, including named and resource routes and unambiguous symbolic IDs. Analysis follows the selected method and its calls. It also follows the selected Gate policy, API Resource transformation, Inertia prop callback, route middleware shared data, and Fortify action or view callback. Testing `update` does not automatically link `destroy`, another Fortify action, or an unused injected dependency. Route discovery boots Laravel in an isolated process; the audit never executes the endpoint or deletes the application's route cache.
 
-`Model::factory()` resolves supported Laravel declarations and naming conventions. A `HasFactory<T>` annotation confirms a mapping but cannot override runtime selection. A factory is linked as test setup, not proof that its states are tested. Include `database` in `audit.paths` to analyze factory classes; only `tests` is added automatically.
+For dynamic HTTP IDs from `json('id')` or `getKey()`, an integer cast or explicit global `\rawurlencode()` / `\urlencode()` establishes a single symbolic path segment. For example, `$id = (int) $response->json('id'); $this->deleteJson('/projects/'.$id);` can select a unique DELETE handler. Raw unknown strings, dynamic prefixes or hosts, partial symbolic segments, competing routes and unresolved constraints remain incomplete. In namespaced tests, qualify or explicitly import encoding functions to avoid an unresolved local function shadow.
+
+Literal `Artisan::call('invoices:send')`, `$this->artisan('invoices:send')` and the Pest Laravel `artisan` helper select a registered class command and follow its actual handler, including inherited handlers, `$signature` and `#[Signature]`. Other commands and unused methods receive no dispatch credit. Dynamic selectors, conflicting or conditional registrations and callback commands remain incomplete. Registration lookup reads bounded source files without booting the application.
+
+`Model::factory()` resolves supported Laravel declarations and naming conventions. A `HasFactory<T>` annotation confirms a mapping but cannot override runtime selection. A factory is linked as test setup, not proof that its states are tested. Needed factory declarations and their parents or traits are read automatically as auxiliary sources through conventional paths and static Composer PSR-4 mappings. They are not added to the audit graph and receive no audit findings unless their directories are explicitly included in `audit.paths`. Missing, unsafe, ambiguous, oversized or unparseable auxiliary sources remain incomplete. Auxiliary sources are read again on each analysis, including when test facts come from graph cache; only `tests` is added automatically to the audit scope.
 
 `W_MISSING_TEST_ANALYSIS_INCOMPLETE` identifies an unresolved address, handler, factory mapping, or analysis limit at its source. It is a warning at both enabled levels and blocks `guard --strict`. Existing inline and baseline suppression apply. Uncertainty neither credits a class nor hides unrelated missing relationships.
 

@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Fixed
 
+- Resolve missing-test relationships for bounded dynamic HTTP IDs and literal Artisan class-command dispatch. Read required factories as bounded auxiliary sources without expanding the audit scope; retain incomplete diagnostics, strict policy and fresh analysis with cached test facts.
+
 - Restore CI compatibility with Testbench 11 query helpers, explicit Pest harness configuration, current generated Boost guidance and nullable Reverb array items. Preserve the test matrix and analysis checks. Give the coverage process 1 GB for instrumentation while ordinary tests retain 512 MB and graph safety limits stay unchanged.
 
 ### Added
