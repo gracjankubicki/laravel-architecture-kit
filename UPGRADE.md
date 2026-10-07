@@ -1,12 +1,12 @@
 # Upgrade Guide
 
-## Unreleased static graph changes
+## Upgrading to v0.7.0 from v0.6.2
 
 `architecture-search` and `architecture-graph` add source-only graph discovery. Existing MCP tools retain their names and parameters. Graph roots are configured separately from audit roots; see [the static graph reference](docs/static-graph.md).
 
 The cache fingerprint includes package sources, so upgrading rebuilds graph facts automatically. Source-bounded partial facts retain their diagnostics when cached; memory-dependent or unclassified limits are retried. No application migration is required.
 
-Regenerate Architecture Kit resources and update installed Boost guidance through the existing install or sync workflow after upgrading. Generated instructions describe when to search, inspect relationships, and check result completeness. The development graph still reports `catalog_incomplete` until the accepted catalog is fully verified.
+Regenerate Architecture Kit resources and update installed Boost guidance through the existing install or sync workflow after upgrading. Generated instructions describe when to search, inspect relationships, and check result completeness. Dynamic calls, unavailable sources and analysis limits remain explicit; inspect completeness before using a report to guide a change.
 
 ```bash
 php artisan architecture-kit:sync --no-interaction
@@ -14,6 +14,14 @@ php artisan boost:update --no-interaction
 ```
 
 Run the Boost command only in applications that use Boost.
+
+The new impact, path, reach, table, authorization, architecture target, revision comparison and package public API reports are read-only. They do not move or delete application files, execute application code, apply migrations, or publish a package. Architecture target enforcement is opt-in. Existing audit configuration and baseline format do not require migration.
+
+If `audit.missing_test` is enabled, HTTP tests can now link bounded dynamic IDs, and literal Artisan calls can link registered class commands and their selected handlers. Required factory declarations are read automatically as auxiliary sources. You no longer need to widen `audit.paths` solely to resolve a factory used in test setup; retain explicit factory paths if you want audit rules to inspect those files. The rule remains off by default. Unresolved relationships remain warnings and still block `guard --strict` when the rule is enabled.
+
+A dynamic HTTP ID from `json('id')` or `getKey()` needs an integer cast or explicit global/imported URL encoding to establish a bounded symbolic segment. Unresolved raw strings, dynamic prefixes or hosts, conflicting routes and constraints remain incomplete. Artisan callback commands remain incomplete in missing-test analysis, even though execution impact can describe supported callback registrations.
+
+Source graph and change-preflight tools do not boot the studied application. The existing audit HTTP route discovery still uses its isolated Laravel bootstrap process. None of these relationships prove that a test passes or that an application path executes at runtime.
 
 ## Upgrading to v0.6.2 from v0.6.1
 

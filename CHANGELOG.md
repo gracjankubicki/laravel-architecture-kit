@@ -4,9 +4,15 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ## Unreleased
 
+## v0.7.0 - 2026-10-07
+
+This release adds source maps and change preflight for Laravel applications: find an entry point, follow its relationships, inspect the effects of a proposed change, and compare architecture across revisions. CLI and MCP reports retain source evidence and explicit uncertainty. Static relationships do not prove runtime execution or passing tests.
+
 ### Fixed
 
 - Resolve missing-test relationships for bounded dynamic HTTP IDs and literal Artisan class-command dispatch. Read required factories as bounded auxiliary sources without expanding the audit scope; retain incomplete diagnostics, strict policy and fresh analysis with cached test facts.
+
+- Make the target freshness regression deterministic by mutating its source after actual reads in an isolated test process, while preserving stale-report and reference rejection assertions.
 
 - Restore CI compatibility with Testbench 11 query helpers, explicit Pest harness configuration, current generated Boost guidance and nullable Reverb array items. Preserve the test matrix and analysis checks. Give the coverage process 1 GB for instrumentation while ordinary tests retain 512 MB and graph safety limits stay unchanged.
 
