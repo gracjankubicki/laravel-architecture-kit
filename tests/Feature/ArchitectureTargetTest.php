@@ -14,12 +14,14 @@ use GracjanKubicki\ArchitectureKit\Mcp\Tools\Target;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
 use GracjanKubicki\ArchitectureKit\Target\FrozenFilesystem;
+use GracjanKubicki\ArchitectureKit\Target\MutatingSourceReader;
 use GracjanKubicki\ArchitectureKit\Target\TargetSchema;
 use GracjanKubicki\ArchitectureKit\Target\TargetSources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
-use Symfony\Component\Process\Process;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 
 final class ArchitectureTargetTest extends TestCase
 {
@@ -328,29 +330,21 @@ final class ArchitectureTargetTest extends TestCase
         $this->assertTrue($limited['analysis']['display_truncated']);
     }
 
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_working_mutation_marks_report_stale_and_candidate_unacceptable(): void
     {
         $this->fixture();
-        for ($i = 0; $i < 30; $i++) {
-            $this->write('app/Actions/Extra'.$i.'.php', '<?php namespace App\Actions; class Extra'.$i.' { public function handle() {} }');
-        }
-        $ready = $this->tempPath.'/.mutation-ready';
-        $script = 'file_put_contents($argv[2], "ready"); for ($i=0; $i<2000; $i++) { file_put_contents($argv[1], "<?php namespace App\\Actions; class CreateInvoice { public function handle() { return ".$i."; } }".str_repeat(" ", $i)); usleep(5000); }';
-        $writer = new Process([PHP_BINARY, '-r', $script, $this->tempPath.'/app/Actions/CreateInvoice.php', $ready]);
-        $writer->start();
-        try {
-            for ($i = 0; $i < 200 && ! file_exists($ready); $i++) {
-                usleep(10000);
-            }
-            $this->assertFileExists($ready);
-            $report = $this->report();
-            $this->assertTrue($report['ok']);
-            $this->assertFalse($report['analysis']['fresh']);
-            $this->assertFalse($report['reference_candidate']['complete']);
-            $this->assertSame(['rerun:architecture-target'], $report['next']);
-        } finally {
-            $writer->stop(0);
-        }
+        require dirname(__DIR__).'/Fixtures/Target/MutatingSourceReader.php';
+        MutatingSourceReader::$path = $this->tempPath.'/app/Actions/CreateInvoice.php';
+        // Change the file immediately after each snapshot reads it. This cannot
+        // race with the report completing between writes on a fast runner.
+        $report = $this->report();
+        $this->assertGreaterThanOrEqual(3, MutatingSourceReader::$reads);
+        $this->assertTrue($report['ok']);
+        $this->assertFalse($report['analysis']['fresh']);
+        $this->assertFalse($report['reference_candidate']['complete']);
+        $this->assertSame(['rerun:architecture-target'], $report['next']);
     }
 
     public function test_target_module_assignment_and_dependency_rules_are_independent_of_current_mapping(): void
