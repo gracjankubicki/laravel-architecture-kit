@@ -165,7 +165,8 @@ jobs:
       - run: |
           composer require "laravel/framework:13.*" --no-interaction --no-update
           composer update --prefer-dist --no-interaction --no-progress
-      - run: php -d memory_limit=512M vendor/bin/phpunit --coverage-clover build/logs/clover.xml
+      # Coverage instrumentation shares memory with the graph safety budget.
+      - run: php -d memory_limit=1G vendor/bin/phpunit --coverage-clover build/logs/clover.xml
       - run: php bin/generate-coverage-badge build/logs/clover.xml art/coverage.svg
       - uses: actions/upload-artifact@v4
         with:

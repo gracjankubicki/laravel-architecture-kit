@@ -6,7 +6,7 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Fixed
 
-- Restore CI compatibility with Testbench 11 query helpers, explicit Pest harness configuration, current generated Boost guidance and nullable Reverb array items. Preserve the test matrix and analysis checks.
+- Restore CI compatibility with Testbench 11 query helpers, explicit Pest harness configuration, current generated Boost guidance and nullable Reverb array items. Preserve the test matrix and analysis checks. Give the coverage process 1 GB for instrumentation while ordinary tests retain 512 MB and graph safety limits stay unchanged.
 
 ### Added
 
