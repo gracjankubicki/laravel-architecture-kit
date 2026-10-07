@@ -31,7 +31,7 @@ final class ArchitectureTableTest extends TestCase
         $this->write('app/Action.php', 'namespace App; use Illuminate\\Support\\Facades\\DB; class Action { public static function run() { '.$body.' } }');
     }
 
-    private function query(string $table = 'orders', ?string $match = null, ?string $connection = null, ?string $operation = null, int $limit = 100, int $depth = 16, array $exclude = [], ?ProjectGraphCache $cache = null): array
+    private function inspectImpact(string $table = 'orders', ?string $match = null, ?string $connection = null, ?string $operation = null, int $limit = 100, int $depth = 16, array $exclude = [], ?ProjectGraphCache $cache = null): array
     {
         $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, $cache))->inspect('', $exclude, $limit, $depth, table: $table, tableMatch: $match, connection: $connection, operation: $operation);
         $this->assertTrue($result['ok'], json_encode($result));
@@ -47,35 +47,35 @@ final class ArchitectureTableTest extends TestCase
     public function test_exact_contains_qualified_and_literal_names_are_separate(): void
     {
         $this->fixture('DB::table("orders")->get(); DB::table("archived_orders")->get(); DB::table("public.orders")->get(); DB::table("Orders")->get();');
-        $this->assertSame(['orders'], array_column($this->query()['table_report']['tables'], 'table'));
-        $this->assertSame(['public.orders'], array_column($this->query('public.orders')['table_report']['tables'], 'table'));
-        $this->assertCount(3, $this->query('orders', 'contains')['table_report']['tables']);
-        $this->assertSame([], $this->query('%', 'contains')['table_report']['tables']);
-        $this->assertSame([], $this->query('missing')['table_report']['usages']);
-        $this->assertSame('none', $this->query('missing')['table_report']['status']);
+        $this->assertSame(['orders'], array_column($this->inspectImpact()['table_report']['tables'], 'table'));
+        $this->assertSame(['public.orders'], array_column($this->inspectImpact('public.orders')['table_report']['tables'], 'table'));
+        $this->assertCount(3, $this->inspectImpact('orders', 'contains')['table_report']['tables']);
+        $this->assertSame([], $this->inspectImpact('%', 'contains')['table_report']['tables']);
+        $this->assertSame([], $this->inspectImpact('missing')['table_report']['usages']);
+        $this->assertSame('none', $this->inspectImpact('missing')['table_report']['status']);
     }
 
     public function test_connections_and_effect_kind_filters_do_not_guess_database_identity(): void
     {
         $this->fixture('DB::table("orders")->get(); DB::connection("crm")->table("orders")->insert([]); DB::connection("default")->table("orders")->get(); DB::connection($name)->table("orders")->get();');
-        $this->assertCount(4, $this->query()['table_report']['tables']);
+        $this->assertCount(4, $this->inspectImpact()['table_report']['tables']);
         foreach (['default' => 'default', 'dynamic' => 'dynamic', 'named:crm' => 'named', 'named:default' => 'named'] as $filter => $kind) {
-            $rows = $this->query(connection: $filter)['table_report']['usages'];
+            $rows = $this->inspectImpact(connection: $filter)['table_report']['usages'];
             $this->assertCount(1, $rows);
             $this->assertSame($kind, $rows[0]['connection']['kind']);
         }
-        $writes = $this->query(connection: 'named:crm', operation: 'write')['table_report']['usages'];
+        $writes = $this->inspectImpact(connection: 'named:crm', operation: 'write')['table_report']['usages'];
         $this->assertCount(1, $writes);
         $this->assertSame('insert', $writes[0]['operation']);
-        $this->assertSame([], $this->query(connection: 'named:missing')['table_report']['usages']);
+        $this->assertSame([], $this->inspectImpact(connection: 'named:missing')['table_report']['usages']);
     }
 
     public function test_preparation_without_terminal_has_no_usage_and_local_method_needs_no_entry(): void
     {
         $this->fixture('Order::where("id", 1); DB::table("orders");');
-        $this->assertSame([], $this->query()['table_report']['usages']);
+        $this->assertSame([], $this->inspectImpact()['table_report']['usages']);
         $this->fixture('Order::createQuietly([]);');
-        $row = $this->query()['table_report']['usages'][0];
+        $row = $this->inspectImpact()['table_report']['usages'][0];
         $this->assertSame('createquietly', $row['operation']);
         $this->assertSame('local', $row['paths'][0]['entry']['kind']);
         $this->assertSame('App\\Action::run', $row['paths'][0]['entry']['symbol']);
@@ -86,11 +86,11 @@ final class ArchitectureTableTest extends TestCase
         $this->fixture('');
         $this->write('database/migrations/create.php', 'use Illuminate\\Support\\Facades\\Schema; return new class extends \\Illuminate\\Database\\Migrations\\Migration { public function up() { Schema::connection("archive")->create("orders", fn ($t) => $t->id()); } public function down() { Schema::connection("archive")->dropIfExists("orders"); } };');
         $this->write('database/migrations/check.php', 'use Illuminate\\Support\\Facades\\Schema; class Check extends \\Illuminate\\Database\\Migrations\\Migration { public function up() { Schema::hasTable("orders"); } }');
-        $report = $this->query(operation: 'schema')['table_report'];
+        $report = $this->inspectImpact(operation: 'schema')['table_report'];
         $this->assertSame(['up', 'down'], array_column($report['usages'], 'migration'));
         $this->assertSame('archive', $report['usages'][0]['connection']['name']);
-        $this->assertCount(1, $this->query(operation: 'schema-read')['table_report']['usages']);
-        $this->assertSame(['app'], $this->query()['scope']['paths']);
+        $this->assertCount(1, $this->inspectImpact(operation: 'schema-read')['table_report']['usages']);
+        $this->assertSame(['app'], $this->inspectImpact()['scope']['paths']);
     }
 
     public function test_callers_and_http_paths_are_continuous_and_do_not_connect_same_table_users(): void
@@ -99,7 +99,7 @@ final class ArchitectureTableTest extends TestCase
         $this->write('app/Controller.php', 'namespace App; class Controller { public function store() { Action::run(); } }');
         $this->write('app/Other.php', 'namespace App; class Other { public function run() { \\Illuminate\\Support\\Facades\\DB::table("orders")->get(); } }');
         $this->write('routes/web.php', '\\Illuminate\\Support\\Facades\\Route::post("/orders", [App\\Controller::class, "store"])->name("orders.store");');
-        $report = $this->query()['table_report'];
+        $report = $this->inspectImpact()['table_report'];
         $this->assertCount(2, $report['usages']);
         $action = array_values(array_filter($report['usages'], fn ($r) => $r['from'] === 'App\\Action::run'))[0];
         $http = array_values(array_filter($action['paths'], fn ($p) => $p['entry']['kind'] === 'http'));
@@ -117,7 +117,7 @@ final class ArchitectureTableTest extends TestCase
         $this->fixture('');
         $this->write('routes/web.php', '\\Illuminate\\Support\\Facades\\Route::get("/orders", fn () => \\Illuminate\\Support\\Facades\\DB::table("orders")->get());');
         $this->write('routes/console.php', '\\Illuminate\\Support\\Facades\\Artisan::command("orders:show", function () { \\Illuminate\\Support\\Facades\\DB::table("orders")->get(); });');
-        $report = $this->query()['table_report'];
+        $report = $this->inspectImpact()['table_report'];
         $kinds = array_column(array_column($this->paths($report), 'entry'), 'kind');
         $this->assertContains('http', $kinds, json_encode($report));
         $this->assertContains('console', $kinds, json_encode($report));
@@ -136,7 +136,7 @@ final class ArchitectureTableTest extends TestCase
         $this->write('app/Console/Commands/Run.php', 'namespace App\\Console\\Commands; class Run extends \\Illuminate\\Console\\Command { protected $signature = "orders:run"; public function handle() { \\App\\Action::run(); } }');
         $this->write('bootstrap/app.php', 'return \\Illuminate\\Foundation\\Application::configure()->withCommands([App\\Console\\Commands\\Run::class]);');
         $this->write('routes/console.php', '\\Illuminate\\Support\\Facades\\Schedule::command("orders:run")->daily();');
-        $report = $this->query()['table_report'];
+        $report = $this->inspectImpact()['table_report'];
         $paths = $this->paths($report);
         $this->assertContains('schedule', array_column(array_column($paths, 'entry'), 'kind'), json_encode($report));
         $edges = array_merge([], ...array_column($paths, 'via'));
@@ -151,11 +151,11 @@ final class ArchitectureTableTest extends TestCase
     public function test_known_effects_coexist_with_global_unknown_without_guessing_matches(): void
     {
         $this->fixture('DB::table("orders")->join($table, "x", "=", "y")->get(); DB::select($sql);');
-        $report = $this->query()['table_report'];
+        $report = $this->inspectImpact()['table_report'];
         $this->assertSame(['orders'], array_column($report['tables'], 'table'));
         $this->assertNotEmpty($report['unresolved']);
         $this->assertSame('incomplete', $report['status']);
-        $absent = $this->query('missing')['table_report'];
+        $absent = $this->inspectImpact('missing')['table_report'];
         $this->assertSame([], $absent['usages']);
         $this->assertSame('incomplete', $absent['status']);
     }
@@ -168,11 +168,11 @@ final class ArchitectureTableTest extends TestCase
         $this->write('app/Listener.php', 'namespace App; class Listener { public function handle(Done $event) { \\Illuminate\\Support\\Facades\\DB::table("audit")->insert([]); } }');
         $this->write('app/Providers/EventServiceProvider.php', 'namespace App\\Providers; class EventServiceProvider extends \\Illuminate\\Foundation\\Support\\Providers\\EventServiceProvider { protected $listen = [\\App\\Done::class => [\\App\\Listener::class]]; }');
         $this->write('routes/web.php', '\\Illuminate\\Support\\Facades\\Route::post("/orders", [App\\Action::class, "run"]);');
-        $quiet = $this->query('audit')['table_report'];
+        $quiet = $this->inspectImpact('audit')['table_report'];
         $this->assertNotEmpty($quiet['usages']);
         $this->assertNotContains('http', array_column(array_column($this->paths($quiet), 'entry'), 'kind'));
         $this->write('app/Action.php', 'namespace App; class Action { public static function run() { Order::create([]); } }');
-        $normal = $this->query('audit')['table_report'];
+        $normal = $this->inspectImpact('audit')['table_report'];
         $this->assertContains('http', array_column(array_column($this->paths($normal), 'entry'), 'kind'), json_encode($normal));
     }
 
@@ -181,10 +181,10 @@ final class ArchitectureTableTest extends TestCase
         $this->fixture('Order::query()->active()->get();');
         $this->write('app/Order.php', 'namespace App; class Order extends \\Illuminate\\Database\\Eloquent\\Model { public function scopeActive($q) { return Helper::query(); } }');
         $this->write('app/Helper.php', 'namespace App; class Helper { public static function query() { return \\Illuminate\\Support\\Facades\\DB::table("orders")->where(function ($q) { \\Illuminate\\Support\\Facades\\DB::table("audit")->get(); }); } }');
-        $orders = $this->query()['table_report']['usages'];
+        $orders = $this->inspectImpact()['table_report']['usages'];
         $this->assertNotEmpty($orders);
         $this->assertNotEmpty($orders[0]['preparation_via']);
-        $audit = $this->query('audit')['table_report'];
+        $audit = $this->inspectImpact('audit')['table_report'];
         $this->assertNotEmpty($audit['usages']);
         foreach ($this->paths($audit) as $path) {
             $this->assertContinuous($path['via']);
@@ -199,11 +199,11 @@ final class ArchitectureTableTest extends TestCase
         $this->write('app/Line.php', 'namespace App; class Line extends \\Illuminate\\Database\\Eloquent\\Model {}');
         $this->write('app/Product.php', 'namespace App; class Product extends \\Illuminate\\Database\\Eloquent\\Model {}');
         foreach (['lines', 'customers', 'payments', 'audit'] as $table) {
-            $rows = $this->query($table, operation: 'read')['table_report']['usages'];
+            $rows = $this->inspectImpact($table, operation: 'read')['table_report']['usages'];
             $this->assertNotEmpty($rows, $table);
             $this->assertSame([$table], array_values(array_unique(array_column($rows, 'table'))));
         }
-        $this->assertNotEmpty($this->query('order_product', operation: 'write')['table_report']['usages']);
+        $this->assertNotEmpty($this->inspectImpact('order_product', operation: 'write')['table_report']['usages']);
     }
 
     public function test_composer_env_include_is_never_read_and_unknown_call_remains_global(): void
@@ -245,13 +245,13 @@ final class ArchitectureTableTest extends TestCase
         $this->fixture('DB::table("orders")->get();');
         $this->write('app/A.php', 'namespace App; class A { public static function run() { B::run(); Action::run(); } }');
         $this->write('app/B.php', 'namespace App; class B { public static function run() { A::run(); Action::run(); } }');
-        $report = $this->query()['table_report'];
+        $report = $this->inspectImpact()['table_report'];
         $this->assertGreaterThan(2, $report['totals']['paths']);
-        $zero = $this->query(limit: 0)['table_report'];
+        $zero = $this->inspectImpact(limit: 0)['table_report'];
         $this->assertSame([], $zero['usages']);
         $this->assertSame($report['totals']['usages'], $zero['totals']['usages']);
         $this->assertSame('limit', $zero['status']);
-        $this->assertSame('limit', $this->query(depth: 1)['table_report']['status']);
+        $this->assertSame('limit', $this->inspectImpact(depth: 1)['table_report']['status']);
     }
 
     public function test_source_only_excludes_vendor_env_symlinks_and_explicit_excludes(): void
@@ -261,20 +261,20 @@ final class ArchitectureTableTest extends TestCase
         $this->write('outside.php', '\\Illuminate\\Support\\Facades\\DB::table("orders")->delete();');
         symlink($this->tempPath.'/outside.php', $this->tempPath.'/app/Link.php');
         $this->write('.env', 'this is not PHP');
-        $report = $this->query()['table_report'];
+        $report = $this->inspectImpact()['table_report'];
         $this->assertSame(['app/Action.php'], array_values(array_unique(array_column($report['usages'], 'path'))));
-        $this->assertSame([], $this->query(exclude: ['app/Action.php'])['table_report']['usages']);
+        $this->assertSame([], $this->inspectImpact(exclude: ['app/Action.php'])['table_report']['usages']);
     }
 
     public function test_new_data_inputs_change_snapshot_without_expanding_audit_scope(): void
     {
         $this->fixture('DB::table("orders")->get();');
         $cache = new ProjectGraphCache(new Filesystem, $this->tempPath);
-        $first = $this->query(cache: $cache);
-        $second = $this->query(cache: $cache);
+        $first = $this->inspectImpact(cache: $cache);
+        $second = $this->inspectImpact(cache: $cache);
         $this->assertSame($first['snapshot'], $second['snapshot']);
         $this->write('database/migrations/new.php', 'return new class extends \\Illuminate\\Database\\Migrations\\Migration { public function up() { \\Illuminate\\Support\\Facades\\Schema::create("orders", fn ($t) => $t->id()); } };');
-        $third = $this->query(cache: $cache);
+        $third = $this->inspectImpact(cache: $cache);
         $this->assertNotSame($first['snapshot'], $third['snapshot']);
         $this->assertTrue($third['table_report']['fresh']);
         $this->assertSame(['app'], $third['scope']['paths']);
@@ -294,7 +294,7 @@ final class ArchitectureTableTest extends TestCase
         $this->fixture('DB::connection("crm")->table("orders")->get();');
         $this->assertSame(0, Artisan::call('architecture-kit:impact', ['--table' => 'orders', '--connection' => 'named:crm', '--operation' => 'read', '--agent' => true, '--limit' => 100, '--depth' => 16]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame($this->query(connection: 'named:crm', operation: 'read')['table_report'], $cli['table_report']);
+        $this->assertSame($this->inspectImpact(connection: 'named:crm', operation: 'read')['table_report'], $cli['table_report']);
         ArchitectureKitServer::tool(Impact::class, ['table' => 'orders', 'connection' => 'named:crm', 'operation' => 'read', 'limit' => 100, 'depth' => 16])->assertOk()->assertSee('"table_report"')->assertSee('orders');
         ArchitectureKitServer::tool(Impact::class, ['table' => ['orders']])->assertSee('E_INVALID_TOOL_INPUT');
         $this->assertSame(0, Artisan::call('architecture-kit:impact', ['--table' => 'orders']));

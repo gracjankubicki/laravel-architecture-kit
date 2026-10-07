@@ -151,9 +151,14 @@ final class ReverbCatalogExtractor
             $resolved = $resolved && ($parameter->default !== null || $parameter->variadic);
         }
         foreach ($value instanceof Expr\Array_ && count($value->items) <= 128 ? $value->items : [] as $item) {
-            $name = $item !== null ? $this->name($item->value) : null;
-            $null = $item?->value instanceof Expr\ConstFetch && strtolower($item->value->name->toString()) === 'null';
-            $resolved = $resolved && $item !== null && ! $item->unpack && ! $item->byRef && ($name !== null || $null);
+            if ($item === null) {
+                $resolved = false;
+
+                continue;
+            }
+            $name = $this->name($item->value);
+            $null = $item->value instanceof Expr\ConstFetch && strtolower($item->value->name->toString()) === 'null';
+            $resolved = $resolved && ! $item->unpack && ! $item->byRef && ($name !== null || $null);
             if ($name !== null || $null) {
                 $connections[] = $name;
             }

@@ -39,7 +39,7 @@ final class ArchitectureImpactTest extends TestCase
         $this->write('tests/Feature/InvoiceTest.php', '<?php namespace Tests; final class InvoiceTest { public function testInvoice(\App\InvoiceController $controller) { $controller->store(new \App\CreateInvoiceAction(new \App\InvoiceCalculator)); } }');
     }
 
-    private function query(string $subject, bool $cache = false, int $limit = 100, int $depth = 8): array
+    private function inspectImpact(string $subject, bool $cache = false, int $limit = 100, int $depth = 8): array
     {
         $files = new Filesystem;
 
@@ -49,7 +49,7 @@ final class ArchitectureImpactTest extends TestCase
     public function test_method_chain_is_precise_at_every_hop_and_class_context_is_separate(): void
     {
         $this->fixture();
-        $result = $this->query('InvoiceCalculator::calculate');
+        $result = $this->inspectImpact('InvoiceCalculator::calculate');
         $this->assertTrue($result['ok']);
         $names = array_column($result['dependents'], 'symbol');
         $this->assertContains('App\CreateInvoiceAction::handle', $names);
@@ -72,7 +72,7 @@ final class ArchitectureImpactTest extends TestCase
     public function test_outgoing_chains_are_method_scoped_too(): void
     {
         $this->fixture();
-        $result = $this->query('InvoiceController::store');
+        $result = $this->inspectImpact('InvoiceController::store');
         $names = array_column($result['dependencies'], 'symbol');
         $this->assertContains('App\CreateInvoiceAction::handle', $names);
         $this->assertContains('App\InvoiceCalculator::calculate', $names);
@@ -82,9 +82,9 @@ final class ArchitectureImpactTest extends TestCase
     public function test_class_file_and_case_insensitive_names_return_transitive_class_relationships(): void
     {
         $this->fixture();
-        $class = $this->query('InvoiceCalculator');
-        $path = $this->query($this->tempPath.'/app/InvoiceCalculator.php');
-        $fqcn = $this->query('\\app\\invoicecalculator');
+        $class = $this->inspectImpact('InvoiceCalculator');
+        $path = $this->inspectImpact($this->tempPath.'/app/InvoiceCalculator.php');
+        $fqcn = $this->inspectImpact('\\app\\invoicecalculator');
         $this->assertSame($class, $path);
         $this->assertSame($class, $fqcn);
         $this->assertContains('App\InvoiceController', array_column($class['dependents'], 'symbol'));
@@ -95,7 +95,7 @@ final class ArchitectureImpactTest extends TestCase
         $this->fixture();
         $this->write('app/Other.php', '<?php namespace Other; class InvoiceCalculator {} class Another {}');
         foreach (['InvoiceCalculator', 'app/Other.php'] as $selector) {
-            $result = $this->query($selector);
+            $result = $this->inspectImpact($selector);
             $this->assertFalse($result['ok']);
             $this->assertSame('E_IMPACT_SUBJECT_AMBIGUOUS', $result['m']);
             $this->assertCount(2, $result['candidates']);
@@ -107,7 +107,7 @@ final class ArchitectureImpactTest extends TestCase
         $this->fixture();
         $this->write('vendor/Outside.php', '<?php class Outside {}');
         foreach (['Missing' => 'E_IMPACT_SUBJECT_NOT_FOUND', 'InvoiceCalculator::missing' => 'E_IMPACT_METHOD_NOT_FOUND', 'InvoiceCalculator::bad-name' => 'E_IMPACT_METHOD_INVALID', 'vendor/Outside.php' => 'E_IMPACT_OUT_OF_SCOPE', '' => 'E_IMPACT_SUBJECT_REQUIRED'] as $selector => $code) {
-            $this->assertSame($code, $this->query($selector)['m']);
+            $this->assertSame($code, $this->inspectImpact($selector)['m']);
         }
     }
 
@@ -125,7 +125,7 @@ final class Users {
     public function chained() { (new InvoiceCalculator)->calculate(); }
 }
 SRC);
-        $names = array_column($this->query('InvoiceCalculator::calculate')['dependents'], 'symbol');
+        $names = array_column($this->inspectImpact('InvoiceCalculator::calculate')['dependents'], 'symbol');
         foreach (['typed', 'property', 'staticCall', 'created', 'chained'] as $method) {
             $this->assertContains('App\Users::'.$method, $names);
         }
@@ -134,21 +134,21 @@ SRC);
     public function test_interfaces_and_overrides_are_possible_not_concrete_implementation_calls(): void
     {
         $this->write('app/Contracts.php', '<?php namespace App; interface CalculatorContract { public function calculate(): int; } class BaseCalculator { public function calculate(): int { return 1; } } class InvoiceCalculator extends BaseCalculator implements CalculatorContract { public function calculate(): int { return 2; } } final class ContractUser { public function run(CalculatorContract $c) { return $c->calculate(); } public function parentType(BaseCalculator $c) { return $c->calculate(); } }');
-        $result = $this->query('InvoiceCalculator::calculate');
+        $result = $this->inspectImpact('InvoiceCalculator::calculate');
         $this->assertNotContains('App\ContractUser::run', array_column($result['dependents'], 'symbol'));
         $this->assertContains('App\ContractUser::run', array_column($result['possible']['dependents'], 'symbol'));
         $this->assertContains('App\ContractUser::parentType', array_column($result['possible']['dependents'], 'symbol'));
-        $base = $this->query('BaseCalculator::calculate');
+        $base = $this->inspectImpact('BaseCalculator::calculate');
         $this->assertSame('App\InvoiceCalculator::calculate', $base['possible']['overrides'][0]['symbol']);
     }
 
     public function test_inherited_methods_traits_and_parent_calls_resolve_declarations(): void
     {
         $this->write('app/Family.php', '<?php namespace App; class Base { public function calculate() {} } final class Child extends Base { public function run() { parent::calculate(); } } trait CalculateTrait { public function estimate() {} } final class TraitUser { use CalculateTrait; public function run() { $this->estimate(); } }');
-        $inherited = $this->query('Child::calculate');
+        $inherited = $this->inspectImpact('Child::calculate');
         $this->assertSame('App\Base::calculate', $inherited['subject']['declaration']['symbol']);
         $this->assertContains('App\Child::run', array_column($inherited['dependents'], 'symbol'));
-        $trait = $this->query('TraitUser::estimate');
+        $trait = $this->inspectImpact('TraitUser::estimate');
         $this->assertSame('App\CalculateTrait::estimate', $trait['subject']['declaration']['symbol']);
         $this->assertContains('App\TraitUser::run', array_column($trait['dependents'], 'symbol'));
     }
@@ -156,7 +156,7 @@ SRC);
     public function test_trait_adaptations_do_not_guess_a_declaration(): void
     {
         $this->write('app/Family.php', '<?php namespace App; trait A { public function calculate() {} } trait B { public function calculate() {} } final class Child { use A, B { A::calculate insteadof B; } }');
-        $this->assertSame('E_IMPACT_METHOD_UNRESOLVED', $this->query('Child::calculate')['m']);
+        $this->assertSame('E_IMPACT_METHOD_UNRESOLVED', $this->inspectImpact('Child::calculate')['m']);
     }
 
     public function test_dynamic_receivers_and_branch_mutations_remain_incomplete(): void
@@ -170,7 +170,7 @@ final class Dynamic {
     public function ref(InvoiceCalculator $x) { mutate($x); $x->calculate(); }
 }
 SRC);
-        $result = $this->query('InvoiceCalculator::calculate');
+        $result = $this->inspectImpact('InvoiceCalculator::calculate');
         $this->assertSame('incomplete', $result['analysis']['status']);
         $this->assertNotContains('App\Dynamic::changed', array_column($result['dependents'], 'symbol'));
         $this->assertNotContains('App\Dynamic::ref', array_column($result['dependents'], 'symbol'));
@@ -181,7 +181,7 @@ SRC);
     {
         $this->fixture();
         $this->write('routes/web.php', '<?php $handler = [\App\InvoiceCalculator::class, "calculate"]; $callable = \App\InvoiceCalculator::calculate(...);');
-        $result = $this->query('InvoiceCalculator::calculate');
+        $result = $this->inspectImpact('InvoiceCalculator::calculate');
         $this->assertContains('(file) routes/web.php', array_column($result['references']['dependents'], 'symbol'));
         $this->assertNotContains('(file) routes/web.php', array_column($result['dependents'], 'symbol'));
         $this->assertNotEmpty($result['analysis']['limitations']);
@@ -190,35 +190,35 @@ SRC);
     public function test_no_relationships_framework_limit_and_empty_or_truncated_results_are_distinct(): void
     {
         $this->write('app/Alone.php', '<?php namespace App; final class Alone { public function handle() {} }');
-        $none = $this->query('Alone::handle');
+        $none = $this->inspectImpact('Alone::handle');
         $this->assertSame('none', $none['analysis']['status']);
         $this->assertStringContainsString('Framework dispatch', implode(' ', $none['analysis']['limitations']));
         $this->fixture();
-        $limited = $this->query('InvoiceCalculator::calculate', limit: 1, depth: 1);
+        $limited = $this->inspectImpact('InvoiceCalculator::calculate', limit: 1, depth: 1);
         $this->assertSame('limit', $limited['analysis']['status']);
         $this->assertTrue($limited['analysis']['truncated']);
         $this->assertCount(1, $limited['dependents']);
-        $zero = $this->query('InvoiceCalculator::calculate', limit: 0);
+        $zero = $this->inspectImpact('InvoiceCalculator::calculate', limit: 0);
         $this->assertSame('limit', $zero['analysis']['status']);
         $this->assertSame([], $zero['dependents']);
-        $this->assertSame('E_IMPACT_LIMIT_INVALID', $this->query('Alone', depth: 0)['m']);
+        $this->assertSame('E_IMPACT_LIMIT_INVALID', $this->inspectImpact('Alone', depth: 0)['m']);
     }
 
     public function test_call_cycles_are_bounded_and_output_deterministic(): void
     {
         $this->write('app/Cycle.php', '<?php namespace App; final class Cycle { public function a() { $this->b(); } public function b() { $this->a(); } }');
-        $result = $this->query('Cycle::a');
+        $result = $this->inspectImpact('Cycle::a');
         $this->assertCount(1, $result['dependencies']);
         $this->assertCount(1, $result['dependents']);
-        $this->assertSame($result, $this->query('Cycle::a'));
+        $this->assertSame($result, $this->inspectImpact('Cycle::a'));
     }
 
     public function test_cache_disabled_cold_warm_and_changed_deleted_sources_agree(): void
     {
         $this->fixture();
-        $disabled = $this->query('InvoiceCalculator::calculate');
-        $cold = $this->query('InvoiceCalculator::calculate', true);
-        $warm = $this->query('InvoiceCalculator::calculate', true);
+        $disabled = $this->inspectImpact('InvoiceCalculator::calculate');
+        $cold = $this->inspectImpact('InvoiceCalculator::calculate', true);
+        $warm = $this->inspectImpact('InvoiceCalculator::calculate', true);
         $this->assertSame('disabled', $disabled['cache']);
         $this->assertSame('missing', $cold['cache']);
         $this->assertSame('fresh', $warm['cache']);
@@ -226,12 +226,12 @@ SRC);
         $this->assertSame($disabled, $cold);
         $this->assertSame($cold, $warm);
         $this->write('app/PreviewInvoiceAction.php', '<?php namespace App; final class PreviewInvoiceAction { public function handle(InvoiceCalculator $c) { return $c->calculate(); } }');
-        $changed = $this->query('InvoiceCalculator::calculate', true);
+        $changed = $this->inspectImpact('InvoiceCalculator::calculate', true);
         $this->assertContains('App\PreviewInvoiceAction::handle', array_column($changed['dependents'], 'symbol'));
         $this->assertNotSame($warm['snapshot'], $changed['snapshot']);
         unlink($this->tempPath.'/app/PreviewInvoiceAction.php');
         clearstatcache();
-        $deleted = $this->query('InvoiceCalculator::calculate', true);
+        $deleted = $this->inspectImpact('InvoiceCalculator::calculate', true);
         $this->assertNotContains('App\PreviewInvoiceAction::handle', array_column($deleted['dependents'], 'symbol'));
     }
 
@@ -251,7 +251,7 @@ SRC);
         $this->assertEquals($normal->edges, $impact->edges);
         $this->assertSame([], $normal->impactFacts);
         $this->assertNotEmpty($impact->impactFacts);
-        $this->query('InvoiceCalculator::calculate', true);
+        $this->inspectImpact('InvoiceCalculator::calculate', true);
         Artisan::call('architecture-kit:audit', ['--agent' => true]);
         $after = json_decode(Artisan::output(), true);
         $this->assertSame($before['find'], $after['find']);
@@ -287,7 +287,7 @@ SRC);
     public function test_application_code_is_never_executed_for_discovery(): void
     {
         $this->write('app/Poison.php', '<?php namespace App; file_put_contents('.var_export($this->tempPath.'/executed', true).', "bad"); final class Poison { public function handle() { throw new \RuntimeException("executed"); } }');
-        $this->assertTrue($this->query('Poison::handle')['ok']);
+        $this->assertTrue($this->inspectImpact('Poison::handle')['ok']);
         $this->assertFileDoesNotExist($this->tempPath.'/executed');
     }
 
@@ -314,7 +314,7 @@ SRC);
     {
         $this->fixture();
         $this->write('app/script.php', '<?php $c = new \App\InvoiceCalculator; $c->calculate();');
-        $result = $this->query('app/script.php');
+        $result = $this->inspectImpact('app/script.php');
         $this->assertTrue($result['ok']);
         $this->assertSame('file', $result['subject']['kind']);
         $this->assertContains('App\InvoiceCalculator::calculate', array_column($result['dependencies'], 'symbol'));
@@ -336,7 +336,7 @@ final class Mutations {
     public function matchChange(InvoiceCalculator $c, $value) { match ($value) { ($c = unknown()) => 1, default => 0 }; $c->calculate(); }
 }
 SRC);
-        $result = $this->query('InvoiceCalculator::calculate');
+        $result = $this->inspectImpact('InvoiceCalculator::calculate');
         foreach (['iteration', 'removed', 'reference', 'property', 'matchChange'] as $method) {
             $this->assertNotContains('App\Mutations::'.$method, array_column($result['dependents'], 'symbol'));
         }
@@ -347,7 +347,7 @@ SRC);
     {
         $this->fixture();
         $this->write('app/Inherited.php', '<?php namespace App; class PropertyBase { protected InvoiceCalculator $c; } final class Inherited extends PropertyBase { public function run() { $this->c->calculate(); } public function union(InvoiceCalculator|PropertyBase $c) { $c->calculate(); } }');
-        $result = $this->query('InvoiceCalculator::calculate');
+        $result = $this->inspectImpact('InvoiceCalculator::calculate');
         $this->assertContains('App\Inherited::run', array_column($result['dependents'], 'symbol'));
         $this->assertNotContains('App\Inherited::union', array_column($result['dependents'], 'symbol'));
         $this->assertSame('incomplete', $result['analysis']['status']);
@@ -367,11 +367,11 @@ SRC);
     public function test_corrupt_and_missing_impact_cache_channels_rebuild_instead_of_hiding_methods(): void
     {
         $this->fixture();
-        $this->query('InvoiceCalculator::calculate', true);
+        $this->inspectImpact('InvoiceCalculator::calculate', true);
         $files = new Filesystem;
         $stored = $files->glob($this->tempPath.'/'.ProjectGraphCache::DIRECTORY.'/*.cache')[0];
         $files->put($stored, 'corrupt');
-        $rebuilt = $this->query('InvoiceCalculator::calculate', true);
+        $rebuilt = $this->inspectImpact('InvoiceCalculator::calculate', true);
         $this->assertSame('corrupt', $rebuilt['cache']);
         $raw = $files->get($stored);
         $data = unserialize(substr($raw, strpos($raw, "\n") + 1), ['allowed_classes' => false]);
@@ -381,14 +381,14 @@ SRC);
         unset($entry);
         $payload = serialize($data);
         $files->put($stored, hash('xxh128', $payload)."\n".$payload);
-        $restored = $this->query('InvoiceCalculator::calculate', true);
+        $restored = $this->inspectImpact('InvoiceCalculator::calculate', true);
         $this->assertContains('App\CreateInvoiceAction::handle', array_column($restored['dependents'], 'symbol'));
     }
 
     public function test_source_and_dispatch_limits_are_explicit(): void
     {
         $this->write('app/Huge.php', '<?php namespace App; final class Huge { public function handle() {} } '.str_repeat(' ', 100001));
-        $result = $this->query('Huge');
+        $result = $this->inspectImpact('Huge');
         $this->assertFalse($result['ok']);
         $this->assertSame('E_IMPACT_ANALYSIS_LIMIT', $result['m']);
         $this->assertStringContainsString('size limit', $result['msg']);
@@ -410,13 +410,13 @@ SRC);
     {
         $this->fixture();
         $this->write('routes/array.php', '<?php $data = ["class" => \App\InvoiceCalculator::class, "method" => "calculate"];');
-        $this->assertSame([], $this->query('InvoiceCalculator::calculate')['references']['dependents']);
+        $this->assertSame([], $this->inspectImpact('InvoiceCalculator::calculate')['references']['dependents']);
     }
 
     public function test_possible_contract_chains_stay_possible_at_later_hops(): void
     {
         $this->write('app/Contract.php', '<?php namespace App; interface Contract { public function calculate(); } final class Calculator implements Contract { public function calculate() {} } final class Action { public function handle(Contract $c) { $c->calculate(); } } final class Controller { public function run(Action $action, Contract $c) { $action->handle($c); } }');
-        $result = $this->query('Calculator::calculate');
+        $result = $this->inspectImpact('Calculator::calculate');
         $this->assertContains('App\Controller::run', array_column($result['possible']['dependents'], 'symbol'));
         $this->assertNotContains('App\Controller::run', array_column($result['dependents'], 'symbol'));
     }
@@ -446,7 +446,7 @@ SRC);
         $result = (new ArchitectureImpact($files, $root))->inspect('InvoiceCalculator::calculate');
         $this->assertSame('incomplete', $result['analysis']['status']);
         $this->assertStringContainsString('changed during', implode(' ', array_column($result['analysis']['notices'], 'reason')));
-        $this->assertContains('App\PreviewInvoiceAction::handle', array_column($this->query('InvoiceCalculator::calculate')['dependents'], 'symbol'));
+        $this->assertContains('App\PreviewInvoiceAction::handle', array_column($this->inspectImpact('InvoiceCalculator::calculate')['dependents'], 'symbol'));
     }
 
     public function test_memory_limited_extraction_is_explicit_and_is_not_reused_at_a_larger_budget(): void
@@ -455,13 +455,13 @@ SRC);
         $previous = ini_get('memory_limit');
         try {
             ini_set('memory_limit', (string) (memory_get_usage(true) + 16 * 1024 * 1024));
-            $limited = $this->query('InvoiceCalculator::calculate', true);
+            $limited = $this->inspectImpact('InvoiceCalculator::calculate', true);
             $this->assertFalse($limited['ok']);
             $this->assertSame('E_IMPACT_ANALYSIS_LIMIT', $limited['m']);
         } finally {
             ini_set('memory_limit', $previous);
         }
-        $fresh = $this->query('InvoiceCalculator::calculate', true);
+        $fresh = $this->inspectImpact('InvoiceCalculator::calculate', true);
         $this->assertTrue($fresh['ok']);
         $this->assertContains('App\CreateInvoiceAction::handle', array_column($fresh['dependents'], 'symbol'));
     }
@@ -471,8 +471,8 @@ SRC);
         $this->write('app/A.php', '<?php namespace App; class A { public function run() {} }');
         $this->write('app/B.php', '<?php namespace App; class B { public function run() {} }');
         $this->write('app/User.php', '<?php namespace App; class User { public function branch() { $x = new A; if ($x = new B) { $x->run(); } } public function loop() { $x = new A; while ($x = new B) { $x->run(); } } public function repeated() { $x = new A; do { $x->run(); $x = new B; } while (true); } }');
-        $a = $this->query('A::run');
-        $b = $this->query('B::run');
+        $a = $this->inspectImpact('A::run');
+        $b = $this->inspectImpact('B::run');
         $this->assertNotContains('App\\User::branch', array_column($a['dependents'], 'symbol'));
         $this->assertContains('App\\User::branch', array_column($b['dependents'], 'symbol'));
         $this->assertNotContains('App\\User::loop', array_column($a['dependents'], 'symbol'));
@@ -484,7 +484,7 @@ SRC);
     {
         $this->write('app/BaseFactory.php', '<?php namespace App; class BaseFactory { public function make() { $x = new static; $x->run(); } public function run() {} }');
         $this->write('app/ChildFactory.php', '<?php namespace App; class ChildFactory extends BaseFactory { public function run() {} }');
-        $result = $this->query('ChildFactory::run');
+        $result = $this->inspectImpact('ChildFactory::run');
         $this->assertContains('App\\BaseFactory::make', array_column($result['possible']['dependents'], 'symbol'));
         $this->assertNotContains('App\\BaseFactory::make', array_column($result['dependents'], 'symbol'));
     }
@@ -496,12 +496,12 @@ SRC);
             $this->write('app/Level'.$i.'.php', '<?php namespace App; class Level'.$i.' extends Level'.($i - 1).' { '.($i === 15 ? 'public function run() {}' : '').' }');
         }
         $this->write('app/User.php', '<?php namespace App; class User { public function call(Level0 $x) { $x->run(); } }');
-        $result = $this->query('Level15::run');
+        $result = $this->inspectImpact('Level15::run');
         $this->assertSame('limit', $result['analysis']['status']);
         $notices = array_values(array_filter($result['analysis']['notices'], fn ($notice) => str_contains($notice['reason'], 'hierarchy depth limit')));
         $this->assertNotEmpty($notices);
         $this->assertStringStartsWith('app/Level', $notices[0]['path']);
-        $inherited = $this->query('Level14::run');
+        $inherited = $this->inspectImpact('Level14::run');
         $this->assertFalse($inherited['ok']);
         $this->assertSame('E_IMPACT_ANALYSIS_LIMIT', $inherited['m']);
     }
@@ -550,7 +550,7 @@ SRC);
         $this->write('app/A.php', '<?php namespace App; class A { public function run() {} }');
         $this->write('app/B.php', '<?php namespace App; class B { public function run() {} }');
         $this->write('app/User.php', '<?php namespace App; class User { public function alias($flag) { $x = new A; do { $x->run(); $alias =& $x; $alias = new B; } while ($flag); } public function argument($flag) { $x = new A; do { $x->run(); mutate($x); } while ($flag); } public function unsetLoop($flag) { $x = new A; do { $x->run(); unset($x); } while ($flag); } public function destructure($flag) { $x = new A; do { $x->run(); [$x] = values(); } while ($flag); } }');
-        $result = $this->query('A::run');
+        $result = $this->inspectImpact('A::run');
         foreach (['alias', 'argument', 'unsetLoop', 'destructure'] as $method) {
             $this->assertNotContains('App\\User::'.$method, array_column($result['dependents'], 'symbol'));
             $this->assertContains('App\\User::'.$method, array_column($result['analysis']['notices'], 'from'));

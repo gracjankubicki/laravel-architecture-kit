@@ -14,6 +14,7 @@ fi
 EVAL_WORK="$(mktemp -d)"
 trap 'rm -rf "${EVAL_WORK}"' EXIT
 cp "${EVAL_ROOT}/pest/composer.json" "${EVAL_WORK}/composer.json"
+cp "${EVAL_ROOT}/pest/phpunit.xml" "${EVAL_WORK}/phpunit.xml"
 cp -R "${EVAL_ROOT}/pest/tests" "${EVAL_WORK}/tests"
 composer install --working-dir="${EVAL_WORK}" --prefer-dist --no-interaction --no-progress
 cd "${EVAL_WORK}"

@@ -34,7 +34,7 @@ final class ArchitecturePathTest extends TestCase
         $this->write('app/Isolated.php', 'namespace App; class Isolated { public static function run() {} }');
     }
 
-    private function query(string $from = 'A::run', string $to = 'D::run', int $limit = 20, int $depth = 8, array $exclude = []): array
+    private function inspectImpact(string $from = 'A::run', string $to = 'D::run', int $limit = 20, int $depth = 8, array $exclude = []): array
     {
         return (new ArchitecturePath(new Filesystem, $this->tempPath, new AuditScope))->inspect($from, $to, $exclude, $limit, $depth);
     }
@@ -44,7 +44,7 @@ final class ArchitecturePathTest extends TestCase
         $this->fixture();
         foreach (['App\\A', 'A::run', 'app/A.php'] as $from) {
             foreach (['App\\D', 'D::run', 'app/D.php'] as $to) {
-                $r = $this->query($from, $to);
+                $r = $this->inspectImpact($from, $to);
                 $this->assertTrue($r['ok'], json_encode($r));
                 foreach (['dependencies', 'execution'] as $channel) {
                     $this->assertCount(2, $r[$channel]['paths'], json_encode($r));
@@ -70,7 +70,7 @@ final class ArchitecturePathTest extends TestCase
     {
         $this->fixture();
         $this->write('app/A.php', 'namespace App; class A { public function run(D $value) {} }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertNotEmpty($r['dependencies']['paths']);
         $this->assertSame([], $r['execution']['paths']);
         $this->assertSame('no_path', $r['execution']['status']);
@@ -82,17 +82,17 @@ final class ArchitecturePathTest extends TestCase
     {
         $this->fixture();
         $this->write('app/A.php', 'namespace App; class A { public static function run($receiver) { $receiver->send(); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertSame('incomplete', $r['execution']['status']);
         $this->assertFalse($r['execution']['found']);
         $this->assertNotEmpty($r['execution']['notices']);
         $this->fixture();
-        foreach ([$this->query(limit: 1), $this->query(depth: 1), $this->query(limit: 0)] as $r) {
+        foreach ([$this->inspectImpact(limit: 1), $this->inspectImpact(depth: 1), $this->inspectImpact(limit: 0)] as $r) {
             $this->assertSame('limit', $r['execution']['status']);
             $this->assertTrue($r['execution']['limited']);
         }
-        $this->assertSame([], $this->query(limit: 0)['execution']['paths']);
-        $this->assertTrue($this->query(limit: 0)['execution']['found']);
+        $this->assertSame([], $this->inspectImpact(limit: 0)['execution']['paths']);
+        $this->assertTrue($this->inspectImpact(limit: 0)['execution']['found']);
     }
 
     public function test_external_calls_stop_without_reading_vendor(): void
@@ -100,37 +100,37 @@ final class ArchitecturePathTest extends TestCase
         $this->fixture();
         $this->write('app/A.php', 'namespace App; class A { public static function run(\\Stripe\\Client $client) { $client->request(); } }');
         $this->write('vendor/stripe/Client.php', 'namespace Stripe; class Client { public function request() { \\App\\D::run(); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertFalse($r['execution']['found']);
         $this->assertCount(1, $r['execution']['external_boundaries']);
         $edge = $r['execution']['external_boundaries'][0]['via'][0];
         $this->assertSame('Stripe\\Client::request', $edge['to']);
         $this->assertTrue($edge['external']);
         $this->assertSame('possible', $edge['certainty']);
-        $r = $this->query(to: 'Stripe\\Client::request');
+        $r = $this->inspectImpact(to: 'Stripe\\Client::request');
         $this->assertTrue($r['ok']);
         $this->assertTrue($r['to']['external']);
         $this->assertCount(1, $r['execution']['paths']);
         $this->assertNull($r['execution']['paths'][0]['nodes'][1]['location']);
-        $this->assertFalse($this->query(to: 'vendor/stripe/Client.php')['ok']);
+        $this->assertFalse($this->inspectImpact(to: 'vendor/stripe/Client.php')['ok']);
     }
 
     public function test_ambiguity_errors_inherited_method_and_multiple_classes_per_file(): void
     {
         $this->fixture();
         $this->write('app/Other/A.php', 'namespace App\\Other; class A {}');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertSame('E_PATH_ENDPOINT_AMBIGUOUS', $r['m']);
         $this->assertCount(2, $r['candidates']);
         $this->assertSame('from', $r['endpoint']);
         $this->write('app/Child.php', 'namespace App; class Child extends B {} class Another { public static function other() { D::run(); } }');
-        $this->assertSame('App\\B::run', $this->query('Child::run')['from']['execution'][0]);
-        $this->assertCount(2, $this->query('app/Child.php')['execution']['paths']);
-        $this->assertSame('E_PATH_METHOD_UNRESOLVED', $this->query('Child::absent')['m']);
-        $this->assertFalse($this->query('app/Child.php', exclude: ['app/Child.php'])['ok']);
-        $this->assertFalse($this->query('', '')['ok']);
-        $this->assertFalse($this->query(limit: 501)['ok']);
-        $this->assertFalse($this->query(depth: 0)['ok']);
+        $this->assertSame('App\\B::run', $this->inspectImpact('Child::run')['from']['execution'][0]);
+        $this->assertCount(2, $this->inspectImpact('app/Child.php')['execution']['paths']);
+        $this->assertSame('E_PATH_METHOD_UNRESOLVED', $this->inspectImpact('Child::absent')['m']);
+        $this->assertFalse($this->inspectImpact('app/Child.php', exclude: ['app/Child.php'])['ok']);
+        $this->assertFalse($this->inspectImpact('', '')['ok']);
+        $this->assertFalse($this->inspectImpact(limit: 501)['ok']);
+        $this->assertFalse($this->inspectImpact(depth: 0)['ok']);
     }
 
     public function test_http_console_schedule_job_and_callback_file_paths(): void
@@ -142,18 +142,18 @@ final class ArchitecturePathTest extends TestCase
         $this->write('bootstrap/app.php', 'return \Illuminate\Foundation\Application::configure()->withRouting(web: base_path("routes/web.php"), commands: base_path("routes/console.php"));');
         $this->write('routes/web.php', '\\Illuminate\\Support\\Facades\\Route::get("send", [App\\A::class, "run"]);');
         $this->write('routes/console.php', '\\Illuminate\\Support\\Facades\\Schedule::command("send")->daily()->timezone("UTC"); \\Illuminate\\Support\\Facades\\Artisan::command("closure", function () { App\\D::run(); });');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertNotEmpty($r['execution']['paths'], json_encode($r));
         $kinds = array_column($r['execution']['paths'][0]['via'], 'kind');
         $this->assertContains('artisan-command', $kinds);
         $this->assertContains('job-handler', $kinds);
         $this->assertSame('queue-requested', $r['execution']['paths'][0]['via'][0]['mode']);
-        $r = $this->query('routes/web.php');
+        $r = $this->inspectImpact('routes/web.php');
         $this->assertContains('http-handler', array_column($r['execution']['paths'][0]['via'], 'kind'));
-        $r = $this->query('routes/console.php');
+        $r = $this->inspectImpact('routes/console.php');
         $this->assertNotEmpty($r['execution']['paths']);
         $this->assertContains('schedule-task', array_column(array_merge(...array_column($r['execution']['paths'], 'via')), 'kind'));
-        $this->assertTrue($this->query('app/Console/Commands/Send.php')['execution']['found']);
+        $this->assertTrue($this->inspectImpact('app/Console/Commands/Send.php')['execution']['found']);
     }
 
     public function test_event_and_model_paths_preserve_quiet_context_and_deferred_reset(): void
@@ -163,15 +163,15 @@ final class ArchitecturePathTest extends TestCase
         $this->write('app/Observer.php', 'namespace App; class Observer { public function created(Order $order) { D::run(); } }');
         $this->write('app/Writer.php', 'namespace App; class Writer { public static function persist() { Order::create([]); } }');
         $this->write('app/A.php', 'namespace App; class A { public static function run() { Order::withoutEvents(fn () => Writer::persist()); Writer::persist(); } public static function quiet() { Order::withoutEvents(fn () => Writer::persist()); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertTrue($r['execution']['found']);
         foreach ($r['execution']['paths'] as $path) {
             $this->assertNotContains('without-events', array_column($path['via'], 'kind'));
         }
-        $this->assertFalse($this->query('A::quiet')['execution']['found']);
+        $this->assertFalse($this->inspectImpact('A::quiet')['execution']['found']);
         $this->write('app/Job.php', 'namespace App; class Job implements \Illuminate\Contracts\Queue\ShouldQueue { use \Illuminate\Foundation\Bus\Dispatchable; public function handle() { Writer::persist(); } }');
         $this->write('app/A.php', 'namespace App; class A { public static function run() { Order::withoutEvents(fn () => Job::dispatch()); } }');
-        $r = $this->query(depth: 16);
+        $r = $this->inspectImpact(depth: 16);
         $this->assertTrue($r['execution']['found'], json_encode($r));
         $this->assertContains('without-events', array_column($r['execution']['paths'][0]['via'], 'kind'));
         $this->assertContains(true, array_column($r['execution']['paths'][0]['via'], 'reset_quiet'));
@@ -179,7 +179,7 @@ final class ArchitecturePathTest extends TestCase
         $this->write('app/Listener.php', 'namespace App; class Listener { public function handle(Created $event) { D::run(); } }');
         $this->write('app/Providers/Events.php', 'namespace App\Providers; class Events extends \Illuminate\Foundation\Support\Providers\EventServiceProvider { protected $listen = [\App\Created::class => [\App\Listener::class]]; }');
         $this->write('app/A.php', 'namespace App; class A { public static function run() { event(new Created); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertTrue($r['execution']['found']);
         $this->assertContains('event-dispatch', array_column($r['execution']['paths'][0]['via'], 'kind'));
         $this->assertContains('event-listener', array_column($r['execution']['paths'][0]['via'], 'kind'));
@@ -190,19 +190,19 @@ final class ArchitecturePathTest extends TestCase
         $this->fixture();
         $this->write('app/Job.php', 'namespace App; class Job implements \Illuminate\Contracts\Queue\ShouldQueue { public function handle() { D::run(); } }');
         $this->write('app/A.php', 'namespace App; class A { public static function run() { new Job; $callback = fn () => D::run(); } }');
-        $this->assertFalse($this->query()['execution']['found']);
-        $this->assertTrue($this->query('Job::handle')['execution']['found']);
-        $this->assertTrue($this->query('app/A.php')['execution']['found']);
+        $this->assertFalse($this->inspectImpact()['execution']['found']);
+        $this->assertTrue($this->inspectImpact('Job::handle')['execution']['found']);
+        $this->assertTrue($this->inspectImpact('app/A.php')['execution']['found']);
     }
 
     public function test_cycle_and_identity_are_finite_and_do_not_drop_other_paths(): void
     {
         $this->fixture();
         $this->write('app/B.php', 'namespace App; class B { public static function run() { A::run(); D::run(); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertCount(2, $r['execution']['paths']);
         $this->assertLessThan(20, $r['execution']['edge_visits']);
-        $r = $this->query('D::run', 'D::run');
+        $r = $this->inspectImpact('D::run', 'D::run');
         $this->assertTrue($r['execution']['found']);
         $this->assertSame([], $r['execution']['paths'][0]['via']);
         $this->assertCount(1, $r['execution']['paths'][0]['nodes']);
@@ -213,22 +213,22 @@ final class ArchitecturePathTest extends TestCase
         $this->fixture();
         $this->write('routes/console.php', 'require base_path("missing.php");');
         $this->write('app/Broken.php', 'class {');
-        $r = $this->query('A::run', 'Isolated::run');
+        $r = $this->inspectImpact('A::run', 'Isolated::run');
         $this->assertSame('incomplete', $r['execution']['status']);
         $this->assertStringContainsString('missing', json_encode($r['execution']['notices']));
         $this->assertStringContainsString('Unparseable', json_encode($r['execution']['notices']));
         $this->write('app/T.php', 'namespace App; trait T { public function run() { D::run(); } }');
         $this->write('app/Adapted.php', 'namespace App; class Adapted { use T { run as other; } }');
-        $this->assertSame('E_PATH_METHOD_UNRESOLVED', $this->query('Adapted::other')['m']);
-        $this->assertFalse($this->query('Adapted')['execution']['found']);
+        $this->assertSame('E_PATH_METHOD_UNRESOLVED', $this->inspectImpact('Adapted::other')['m']);
+        $this->assertFalse($this->inspectImpact('Adapted')['execution']['found']);
     }
 
     public function test_source_edits_during_query_are_stale_and_added_files_change_signature(): void
     {
         $this->fixture();
-        $before = $this->query();
+        $before = $this->inspectImpact();
         $this->write('routes/extra.php', 'App\D::run();');
-        $this->assertNotSame($before['analysis']['source_signature'], $this->query()['analysis']['source_signature']);
+        $this->assertNotSame($before['analysis']['source_signature'], $this->inspectImpact()['analysis']['source_signature']);
         $files = new class($this->tempPath) extends Filesystem
         {
             private bool $changed = false;
@@ -278,7 +278,7 @@ final class ArchitecturePathTest extends TestCase
     {
         $this->fixture();
         $this->write('app/A.php', 'namespace App; class A { public static function run() { $fn = strlen(...); $call = D::run(...); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertTrue($r['ok']);
         $this->assertFalse($r['execution']['found']);
     }
@@ -287,7 +287,7 @@ final class ArchitecturePathTest extends TestCase
     {
         $this->fixture();
         $this->write('routes/script.php', 'App\D::run();');
-        $r = $this->query('routes/script.php');
+        $r = $this->inspectImpact('routes/script.php');
         $this->assertTrue($r['execution']['found']);
         $this->assertSame('incomplete', $r['dependencies']['status']);
         $this->assertNotEmpty($r['dependencies']['notices']);
@@ -297,7 +297,7 @@ final class ArchitecturePathTest extends TestCase
     {
         $this->fixture();
         $this->write('app/A.php', 'namespace App; class A { public static function run($flag) { if ($flag) { D::run(); D::run(); } } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertCount(2, $r['execution']['paths']);
         $this->assertNotSame($r['execution']['paths'][0]['via'][0]['offset'], $r['execution']['paths'][1]['via'][0]['offset']);
         $this->assertSame('possible', $r['execution']['paths'][0]['certainty']);
@@ -345,7 +345,7 @@ final class ArchitecturePathTest extends TestCase
         $this->fixture();
         $this->write('app/Broken.php', 'class {');
         $this->write('app/A.php', 'namespace App; class A { public static function run() { $closure = fn () => D::run(); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertNotEmpty($r['dependencies']['notices']);
         foreach ($r['dependencies']['notices'] as $notice) {
             $this->assertArrayHasKey('path', $notice);
@@ -361,19 +361,19 @@ final class ArchitecturePathTest extends TestCase
         $this->fixture();
         $this->write('app/Order.php', 'namespace App; class Order extends \Illuminate\Database\Eloquent\Model { public function send() { D::run(); } }');
         $this->write('app/A.php', 'namespace App; class A { public static function run(Order $order, string $method) { $order->$method(); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertFalse($r['execution']['found']);
         $this->assertSame('incomplete', $r['execution']['status']);
         $this->assertStringContainsString('model receiver/method is unresolved', $r['execution']['notices'][0]['reason']);
         $old = (new ArchitectureImpact(new Filesystem, $this->tempPath))->inspect('D::run');
         $this->assertSame([], $old['execution']['flow_analysis']['unresolved']);
         $this->write('app/A.php', 'namespace App; class A { public static function run(Order $order) { $order->customMacro(); } }');
-        $this->assertSame('incomplete', $this->query()['execution']['status']);
+        $this->assertSame('incomplete', $this->inspectImpact()['execution']['status']);
         $this->write('app/A.php', 'namespace App; class A { public static function run(Order $order) { $order->saveQuietly(); Order::create([]); } }');
-        $this->assertSame('no_path', $this->query()['execution']['status']);
+        $this->assertSame('no_path', $this->inspectImpact()['execution']['status']);
         $this->write('app/Order.php', 'namespace App; #[\Illuminate\Database\Eloquent\Attributes\ObservedBy(Observer::class)] class Order extends \Illuminate\Database\Eloquent\Model {}');
         $this->write('app/Observer.php', 'namespace App; class Observer { public function created(Order $order) { D::run(); } }');
-        $r = $this->query();
+        $r = $this->inspectImpact();
         $this->assertTrue($r['execution']['found']);
         $this->assertContains('model-event', array_column($r['execution']['paths'][0]['via'], 'kind'));
     }

@@ -37,7 +37,7 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $this->write('routes/api.php', 'use Illuminate\Support\Facades\Route; Route::get("ping", App\Controller::class);');
     }
 
-    private function query(string $subject = 'Calculator::calculate', int $limit = 100, int $depth = 8, bool $cache = false, array $exclude = [], ?Filesystem $files = null, ?string $change = null): array
+    private function inspectImpact(string $subject = 'Calculator::calculate', int $limit = 100, int $depth = 8, bool $cache = false, array $exclude = [], ?Filesystem $files = null, ?string $change = null): array
     {
         $files ??= new Filesystem;
 
@@ -46,7 +46,7 @@ final class ArchitectureHttpRoutesTest extends TestCase
 
     private function execution(string $subject = 'Calculator::calculate'): array
     {
-        $result = $this->query($subject);
+        $result = $this->inspectImpact($subject);
         $this->assertTrue($result['ok'], json_encode($result));
 
         return $result['execution'];
@@ -70,7 +70,7 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $this->assertCount(1, $this->execution('Calculator::other')['routes']);
         $this->assertCount(3, $this->execution('Controller')['routes']);
         $this->assertCount(3, $this->execution('app/Calculator.php')['routes']);
-        $this->assertSame(['app'], $this->query()['scope']['paths']);
+        $this->assertSame(['app'], $this->inspectImpact()['scope']['paths']);
     }
 
     public function test_callbacks_are_immediate_only_and_same_line_identity_is_distinct(): void
@@ -192,7 +192,7 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $this->fixture();
         $this->write('routes/web.php', 'require __DIR__."/web.php"; require base_path("missing.php"); require base_path("extra/excluded.php"); require base_path("../outside.php"); require base_path("vendor/custom.php"); Route::post("ok", [App\Controller::class,"store"]);');
         $this->write('extra/excluded.php', 'Route::post("excluded", [App\Controller::class,"store"]);');
-        $execution = $this->query(exclude: ['extra/*'])['execution'];
+        $execution = $this->inspectImpact(exclude: ['extra/*'])['execution'];
         $reasons = implode(' ', array_column($execution['unresolved'], 'reason'));
         foreach (['cycle', 'missing', 'excluded', 'outside', 'generated'] as $reason) {
             $this->assertStringContainsString($reason, $reasons);
@@ -203,19 +203,19 @@ final class ArchitectureHttpRoutesTest extends TestCase
     public function test_warm_graph_cache_does_not_hide_route_edit_add_delete_or_midquery_change(): void
     {
         $this->fixture();
-        $before = $this->query(cache: true);
-        $warm = $this->query(cache: true);
+        $before = $this->inspectImpact(cache: true);
+        $warm = $this->inspectImpact(cache: true);
         $this->assertSame($before['execution'], $warm['execution']);
         $this->write('routes/web.php', 'Route::post("edited-orders", [App\Controller::class,"store"]);');
-        $edited = $this->query(cache: true);
+        $edited = $this->inspectImpact(cache: true);
         $this->assertSame('fresh', $edited['cache']);
         $this->assertNotSame($warm['snapshot'], $edited['snapshot']);
         $this->assertContains('/edited-orders', array_column($edited['execution']['routes'], 'uri'));
         $this->write('routes/added.php', 'Route::post("added", [App\Controller::class,"store"]);');
-        $added = $this->query(cache: true);
+        $added = $this->inspectImpact(cache: true);
         $this->assertNotSame($edited['execution']['source_signature'], $added['execution']['source_signature']);
         (new Filesystem)->delete($this->tempPath.'/routes/added.php');
-        $deleted = $this->query(cache: true);
+        $deleted = $this->inspectImpact(cache: true);
         $this->assertNotContains('/added', array_column($deleted['execution']['routes'], 'uri'));
         $discovery = new HttpRouteDiscovery(new Filesystem, $this->tempPath);
         $discovery->discover(new ProjectGraphSnapshot([], [], [], []), []);
@@ -226,17 +226,17 @@ final class ArchitectureHttpRoutesTest extends TestCase
     public function test_empty_incomplete_and_limited_are_separate_and_old_sections_preserved(): void
     {
         $this->fixture();
-        $noRoute = $this->query('Calculator::other');
+        $noRoute = $this->inspectImpact('Calculator::other');
         (new Filesystem)->delete($this->tempPath.'/routes/web.php');
-        $empty = $this->query('Calculator::other');
+        $empty = $this->inspectImpact('Calculator::other');
         $this->assertSame('incomplete', $empty['execution']['status']);
         $this->write('routes/web.php', 'Route::post("ok", [App\Controller::class,"store"]);');
         $this->assertSame('none', $this->execution('Calculator::other')['status']);
-        $limited = $this->query(limit: 0);
+        $limited = $this->inspectImpact(limit: 0);
         $this->assertSame('limit', $limited['execution']['status']);
         $this->assertSame([], $limited['execution']['routes']);
         $this->assertGreaterThan(0, $limited['execution']['totals']['routes']);
-        $this->assertSame('limit', $this->query(depth: 1)['execution']['status']);
+        $this->assertSame('limit', $this->inspectImpact(depth: 1)['execution']['status']);
         $this->write('routes/web.php', str_repeat(' ', 100001));
         $this->assertSame('limit', $this->execution()['status']);
         foreach (['dependents', 'dependencies', 'possible', 'references', 'class_context', 'tests', 'analysis'] as $key) {
@@ -269,10 +269,10 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $this->fixture();
         $this->write('app/Providers/HttpProvider.php', 'namespace App\Providers; class HttpProvider extends \Illuminate\Foundation\Support\Providers\RouteServiceProvider { public function boot() { $this->routes(function (\Illuminate\Routing\Router $r) { $r->prefix("extra")->group(base_path("extra/routes.php")); }); } }');
         $this->write('extra/routes.php', 'Route::post("provider",[App\Controller::class,"store"]);');
-        $before = $this->query(cache: true);
+        $before = $this->inspectImpact(cache: true);
         $this->assertContains('/extra/provider', array_column($before['execution']['routes'], 'uri'));
         $this->write('extra/routes.php', 'Route::post("provider-edited",[App\Controller::class,"store"]);');
-        $after = $this->query(cache: true);
+        $after = $this->inspectImpact(cache: true);
         $this->assertSame('fresh', $after['cache']);
         $this->assertNotSame($before['execution']['source_signature'], $after['execution']['source_signature']);
         $this->assertContains('/extra/provider-edited', array_column($after['execution']['routes'], 'uri'));
@@ -298,7 +298,7 @@ final class ArchitectureHttpRoutesTest extends TestCase
                 return parent::get($path, $lock);
             }
         };
-        $execution = $this->query(files: $files)['execution'];
+        $execution = $this->inspectImpact(files: $files)['execution'];
         $this->assertSame(1, $files->reads);
         $shared = array_values(array_filter($execution['routes'], fn ($r) => $r['source']['path'] === 'extra/shared.php'));
         $this->assertCount(1, $shared);
@@ -337,9 +337,9 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $this->fixture();
         $before = [];
         foreach (['delete', 'signature'] as $change) {
-            $before[$change] = $this->query(change: $change);
+            $before[$change] = $this->inspectImpact(change: $change);
         }
-        $move = $this->query('Calculator', change: 'move');
+        $move = $this->inspectImpact('Calculator', change: 'move');
         $this->assertNotEmpty($move['execution']['routes']);
         Artisan::call('architecture-kit:audit', ['--agent' => true]);
         $audit = json_decode(Artisan::output(), true);
@@ -347,9 +347,9 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $guard = json_decode(Artisan::output(), true);
         $this->write('routes/web.php', 'Route::post("edited",[App\Controller::class,"store"]);');
         foreach (['delete', 'signature'] as $change) {
-            $this->assertSame($before[$change][$change], $this->query(change: $change)[$change]);
+            $this->assertSame($before[$change][$change], $this->inspectImpact(change: $change)[$change]);
         }
-        $this->assertSame($move['move'], $this->query('Calculator', change: 'move')['move']);
+        $this->assertSame($move['move'], $this->inspectImpact('Calculator', change: 'move')['move']);
         Artisan::call('architecture-kit:audit', ['--agent' => true]);
         $this->assertSame($audit, json_decode(Artisan::output(), true));
         Artisan::call('architecture-kit:guard', ['--agent' => true]);
@@ -361,16 +361,16 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $this->fixture();
         (new Filesystem)->deleteDirectory($this->tempPath.'/routes');
         (new Filesystem)->delete($this->tempPath.'/bootstrap/app.php');
-        $before = $this->query();
+        $before = $this->inspectImpact();
         $this->write('bootstrap/app.php', 'return null;');
-        $after = $this->query();
+        $after = $this->inspectImpact();
         $this->assertFalse($after['execution']['has_sources']);
         $this->assertSame($before['snapshot'], $after['snapshot']);
         $this->write('routes/web.php', 'Route::get("unused",[App\Controller::class,"show"]);');
-        $unused = $this->query();
+        $unused = $this->inspectImpact();
         $this->assertSame('none', $unused['execution']['status']);
         $this->write('routes/web.php', 'Route::get("changed-unused",[App\Controller::class,"show"]);');
-        $this->assertNotSame($unused['snapshot'], $this->query()['snapshot']);
+        $this->assertNotSame($unused['snapshot'], $this->inspectImpact()['snapshot']);
     }
 
     public function test_ast_source_limit_is_explicit_and_missing_input_addition_invalidates(): void

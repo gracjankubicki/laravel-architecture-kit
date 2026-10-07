@@ -4,6 +4,10 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ## Unreleased
 
+### Fixed
+
+- Restore CI compatibility with Testbench 11 query helpers, explicit Pest harness configuration, current generated Boost guidance and nullable Reverb array items. Preserve the test matrix and analysis checks.
+
 ### Added
 
 - Add source-only `architecture-search` and `architecture-graph` MCP discovery, bounded relationship/path/impact pages, separate graph scope, per-file catalog cache, and source evidence with explicit incompleteness. Add parser-call measurements and preserve source-bounded diagnostics in warm cache results.

@@ -24,7 +24,7 @@ final class ArchitectureDeleteTest extends TestCase
         clearstatcache();
     }
 
-    private function query(string $subject = 'Target::run', int $limit = 100, bool $cache = false): array
+    private function inspectImpact(string $subject = 'Target::run', int $limit = 100, bool $cache = false): array
     {
         $files = new Filesystem;
 
@@ -46,7 +46,7 @@ final class ArchitectureDeleteTest extends TestCase
     {
         $this->fixture();
         $hash = hash_file('sha256', $this->tempPath.'/app/Target.php');
-        $result = $this->query();
+        $result = $this->inspectImpact();
         $this->assertTrue($result['ok']);
         $this->assertSame(['App\\Target::run'], $result['delete']['removed']);
         $this->assertContains('App\\Caller::call', $this->rows($result, 'breaking'));
@@ -59,7 +59,7 @@ final class ArchitectureDeleteTest extends TestCase
     public function test_parent_fallback_is_checked_and_incompatible_arguments_are_breaking(): void
     {
         $this->write('app/Target.php', 'class Base { public function run($value, $other) {} } class Target extends Base { public function run($value, $other = null) {} } class Caller { public function short() { (new Target)->run(1); } public function long() { (new Target)->run(1, 2); } }');
-        $result = $this->query();
+        $result = $this->inspectImpact();
         $this->assertContains('App\\Caller::short', $this->rows($result, 'breaking'));
         $this->assertContains('App\\Caller::long', $this->rows($result, 'check'));
         $this->assertStringContainsString('App\\Base::run', implode(' ', array_column($result['delete']['check'], 'fallback')));
@@ -68,13 +68,13 @@ final class ArchitectureDeleteTest extends TestCase
     public function test_trait_fallback_is_not_treated_as_a_missing_method(): void
     {
         $this->write('app/Target.php', 'trait Runs { public function run($value) {} } class Target { use Runs; public function run($value) {} } class Caller { public function call() { (new Target)->run(1); } }');
-        $this->assertNotContains('App\\Caller::call', $this->rows($this->query(), 'breaking'));
+        $this->assertNotContains('App\\Caller::call', $this->rows($this->inspectImpact(), 'breaking'));
     }
 
     public function test_inherited_selector_removes_actual_declaration_and_private_access_fallback_breaks(): void
     {
         $this->write('app/Target.php', 'class Base { private function run($value) {} } class Target extends Base { public function run($value) {} } class Child extends Target {} class Caller { public function call() { (new Child)->run(1); } }');
-        $result = $this->query('Child::run');
+        $result = $this->inspectImpact('Child::run');
         $this->assertSame(['App\\Target::run'], $result['delete']['removed']);
         $this->assertContains('App\\Caller::call', $this->rows($result, 'breaking'));
     }
@@ -83,19 +83,19 @@ final class ArchitectureDeleteTest extends TestCase
     {
         $this->fixture();
         $this->write('app/Child.php', 'class Child extends Target { public function __call($name, $args) {} } class MagicCaller { public function call() { (new Child)->run(1); } }');
-        $result = $this->query();
+        $result = $this->inspectImpact();
         $this->assertContains('App\\MagicCaller::call', $this->rows($result, 'check'));
         $this->assertNotContains('App\\MagicCaller::call', $this->rows($result, 'breaking'));
         $this->write('app/Target.php', 'class Target extends \Vendor\Base { public function run($value) {} }');
-        $this->assertContains('App\\Caller::call', $this->rows($this->query(), 'check'));
+        $this->assertContains('App\\Caller::call', $this->rows($this->inspectImpact(), 'check'));
     }
 
     public function test_required_interface_implementation_is_breaking_but_abstract_class_is_check(): void
     {
         $this->write('app/Target.php', 'interface Contract { public function run($value); } class Target implements Contract { public function run($value) {} }');
-        $this->assertContains('App\\Target::run', $this->rows($this->query(), 'breaking'));
+        $this->assertContains('App\\Target::run', $this->rows($this->inspectImpact(), 'breaking'));
         $this->write('app/Target.php', 'interface Contract { public function run($value); } abstract class Target implements Contract { public function run($value) {} }');
-        $result = $this->query();
+        $result = $this->inspectImpact();
         $this->assertNotContains('App\\Target::run', $this->rows($result, 'breaking'));
         $this->assertContains('App\\Target::run', $this->rows($result, 'check'));
     }
@@ -103,15 +103,15 @@ final class ArchitectureDeleteTest extends TestCase
     public function test_private_abstract_trait_requires_implementation_but_concrete_trait_replacement_can_be_removed(): void
     {
         $this->write('app/Target.php', 'trait Runs { abstract private function run($value); } class Target { use Runs; private function run($value) {} }');
-        $this->assertContains('App\\Target::run', $this->rows($this->query(), 'breaking'));
+        $this->assertContains('App\\Target::run', $this->rows($this->inspectImpact(), 'breaking'));
         $this->write('app/Target.php', 'trait Runs { public function run($value) {} } class Target { use Runs; public function run($value) {} }');
-        $this->assertNotContains('App\\Target::run', $this->rows($this->query(), 'breaking'));
+        $this->assertNotContains('App\\Target::run', $this->rows($this->inspectImpact(), 'breaking'));
     }
 
     public function test_removing_interface_requirement_does_not_remove_implementations(): void
     {
         $this->write('app/Target.php', 'interface Contract { public function run($value); } class Target implements Contract { public function run($value) {} } class Caller { public function call(Contract $x) { $x->run(1); } }');
-        $result = $this->query('Contract::run');
+        $result = $this->inspectImpact('Contract::run');
         $this->assertSame([], $result['delete']['breaking']);
         $this->assertContains('App\\Caller::call', $this->rows($result, 'check'));
     }
@@ -119,7 +119,7 @@ final class ArchitectureDeleteTest extends TestCase
     public function test_constructor_removal_checks_implicit_construction_and_autowiring(): void
     {
         $this->write('app/Target.php', 'class Target { public function __construct($value) {} } class Caller { public function make() { return new Target(1); } }');
-        $result = $this->query('Target::__construct');
+        $result = $this->inspectImpact('Target::__construct');
         $this->assertNotContains('App\\Caller::make', $this->rows($result, 'breaking'));
         $this->assertContains('App\\Caller::make', $this->rows($result, 'check'));
     }
@@ -128,7 +128,7 @@ final class ArchitectureDeleteTest extends TestCase
     {
         $this->fixture();
         $this->write('app/Child.php', 'class Child extends Target {} class Typed { public function accept(Target $target): Target { return $target; } }');
-        $result = $this->query('Target');
+        $result = $this->inspectImpact('Target');
         $this->assertContains('App\\Caller', $this->rows($result, 'breaking'));
         $this->assertContains('App\\Child', $this->rows($result, 'breaking'));
         $this->assertContains('App\\Typed', $this->rows($result, 'check'));
@@ -139,7 +139,7 @@ final class ArchitectureDeleteTest extends TestCase
     {
         $this->write('app/Pair.php', 'class A { public function call() { new B; } } class B {} new A;');
         $this->write('app/Caller.php', 'class Caller { public function call() { new A; new B; } }');
-        $result = $this->query('app/Pair.php');
+        $result = $this->inspectImpact('app/Pair.php');
         $this->assertTrue($result['ok']);
         $this->assertSame(['App\\A', 'App\\B'], $result['delete']['removed']);
         $this->assertContains('App\\Caller', $this->rows($result, 'breaking'));
@@ -150,29 +150,29 @@ final class ArchitectureDeleteTest extends TestCase
     public function test_classless_file_limits_and_subject_errors_are_explicit(): void
     {
         $this->write('app/script.php', 'echo "not executed";');
-        $file = $this->query('app/script.php');
+        $file = $this->inspectImpact('app/script.php');
         $this->assertTrue($file['ok']);
         $this->assertSame([], $file['delete']['removed']);
         $this->assertNotEmpty($file['delete']['check']);
         $this->fixture();
-        $limited = $this->query(limit: 0);
+        $limited = $this->inspectImpact(limit: 0);
         $this->assertTrue($limited['delete']['truncated']);
         $this->assertSame('limit', $limited['delete']['status']);
         $this->assertGreaterThan(0, $limited['delete']['total']['breaking']);
-        $this->assertSame('E_IMPACT_SUBJECT_NOT_FOUND', $this->query('Absent')['m']);
+        $this->assertSame('E_IMPACT_SUBJECT_NOT_FOUND', $this->inspectImpact('Absent')['m']);
         $this->write('app/Other.php', 'namespace Other; class Target {}');
-        $this->assertSame('E_IMPACT_SUBJECT_AMBIGUOUS', $this->query('Target')['m']);
+        $this->assertSame('E_IMPACT_SUBJECT_AMBIGUOUS', $this->inspectImpact('Target')['m']);
     }
 
     public function test_cache_freshness_and_default_signature_payloads_are_preserved(): void
     {
         $this->fixture();
-        $cold = $this->query(cache: true);
-        $warm = $this->query(cache: true);
+        $cold = $this->inspectImpact(cache: true);
+        $warm = $this->inspectImpact(cache: true);
         $this->assertSame('fresh', $warm['cache']);
         $this->assertSame($cold['delete'], $warm['delete']);
         $this->write('app/Caller.php', 'class Caller {}');
-        $this->assertSame([], $this->query(cache: true)['delete']['breaking']);
+        $this->assertSame([], $this->inspectImpact(cache: true)['delete']['breaking']);
         $impact = new ArchitectureImpact(new Filesystem, $this->tempPath);
         $this->assertArrayNotHasKey('delete', $impact->inspect('Target::run'));
         $this->assertArrayHasKey('signature', $impact->inspect('Target::run', signature: 'run($value)'));
@@ -194,7 +194,7 @@ final class ArchitectureDeleteTest extends TestCase
     public function test_static_fallback_and_reference_requirements_are_evaluated(): void
     {
         $this->write('app/Target.php', 'class Base { private function run(&$value) {} } class Target extends Base { public static function run($value) {} } class Caller { public function call() { Target::run(1); } }');
-        $result = $this->query();
+        $result = $this->inspectImpact();
         $this->assertContains('App\\Caller::call', $this->rows($result, 'breaking'));
         $this->assertStringContainsString('non_static_method_called_statically', json_encode($result['delete']));
         $this->assertStringContainsString('argument_not_reference', json_encode($result['delete']));
@@ -203,8 +203,8 @@ final class ArchitectureDeleteTest extends TestCase
     public function test_interface_and_trait_removal_report_remaining_declarations(): void
     {
         $this->write('app/Target.php', 'interface Contract { public function run($value); } trait Runs { public function run($value) {} } class Target implements Contract { use Runs; }');
-        $this->assertContains('App\\Target', $this->rows($this->query('Contract'), 'breaking'));
-        $this->assertContains('App\\Target', $this->rows($this->query('Runs'), 'breaking'));
+        $this->assertContains('App\\Target', $this->rows($this->inspectImpact('Contract'), 'breaking'));
+        $this->assertContains('App\\Target', $this->rows($this->inspectImpact('Runs'), 'breaking'));
     }
 
     public function test_dynamic_calls_are_explicit_and_source_is_never_executed(): void
@@ -213,16 +213,16 @@ final class ArchitectureDeleteTest extends TestCase
         $this->write('app/Dynamic.php', 'class Dynamic { public function call($target, $name) { $target->$name(1); } }');
         $marker = $this->tempPath.'/executed';
         $this->write('app/Poison.php', 'file_put_contents('.var_export($marker, true).', "bad"); class Poison {}');
-        $result = $this->query();
+        $result = $this->inspectImpact();
         $this->assertStringContainsString('Unresolved', json_encode($result['delete']['check']));
-        $this->assertTrue($this->query('Poison')['ok']);
+        $this->assertTrue($this->inspectImpact('Poison')['ok']);
         $this->assertFileDoesNotExist($marker);
     }
 
     public function test_private_trait_fallback_uses_the_importing_class_scope(): void
     {
         $this->write('app/Target.php', 'trait Runs { private function run($value) {} public function fromTrait() { $this->run(1); } } class Target { use Runs; public function run($value) {} public function local() { $this->run(1); self::run(1); } } class Child extends Target { public function childCall() { $this->run(1); } } class Caller { public function call() { (new Target)->run(1); } }');
-        $result = $this->query();
+        $result = $this->inspectImpact();
         $this->assertNotContains('App\\Target::local', $this->rows($result, 'breaking'));
         $this->assertContains('App\\Target::local', $this->rows($result, 'check'));
         $this->assertContains('App\\Caller::call', $this->rows($result, 'breaking'));
@@ -233,12 +233,12 @@ final class ArchitectureDeleteTest extends TestCase
     public function test_abstract_trait_requirement_does_not_hide_a_concrete_parent_fallback(): void
     {
         $this->write('app/Target.php', 'trait RequiredRun { abstract public function run($value); } class Base { public function run($value) {} } class Target extends Base { use RequiredRun; public function run($value) {} } class Caller { public function call() { (new Target)->run(1); } }');
-        $result = $this->query();
+        $result = $this->inspectImpact();
         $this->assertSame([], $result['delete']['breaking']);
         $this->assertContains('App\\Caller::call', $this->rows($result, 'check'));
         $this->assertStringContainsString('App\\Base::run', implode(' ', array_column($result['delete']['check'], 'fallback')));
         $this->write('app/Target.php', 'trait RequiredRun { abstract public function run($value); } class Target { use RequiredRun; public function run($value) {} }');
-        $this->assertContains('App\\Target::run', $this->rows($this->query(), 'breaking'));
+        $this->assertContains('App\\Target::run', $this->rows($this->inspectImpact(), 'breaking'));
     }
 
     public function test_shared_lookup_preserves_default_and_signature_with_an_inherited_trait_implementation(): void

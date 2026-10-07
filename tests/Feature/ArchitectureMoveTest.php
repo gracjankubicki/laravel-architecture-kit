@@ -30,7 +30,7 @@ final class ArchitectureMoveTest extends TestCase
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode($config, JSON_THROW_ON_ERROR));
     }
 
-    private function query(string $subject = 'Target', ?string $class = null, ?string $path = null, int $limit = 100, bool $cache = false, ?Filesystem $files = null): array
+    private function inspectImpact(string $subject = 'Target', ?string $class = null, ?string $path = null, int $limit = 100, bool $cache = false, ?Filesystem $files = null): array
     {
         $files ??= new Filesystem;
 
@@ -55,12 +55,12 @@ final class ArchitectureMoveTest extends TestCase
         $marker = $this->tempPath.'/executed';
         $this->write('app/Poison.php', 'namespace App; file_put_contents('.var_export($marker, true).', "bad"); class Poison {}');
         $hash = hash_file('sha256', $this->tempPath.'/app/Target.php');
-        $inspect = $this->query();
+        $inspect = $this->inspectImpact();
         $this->assertTrue($inspect['ok']);
         $this->assertSame('inspect', $inspect['move']['mode']);
         $this->assertSame([], $inspect['move']['breaking']);
         $this->assertFalse($inspect['move']['safe_to_change']);
-        $this->assertTrue($this->query('Poison', 'App\\Renamed', 'app/Renamed.php')['ok']);
+        $this->assertTrue($this->inspectImpact('Poison', 'App\\Renamed', 'app/Renamed.php')['ok']);
         $this->assertFileDoesNotExist($marker);
         $this->assertFileDoesNotExist($this->tempPath.'/app/Renamed.php');
         $this->assertSame($hash, hash_file('sha256', $this->tempPath.'/app/Target.php'));
@@ -69,7 +69,7 @@ final class ArchitectureMoveTest extends TestCase
     public function test_rename_breaks_old_strong_uses_but_checks_types_references_and_self(): void
     {
         $this->fixture();
-        $result = $this->query(class: 'App\\Billing\\Renamed', path: 'app/Billing/Renamed.php');
+        $result = $this->inspectImpact(class: 'App\\Billing\\Renamed', path: 'app/Billing/Renamed.php');
         $this->assertTrue($result['ok']);
         foreach (['new', 'static', 'extends'] as $kind) {
             $this->assertContains($kind, $this->kinds($result, 'breaking'));
@@ -85,14 +85,14 @@ final class ArchitectureMoveTest extends TestCase
     public function test_path_only_keeps_all_names_and_separates_autoload_mismatch(): void
     {
         $this->fixture();
-        $result = $this->query('app/Target.php', path: 'app/Elsewhere.php');
+        $result = $this->inspectImpact('app/Target.php', path: 'app/Elsewhere.php');
         $this->assertEqualsCanonicalizing(['App\\Target', 'App\\Helper'], $result['move']['source']['classes']);
         $this->assertNull($result['move']['target']['class']);
         $this->assertContains('new', $this->kinds($result, 'compatible'));
         $this->assertSame(['autoload'], array_values(array_unique($this->kinds($result, 'breaking'))));
         $this->composer(['autoload' => ['psr-4' => ['App\\' => ['app/', 'relocated/']]]]);
         $this->write('app/Target.php', 'namespace App; class Target {}');
-        $matched = $this->query('app/Target.php', path: 'relocated/Target.php');
+        $matched = $this->inspectImpact('app/Target.php', path: 'relocated/Target.php');
         $this->assertSame([], $matched['move']['breaking']);
         $this->assertContains('scope', $this->kinds($matched, 'check'));
     }
@@ -100,9 +100,9 @@ final class ArchitectureMoveTest extends TestCase
     public function test_class_only_rename_uses_current_path_and_multi_class_path_is_ambiguous(): void
     {
         $this->fixture();
-        $this->assertContains('autoload', $this->kinds($this->query(class: 'App\\Renamed'), 'breaking'));
-        $this->assertSame('E_IMPACT_SUBJECT_AMBIGUOUS', $this->query('app/Target.php', class: 'App\\Renamed')['m']);
-        $result = $this->query('Target', class: 'App\\Renamed', path: 'app/Renamed.php');
+        $this->assertContains('autoload', $this->kinds($this->inspectImpact(class: 'App\\Renamed'), 'breaking'));
+        $this->assertSame('E_IMPACT_SUBJECT_AMBIGUOUS', $this->inspectImpact('app/Target.php', class: 'App\\Renamed')['m']);
+        $result = $this->inspectImpact('Target', class: 'App\\Renamed', path: 'app/Renamed.php');
         $this->assertSame('App\\Target', $result['move']['source']['class']);
         $this->assertCount(2, $result['move']['source']['classes']);
         $this->assertStringContainsString('App\\\\Helper', json_encode($result['move']['breaking']));
@@ -111,8 +111,8 @@ final class ArchitectureMoveTest extends TestCase
     public function test_class_and_path_collisions_and_case_only_changes_are_explicit(): void
     {
         $this->fixture();
-        $this->assertContains('collision', $this->kinds($this->query(class: 'App\\Caller', path: 'app/Caller.php'), 'breaking'));
-        $case = $this->query(class: 'App\\target', path: 'app/target.php');
+        $this->assertContains('collision', $this->kinds($this->inspectImpact(class: 'App\\Caller', path: 'app/Caller.php'), 'breaking'));
+        $case = $this->inspectImpact(class: 'App\\target', path: 'app/target.php');
         $this->assertNotContains('collision', $this->kinds($case, 'breaking'));
         $this->assertContains('casing', $this->kinds($case, 'check'));
     }
@@ -121,11 +121,11 @@ final class ArchitectureMoveTest extends TestCase
     {
         $this->composer();
         $this->write('app/Contract.php', 'namespace App; interface Contract {} trait Runs {} class User implements Contract { use Runs; }');
-        $this->assertContains('implements', $this->kinds($this->query('Contract', 'App\\Renamed'), 'breaking'));
-        $this->assertContains('trait', $this->kinds($this->query('Runs', 'App\\Renamed'), 'breaking'));
+        $this->assertContains('implements', $this->kinds($this->inspectImpact('Contract', 'App\\Renamed'), 'breaking'));
+        $this->assertContains('trait', $this->kinds($this->inspectImpact('Runs', 'App\\Renamed'), 'breaking'));
         $this->write('app/Target.php', 'namespace App; class Target { public static function run() {} }');
         $this->write('app/script.php', 'namespace App; new Target; Target::run(); $ref = [Target::class, "run"];');
-        $report = $this->query(class: 'App\\Renamed', path: 'app/Renamed.php');
+        $report = $this->inspectImpact(class: 'App\\Renamed', path: 'app/Renamed.php');
         $this->assertContains('(file) app/script.php', array_column($report['move']['breaking'], 'symbol'));
         $this->assertContains('(file) app/script.php', array_column($report['move']['check'], 'symbol'));
         $keys = array_map(fn ($r) => $r['path'].'|'.$r['line'].'|'.$r['kind'].'|'.($r['target'] ?? $r['symbol']), $report['move']['breaking']);
@@ -136,30 +136,30 @@ final class ArchitectureMoveTest extends TestCase
     {
         $this->composer();
         $this->write('app/script.php', 'function work() {} const VALUE = 1; require "else.php";');
-        $result = $this->query('app/script.php', path: 'app/other.php');
+        $result = $this->inspectImpact('app/script.php', path: 'app/other.php');
         $this->assertTrue($result['ok']);
         $this->assertSame([], $result['move']['source']['classes']);
         $this->assertContains('file', $this->kinds($result, 'check'));
-        $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->query('app/script.php', class: 'App\\Work')['m']);
+        $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->inspectImpact('app/script.php', class: 'App\\Work')['m']);
     }
 
     public function test_invalid_targets_and_mode_combinations_are_errors(): void
     {
         $this->fixture();
         foreach (['', 'App\\class', 'App\\Bad-name', str_repeat('a', 513)] as $class) {
-            $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->query(class: $class)['m'], $class);
+            $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->inspectImpact(class: $class)['m'], $class);
         }
         foreach (['', '/tmp/A.php', '../A.php', 'app/../A.php', 'C:\\A.php', 'app/A.txt', "app/\0A.php"] as $path) {
-            $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->query(path: $path)['m'], $path);
+            $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->inspectImpact(path: $path)['m'], $path);
         }
         symlink(sys_get_temp_dir(), $this->tempPath.'/outside');
-        $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->query(path: 'outside/A.php')['m']);
+        $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->inspectImpact(path: 'outside/A.php')['m']);
         unlink($this->tempPath.'/outside');
-        $this->assertSame('E_IMPACT_CHANGE_INVALID', $this->query('Target::run')['m']);
+        $this->assertSame('E_IMPACT_CHANGE_INVALID', $this->inspectImpact('Target::run')['m']);
         $impact = new ArchitectureImpact(new Filesystem, $this->tempPath);
         $this->assertSame('E_IMPACT_CHANGE_INVALID', $impact->inspect('Target', targetClass: 'App\\NewName')['m']);
         $this->assertSame('E_IMPACT_CHANGE_INVALID', $impact->inspect('Target', change: 'move', signature: 'run()')['m']);
-        $this->assertSame('E_IMPACT_SUBJECT_NOT_FOUND', $this->query('Absent')['m']);
+        $this->assertSame('E_IMPACT_SUBJECT_NOT_FOUND', $this->inspectImpact('Absent')['m']);
     }
 
     public function test_psr4_lists_prefix_fallback_dev_and_case_rules(): void
@@ -212,12 +212,12 @@ final class ArchitectureMoveTest extends TestCase
     public function test_composer_changes_have_fresh_hash_outside_graph_cache_and_final_read(): void
     {
         $this->fixture();
-        $cold = $this->query(class: 'App\\Renamed', path: 'app/Renamed.php', cache: true);
-        $warm = $this->query(class: 'App\\Renamed', path: 'app/Renamed.php', cache: true);
+        $cold = $this->inspectImpact(class: 'App\\Renamed', path: 'app/Renamed.php', cache: true);
+        $warm = $this->inspectImpact(class: 'App\\Renamed', path: 'app/Renamed.php', cache: true);
         $this->assertSame('fresh', $warm['cache']);
         $this->assertSame($cold['move'], $warm['move']);
         $this->composer(['autoload' => ['psr-4' => ['App\\' => 'other/']]]);
-        $changed = $this->query(class: 'App\\Renamed', path: 'app/Renamed.php', cache: true);
+        $changed = $this->inspectImpact(class: 'App\\Renamed', path: 'app/Renamed.php', cache: true);
         $this->assertSame('fresh', $changed['cache']);
         $this->assertNotSame($warm['snapshot'], $changed['snapshot']);
         $this->assertNotSame($warm['move']['autoload']['hash'], $changed['move']['autoload']['hash']);
@@ -234,7 +234,7 @@ final class ArchitectureMoveTest extends TestCase
                 return parent::get($path, $lock);
             }
         };
-        $stale = $this->query(class: 'App\\Renamed', files: $files);
+        $stale = $this->inspectImpact(class: 'App\\Renamed', files: $files);
         $this->assertFalse($stale['move']['autoload']['fresh']);
         $this->assertStringContainsString('Composer configuration changed', json_encode($stale['analysis']['notices']));
     }
@@ -243,7 +243,7 @@ final class ArchitectureMoveTest extends TestCase
     {
         $this->composer();
         $this->write('app/Target.php', 'namespace App; class Target {} new Other;');
-        $result = $this->query(class: 'App\\Billing\\Target', path: 'app/Billing/Target.php');
+        $result = $this->inspectImpact(class: 'App\\Billing\\Target', path: 'app/Billing/Target.php');
         $rows = array_filter($result['move']['check'], fn ($row) => $row['kind'] === 'namespace_dependency');
         $this->assertContains('(file) app/Target.php', array_column($rows, 'symbol'));
         symlink(sys_get_temp_dir(), $this->tempPath.'/outside');
@@ -259,7 +259,7 @@ final class ArchitectureMoveTest extends TestCase
     {
         $this->composer();
         $this->write('app/Target.php', "namespace App;\nclass Target {\n public function make() {\n  new Target;\n  Target::run();\n }\n public static function run() {}\n}");
-        foreach ([$this->query(), $this->query(class: 'App\\Billing\\Renamed', path: 'app/Billing/Renamed.php'), $this->query('app/Target.php'), $this->query('app/Target.php', path: 'app/relocated/Target.php')] as $result) {
+        foreach ([$this->inspectImpact(), $this->inspectImpact(class: 'App\\Billing\\Renamed', path: 'app/Billing/Renamed.php'), $this->inspectImpact('app/Target.php'), $this->inspectImpact('app/Target.php', path: 'app/relocated/Target.php')] as $result) {
             $rows = array_values(array_filter($result['move']['check'], fn ($row) => $row['symbol'] === 'App\\Target::make' && ($row['target'] ?? null) === 'App\\Target'));
             $this->assertCount(2, $rows);
             $this->assertSame(['new', 'static'], array_column($rows, 'kind'));
@@ -275,7 +275,7 @@ final class ArchitectureMoveTest extends TestCase
     public function test_limits_legacy_and_cli_mcp_schema_parity(): void
     {
         $this->fixture();
-        $limited = $this->query(class: 'App\\Renamed', limit: 0);
+        $limited = $this->inspectImpact(class: 'App\\Renamed', limit: 0);
         $this->assertSame('limit', $limited['move']['status']);
         $this->assertSame([], $limited['move']['breaking']);
         $impact = new ArchitectureImpact(new Filesystem, $this->tempPath);

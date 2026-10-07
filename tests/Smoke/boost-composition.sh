@@ -58,7 +58,7 @@ for guidance_path in .ai/guidelines/architecture-kit.md AGENTS.md CLAUDE.md; do
         printf 'Missing generated guidance: %s\n' "${guidance_path}" >&2
         exit 1
     fi
-    for expected_text in 'Use architecture-search when you know only a literal name fragment' 'stale_snapshot requires restarting at offset=0' 'Guard success does not prove passing tests or complete analysis'; do
+    for expected_text in 'Find unknown elements by name fragment, path, route, table or kind with architecture-search.' 'restart at offset=0 after stale_snapshot' 'Guard success does not prove passing tests or complete analysis'; do
         if ! grep -Fq "${expected_text}" "${guidance_path}"; then
             printf 'Missing guidance in %s: %s\n' "${guidance_path}" "${expected_text}" >&2
             exit 1

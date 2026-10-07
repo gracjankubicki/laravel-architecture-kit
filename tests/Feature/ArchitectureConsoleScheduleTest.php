@@ -36,7 +36,7 @@ final class ArchitectureConsoleScheduleTest extends TestCase
         $this->write('routes/console.php', '\Illuminate\Support\Facades\Schedule::command("invoices:send --id=4")->daily()->timezone("Europe/Warsaw")->withoutOverlapping()->onOneServer();');
     }
 
-    private function query(string $subject = 'Service::send', int $limit = 100, int $depth = 16): array
+    private function inspectImpact(string $subject = 'Service::send', int $limit = 100, int $depth = 16): array
     {
         $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect($subject, [], $limit, $depth);
         $this->assertTrue($result['ok'], json_encode($result));
@@ -46,7 +46,7 @@ final class ArchitectureConsoleScheduleTest extends TestCase
 
     private function flows(string $kind, string $subject = 'Service::send'): array
     {
-        return array_values(array_filter($this->query($subject)['execution']['flows'], fn ($row) => $row['entry']['kind'] === $kind));
+        return array_values(array_filter($this->inspectImpact($subject)['execution']['flows'], fn ($row) => $row['entry']['kind'] === $kind));
     }
 
     public function test_console_http_and_scheduler_reach_method_class_and_file(): void
@@ -66,7 +66,7 @@ final class ArchitectureConsoleScheduleTest extends TestCase
             $edge = array_values(array_filter($http[0]['via'], fn ($e) => $e['kind'] === 'artisan-command'))[0];
             $this->assertSame('queue-requested', $edge['mode']);
         }
-        $this->assertSame([], $this->query('Service::other')['execution']['flows']);
+        $this->assertSame([], $this->inspectImpact('Service::other')['execution']['flows']);
     }
 
     public function test_closure_command_binding_alias_and_silent_command_calls(): void
@@ -144,7 +144,7 @@ final class ArchitectureConsoleScheduleTest extends TestCase
         $this->write('routes/console.php', '\Illuminate\Support\Facades\Schedule::call(fn () => App\Service::send())->runInBackground(); \Illuminate\Support\Facades\Schedule::command($unknown); \Illuminate\Support\Facades\Artisan::command("conflict", fn () => App\Service::send()); \Illuminate\Support\Facades\Artisan::command("conflict", fn () => App\Service::other());');
         $this->write('bootstrap/app.php', 'return \Illuminate\Foundation\Application::configure()->withCommands([base_path("missing/commands.php")]);');
         $this->assertSame([], $this->flows('schedule'));
-        $analysis = $this->query('Service::after')['execution']['flow_analysis'];
+        $analysis = $this->inspectImpact('Service::after')['execution']['flow_analysis'];
         $this->assertSame('incomplete', $analysis['status']);
         $notices = json_encode($analysis, JSON_THROW_ON_ERROR);
         $this->assertStringContainsString('runInBackground is invalid', $notices);
@@ -224,10 +224,10 @@ final class ArchitectureConsoleScheduleTest extends TestCase
     {
         $this->fixture();
         $this->write('bootstrap/app.php', 'throw new \RuntimeException("never run application"); return \Illuminate\Foundation\Application::configure()->withCommands([base_path("custom/routes.php"), base_path("custom/tasks")]);');
-        $first = $this->query();
+        $first = $this->inspectImpact();
         $this->write('custom/routes.php', 'throw new \RuntimeException("never run console file"); \Illuminate\Support\Facades\Artisan::command("file:send", fn () => App\Service::send());');
         $this->write('custom/tasks/Task.php', 'namespace Custom; class Task extends \Illuminate\Console\Command { protected $name = "custom:task"; public function handle() { \App\Service::send(); } }');
-        $next = $this->query();
+        $next = $this->inspectImpact();
         $this->assertNotSame($first['execution']['flow_analysis']['source_signature'], $next['execution']['flow_analysis']['source_signature']);
         $this->assertContains('file:send', array_column(array_column($this->flows('console'), 'entry'), 'command'));
         $this->assertContains('custom:task', array_column(array_column($this->flows('console'), 'entry'), 'command'));
@@ -247,17 +247,17 @@ final class ArchitectureConsoleScheduleTest extends TestCase
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $mcp = ArchitectureKitServer::tool(Impact::class, ['subject' => 'Service::send', 'limit' => 100, 'depth' => 16]);
         $mcp->assertOk()->assertSee('artisan-command')->assertSee('schedule-task');
-        $this->assertSame($this->query()['execution'], $cli['execution']);
+        $this->assertSame($this->inspectImpact()['execution'], $cli['execution']);
         foreach (['delete', 'signature', 'move'] as $change) {
             $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect($change === 'move' ? 'Service' : 'Service::send', [], 100, 16, $change);
             $this->assertNotEmpty($result['execution']['flows']);
             $this->assertFalse($result[$change]['safe_to_change']);
         }
-        $limited = $this->query(limit: 0)['execution'];
+        $limited = $this->inspectImpact(limit: 0)['execution'];
         $this->assertSame([], $limited['flows']);
         $this->assertSame('limit', $limited['flow_analysis']['status']);
         $this->assertGreaterThan(0, $limited['flow_analysis']['totals']['flows']);
-        $this->assertSame('limit', $this->query(depth: 1)['execution']['flow_analysis']['status']);
+        $this->assertSame('limit', $this->inspectImpact(depth: 1)['execution']['flow_analysis']['status']);
     }
 
     public function test_signature_attributes_named_aliases_and_handle_precedence(): void
@@ -360,7 +360,7 @@ final class ArchitectureConsoleScheduleTest extends TestCase
         foreach (['withoutOverlapping()', 'onOneServer()', 'withoutOverlapping()->name("late")', 'onOneServer()->name("late")'] as $modifier) {
             $this->write('routes/console.php', '\Illuminate\Support\Facades\Schedule::call(fn () => App\Service::send())->'.$modifier.';');
             $this->assertSame([], $this->flows('schedule'));
-            $this->assertStringContainsString('mutex requires a name', json_encode($this->query()['execution']['flow_analysis']['unresolved'], JSON_THROW_ON_ERROR));
+            $this->assertStringContainsString('mutex requires a name', json_encode($this->inspectImpact()['execution']['flow_analysis']['unresolved'], JSON_THROW_ON_ERROR));
         }
         $this->write('routes/console.php', '\Illuminate\Support\Facades\Schedule::call(fn () => App\Service::send())->name("named")->withoutOverlapping()->onOneServer();');
         $this->assertCount(1, $this->flows('schedule'));
