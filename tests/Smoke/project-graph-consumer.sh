@@ -55,4 +55,5 @@ if (($payload["ok"] ?? null) !== true
 
     php artisan architecture-kit:audit --strict --agent
     php artisan architecture-kit:guard --strict --agent >/dev/null
+    php "${PACKAGE_ROOT}/tests/Smoke/project-graph-mcp.php" "${APP_PATH}"
 done

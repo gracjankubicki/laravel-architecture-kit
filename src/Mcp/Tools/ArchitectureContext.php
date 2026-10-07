@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('architecture-context')]
-#[Description('Return bounded static dependencies, dependents, violations, and inspect paths for one exact project FQCN or app-relative PHP path.')]
+#[Description('Before editing a known PHP symbol, inspect its direct static dependencies, dependents, violations, candidate tests and source locations. Provide an exact FQCN or app-relative PHP path. Use architecture-search to find an unknown element and architecture-graph for Laravel flows or transitive impact. Results do not prove execution or passing tests.')]
 #[IsReadOnly]
 final class ArchitectureContext extends Tool
 {
@@ -30,8 +30,8 @@ final class ArchitectureContext extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'subject' => $schema->string()->required(),
-            'limit' => $schema->integer()->min(0)->default(20),
+            'subject' => $schema->string()->required()->description('Exact project FQCN or app-relative PHP file path. Use architecture-search first when the symbol is unknown.'),
+            'limit' => $schema->integer()->min(0)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'),
         ];
     }
 

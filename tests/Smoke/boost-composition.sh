@@ -49,8 +49,27 @@ if (($payload["cmd"] ?? null) !== "upgrade-plan"
 }
 '
 mkdir -p .codex
+printf '%s\n' '# Consumer project instructions' 'Preserve this consumer-specific instruction.' > CLAUDE.md
 php artisan boost:install --no-interaction
 php artisan boost:update --no-interaction
+
+for guidance_path in .ai/guidelines/architecture-kit.md AGENTS.md CLAUDE.md; do
+    if ! test -f "${guidance_path}"; then
+        printf 'Missing generated guidance: %s\n' "${guidance_path}" >&2
+        exit 1
+    fi
+    for expected_text in 'Use architecture-search when you know only a literal name fragment' 'stale_snapshot requires restarting at offset=0' 'Guard success does not prove passing tests or complete analysis'; do
+        if ! grep -Fq "${expected_text}" "${guidance_path}"; then
+            printf 'Missing guidance in %s: %s\n' "${guidance_path}" "${expected_text}" >&2
+            exit 1
+        fi
+    done
+    if grep -Fq 'ToolGuidance::' "${guidance_path}"; then
+        printf 'Unrendered guidance in %s\n' "${guidance_path}" >&2
+        exit 1
+    fi
+done
+grep -Fq 'Preserve this consumer-specific instruction.' CLAUDE.md
 
 test "$(find .ai/skills -path '*/architecture-kit-laravel-ai/SKILL.md' | wc -l | tr -d ' ')" -eq 1
 test "$(find .ai/skills -path '*/architecture-kit-fortify/SKILL.md' | wc -l | tr -d ' ')" -eq 1

@@ -13,7 +13,7 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('enabled-architectures')]
-#[Description('Return enabled Architecture Kit enum cases, labels, skills, and source paths.')]
+#[Description('Before coding, call this first to identify enabled architecture patterns, relevant skills and source files. Use the result to choose guidance for the task.')]
 #[IsReadOnly]
 class EnabledArchitectures extends Tool
 {

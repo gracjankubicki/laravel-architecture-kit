@@ -486,9 +486,9 @@ final class DataExtractor
 
             return $receiver;
         }
-        $read = ['get', 'first', 'firstorfail', 'find', 'findorfail', 'findmany', 'sole', 'value', 'pluck', 'count', 'sum', 'avg', 'min', 'max', 'exists', 'doesntexist', 'paginate', 'simplepaginate', 'cursorpaginate', 'cursor', 'lazy', 'lazybyid', 'chunk', 'chunkbyid', 'each', 'eachbyid'];
-        $write = ['save', 'savequietly', 'saveorfail', 'push', 'pushquietly', 'create', 'createquietly', 'insert', 'insertorignore', 'insertusing', 'update', 'updatequietly', 'updateorfail', 'upsert', 'delete', 'deletequietly', 'destroy', 'forcedelete', 'forcedeletequietly', 'forcedestroy', 'restore', 'restorequietly', 'increment', 'incrementquietly', 'decrement', 'decrementquietly', 'truncate', 'attach', 'detach', 'sync', 'syncwithoutdetaching', 'syncwithpivotvalues', 'toggle', 'updateexistingpivot'];
-        $both = ['firstorcreate', 'updateorcreate', 'createorfirst', 'updateorinsert', 'incrementorcreate'];
+        $read = DataOperations::READ;
+        $write = DataOperations::WRITE;
+        $both = DataOperations::BOTH;
         if (in_array($method, [...$read, ...$write, ...$both], true)) {
             $kinds = in_array($method, $both, true) ? ['read', 'write'] : [in_array($method, $write, true) ? 'write' : 'read'];
             if (in_array($method, ['sync', 'syncwithoutdetaching', 'syncwithpivotvalues', 'toggle'], true)) {

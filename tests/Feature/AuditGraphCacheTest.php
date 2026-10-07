@@ -17,6 +17,22 @@ use Illuminate\Filesystem\Filesystem;
 
 final class AuditGraphCacheTest extends TestCase
 {
+    public function test_rules_and_graph_share_one_parse_per_file_with_and_without_cache(): void
+    {
+        $calls = [];
+        $audit = new ApplicationAudit(new Filesystem, $this->tempPath, onParse: static function (string $path) use (&$calls): void {
+            $calls[$path] = ($calls[$path] ?? 0) + 1;
+        });
+        $expected = ['app/Services/BillingService.php' => 1, 'app/Support/Money.php' => 1];
+        foreach ([null, $this->cache(), $this->cache()] as $cache) {
+            $calls = [];
+            $result = $audit->run($this->enabled(), changedOnly: false, scope: new AuditScope, cache: $cache);
+            ksort($calls);
+            $this->assertSame($expected, $calls);
+            $this->assertNotEmpty($result->findings);
+        }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

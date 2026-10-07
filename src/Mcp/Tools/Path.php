@@ -28,7 +28,7 @@ final class Path extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['from' => $schema->string()->required(), 'to' => $schema->string()->required(), 'limit' => $schema->integer()->min(0)->max(500)->default(20), 'depth' => $schema->integer()->min(1)->max(32)->default(8)];
+        return ['from' => $schema->string()->required()->description('Source class, Class::method or project-relative PHP path. Use search to resolve an unknown selector.'), 'to' => $schema->string()->required()->description('Destination class, Class::method or project-relative PHP path. Direction is from the source to this destination.'), 'limit' => $schema->integer()->min(0)->max(500)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'), 'depth' => $schema->integer()->min(1)->max(32)->default(8)->description('Maximum analysis hops, from 1 to 32. A depth-limited result does not prove that no longer path exists.')];
     }
 
     public function handle(Request $request): ResponseFactory

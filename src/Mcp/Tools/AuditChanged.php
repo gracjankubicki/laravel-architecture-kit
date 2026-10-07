@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('audit-changed')]
-#[Description('Audit changed application files against enabled Architecture Kit rules.')]
+#[Description('Inspect changed application files against enabled architecture rules. Supply a Git base when needed, or changed=false for the full audit scope. Read findings, suggestions and incomplete analysis separately. Use explain-finding for a reported occurrence and guard for the final gate.')]
 #[IsReadOnly]
 class AuditChanged extends Tool
 {
@@ -28,11 +28,11 @@ class AuditChanged extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'changed' => $schema->boolean()->default(true),
-            'base' => $schema->string()->nullable(),
-            'strict' => $schema->boolean()->default(false),
-            'limit' => $schema->integer()->min(0)->default(20),
-            'full' => $schema->boolean()->default(false),
+            'changed' => $schema->boolean()->default(true)->description('Audit changed files when true; inspect the full configured audit scope when false.'),
+            'base' => $schema->string()->nullable()->description('Optional Git base revision for detecting changed files. Omit to use the normal working-tree comparison.'),
+            'strict' => $schema->boolean()->default(false)->description('Treat audit warnings as blocking when true. Inspect findings and incomplete analysis separately.'),
+            'limit' => $schema->integer()->min(0)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'),
+            'full' => $schema->boolean()->default(false)->description('Include the full report instead of the bounded agent summary when true.'),
         ];
     }
 

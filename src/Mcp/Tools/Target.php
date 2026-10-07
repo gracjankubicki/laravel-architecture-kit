@@ -24,7 +24,7 @@ final class Target extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['subject' => $schema->string()->default(''), 'limit' => $schema->integer()->min(0)->max(500)->default(50)];
+        return ['subject' => $schema->string()->default('')->description('Optional class, Class::method or existing or planned PHP file path. Omit to inspect project-wide target progress.'), 'limit' => $schema->integer()->min(0)->max(500)->default(50)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.')];
     }
 
     public function outputSchema(JsonSchema $schema): array

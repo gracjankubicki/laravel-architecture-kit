@@ -852,6 +852,25 @@ For Docker and Sail runtimes, `command` becomes `docker` and `args` include `com
 
 The MCP server exposes read-only tools for enabled architectures, generated rules, project architecture context, package upgrade plans, doctor state, changed-file audit, guard state, and finding explanations. It does not regenerate files, install hooks, run migrations, write code, or mutate application data.
 
+## Source-only application graph
+
+The source-only application graph is exposed through `architecture-search` and `architecture-graph`. Search returns candidate IDs and source locations; graph queries inspect direct relationships, directed paths, or possible change impact. Read [the static graph reference](docs/static-graph.md) for scope, parameters, examples, completeness, continuation, and cache behavior. Completeness describes the inspected inputs and supported source contracts; dynamic or unsupported source shapes remain explicit diagnostics.
+
+The core catalog uses these source contracts. A relationship is a possible transition with a source location; it does not prove runtime execution.
+
+| Family | Source information | Limits |
+|---|---|---|
+| Models, pivots, builders and scopes | Inherited contracts, table and connection selectors, relation targets, selected scopes and terminal reads or writes | Dynamic selectors and source overrides remain unresolved. Query preparation alone is not a write. |
+| Casts, accessors and mutators | Source cast maps, effective inherited methods, attribute callbacks and serialization candidates | Runtime cast changes and loaded model data are unknown. Attribute writes do not imply database persistence. |
+| Factories, seeders and migrations | Model selectors, conditional factory lifecycle, related factories, seeder calls and migration direction | `make` and `create` have separate effects. A migration declares schema operations, not the current database schema. |
+| Actions, services, queries, DTOs, value objects, ports, adapters and gateways | Directory conventions with evidence, source type references and resolved calls | Placement is a role hint. It does not invoke methods or impose an application layout. Saloon connectors and requests additionally require their package contracts. |
+| Views, Blade components, composers and creators | Literal view references, source component registration, selected render and composer methods, Blade dependencies with original lines | Blade is not rendered or compiled. Dynamic names and invalid PHP fragments produce diagnostics. |
+| Mail, notifications and broadcasting | Preparation, send or queue sites, selected channel bodies, broadcast resources and subscription authorization | Queue delivery, runtime channel selection and subscription acceptance remain conditions. Preparing a message does not send it. |
+| Cache, storage, configuration and external services | Store-qualified keys, locks, disks, configuration selectors and sanitized source endpoints | Dynamic identifiers remain explicit. Payloads, credentials, URL queries and fragments are omitted. |
+| PHPUnit and Pest | Test declarations, HTTP route candidates, source lifecycle and attribute hooks, data providers, named datasets and global Pest hook targets | Links recommend candidate tests. They do not execute tests, retain dataset values or report PASS. Dynamic or unsupported registration shapes remain explicit. |
+
+For example, `pest()->beforeEach(fn () => prepareBilling())->in('Feature')` in `tests/Pest.php` links the hook to source tests under `tests/Feature`. Later `in()` calls replace the selected targets. Later hooks of the same kind replace earlier callbacks. `pest()` in `Pest.php` defaults to its directory; `uses()` defaults to its source file. These links retain `test_executed=false`. A generator hook does not create a path to its deferred body. The same boundary applies to Inertia prop and shared callbacks: resolving a callback that returns a generator does not prove consumption of its body. Such callbacks produce an explicit diagnostic instead of a semantic path to their deferred calls.
+
 ## Development
 
 ```bash

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
+use Closure;
 use PhpParser\Error;
 use PhpParser\Node;
 use PhpParser\NodeTraverser;
@@ -19,9 +20,12 @@ final class FileContext
 
     private ?string $parseError = null;
 
+    /** @param Closure(string): void|null $onParse */
     public function __construct(
         public readonly string $path,
         public readonly string $contents,
+        private readonly ?Closure $onParse = null,
+        private readonly bool $newestSyntax = false,
     ) {}
 
     /** A declaration view reuses resolved nodes and original source locations.
@@ -29,7 +33,7 @@ final class FileContext
      */
     public function withAst(array $nodes): self
     {
-        $view = new self($this->path, $this->contents);
+        $view = new self($this->path, $this->contents, $this->onParse, $this->newestSyntax);
         $view->ast = $nodes;
         $view->parsed = true;
 
@@ -48,7 +52,12 @@ final class FileContext
         $this->parsed = true;
 
         try {
-            $nodes = (new ParserFactory)->createForHostVersion()->parse($this->contents);
+            if ($this->onParse !== null) {
+                ($this->onParse)($this->path);
+            }
+            $factory = new ParserFactory;
+            $parser = $this->newestSyntax ? $factory->createForNewestSupportedVersion() : $factory->createForHostVersion();
+            $nodes = $parser->parse($this->contents);
 
             if ($nodes !== null) {
                 $traverser = new NodeTraverser;

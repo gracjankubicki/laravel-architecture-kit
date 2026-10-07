@@ -34,16 +34,20 @@ final class ExecutionExtractor
     /** @var array<string, string> */
     private array $parents = [];
 
+    private bool $catalogMode = false;
+
     /** @return array<string, mixed> */
-    public function extract(FileContext $file): array
+    public function extract(FileContext $file, bool $catalog = false): array
     {
         $this->file = $file;
+        $this->catalogMode = $catalog;
+        $this->parents = [];
         $this->visits = 0;
         $this->authorizationContexts = [];
         $this->scheduleAttributes = [];
         $this->schedulePending = [];
         $this->callbackParameter = null;
-        $this->result = ['classes' => [], 'class_declarations' => [], 'operations' => [], 'calls' => [], 'notices' => [], 'paths' => [], 'returns' => [], 'limited' => false];
+        $this->result = ['classes' => [], 'class_declarations' => [], 'operations' => [], 'calls' => [], 'notices' => [], 'paths' => [], 'returns' => [], 'limited' => false, ...($catalog ? ['middleware_returns' => []] : [])];
         $nodes = $file->ast();
         if ($nodes === null) {
             $this->notice(null, 'Unparseable execution source.');
@@ -67,12 +71,12 @@ final class ExecutionExtractor
                 break;
             }
             if ($node instanceof Stmt\ClassLike) {
-                if (! isset($node->namespacedName)) {
+                if (! isset($node->namespacedName) && ! $this->catalogMode) {
                     $this->notice($node, 'Anonymous execution class is unresolved.');
 
                     continue;
                 }
-                $name = $node->namespacedName->toString();
+                $name = isset($node->namespacedName) ? $node->namespacedName->toString() : '(anonymous) '.$this->file->path.':'.$node->getStartFilePos();
                 $meta = ['name' => $name, 'path' => $this->file->path, 'line' => $node->getStartLine(), 'offset' => $node->getStartFilePos(), 'parents' => [], 'traits' => [], 'properties' => [], 'methods' => [], 'attributes' => [], 'abstract' => $node instanceof Stmt\Class_ && $node->isAbstract(), 'kind' => $node instanceof Stmt\Interface_ ? 'interface' : ($node instanceof Stmt\Trait_ ? 'trait' : ($node instanceof Stmt\Enum_ ? 'enum' : 'class'))];
                 if ($node instanceof Stmt\Class_ && $node->extends !== null) {
                     $meta['parents'][] = $this->file->resolvedName($node->extends);
@@ -123,7 +127,7 @@ final class ExecutionExtractor
                     }
                     $symbol = $name.'::'.$method->name->toString();
                     $methodVars = $this->walk($method->stmts ?? [], $symbol, $name, $methodVars, [], $depth + 1);
-                    $meta['methods'][strtolower($method->name->toString())] = ['symbol' => $symbol, 'name' => $method->name->toString(), 'public' => $method->isPublic(), 'abstract' => $node instanceof Stmt\Interface_ || $method->isAbstract(), 'parameter' => isset($method->params[0]) ? $this->types($method->params[0]->type, $name) : [], 'returns' => $this->result['returns'][$symbol] ?? [], 'parameters' => array_map(fn ($p) => ['name' => is_string($p->var->name) ? $p->var->name : '', 'types' => $this->types($p->type, $name), 'nullable' => AuthorizationSignature::allowsGuests($p), 'route_resolvable' => AuthorizationSignature::routeResolvable($p->type)], $method->params), 'conditional_return' => count(array_filter($method->stmts ?? [], fn ($s) => $s instanceof Stmt\Return_)) !== 1, 'source' => $this->site($method)];
+                    $meta['methods'][strtolower($method->name->toString())] = ['symbol' => $symbol, 'name' => $method->name->toString(), 'public' => $method->isPublic(), 'abstract' => $node instanceof Stmt\Interface_ || $method->isAbstract(), 'parameter' => isset($method->params[0]) ? $this->types($method->params[0]->type, $name) : [], 'returns' => $this->result['returns'][$symbol] ?? [], 'parameters' => array_map(fn ($p) => ['name' => is_string($p->var->name) ? $p->var->name : '', 'types' => $this->types($p->type, $name), 'nullable' => AuthorizationSignature::allowsGuests($p), 'route_resolvable' => AuthorizationSignature::routeResolvable($p->type)], $method->params), ...($this->catalogMode ? ['middleware_candidates' => $this->result['middleware_returns'][$symbol] ?? []] : []), 'conditional_return' => count(array_filter($method->stmts ?? [], fn ($s) => $s instanceof Stmt\Return_)) !== 1, 'source' => $this->site($method)];
                 }
                 $this->result['classes'][strtolower($name)] = $meta;
                 $this->result['class_declarations'][] = $meta;
@@ -131,12 +135,27 @@ final class ExecutionExtractor
                 continue;
             }
             if ($node instanceof Stmt\Function_) {
-                $this->notice($node, 'Standalone function execution bodies are unresolved.');
+                if ($this->catalogMode) {
+                    $functionVars = [];
+                    foreach ($node->params as $param) {
+                        if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                            $functionVars[$param->var->name] = $this->typed($param->type, '');
+                        }
+                    }
+                    $symbol = isset($node->namespacedName) ? $node->namespacedName->toString() : $node->name->toString();
+                    $this->walk($node->stmts, $symbol, '', $functionVars, $conditions, $depth + 1);
+                } else {
+                    $this->notice($node, 'Standalone function execution bodies are unresolved.');
+                }
 
                 continue;
             }
             if ($node instanceof Stmt\Return_ && $node->expr !== null) {
-                $this->result['returns'][$from][] = $this->value($node->expr, $from, $class, $vars, $conditions, $depth + 1);
+                $value = $this->value($node->expr, $from, $class, $vars, $conditions, $depth + 1);
+                $this->result['returns'][$from][] = $value;
+                if ($this->catalogMode) {
+                    $this->result['middleware_returns'][$from][] = $this->middlewareCandidate($node->expr, $value, $class);
+                }
 
                 continue;
             }
@@ -145,6 +164,20 @@ final class ExecutionExtractor
                     $vars[$node->expr->var->name] = $this->value($node->expr->expr, $from, $class, $vars, $conditions, $depth + 1);
                 } else {
                     $this->value($node->expr, $from, $class, $vars, $conditions, $depth + 1);
+                }
+                if ($this->catalogMode && ($node->expr instanceof Expr\Assign || $node->expr instanceof Expr\AssignOp || $node->expr instanceof Expr\AssignRef)) {
+                    $target = $node->expr->var;
+                    if ($target instanceof Expr\ArrayDimFetch) {
+                        while ($target instanceof Expr\ArrayDimFetch) {
+                            $target = $target->var;
+                        }
+                        if ($target instanceof Expr\Variable && is_string($target->name)) {
+                            $vars[$target->name] = null;
+                        }
+                    }
+                    if ($node->expr instanceof Expr\AssignRef && $node->expr->expr instanceof Expr\Variable && is_string($node->expr->expr->name)) {
+                        $vars[$node->expr->expr->name] = null;
+                    }
                 }
                 foreach ((new NodeFinder)->findInstanceOf([$node->expr], Expr\CallLike::class) as $call) {
                     if ($call->isFirstClassCallable()) {
@@ -158,6 +191,16 @@ final class ExecutionExtractor
                 }
 
                 continue;
+            }
+            if ($this->catalogMode && $node instanceof Stmt\Unset_) {
+                foreach ($node->vars as $target) {
+                    while ($target instanceof Expr\ArrayDimFetch) {
+                        $target = $target->var;
+                    }
+                    if ($target instanceof Expr\Variable && is_string($target->name)) {
+                        $vars[$target->name] = null;
+                    }
+                }
             }
             if ($node instanceof Expr) {
                 $this->value($node, $from, $class, $vars, $conditions, $depth + 1);
@@ -218,7 +261,7 @@ final class ExecutionExtractor
                     $vars[$param->var->name] = $this->typed($param->type, $class) ?? ($injectedParameter === null ? null : ['type' => 'object', 'class' => $injectedParameter]);
                 }
             }
-            $this->walk($expr instanceof Expr\Closure ? $expr->stmts : [$expr->expr], $symbol, $class, $vars, [], $depth + 1);
+            $this->walk($expr instanceof Expr\Closure ? $expr->stmts : ($this->catalogMode ? [new Stmt\Return_($expr->expr, $expr->getAttributes())] : [$expr->expr]), $symbol, $class, $vars, [], $depth + 1);
 
             return ['type' => 'callback', 'symbol' => $symbol, 'source' => $this->site($expr), 'guest' => isset($expr->params[0]) && AuthorizationSignature::allowsGuests($expr->params[0]), 'events' => isset($expr->params[0]) ? $this->types($expr->params[0]->type, $class) : []];
         }
@@ -244,10 +287,30 @@ final class ExecutionExtractor
                 }
             }
 
+            if ($this->catalogMode) {
+                $descriptor = ['type' => 'catalog-array', 'items' => $array];
+                $descriptor['middleware_items'] = $this->middlewareCandidate($expr, $descriptor, $class);
+
+                return $descriptor;
+            }
+
             return $array;
         }
         if ($expr instanceof Expr\New_) {
             $type = $expr->class instanceof Node\Name ? $this->name($expr->class, $class) : null;
+            if ($this->catalogMode && $type === 'Illuminate\Routing\Controllers\Middleware') {
+                $args = [];
+                foreach ($expr->getArgs() as $arg) {
+                    $args[$arg->name?->toString() ?? count($args)] = $this->value($arg->value, $from, $class, $vars, $conditions, $depth + 1);
+                }
+
+                return ['type' => 'controller_middleware', 'middleware' => $args['middleware'] ?? $args[0] ?? null,
+                    'only' => $args['only'] ?? $args[1] ?? [], 'except' => $args['except'] ?? $args[2] ?? [], 'source' => $this->site($expr)];
+            }
+            if ($this->catalogMode && $expr->class instanceof Stmt\Class_) {
+                $type = '(anonymous) '.$this->file->path.':'.$expr->class->getStartFilePos();
+                $this->walk([$expr->class], $from, $class, [], $conditions, $depth + 1);
+            }
             $this->call($expr, $from, $type, '__construct', $conditions);
             foreach ($expr->getArgs() as $arg) {
                 $this->value($arg->value, $from, $class, $vars, $conditions, $depth + 1);
@@ -277,6 +340,9 @@ final class ExecutionExtractor
                 if ($ownerHint === 'Illuminate\\Foundation\\Configuration\\ApplicationBuilder' && strtolower($method) === 'withschedule') {
                     $this->callbackParameter = 'Illuminate\\Console\\Scheduling\\Schedule';
                 }
+                if ($this->catalogMode && $ownerHint === 'Illuminate\\Foundation\\Configuration\\ApplicationBuilder' && strtolower($method) === 'withexceptions') {
+                    $this->callbackParameter = 'Illuminate\\Foundation\\Configuration\\Exceptions';
+                }
                 if (($ownerHint === 'Illuminate\\Support\\Facades\\Artisan' || $this->kernelOwner($ownerHint)) && strtolower($method) === 'command') {
                     $argumentVars['this'] = ['type' => 'object', 'class' => 'Illuminate\\Foundation\\Console\\ClosureCommand'];
                 }
@@ -294,7 +360,27 @@ final class ExecutionExtractor
                 $this->call($expr, $from, $owner, $method, $conditions);
             }
             $site = $this->site($expr);
+            if ($this->catalogMode && ($receiver['type'] ?? null) === 'controller_middleware' && in_array($short, ['only', 'except'], true)) {
+                $receiver[$short] = $args[$short] ?? $args[0] ?? null;
+
+                return $receiver;
+            }
             $op = ['from' => $from, 'source' => $site, 'conditions' => $conditions, 'method' => $short, 'owner' => $owner, 'receiver' => $receiver, 'args' => $args];
+            if ($this->catalogMode && $short === 'middleware' && $owner !== null && str_ends_with(strtolower($from), '::__construct')
+                && $expr instanceof Expr\MethodCall && $expr->var instanceof Expr\Variable && $expr->var->name === 'this') {
+                $this->result['operations'][] = ['kind' => 'middleware_controller', ...$op];
+
+                return ['type' => 'controller_middleware_options', 'registration_site' => $site, 'options' => []];
+            }
+            if ($this->catalogMode && ($receiver['type'] ?? null) === 'controller_middleware_options' && in_array($short, ['only', 'except'], true)) {
+                $receiver['options'][$short] = $args['methods'] ?? $args[$short] ?? (count($args) > 1 ? $args : ($args[0] ?? null));
+                $this->result['operations'][] = ['kind' => 'middleware_controller_options', ...$op, 'registration_site' => $receiver['registration_site'], 'options' => $receiver['options']];
+
+                return $receiver;
+            }
+            if ($this->catalogMode && $expr instanceof Expr\FuncCall && $expr->name instanceof Node\Name) {
+                $op['helper'] = $method;
+            }
             if (in_array($short, ['authorize', 'authorizeforuser', 'authorizeresource', 'allows', 'denies', 'check', 'inspect', 'any', 'none', 'can', 'cannot', 'cant', 'canany', 'allowif', 'denyif', 'policy', 'define', 'before', 'after', 'guesspolicynamesusing', 'foruser'], true)) {
                 $this->result['operations'][] = ['kind' => 'authorization_candidate', ...$op, ...($this->authorizationContexts[$expr->getStartFilePos()] ?? [])];
                 if ($short === 'foruser' && in_array($owner, ['Illuminate\Support\Facades\Gate', 'Illuminate\Contracts\Auth\Access\Gate', 'Illuminate\Auth\Access\Gate'], true)) {
@@ -303,6 +389,41 @@ final class ExecutionExtractor
             }
             if ($owner === 'Illuminate\Foundation\Configuration\Middleware' && $short === 'alias') {
                 $this->result['operations'][] = ['kind' => 'middleware_alias', ...$op];
+            }
+            if ($this->catalogMode && $owner === 'Illuminate\Foundation\Configuration\ApplicationBuilder' && $short === 'withmiddleware') {
+                $this->result['operations'][] = ['kind' => 'middleware_registration', ...$op];
+            }
+            if ($this->catalogMode && $owner === 'Illuminate\Foundation\Configuration\Middleware' && in_array($short, ['use', 'append', 'prepend', 'remove', 'replace'], true)) {
+                $this->result['operations'][] = ['kind' => 'middleware_global', ...$op];
+
+                return $receiver;
+            }
+            if ($this->catalogMode && $owner === 'Illuminate\Foundation\Configuration\Middleware' && in_array($short, ['group', 'appendtogroup', 'prependtogroup', 'removefromgroup', 'replaceingroup', 'web', 'api'], true)) {
+                $this->result['operations'][] = ['kind' => 'middleware_group', ...$op];
+
+                return $receiver;
+            }
+            if ($this->catalogMode && in_array($owner, ['Illuminate\Support\Facades\Auth', 'Illuminate\Auth\AuthManager'], true) && in_array($short, ['extend', 'provider', 'viarequest'], true)) {
+                $this->result['operations'][] = ['kind' => 'auth_registration', ...$op];
+            }
+            if ($this->catalogMode && $owner === 'Illuminate\Foundation\Configuration\ApplicationBuilder' && $short === 'withexceptions') {
+                $this->result['operations'][] = ['kind' => 'exception_activation', ...$op];
+            }
+            if ($this->catalogMode && ($receiver['type'] ?? null) === 'exception_report_handler' && $short === 'stop') {
+                $this->result['operations'][] = ['kind' => 'exception_options', ...$op, 'registration_site' => $receiver['registration_site']];
+
+                return $receiver;
+            }
+            if ($this->catalogMode && $owner !== null && in_array($short, ['report', 'render', 'reportable', 'renderable'], true)) {
+                $this->result['operations'][] = ['kind' => 'exception_registration', ...$op];
+
+                return in_array($short, ['report', 'reportable'], true)
+                    ? ['type' => 'exception_report_handler', 'registration_site' => $site] : $receiver;
+            }
+            if ($this->catalogMode && $owner !== null && in_array($short, ['dontreport', 'ignore', 'stopignoring', 'dontreportwhen', 'dontreportduplicates'], true)) {
+                $this->result['operations'][] = ['kind' => 'exception_control', ...$op];
+
+                return $receiver;
             }
             $bus = $owner === 'Illuminate\Support\Facades\Bus' || in_array($owner, ['Illuminate\Contracts\Bus\Dispatcher', 'Illuminate\Contracts\Bus\QueueingDispatcher', 'Illuminate\Bus\Dispatcher'], true);
             $events = $owner === 'Illuminate\Support\Facades\Event' || in_array($owner, ['Illuminate\Contracts\Events\Dispatcher', 'Illuminate\Events\Dispatcher'], true);
@@ -330,7 +451,15 @@ final class ExecutionExtractor
                 return ['type' => 'object', 'class' => 'Illuminate\Foundation\Configuration\ApplicationBuilder'];
             }
             if ($owner === 'Illuminate\Foundation\Configuration\ApplicationBuilder' && in_array($short, ['withcommands', 'withrouting', 'withschedule'], true)) {
-                $this->result['operations'][] = ['kind' => 'console_registration', ...$op];
+                $consoleCommandsNull = false;
+                if ($this->catalogMode && $short === 'withrouting') {
+                    foreach ($expr->getArgs() as $position => $arg) {
+                        if (($arg->name?->toString() ?? $position) === 'commands' || $arg->name === null && $position === 3) {
+                            $consoleCommandsNull = $arg->value instanceof Expr\ConstFetch && strtolower($arg->value->name->toString()) === 'null';
+                        }
+                    }
+                }
+                $this->result['operations'][] = ['kind' => 'console_registration', ...$op, ...($this->catalogMode ? ['console_commands_null' => $consoleCommandsNull] : [])];
             }
             if (($owner === 'Illuminate\Support\Facades\Artisan' || $this->kernelOwner($owner)) && $short === 'command') {
                 $this->result['operations'][] = ['kind' => 'console_closure', ...$op];
@@ -401,7 +530,7 @@ final class ExecutionExtractor
                 return null;
             }
             if (($global && $short === 'queueable') || $method === 'Illuminate\Events\queueable') {
-                return ['type' => 'queued_callback', 'value' => $args[0] ?? null, 'options' => []];
+                return ['type' => 'queued_callback', 'value' => $args[0] ?? null, 'options' => [], ...($this->catalogMode ? ['helper' => $method] : [])];
             }
             if (($bus && in_array($short, ['chain', 'batch'], true)) || ($owner !== null && $short === 'withchain')) {
                 return ['type' => $short === 'batch' ? 'batch' : 'chain', 'jobs' => $args[0] ?? null, 'contract_owner' => $short === 'withchain' ? $owner : null, 'first' => $short === 'withchain' ? $owner : null, 'options' => [], 'source' => $site];
@@ -443,7 +572,8 @@ final class ExecutionExtractor
             if (in_array($owner, ['Illuminate\Support\Facades\Route', 'Illuminate\Routing\Router'], true) && is_array($routeAction) && ($routeAction['type'] ?? '') === 'callback') {
                 $this->result['operations'][] = ['kind' => 'alias', 'from' => '(route) '.$this->file->path.':'.$expr->getStartFilePos(), 'value' => $routeAction, 'source' => $site, 'conditions' => []];
             }
-            if (in_array($short, ['created', 'creating', 'updated', 'updating', 'saving', 'saved', 'deleting', 'deleted', 'retrieved', 'restoring', 'restored', 'trashed', 'replicating', 'forcedeleting', 'forcedeleted'], true) && $owner !== null && isset($args[0])) {
+            if (in_array($short, ['created', 'creating', 'updated', 'updating', 'saving', 'saved', 'deleting', 'deleted', 'retrieved', 'restoring', 'restored', 'trashed', 'replicating', 'forcedeleting', 'forcedeleted'], true) && $owner !== null
+                && (isset($args[0]) || $this->catalogMode && (array_key_exists(0, $args) || array_key_exists('callback', $args)))) {
                 $this->result['operations'][] = ['kind' => 'model_listen', ...$op];
 
                 return null;
@@ -623,6 +753,40 @@ final class ExecutionExtractor
         return [];
     }
 
+    /** Only class selectors and known middleware/callable descriptors, never generic return payloads.
+     */
+    private function middlewareCandidate(Expr $expr, mixed $value, string $class, int $depth = 0): mixed
+    {
+        if ($depth >= 8 || ImpactExtractor::sourceLimit(0) !== null) {
+            $this->result['limited'] = true;
+
+            return null;
+        }
+        if ($expr instanceof Expr\Variable && is_array($value) && ($value['type'] ?? null) === 'catalog-array') {
+            return $value['middleware_items'] ?? null;
+        }
+        if ($expr instanceof Expr\ClassConstFetch && $expr->class instanceof Node\Name && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class') {
+            return $this->name($expr->class, $class);
+        }
+        if ($expr instanceof Expr\Array_) {
+            if (count($expr->items) > 1000) {
+                $this->result['limited'] = true;
+
+                return null;
+            }
+            $result = [];
+            $items = is_array($value) && ($value['type'] ?? null) === 'catalog-array' ? $value['items'] : [];
+            foreach ($expr->items as $position => $item) {
+                $result[] = $item !== null && ! $item->unpack && $item->key === null
+                    ? $this->middlewareCandidate($item->value, $items[$position] ?? null, $class, $depth + 1) : null;
+            }
+
+            return ['type' => 'catalog-array', 'items' => $result];
+        }
+
+        return is_array($value) && in_array($value['type'] ?? null, ['controller_middleware', 'callback', 'reference'], true) ? $value : null;
+    }
+
     /** @return array{type: string, class: string}|null */
     private function typed(?Node $type, string $class): ?array
     {
@@ -632,17 +796,24 @@ final class ExecutionExtractor
     }
 
     /** @param array<string, mixed> $vars
-     * @return array{type: string, symbol: string}|null
+     * @return array<string, mixed>|null
      */
     private function callableReference(Expr\CallLike $expr, string $class, array $vars): ?array
     {
+        if ($this->catalogMode && $expr instanceof Expr\FuncCall && $expr->name instanceof Node\Name) {
+            $resolved = $this->file->resolvedName($expr->name);
+            $namespaced = $expr->name->getAttribute('namespacedName');
+
+            return ['type' => 'reference', 'symbol' => $resolved, 'callable_form' => 'function',
+                'first_class' => true, 'function_names' => array_values(array_unique($namespaced instanceof Node\Name ? [$namespaced->toString(), $resolved] : [$resolved]))];
+        }
         if ($expr instanceof Expr\StaticCall && $expr->class instanceof Node\Name && $expr->name instanceof Node\Identifier) {
-            return ['type' => 'reference', 'symbol' => $this->name($expr->class, $class).'::'.$expr->name->toString()];
+            return ['type' => 'reference', 'symbol' => $this->name($expr->class, $class).'::'.$expr->name->toString(), ...($this->catalogMode ? ['first_class' => true, 'callable_form' => 'static-first-class', 'creator_class' => $class] : [])];
         }
         if ($expr instanceof Expr\MethodCall && $expr->name instanceof Node\Identifier) {
             $receiver = $this->literal($expr->var, $class, $vars);
             if (is_array($receiver) && isset($receiver['class'])) {
-                return ['type' => 'reference', 'symbol' => $receiver['class'].'::'.$expr->name->toString()];
+                return ['type' => 'reference', 'symbol' => $receiver['class'].'::'.$expr->name->toString(), ...($this->catalogMode ? ['first_class' => true, 'callable_form' => 'object-first-class', 'creator_class' => $class] : [])];
             }
         }
 

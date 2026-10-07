@@ -10,6 +10,37 @@ use PHPUnit\Framework\TestCase;
 
 final class FileContextTest extends TestCase
 {
+    public function test_parse_observer_counts_real_attempts_and_resolved_views_do_not_parse_again(): void
+    {
+        $calls = [];
+        $file = new FileContext('app/Observed.php', '<?php class Observed {}', static function (string $path) use (&$calls): void {
+            $calls[] = $path;
+        });
+        $nodes = $file->ast();
+        $this->assertNotNull($nodes);
+        $file->ast();
+        $file->parseError();
+        $view = $file->withAst($nodes);
+        $this->assertSame($nodes, $view->ast());
+        $this->assertSame(['app/Observed.php'], $calls);
+
+        $view->releaseAst();
+        $this->assertNotNull($view->ast());
+        $this->assertSame(['app/Observed.php', 'app/Observed.php'], $calls);
+    }
+
+    public function test_parse_observer_counts_an_invalid_source_attempt_once(): void
+    {
+        $calls = 0;
+        $file = new FileContext('app/Invalid.php', '<?php class {', static function () use (&$calls): void {
+            $calls++;
+        });
+        $this->assertNull($file->ast());
+        $this->assertNotNull($file->parseError());
+        $this->assertNull($file->ast());
+        $this->assertSame(1, $calls);
+    }
+
     public function test_it_resolves_imported_class_names_once_per_parsed_file(): void
     {
         $file = new FileContext('app/Http/Controllers/DocumentController.php', <<<'PHP'

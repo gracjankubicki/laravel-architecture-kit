@@ -13,7 +13,7 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('architecture-rules')]
-#[Description('Return the full generated Architecture Kit guideline for enabled architectures.')]
+#[Description('Read the full generated rules for enabled architectures when you need project-wide guidance or a rule rationale. Use file-rules for one existing or planned file.')]
 #[IsReadOnly]
 class ArchitectureRules extends Tool
 {

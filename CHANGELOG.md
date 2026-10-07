@@ -6,6 +6,8 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ### Added
 
+- Add source-only `architecture-search` and `architecture-graph` MCP discovery, bounded relationship/path/impact pages, separate graph scope, per-file catalog cache, and source evidence with explicit incompleteness. Add parser-call measurements and preserve source-bounded diagnostics in warm cache results.
+
 - Show incoming and outgoing execution impact, add immutable proposal continuation through CLI/MCP, and list explicit method choices for class/file signature overviews. Preserve source-only analysis, conditional event suppression and proposal freshness.
 
 - Trace source authorization through Gate, policies, hooks, user/controller checks, route middleware and Form Requests in impact/path. Summarize shared rule sites, preserve conditional and exception witnesses, paginate through reach, and use source-only CLI/MCP settings.

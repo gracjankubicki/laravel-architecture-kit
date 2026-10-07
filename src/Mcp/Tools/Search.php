@@ -25,7 +25,7 @@ final class Search extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['query' => $schema->string()->description('Literal fragment, not a regex. Omit only with kind.'), 'kind' => $schema->string()->enum(ArchitectureDiscovery::KINDS), 'limit' => $schema->integer()->min(0)->max(500)->default(20)];
+        return ['query' => $schema->string()->description('Literal fragment, not a regex. Omit only with kind.'), 'kind' => $schema->string()->enum(ArchitectureDiscovery::KINDS)->description('Exact supported declaration-kind filter. Required when query is omitted.'), 'limit' => $schema->integer()->min(0)->max(500)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.')];
     }
 
     public function handle(Request $request): ResponseFactory

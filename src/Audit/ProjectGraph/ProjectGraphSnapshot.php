@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
+use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
 
 final readonly class ProjectGraphSnapshot
@@ -23,6 +24,8 @@ final readonly class ProjectGraphSnapshot
         public array $testInvocations = [],
         /** @var list<ImpactFacts> */
         public array $impactFacts = [],
+        /** @var list<CatalogFacts> */
+        public array $catalogFacts = [],
     ) {
         $byName = [];
 

@@ -194,6 +194,7 @@ final readonly class ProjectGraphCache
                 }
             }
             $estimate += $entry->impact?->estimatedBytes() ?? 0;
+            $estimate += $entry->catalog?->estimatedBytes() ?? 0;
             $estimate += (count($entry->symbols) + count($entry->edges)) * self::BYTES_PER_ELEMENT;
         }
 

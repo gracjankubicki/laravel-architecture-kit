@@ -16,6 +16,24 @@ final readonly class HttpTestResolver
     /** @return RouteEntry|string Handler or reason why dispatch cannot be established. */
     public function resolve(TestInvocation $call): RouteEntry|string
     {
+        $matches = $this->matches($call, false);
+        if (is_string($matches)) {
+            return $matches;
+        }
+        $entry = $matches[0];
+
+        return $entry->class !== null && $entry->method !== null ? $entry : ($entry->unresolved ?? 'Unresolved route handler.');
+    }
+
+    /** @return list<RouteEntry>|string Source candidates never assume runtime registration order. */
+    public function sourceCandidates(TestInvocation $call): array|string
+    {
+        return $this->matches($call, true);
+    }
+
+    /** @return non-empty-list<RouteEntry>|string */
+    private function matches(TestInvocation $call, bool $source): array|string
+    {
         if ($this->routes->unavailable !== null || $this->routes->entries === null) {
             return $this->routes->unavailable ?? 'Route map contains verbs only; HTTP templates are unavailable.';
         }
@@ -87,16 +105,15 @@ final readonly class HttpTestResolver
                 return 'Symbolic route parameter has constraints that cannot be established statically.';
             }
             $candidates[] = $entry;
-            if (! $symbolic) {
+            if (! $symbolic && ! $source) {
                 break;
             }
         }
-        if (count($candidates) !== 1) {
+        if ($candidates === [] || ! $source && count($candidates) !== 1) {
             return $candidates === [] ? 'No route matches the HTTP method and address.' : 'Symbolic address matches multiple routes.';
         }
-        $entry = $candidates[0];
 
-        return $entry->class !== null && $entry->method !== null ? $entry : ($entry->unresolved ?? 'Unresolved route handler.');
+        return $candidates;
     }
 
     private function symbolicMatch(string $path, RouteEntry $entry): bool

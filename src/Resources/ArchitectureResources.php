@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
+use GracjanKubicki\ArchitectureKit\Mcp\ToolGuidance;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
 use SplFileInfo;
@@ -59,6 +60,7 @@ final class ArchitectureResources
         return GeneratedResourceMarker::top(implode("\n\n", [
             '## Architecture Kit',
             $this->globalRules(),
+            ToolGuidance::SERVER_INSTRUCTIONS,
             $this->packageFirstRule(),
             $this->testabilityRule(),
             $this->behaviouralTestGuidance(),
@@ -265,16 +267,7 @@ final class ArchitectureResources
 
     private function compactIntro(): string
     {
-        return implode("\n", [
-            'This file is a compact index of enabled Architecture Kit rules. Full rules are available on demand through skills, the MCP tool `architecture-rules`, the MCP resource `architecture-kit://guideline`, or `php artisan architecture-kit:guidelines {slug} --agent`.',
-            'Before coding, the first Architecture Kit MCP call MUST be `enabled-architectures`. If MCP is unavailable, read this file or run `php artisan architecture-kit:guidelines --agent` before coding.',
-            'Respect declared roles, kinds and modules from file-rules. For organization proposals, follow the project classification section in the expanded guidelines.',
-            'Before changing an existing PHP symbol, call MCP `architecture-context` or run `php artisan architecture-kit:context {FQCN-or-path} --agent`, then inspect the returned dependencies, dependents, violations, and files.',
-            'Before delete/move/signature, supply the concrete proposal to impact. Read unresolved source before dependent decisions. Include fixes within authorized scope. Use page=1 and pagination.next for immutable proposal pages; changed sources require a new report.',
-            'Before changing a class, file or method, use MCP `impact` or `php artisan architecture-kit:impact {class-or-path-or-Class::method} --agent`. Inspect execution.routes and execution.flows for HTTP, Artisan, scheduler, job, event and model paths. Read mode, timing, conditions, uncertainty, limits and freshness. Dispatch, registration and test candidates do not prove execution, worker success or coverage. Model suppression is path-local. For move, delete or signature preflight use change=move/delete/signature with the proposed targets or signature. No breaking rows does not prove safety. To ask how A reaches B, use MCP `path(from, to)` or `php artisan architecture-kit:path A B --agent`. Select classes, methods or files. Read dependency paths separately from execution, with found, status, limits, freshness and external boundaries. Strong/weak is not repair cost. Vendor is unread. Ask before expanding the agreed scope.',
-            'Before upgrading a direct Composer package, call MCP `plan-upgrade` or run `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`, then load only the active atomic upgrade skill.',
-            'Violations are blocked by deterministic audit rules. Load the relevant skill or expanded guideline before implementing or refactoring that architecture.',
-        ]);
+        return ToolGuidance::COMPACT_INSTRUCTIONS;
     }
 
     private function globalRules(): string
@@ -289,15 +282,7 @@ Use classification from file-rules, architecture-context, search and impact as t
 Before changing application architecture:
 
 - Follow the enabled architecture sections in this file.
-- Before coding, call MCP `enabled-architectures` first. Use it to identify enabled patterns and relevant `architecture-kit-*` skills.
-- Before changing an existing PHP symbol, call MCP `architecture-context` or run `php artisan architecture-kit:context {FQCN-or-path} --agent`; inspect its dependencies, dependents, violations, and files before editing.
-- To compare implemented architecture changes, use MCP `revision-diff` or `php artisan architecture-kit:revision-diff {Git-before} --agent`. Read separate structural, HTTP, execution and DATA channels, source identities, per-state configuration, completeness, freshness and candidate pairs. Scope loss is not deletion. Use shared configuration or manual identity pairs only explicitly. This report does not judge runtime compatibility or architecture quality.
-- For package contract changes, use MCP `public-api` with a Git before revision. Read partial/freshness/check rows and explicit 0.x policy; this does not approve or publish a release.
-- Before deleting, moving or changing a method signature, call impact with the intended change and concrete signature or target_class/target_path when known. Include demonstrated follow-up edits in the authorized task and inspect unresolved source before dependent decisions. An impact finding does not require another approval for work already authorized. For a known ordinary edit use architecture-context. Inspect incoming/outgoing execution directions; caller siblings and shared tables never connect processes. For immutable proposal pages use impact page=1, then pagination.next report_id/page/limit without subject or proposal. Restart after changed source metadata; dispatch and candidate tests do not prove execution or PASS.
 
-- Before changing a class, file or method, call MCP `impact` or run `php artisan architecture-kit:impact {class-or-path-or-Class::method} --agent`. Inspect uncertainty and limits before dependent decisions. Inspect execution.routes for HTTP declarations and their precise handler-to-symbol chains, plus execution.unresolved, status and freshness. Inspect execution.flows and execution.flow_analysis for contextual paths through Artisan commands, scheduled tasks, jobs, chains, batches, events, listeners and Eloquent lifecycle events. Read mode, timing and conditions separately. Scheduler filters and callbacks have separate conditional paths; queue dispatch success does not prove worker success. Model event suppression belongs to a path. Queue requests and registrations do not prove execution. Route declarations do not prove active runtime routes. Sources are discovered automatically without booting the application. Test candidates are not coverage or PASS. Before relocating a PHP file or renaming a class/namespace, use impact with change=move and optional target_class/target_path. Inspect Composer mappings, namespace dependencies and uncertain registrations; no source is rewritten. Before removing a method, class or PHP file, use `impact` with `change=delete` or CLI `--change=delete`. Before changing method parameters, references, static or visibility, use `impact` with `change=signature` and the proposed PHP `signature`, or CLI `--signature`. Inspect breaking and check rows; no breaking rows does not prove safety. To ask how A reaches B, use MCP `path` with `from` and `to`, or `php artisan architecture-kit:path A B --agent`. Select classes, methods or PHP files on either end. Read dependency paths separately from execution paths, and inspect found, status, limits, freshness and external boundaries. Strong/weak is not repair cost. Vendor declarations are unread. Ask before expanding the agreed scope.
-- Before upgrading a direct Composer package, call MCP `plan-upgrade` or run `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`; load only the active atomic upgrade skill and rerun the planner after verifying it.
-- If MCP is unavailable, read `.ai/guidelines/architecture-kit.md` or run `php artisan architecture-kit:guidelines --agent` before coding.
 - Do not introduce architecture patterns that are not listed here.
 - Follow existing project structure when it is more specific than the default paths below.
 - Keep framework adapters thin and keep business decisions in the architecture boundary selected for that behavior.
@@ -428,18 +413,13 @@ MARKDOWN;
 - Folder purity: each architecture folder contains only that architecture type; use matching domain subfolders when the project is domain-first.
 - Follow the existing project structure when it is more specific than these defaults.
 - Keep framework adapters thin and business decisions inside the enabled architecture boundary.
-- Before coding, call MCP `enabled-architectures` first; if MCP is unavailable, read this generated guideline or run `php artisan architecture-kit:guidelines --agent`.
-- Before changing an existing PHP symbol, call MCP `architecture-context` or run `php artisan architecture-kit:context {FQCN-or-path} --agent`.
 - Load the relevant `architecture-kit-*` skill or expanded guideline before changing that pattern.
 MARKDOWN;
     }
 
     private function beforeFinishing(): string
     {
-        return <<<'MARKDOWN'
-## Before Finishing
-Run `php artisan architecture-kit:guard --changed --strict` before handing off work. Fix all errors, and use `php artisan architecture-kit:explain {CODE} --agent` for finding details.
-MARKDOWN;
+        return ToolGuidance::BEFORE_FINISHING;
     }
 
     /**

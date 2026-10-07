@@ -27,19 +27,28 @@ final class HttpRouteExtractor
 
     private bool $limited = false;
 
+    /** @var array<string, true> */
+    private array $limitReasons = [];
+
     private FileContext $file;
 
-    public function __construct(private readonly string $basePath) {}
+    /** @var array<int, true> */
+    private array $boundThisCalls = [];
+
+    public function __construct(private readonly string $basePath, private readonly bool $catalog = false) {}
 
     /**
+     * @param  array<int, true>  $boundThisCalls
      * @return array<string, mixed>
      */
-    public function extract(FileContext $file): array
+    public function extract(FileContext $file, array $boundThisCalls = []): array
     {
         $this->file = $file;
+        $this->boundThisCalls = $boundThisCalls;
         $this->operations = $this->notices = [];
         $this->visits = 0;
         $this->limited = false;
+        $this->limitReasons = [];
         $ast = $file->ast();
         if ($ast === null) {
             $this->notice(null, 'Unparseable HTTP source.');
@@ -53,9 +62,10 @@ final class HttpRouteExtractor
                 }
                 if (++$count > 20000 || ImpactExtractor::sourceLimit(0) !== null) {
                     $this->limited = true;
+                    $this->limitReasons[ImpactExtractor::sourceLimit(0) !== null ? 'memory' : 'structure'] = true;
                     $this->notice($node, 'HTTP per-file AST/memory limit reached.');
 
-                    return ['operations' => [], 'notices' => $this->notices, 'limited' => true];
+                    return ['operations' => [], 'notices' => $this->notices, 'limited' => true, 'limit_reasons' => array_keys($this->limitReasons)];
                 }
                 foreach ($node->getSubNodeNames() as $key) {
                     $value = $node->$key;
@@ -73,7 +83,7 @@ final class HttpRouteExtractor
             $this->walk($ast, self::context());
         }
 
-        return ['operations' => $this->operations, 'notices' => $this->notices, 'limited' => $this->limited];
+        return ['operations' => $this->operations, 'notices' => $this->notices, 'limited' => $this->limited, 'limit_reasons' => array_keys($this->limitReasons)];
     }
 
     /**
@@ -93,6 +103,7 @@ final class HttpRouteExtractor
     {
         if ($depth > 12) {
             $this->limited = true;
+            $this->limitReasons[ImpactExtractor::sourceLimit(0) !== null ? 'memory' : 'structure'] = true;
             $this->notice(null, 'HTTP group/include depth limit reached.');
 
             return;
@@ -100,6 +111,7 @@ final class HttpRouteExtractor
         foreach ($nodes as $node) {
             if (++$this->visits > 20000 || count($this->operations) >= 10000 || ImpactExtractor::sourceLimit(0) !== null) {
                 $this->limited = true;
+                $this->limitReasons[ImpactExtractor::sourceLimit(0) !== null ? 'memory' : 'structure'] = true;
                 $this->notice($node, 'HTTP AST/registration/memory limit reached.');
 
                 return;
@@ -124,6 +136,16 @@ final class HttpRouteExtractor
                 $nested = $context;
                 if ($node instanceof Stmt\Class_ && $node->extends instanceof Node\Name) {
                     $nested['provider'] = in_array($this->file->resolvedName($node->extends), ['Illuminate\\Support\\ServiceProvider', 'Illuminate\\Foundation\\Support\\Providers\\RouteServiceProvider'], true);
+                }
+                if ($this->catalog && $node instanceof Stmt\ClassLike) {
+                    $nested['provider'] = true;
+                    $nested['provider_owner'] = isset($node->namespacedName) ? $node->namespacedName->toString() : '(anonymous) '.$this->file->path.':'.$node->getStartFilePos();
+                }
+                if ($this->catalog && $node instanceof Stmt\ClassMethod && isset($nested['provider_owner'])) {
+                    $nested['provider_scope'] = $nested['provider_owner'].'::'.$node->name->toString();
+                }
+                if ($this->catalog && $node instanceof Stmt\Function_) {
+                    $nested['provider_scope'] = isset($node->namespacedName) ? $node->namespacedName->toString() : $node->name->toString();
                 }
                 $nested['possible'] = true;
                 $nested['reasons'][] = 'Provider/function activation is not established by source inspection.';
@@ -158,6 +180,7 @@ final class HttpRouteExtractor
     {
         if ($depth > 12 || ++$this->visits > 20000 || ImpactExtractor::sourceLimit(0) !== null) {
             $this->limited = true;
+            $this->limitReasons[ImpactExtractor::sourceLimit(0) !== null ? 'memory' : 'structure'] = true;
             $this->notice($expr, 'HTTP expression/depth/memory limit reached.');
 
             return;
@@ -185,6 +208,24 @@ final class HttpRouteExtractor
 
             return;
         }
+        if ($this->catalog && ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction)) {
+            $nested = $context;
+            $nested['provider_scope'] = '(closure) '.$this->file->path.':'.$expr->getStartFilePos();
+            $nested['provider'] = $context['provider'] && ! $expr->static;
+            $nested['possible'] = true;
+            $nested['reasons'][] = 'Callback declaration does not establish its invocation.';
+            $this->callbackGroup($expr, $nested, $depth, $routers);
+
+            return;
+        }
+        if ($this->catalog && $expr instanceof Expr\FuncCall && ($expr->name instanceof Expr\Closure || $expr->name instanceof Expr\ArrowFunction)) {
+            $this->expression($expr->name, $context, $depth + 1, $routers);
+
+            return;
+        }
+        if ($this->catalog && $expr instanceof Expr\MethodCall && $this->applicationBuilder($expr)) {
+            $this->providerRegistrations($expr, $context);
+        }
         $builder = $expr;
         while ($builder instanceof Expr\MethodCall) {
             if ($builder->name instanceof Node\Identifier && $builder->name->toString() === 'withRouting' && $this->applicationBuilder($builder->var)) {
@@ -205,13 +246,22 @@ final class HttpRouteExtractor
 
                 return;
             }
-            if ($expr->name->toString() === 'loadRoutesFrom' && $expr->var instanceof Expr\Variable && $expr->var->name === 'this' && $context['provider']) {
-                $this->load($expr, $expr->args[0]->value ?? null, $context);
+            if ($expr->name->toString() === 'loadRoutesFrom' && $this->providerReceiver($expr) && $context['provider']) {
+                $candidate = $context;
+                if ($this->catalog) {
+                    $candidate['provider_candidate'] = true;
+                    $candidate['provider_method'] = 'loadroutesfrom';
+                }
+                $this->load($expr, $expr->args[0]->value ?? null, $candidate);
 
                 return;
             }
         }
-        if ($expr instanceof Expr\MethodCall && $expr->name instanceof Node\Identifier && $expr->name->toString() === 'routes' && $expr->var instanceof Expr\Variable && $expr->var->name === 'this' && $context['provider']) {
+        if ($expr instanceof Expr\MethodCall && $expr->name instanceof Node\Identifier && $expr->name->toString() === 'routes' && $this->providerReceiver($expr) && $context['provider']) {
+            if ($this->catalog) {
+                $context['provider_candidate'] = true;
+                $context['provider_method'] = 'routes';
+            }
             $callback = $this->argument($expr->args, 0, 'routes');
             if ($callback instanceof Expr\Closure || $callback instanceof Expr\ArrowFunction) {
                 $this->callbackGroup($callback, $context, $depth, $routers);
@@ -317,6 +367,38 @@ final class HttpRouteExtractor
             'get' => ['GET', 'HEAD'], 'match' => $this->value($this->argument($args, 0, 'methods')), 'any' => ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], default => [strtoupper($method)]
         };
         $this->route($site, is_string($uri) ? $uri : null, is_array($verbs) && array_is_list($verbs) && count(array_filter($verbs, 'is_string')) === count($verbs) ? array_map('strtoupper', $verbs) : null, $handler, $context);
+    }
+
+    /** @param array<string, mixed> $context */
+    private function providerRegistrations(Expr\MethodCall $expr, array $context): void
+    {
+        $calls = [];
+        $cursor = $expr;
+        while ($cursor instanceof Expr\MethodCall) {
+            if (! $cursor->isFirstClassCallable() && $cursor->name instanceof Node\Identifier && $cursor->name->toString() === 'withProviders') {
+                $calls[] = $cursor;
+            }
+            $cursor = $cursor->var;
+        }
+        foreach (array_reverse($calls) as $call) {
+            $argument = $this->argument($call->args, 1, 'withBootstrapProviders');
+            $enabled = $argument === null ? true : $this->value($argument);
+            $this->operations[] = ['kind' => 'provider-settings', 'bootstrap_enabled' => is_bool($enabled) ? $enabled : null, 'site' => $this->site($call), 'context' => $context];
+            $argument = $this->argument($call->args, 0, 'providers');
+            $providers = $argument === null ? [] : $this->value($argument);
+            if (! is_array($providers) || ! array_is_list($providers)) {
+                $this->notice($call, 'Dynamic withProviders registration is unresolved.');
+
+                continue;
+            }
+            foreach ($providers as $provider) {
+                if (is_string($provider)) {
+                    $this->operations[] = ['kind' => 'provider', 'class' => $provider, 'site' => $this->site($call), 'context' => $context];
+                } else {
+                    $this->notice($call, 'Dynamic withProviders registration is unresolved.');
+                }
+            }
+        }
     }
 
     /**
@@ -570,6 +652,12 @@ final class HttpRouteExtractor
             $this->notice($site, 'Route URI, HTTP methods or handler is unresolved.');
         }
         $this->operations[] = ['kind' => 'route', 'site' => $this->site($site), 'context' => $context, 'uri' => $uri, 'verbs' => $verbs, 'handler' => $handler, 'calls' => $calls, 'resource' => $resource];
+    }
+
+    private function providerReceiver(Expr\MethodCall $call): bool
+    {
+        return (! $this->catalog || ! $call->isFirstClassCallable()) && ($call->var instanceof Expr\Variable && $call->var->name === 'this'
+            || $this->catalog && isset($this->boundThisCalls[$call->getStartFilePos()]));
     }
 
     /**

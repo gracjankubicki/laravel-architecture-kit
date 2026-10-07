@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use Closure;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
@@ -13,6 +14,9 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphBuildPlan;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphCacheSignature;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Catalog\CatalogDiagnostic;
+use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
+use GracjanKubicki\ArchitectureKit\Catalog\ComposerCatalogExtractor;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
@@ -36,6 +40,9 @@ final readonly class ProjectGraphLoader
         private array $configuration = [],
         private bool $impact = false,
         private bool $sourceOnly = false,
+        private bool $catalog = false,
+        /** @var Closure(string): void|null */
+        private ?Closure $onParse = null,
     ) {
         $this->classification = RoleClassifier::forProject($files, $basePath);
     }
@@ -64,7 +71,7 @@ final readonly class ProjectGraphLoader
     public function stream(array $exclude = []): iterable
     {
         foreach ($this->scan($exclude) as $path => $file) {
-            yield new FileContext($path, $this->files->get($file[0]));
+            yield new FileContext($path, $this->files->get($file[0]), $this->onParse);
         }
     }
 
@@ -81,9 +88,20 @@ final readonly class ProjectGraphLoader
     private function scan(array $exclude): array
     {
         $found = [];
+        if ($this->catalog) {
+            foreach (ComposerCatalogExtractor::FILES as $relative) {
+                $absolute = $this->basePath.'/'.$relative;
+                if ($this->safeSource($relative) && $this->files->isFile($absolute) && ! $this->isExcluded($relative, $exclude)) {
+                    $found[$relative] = [$absolute, GraphCacheSignature::stat((int) $this->files->lastModified($absolute), (int) $this->files->size($absolute))];
+                }
+            }
+        }
 
         foreach ($this->scope->directories as $directory) {
             $absolute = $this->basePath.'/'.$directory;
+            if ($this->sourceOnly && ! $this->safeSource($directory.'/__graph_source__.php')) {
+                continue;
+            }
 
             // A configured directory that does not exist is not an error: a project may
             // list one it has not created yet.
@@ -120,7 +138,7 @@ final readonly class ProjectGraphLoader
 
     private function isRequiredTestFile(string $path): bool
     {
-        return $this->scope->includesTests() && $this->scope->isTestPath($path);
+        return ! $this->catalog && $this->scope->includesTests() && $this->scope->isTestPath($path);
     }
 
     /** @param array<int, string> $exclude */
@@ -134,25 +152,38 @@ final readonly class ProjectGraphLoader
      *
      * Callers that need to know how the cache behaved take the plan first and pass it
      * here, rather than losing that answer inside `load()`.
+     *
+     * @param  array<string, FileContext>  $parsedSources  Transient source contexts parsed while reading settings.
      */
-    public function build(GraphBuildPlan $plan): ProjectGraphSnapshot
+    public function build(GraphBuildPlan $plan, array $parsedSources = []): ProjectGraphSnapshot
     {
-        $builder = new ProjectGraphBuilder(roles: $this->classification, impact: $this->impact);
+        $builder = new ProjectGraphBuilder(roles: $this->classification, impact: $this->impact, catalog: $this->catalog, basePath: $this->basePath);
         $entries = $plan->reusable;
 
         foreach ($plan->toParse as $path) {
             $absolute = $plan->files[$path];
             if ($this->sourceOnly && (! $this->safeSource($path) || ! $this->files->isFile($absolute) || GraphCacheSignature::stat((int) $this->files->lastModified($absolute), (int) $this->files->size($absolute)) !== ($plan->signature->files[$path] ?? null))) {
-                $entries[$path] = new FileGraphEntry([], [], impact: new ImpactFacts($path, [], [], [['line' => 1, 'reason' => 'Source changed or became unsafe before graph reading.']]));
+                $entries[$path] = new FileGraphEntry([], [], impact: new ImpactFacts($path, [], [], [['line' => 1, 'reason' => 'Source changed or became unsafe before graph reading.']]),
+                    catalog: $this->catalog ? new CatalogFacts($path, diagnostics: [new CatalogDiagnostic('changed_inputs', 'Source changed or became unsafe before graph reading.', 1)]) : null);
 
                 continue;
             }
-            if ($this->impact && ($reason = ImpactExtractor::sourceLimit($this->files->size($absolute))) !== null) {
-                $entries[$path] = new FileGraphEntry([], [], impact: new ImpactFacts($path, [], [], [['line' => 1, 'reason' => $reason]]));
+            $metadata = $this->catalog && in_array($path, ComposerCatalogExtractor::FILES, true);
+            if (($this->impact || $this->catalog) && ($reason = $metadata ? ComposerCatalogExtractor::sourceLimit($this->files->size($absolute)) : ImpactExtractor::sourceLimit($this->files->size($absolute))) !== null) {
+                $entries[$path] = new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($path, [], [], [['line' => 1, 'reason' => $reason]]) : null,
+                    catalog: $this->catalog ? new CatalogFacts($path, diagnostics: [new CatalogDiagnostic('source_limit', $reason, 1)]) : null);
 
                 continue;
             }
-            $entries[$path] = $builder->collect(new FileContext($path, $this->files->get($absolute)));
+            $contents = $this->files->get($absolute);
+            $context = $parsedSources[$path] ?? null;
+            if ($context !== null && ($context->path !== $path || $context->contents !== $contents)) {
+                $entries[$path] = new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($path, [], [], [['line' => 1, 'reason' => 'Previously parsed source changed before graph reading.']]) : null,
+                    catalog: $this->catalog ? new CatalogFacts($path, diagnostics: [new CatalogDiagnostic('changed_inputs', 'Previously parsed source changed before graph reading.', 1)]) : null);
+
+                continue;
+            }
+            $entries[$path] = $builder->collect($context ?? new FileContext($path, $contents, $this->onParse));
         }
 
         return $this->compose($builder, $plan, $entries);
@@ -160,7 +191,8 @@ final readonly class ProjectGraphLoader
 
     private function safeSource(string $path): bool
     {
-        if (! str_ends_with($path, '.php') || preg_match('~(^|/)(\.\.|vendor|node_modules|\.git)(/|$)~', $path) || str_contains($path, "\0")) {
+        $metadata = $this->catalog && in_array($path, ComposerCatalogExtractor::FILES, true);
+        if (! $metadata && (! str_ends_with($path, '.php') || preg_match('~(^|/)(\.\.|vendor|node_modules|\.git)(/|$)~', $path)) || str_contains($path, "\0")) {
             return false;
         }
         $cursor = $this->basePath;
@@ -211,7 +243,7 @@ final readonly class ProjectGraphLoader
         foreach ($scanned as $path => $file) {
             $entry = $previous->entries[$path] ?? null;
 
-            if ($entry !== null && (! $this->impact || ($entry->impact !== null && $entry->impact->cacheable())) && ($previous->signature->files[$path] ?? null) === $file[1]) {
+            if ($entry !== null && (! $this->impact || ($entry->impact !== null && $entry->impact->cacheable())) && (! $this->catalog || ($entry->catalog !== null && $entry->catalog->cacheable())) && ($previous->signature->files[$path] ?? null) === $file[1]) {
                 $reusable[$path] = $entry;
 
                 continue;
@@ -245,7 +277,7 @@ final readonly class ProjectGraphLoader
     private function signatureFor(array $scanned): GraphCacheSignature
     {
         return GraphCacheSignature::create(
-            [PackageFingerprint::current(), $this->classification->mappings->fingerprint(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : [])],
+            [PackageFingerprint::current(), $this->classification->mappings->fingerprint(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : []), ...($this->catalog ? ['catalog-v1'] : [])],
             array_map(static fn (array $file): string => $file[1], $scanned),
         );
     }

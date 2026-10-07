@@ -39,15 +39,18 @@ final class ExecutionLinks
 
     private bool $unknownHandlers = false;
 
-    /** @param array<string, mixed> $facts */
-    public function __construct(array $facts, private bool $externalBoundaries = false)
+    /** @param array<string, mixed> $facts
+     * @param  (\Closure(array<string, mixed>, self): array<string, mixed>)|null  $consoleFacts
+     * @param  (\Closure(string, ?string): list<array<string, mixed>>)|null  $sourceMethods
+     */
+    public function __construct(array $facts, private bool $externalBoundaries = false, ?\Closure $consoleFacts = null, private ?\Closure $sourceMethods = null)
     {
         $this->classes = $facts['classes'];
         $this->notices = $facts['notices'];
         $this->limited = $facts['limited'];
         if ($externalBoundaries) {
             foreach ($this->classes as $class) {
-                if ($class['adaptations'] ?? false) {
+                if (($class['adaptations'] ?? false) && $sourceMethods === null) {
                     $this->notices[] = ['path' => $class['path'], 'line' => $class['line'], 'reason' => 'Trait adaptations are unresolved in execution paths: '.$class['name']];
                 }
             }
@@ -125,7 +128,7 @@ final class ExecutionLinks
                 $this->unknown[strtolower($call['from'])][] = [...$call['source'], 'reason' => 'Execution model receiver/method is unresolved: '.$call['receiver'].'::'.$call['method']];
             }
         }
-        $this->consoleLinks($facts);
+        $this->consoleLinks($consoleFacts === null ? $facts : $consoleFacts($facts, $this));
         $this->authorizationLinks($facts);
         $configured = [];
         foreach ($facts['operations'] as $op) {
@@ -260,6 +263,9 @@ final class ExecutionLinks
      * @return array<string, mixed>|null */
     public function method(string $name, string $method, array $seen = []): ?array
     {
+        if ($this->externalBoundaries && $this->sourceMethods !== null) {
+            return ($this->sourceMethods)($name, strtolower($method))[0] ?? null;
+        }
         $key = strtolower($name);
         if (isset($seen[$key]) || count($seen) >= 32) {
             return null;
@@ -289,6 +295,9 @@ final class ExecutionLinks
      * @return list<array<string, mixed>> */
     public function methods(string $name, array $seen = []): array
     {
+        if ($this->externalBoundaries && $this->sourceMethods !== null) {
+            return ($this->sourceMethods)($name, null);
+        }
         $key = strtolower($name);
         if (isset($seen[$key]) || count($seen) >= 32) {
             return [];
@@ -411,6 +420,39 @@ final class ExecutionLinks
     /** @param array<string, mixed> $op */
     private function observer(string $model, mixed $observers, array $op): void
     {
+        $events = null;
+        if ($this->externalBoundaries) {
+            $events = ['retrieved', 'creating', 'created', 'updating', 'updated', 'saving', 'saved', 'restoring', 'restored', 'replicating', 'trashed', 'deleting', 'deleted', 'forcedeleting', 'forcedeleted'];
+            $getter = $this->method($model, 'getObservableEvents');
+            if ($getter !== null) {
+                $events = [];
+                if ($getter['conditional_return']) {
+                    $op['conditions'][] = 'Custom model observable event list selects a source return branch.';
+                }
+                foreach ($getter['returns'] as $names) {
+                    if (! is_array($names)) {
+                        $this->notice($op, 'Custom model observable event list is unresolved.');
+
+                        return;
+                    }
+                    array_push($events, ...array_map('strtolower', $names));
+                }
+                if ($getter['returns'] === []) {
+                    $this->notice($op, 'Custom model observable event list is unresolved.');
+
+                    return;
+                }
+            } else {
+                $properties = $this->properties($model);
+                if (array_key_exists('observables', $properties)) {
+                    if (! is_array($properties['observables'])) {
+                        $this->notice($op, 'Additional model observable event names are unresolved.');
+                    } else {
+                        array_push($events, ...array_map('strtolower', $properties['observables']));
+                    }
+                }
+            }
+        }
         foreach ($this->list($observers) as $observer) {
             $name = is_string($observer) ? $observer : ($observer['class'] ?? null);
             if ($name === null) {
@@ -419,7 +461,7 @@ final class ExecutionLinks
                 continue;
             }
             foreach ($this->methods($name) as $method) {
-                if ($method['public']) {
+                if ($method['public'] && ($events === null || in_array(strtolower($method['name']), $events, true))) {
                     $this->register('eloquent.'.strtolower($method['name']).': '.$model, ['type' => 'reference', 'symbol' => $method['symbol'], 'class' => $name], $op, 'observer');
                 }
             }
@@ -507,6 +549,8 @@ final class ExecutionLinks
     private function event(string $event, array $op, bool $model = false, ?string $from = null): void
     {
         $from ??= $op['from'];
+        $payload = $op['args']['event'] ?? $op['args'][0] ?? null;
+        $broadcastObject = ! $model && is_array($payload) && ($payload['type'] ?? null) === 'object';
         $node = '(event) '.$event.'@'.$op['source']['path'].':'.$op['source']['offset'].($model ? ':model' : '');
         $conditions = [...$op['conditions'], 'Listener propagation may stop on false or a non-null until result.'];
         if ($model) {
@@ -514,9 +558,9 @@ final class ExecutionLinks
         }
         $afterCommit = $this->inherits($event, 'Illuminate\Contracts\Events\ShouldDispatchAfterCommit');
         if ($afterCommit) {
-            $this->edge($from, $node, $model ? 'model-event' : 'event-dispatch', $op['source'], [...$conditions, 'Active transaction commits; deferred event starts after withoutEvents restores the dispatcher.'], ['requires_events' => $model, 'event' => $event, 'mode' => 'synchronous', 'timing' => 'after-commit', 'reset_quiet' => true]);
+            $this->edge($from, $node, $model ? 'model-event' : 'event-dispatch', $op['source'], [...$conditions, 'Active transaction commits; deferred event starts after withoutEvents restores the dispatcher.'], [...($this->externalBoundaries ? ['broadcast_object_verified' => $broadcastObject] : []), 'requires_events' => $model, 'event' => $event, 'mode' => 'synchronous', 'timing' => 'after-commit', 'reset_quiet' => true]);
         }
-        $this->edge($from, $node, $model ? 'model-event' : 'event-dispatch', $op['source'], $afterCommit ? [...$conditions, 'Without an active transaction the event is dispatched immediately in the current event context.'] : $conditions, ['requires_events' => $model, 'event' => $event, 'mode' => 'synchronous', 'timing' => 'immediate']);
+        $this->edge($from, $node, $model ? 'model-event' : 'event-dispatch', $op['source'], $afterCommit ? [...$conditions, 'Without an active transaction the event is dispatched immediately in the current event context.'] : $conditions, [...($this->externalBoundaries ? ['broadcast_object_verified' => $broadcastObject] : []), 'requires_events' => $model, 'event' => $event, 'mode' => 'synchronous', 'timing' => 'immediate']);
         foreach ($this->registrations as $registration) {
             if (! $this->room()) {
                 break;

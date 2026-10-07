@@ -67,6 +67,8 @@ final class ApplicationAudit
         private readonly ?int $memoryLimitBytes = null,
         private readonly float $memoryBudgetRatio = 0.8,
         private readonly ?Closure $memoryUsage = null,
+        /** @var Closure(string): void|null */
+        private readonly ?Closure $onParse = null,
     ) {
         if ($memoryBudgetRatio <= 0 || $memoryBudgetRatio > 1) {
             throw new InvalidArgumentException('Application audit memory budget ratio must be greater than 0 and no greater than 1.');
@@ -126,7 +128,7 @@ final class ApplicationAudit
         /** @var array<string, array<int, AuditFinding>> $findingsByPath */
         $findingsByPath = [];
 
-        $loader = new ProjectGraphLoader($this->files, $this->basePath, $auditScope, $cache, $cacheConfiguration);
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $auditScope, $cache, $cacheConfiguration, onParse: $this->onParse);
         $graphBuilder = new ProjectGraphBuilder(roles: $loader->classification);
         // Decided from stat alone, before a single file is opened. Without a cache every
         // path lands in `toParse`, which is the behaviour this loop always had.
@@ -150,7 +152,7 @@ final class ApplicationAudit
                 continue;
             }
 
-            $file = new FileContext($path, $this->files->get($absolute));
+            $file = new FileContext($path, $this->files->get($absolute), $this->onParse);
 
             $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
             $this->assertAstHeadroom($memoryLimitBytes, $file);
@@ -199,7 +201,7 @@ final class ApplicationAudit
         foreach ([...(new ProjectRuleSet($missingTestLevel, $reachability))->rules(), new UnknownRoleRule($loader->classification->mappings->unknownLevel)] as $rule) {
             foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
                 $findingsByPath[$finding->path][] = $finding;
-                $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)));
+                $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)), $this->onParse);
             }
         }
 
@@ -214,7 +216,7 @@ final class ApplicationAudit
             $findingsByPath[$finding->path][] = $finding;
             // An unchanged controller may be affected by an edited dependency.
             // Keep inline and baseline suppression on the same shared path.
-            $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)));
+            $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)), $this->onParse);
         }
 
         foreach ($focusFiles as $path => $file) {

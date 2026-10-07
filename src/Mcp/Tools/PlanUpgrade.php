@@ -19,7 +19,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('plan-upgrade')]
-#[Description('Plan one safe atomic package upgrade step from local Architecture Kit guides without changing files.')]
+#[Description('Before upgrading a direct Composer package, provide its name and target major.minor line. Read the local upgrade plan and load only its active atomic guide. Complete and verify that step, then rerun the planner. This tool changes no files.')]
 #[IsReadOnly]
 class PlanUpgrade extends Tool
 {
@@ -29,8 +29,8 @@ class PlanUpgrade extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'package' => $schema->string()->required(),
-            'target' => $schema->string()->required(),
+            'package' => $schema->string()->required()->description('Direct Composer package name, for example laravel/ai.'),
+            'target' => $schema->string()->required()->description('Requested major.minor version line, for example 0.11. Follow only the returned active atomic guide.'),
         ];
     }
 

@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('guard')]
-#[Description('Run the same Architecture Kit gate used by hooks and CLI.')]
+#[Description('After code changes, run the Architecture Kit gate with the intended changed-file scope and strictness. Read structured ok, findings and incomplete analysis. Use explain-finding for an occurrence or doctor for setup problems. Success does not prove passing application tests.')]
 #[IsReadOnly]
 class Guard extends Tool
 {
@@ -28,12 +28,12 @@ class Guard extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'changed' => $schema->boolean()->default(true),
-            'base' => $schema->string()->nullable(),
-            'target' => $schema->boolean()->default(false),
-            'strict' => $schema->boolean()->default(true),
-            'limit' => $schema->integer()->min(0)->default(20),
-            'full' => $schema->boolean()->default(false),
+            'changed' => $schema->boolean()->default(true)->description('Audit changed files when true; inspect the full configured audit scope when false.'),
+            'base' => $schema->string()->nullable()->description('Optional Git base revision for detecting changed files. Omit to use the normal working-tree comparison.'),
+            'target' => $schema->boolean()->default(false)->description('Also evaluate the separately configured desired-architecture gate when true. This does not accept or refresh its reference.'),
+            'strict' => $schema->boolean()->default(true)->description('Treat audit warnings as blocking when true. Inspect findings and incomplete analysis separately.'),
+            'limit' => $schema->integer()->min(0)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'),
+            'full' => $schema->boolean()->default(false)->description('Include the full report instead of the bounded agent summary when true.'),
         ];
     }
 

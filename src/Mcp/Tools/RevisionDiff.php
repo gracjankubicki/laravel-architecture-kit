@@ -24,9 +24,9 @@ final class RevisionDiff extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['from' => $schema->string()->required(), 'to' => $schema->string()->default('working'),
-            'shared_config' => $schema->string()->enum(['before', 'after']), 'manual_pairs' => $schema->object(),
-            'limit' => $schema->integer()->min(0)->max(500)->default(50)];
+        return ['from' => $schema->string()->required()->description('Git revision providing the previous architecture snapshot.'), 'to' => $schema->string()->default('working')->description('Git comparison revision or working for current source files.'),
+            'shared_config' => $schema->string()->enum(['before', 'after'])->description('Explicitly use the before or after settings for both states. Omit to analyze each state with its own settings.'), 'manual_pairs' => $schema->object()->description('Explicit mapping from old symbol identities to new identities. Confirm candidate pairs before supplying this mapping.'),
+            'limit' => $schema->integer()->min(0)->max(500)->default(50)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.')];
     }
 
     public function outputSchema(JsonSchema $schema): array

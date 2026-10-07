@@ -150,6 +150,11 @@ trait ConsoleExecutionLinks
             if (! $this->room()) {
                 return;
             }
+            if ($this->externalBoundaries && $op['kind'] === 'console_candidate' && $op['owner'] === 'Illuminate\Support\Facades\Artisan' && in_array($op['method'], ['callsilent', 'callsilently'], true)) {
+                $this->notice($op, 'Artisan facade has no standard callSilent/callSilently API; source extension or intended command receiver needs checking.');
+
+                continue;
+            }
             if ($op['kind'] === 'console_candidate' && $this->consoleCaller($op)) {
                 $this->seed($op, 'artisan-call');
                 $this->consoleCall($op['args']['command'] ?? $op['args'][0] ?? null, $op['from'], $op, $op['method'] === 'queue' ? 'queue-requested' : 'synchronous', $op['conditions']);
@@ -185,7 +190,7 @@ trait ConsoleExecutionLinks
     {
         $method = $this->method($owner, 'handle') ?? $this->method($owner, '__invoke');
 
-        return $method !== null && ! $method['abstract'] ? $method['symbol'] : null;
+        return $method !== null && ! $method['abstract'] && (! $this->externalBoundaries || $method['public']) ? $method['symbol'] : null;
     }
 
     /** @param array<string, mixed> $op
@@ -285,6 +290,11 @@ trait ConsoleExecutionLinks
     {
         $root = '(schedule) '.$op['source']['path'].':'.$op['source']['offset'];
         $this->seeds[strtolower($root)] = ['symbol' => $root, 'kind' => 'schedule', 'source' => $op['source'], 'schedule' => $options];
+        if ($this->externalBoundaries && array_filter($options['callbacks'] ?? [], fn ($callback) => $callback['invalid_contract'] ?? false) !== []) {
+            $this->notice($op, 'Schedule lifecycle callback violates its Closure contract; a valid scheduled execution path is not established.');
+
+            return;
+        }
         if ($op['method'] !== 'command' && isset($options['runinbackground'])) {
             $this->notice($op, 'CallbackEvent runInBackground is invalid; scheduling declaration throws.');
 

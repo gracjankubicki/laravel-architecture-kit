@@ -17,7 +17,7 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('doctor')]
-#[Description('Inspect Architecture Kit config and generated resources without changing files.')]
+#[Description('Inspect Architecture Kit configuration and generated-resource freshness without changing files. Use this for setup failures, then follow the reported repair action and rerun doctor. This does not audit application behavior.')]
 #[IsReadOnly]
 class Doctor extends Tool
 {
@@ -27,8 +27,8 @@ class Doctor extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'limit' => $schema->integer()->min(0)->default(20),
-            'full' => $schema->boolean()->default(false),
+            'limit' => $schema->integer()->min(0)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'),
+            'full' => $schema->boolean()->default(false)->description('Include the full report instead of the bounded agent summary when true.'),
         ];
     }
 

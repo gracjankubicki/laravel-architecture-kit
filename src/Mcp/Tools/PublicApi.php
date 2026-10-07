@@ -25,9 +25,9 @@ final class PublicApi extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['from' => $schema->string()->required(), 'to' => $schema->string()->default('working'),
-            'public_paths' => $schema->array()->items($schema->string()), 'current_version' => $schema->string(),
-            'zero_policy' => $schema->string()->enum(SemverAdvice::ZERO_POLICIES), 'limit' => $schema->integer()->min(0)->max(500)->default(50)];
+        return ['from' => $schema->string()->required()->description('Git revision containing the previous package contracts. Requires a package checkout.'), 'to' => $schema->string()->default('working')->description('Git comparison revision or working for current files.'),
+            'public_paths' => $schema->array()->items($schema->string())->description('Optional literal production path prefixes that narrow analysis. They do not make private declarations public.'), 'current_version' => $schema->string()->description('Current package semantic version used for release advice.'),
+            'zero_policy' => $schema->string()->enum(SemverAdvice::ZERO_POLICIES)->description('Explicit release policy for a 0.x package. Without it, version advice remains undecided.'), 'limit' => $schema->integer()->min(0)->max(500)->default(50)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.')];
     }
 
     public function outputSchema(JsonSchema $schema): array

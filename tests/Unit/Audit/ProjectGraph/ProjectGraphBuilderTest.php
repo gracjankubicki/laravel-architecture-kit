@@ -181,4 +181,38 @@ PHP),
                 && $edge->strong,
         ));
     }
+
+    public function test_catalog_blade_prepares_source_before_any_raw_php_parse_and_keeps_source_positions(): void
+    {
+        $source = <<<'SOURCE'
+{{-- <?php class ??? ?> --}}
+@php
+\App\Read::run();
+@endphp
+<?php class Actual { public function action() {} } ?>
+SOURCE;
+        $path = 'resources/views/mapped.blade.php';
+        $this->assertNull((new FileContext($path, $source))->ast(), 'The raw Blade comment deliberately contains invalid PHP.');
+        $graph = (new ProjectGraphBuilder(impact: true, catalog: true))->build([new FileContext($path, $source)]);
+        $this->assertNotNull($graph->symbol('Actual'));
+        $facts = $graph->catalogFacts[0];
+        $this->assertNotContains('parse_error', array_column(array_map(fn ($diagnostic) => $diagnostic->toArray(), $facts->diagnostics), 'code'));
+        $actual = array_values(array_filter($facts->elements, fn ($element) => $element->kind === 'class'));
+        $this->assertCount(1, $actual);
+        $this->assertSame('Actual', $actual[0]->name);
+        $this->assertSame(5, $actual[0]->line);
+        $this->assertSame(strpos($source, 'class Actual'), $actual[0]->offset);
+        $this->assertNotEmpty($facts->relations);
+    }
+
+    public function test_catalog_preparation_keeps_ordinary_php_legacy_symbols_edges_and_impact_facts(): void
+    {
+        $source = '<?php namespace App; class Example { public function work(Service $service) { $service->run(); } } class Service { public function run() {} }';
+        $ordinary = (new ProjectGraphBuilder(impact: true))->collect(new FileContext('app/Example.php', $source));
+        $catalog = (new ProjectGraphBuilder(impact: true, catalog: true))->collect(new FileContext('app/Example.php', $source));
+        $this->assertEquals($ordinary->symbols, $catalog->symbols);
+        $this->assertEquals($ordinary->edges, $catalog->edges);
+        $this->assertEquals($ordinary->testInvocations, $catalog->testInvocations);
+        $this->assertEquals($ordinary->impact, $catalog->impact);
+    }
 }

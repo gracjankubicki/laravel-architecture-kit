@@ -25,7 +25,7 @@ final class Reach extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['subject' => $schema->string()->description('Class, Class::method or PHP path. Omit with report_id.'), 'limit' => $schema->integer()->min(0)->max(500)->default(20), 'depth' => $schema->integer()->min(1)->max(32)->default(4), 'report_id' => $schema->string(), 'page' => $schema->integer()->min(1)->max(1000000)->default(1)];
+        return ['subject' => $schema->string()->description('Class, Class::method or PHP path. Omit with report_id.'), 'limit' => $schema->integer()->min(0)->max(500)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'), 'depth' => $schema->integer()->min(1)->max(32)->default(4)->description('Maximum reach-analysis hops, from 1 to 32. Read lower bounds and unresolved boundaries.'), 'report_id' => $schema->string()->description('Immutable report identifier from a previous reach response. Continue without subject.'), 'page' => $schema->integer()->min(1)->max(1000000)->default(1)->description('One-based continuation page within report_id. Source changes require a new report.')];
     }
 
     public function handle(Request $request): ResponseFactory

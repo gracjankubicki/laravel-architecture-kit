@@ -1,0 +1,1767 @@
+{
+  "version": 1,
+  "trials": 3,
+  "baseline": "06c74c990408e960232ba07d2dfef2700094955c",
+  "cases": [
+    {
+      "id": "scaffold",
+      "prompt": "Prepare creation of action SendInvoice. Discover the configured placement and report the exact proposed file. Do not create files.",
+      "required_evidence": [
+        "app/Billing/Actions/SendInvoice.php"
+      ],
+      "rules": [
+        {
+          "name": "enabled-architectures",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "enabled": [
+              "actions"
+            ],
+            "skills": [
+              "architecture-kit-actions"
+            ]
+          }
+        },
+        {
+          "name": "read-resource",
+          "arguments": {
+            "path": ".ai/skills/architecture-kit-actions/SKILL.md"
+          },
+          "response": {
+            "ok": true,
+            "content": "Use the configured action folder. Source tests are candidates, not executed tests."
+          }
+        },
+        {
+          "name": "file-rules",
+          "arguments": {
+            "path": "app/Billing/Actions/SendInvoice.php"
+          },
+          "response": {
+            "ok": true,
+            "architecture": "actions",
+            "path": "app/Billing/Actions/SendInvoice.php"
+          }
+        },
+        {
+          "name": "scaffold",
+          "arguments": {
+            "architecture": "actions",
+            "name": "SendInvoice"
+          },
+          "response": {
+            "ok": true,
+            "files": [
+              {
+                "path": "app/Billing/Actions/SendInvoice.php",
+                "content": "synthetic action proposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "architecture-target",
+          "arguments": {},
+          "response": {
+            "v": 1,
+            "cmd": "architecture-target",
+            "ok": true,
+            "configured": false,
+            "next": [
+              "declare:.architecture-kit/target.json"
+            ]
+          }
+        }
+      ],
+      "requirements": [
+        [
+          {
+            "name": "scaffold",
+            "arguments": {
+              "architecture": "actions",
+              "name": "SendInvoice"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "method-impact",
+      "prompt": "Assess changing only the implementation body of issue() in the known class App\\Billing\\InvoiceService, keeping its signature unchanged. Inspect the class context first, then the transitive impact. Report caller and candidate test evidence, including analysis gaps. Do not edit files.",
+      "required_evidence": [
+        "App\\Http\\Controllers\\InvoiceController",
+        "tests/Feature/InvoiceDueTest.php",
+        "DYNAMIC_LISTENER_UNRESOLVED"
+      ],
+      "rules": [
+        {
+          "name": "enabled-architectures",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "enabled": [
+              "actions"
+            ],
+            "skills": [
+              "architecture-kit-actions"
+            ]
+          }
+        },
+        {
+          "name": "read-resource",
+          "arguments": {
+            "path": ".ai/skills/architecture-kit-actions/SKILL.md"
+          },
+          "response": {
+            "ok": true,
+            "content": "Use the configured action folder. Source tests are candidates, not executed tests."
+          }
+        },
+        {
+          "name": "architecture-context",
+          "arguments": {
+            "subject": "App\\Billing\\InvoiceService"
+          },
+          "response": {
+            "ok": true,
+            "subject": "App\\Billing\\InvoiceService",
+            "dependents": [
+              "App\\Http\\Controllers\\InvoiceController"
+            ],
+            "candidate_tests": [
+              "tests/Feature/InvoiceDueTest.php"
+            ]
+          }
+        },
+        {
+          "name": "architecture-graph",
+          "arguments": {
+            "subject": "App\\Billing\\InvoiceService",
+            "mode": "impact"
+          },
+          "response": {
+            "ok": true,
+            "result": {
+              "records": [
+                {
+                  "element": {
+                    "name": "App\\Http\\Controllers\\InvoiceController"
+                  },
+                  "source": {
+                    "path": "routes/billing.php",
+                    "line": 17
+                  }
+                },
+                {
+                  "element": {
+                    "name": "tests/Feature/InvoiceDueTest.php"
+                  },
+                  "test_executed": false
+                }
+              ]
+            },
+            "analysis_complete": false,
+            "diagnostics": {
+              "summary": {
+                "dynamic_listener": 1
+              },
+              "details": [
+                {
+                  "code": "DYNAMIC_LISTENER_UNRESOLVED"
+                }
+              ]
+            },
+            "truncated": false
+          }
+        },
+        {
+          "name": "impact",
+          "arguments": {
+            "subject": "App\\Billing\\InvoiceService"
+          },
+          "response": {
+            "ok": true,
+            "result": {
+              "records": [
+                {
+                  "element": {
+                    "name": "App\\Http\\Controllers\\InvoiceController"
+                  },
+                  "source": {
+                    "path": "routes/billing.php",
+                    "line": 17
+                  }
+                },
+                {
+                  "element": {
+                    "name": "tests/Feature/InvoiceDueTest.php"
+                  },
+                  "test_executed": false
+                }
+              ]
+            },
+            "analysis_complete": false,
+            "diagnostics": {
+              "summary": {
+                "dynamic_listener": 1
+              },
+              "details": [
+                {
+                  "code": "DYNAMIC_LISTENER_UNRESOLVED"
+                }
+              ]
+            },
+            "truncated": false
+          }
+        },
+        {
+          "name": "architecture-target",
+          "arguments": {},
+          "response": {
+            "v": 1,
+            "cmd": "architecture-target",
+            "ok": true,
+            "configured": false,
+            "next": [
+              "declare:.architecture-kit/target.json"
+            ]
+          }
+        },
+        {
+          "name": "impact",
+          "arguments": {
+            "subject": "App\\Billing\\InvoiceService::issue"
+          },
+          "response": {
+            "ok": true,
+            "result": {
+              "records": [
+                {
+                  "element": {
+                    "name": "App\\Http\\Controllers\\InvoiceController"
+                  },
+                  "source": {
+                    "path": "routes/billing.php",
+                    "line": 17
+                  }
+                },
+                {
+                  "element": {
+                    "name": "tests/Feature/InvoiceDueTest.php"
+                  },
+                  "test_executed": false
+                }
+              ]
+            },
+            "analysis_complete": false,
+            "diagnostics": {
+              "summary": {
+                "dynamic_listener": 1
+              },
+              "details": [
+                {
+                  "code": "DYNAMIC_LISTENER_UNRESOLVED"
+                }
+              ]
+            },
+            "truncated": false
+          }
+        },
+        {
+          "name": "architecture-graph",
+          "arguments": {
+            "subject": "App\\Billing\\InvoiceService::issue",
+            "mode": "impact"
+          },
+          "response": {
+            "ok": true,
+            "result": {
+              "records": [
+                {
+                  "element": {
+                    "name": "App\\Http\\Controllers\\InvoiceController"
+                  },
+                  "source": {
+                    "path": "routes/billing.php",
+                    "line": 17
+                  }
+                },
+                {
+                  "element": {
+                    "name": "tests/Feature/InvoiceDueTest.php"
+                  },
+                  "test_executed": false
+                }
+              ]
+            },
+            "analysis_complete": false,
+            "diagnostics": {
+              "summary": {
+                "dynamic_listener": 1
+              },
+              "details": [
+                {
+                  "code": "DYNAMIC_LISTENER_UNRESOLVED"
+                }
+              ]
+            },
+            "truncated": false
+          }
+        }
+      ],
+      "requirements": [
+        [
+          {
+            "name": "architecture-context",
+            "arguments": {
+              "subject": "App\\Billing\\InvoiceService"
+            }
+          }
+        ],
+        [
+          {
+            "name": "architecture-graph",
+            "arguments": {
+              "subject": "App\\Billing\\InvoiceService",
+              "mode": "impact"
+            }
+          },
+          {
+            "name": "impact",
+            "arguments": {
+              "subject": "App\\Billing\\InvoiceService"
+            }
+          },
+          {
+            "name": "impact",
+            "arguments": {
+              "subject": "App\\Billing\\InvoiceService::issue"
+            }
+          },
+          {
+            "name": "architecture-graph",
+            "arguments": {
+              "subject": "App\\Billing\\InvoiceService::issue",
+              "mode": "impact"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "route-ambiguity",
+      "prompt": "Find the operation reached by the exact route billing.cancel. There may be similarly named routes. Inspect the chosen route relationship and report its source. Handle continuation and stale snapshots.",
+      "required_evidence": [
+        "App\\Billing\\Actions\\CancelSubscription",
+        "routes/billing.php:41",
+        "DYNAMIC_ROUTE_UNRESOLVED"
+      ],
+      "rules": [
+        {
+          "name": "enabled-architectures",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "enabled": [
+              "actions"
+            ],
+            "skills": [
+              "architecture-kit-actions"
+            ]
+          }
+        },
+        {
+          "name": "read-resource",
+          "arguments": {
+            "path": ".ai/skills/architecture-kit-actions/SKILL.md"
+          },
+          "response": {
+            "ok": true,
+            "content": "Use the configured action folder. Source tests are candidates, not executed tests."
+          }
+        },
+        {
+          "name": "architecture-search",
+          "arguments": {
+            "query": "billing.cancel",
+            "offset": 1,
+            "snapshot": "route-snapshot-1"
+          },
+          "response": {
+            "ok": false,
+            "status": "stale_snapshot",
+            "next": {
+              "restart": true
+            }
+          }
+        },
+        {
+          "name": "architecture-search",
+          "arguments": {
+            "query": "billing.cancel"
+          },
+          "response": {
+            "ok": true,
+            "status": "ambiguous",
+            "analysis_complete": false,
+            "snapshot": "route-snapshot-2",
+            "result": {
+              "candidates": [
+                {
+                  "id": "route-preview",
+                  "name": "billing.cancel.preview",
+                  "path": "routes/preview.php",
+                  "line": 6
+                },
+                {
+                  "id": "route-cancel",
+                  "name": "billing.cancel",
+                  "path": "routes/billing.php",
+                  "line": 41
+                }
+              ]
+            },
+            "diagnostics": {
+              "details": [
+                {
+                  "code": "DYNAMIC_ROUTE_UNRESOLVED"
+                }
+              ]
+            },
+            "truncated": false
+          },
+          "sequence": [
+            {
+              "ok": true,
+              "status": "found",
+              "analysis_complete": false,
+              "snapshot": "route-snapshot-1",
+              "result": {
+                "candidates": [
+                  {
+                    "id": "route-preview",
+                    "name": "billing.cancel.preview",
+                    "path": "routes/preview.php",
+                    "line": 6
+                  }
+                ]
+              },
+              "truncated": true,
+              "next": {
+                "arguments": {
+                  "query": "billing.cancel",
+                  "offset": 1,
+                  "snapshot": "route-snapshot-1"
+                }
+              }
+            },
+            {
+              "ok": true,
+              "status": "ambiguous",
+              "analysis_complete": false,
+              "snapshot": "route-snapshot-2",
+              "result": {
+                "candidates": [
+                  {
+                    "id": "route-preview",
+                    "name": "billing.cancel.preview",
+                    "path": "routes/preview.php",
+                    "line": 6
+                  },
+                  {
+                    "id": "route-cancel",
+                    "name": "billing.cancel",
+                    "path": "routes/billing.php",
+                    "line": 41
+                  }
+                ]
+              },
+              "diagnostics": {
+                "details": [
+                  {
+                    "code": "DYNAMIC_ROUTE_UNRESOLVED"
+                  }
+                ]
+              },
+              "truncated": false
+            }
+          ]
+        },
+        {
+          "name": "search",
+          "arguments": {
+            "query": "billing.cancel"
+          },
+          "response": {
+            "ok": true,
+            "status": "ambiguous",
+            "analysis_complete": false,
+            "snapshot": "route-snapshot-2",
+            "result": {
+              "candidates": [
+                {
+                  "id": "route-preview",
+                  "name": "billing.cancel.preview",
+                  "path": "routes/preview.php",
+                  "line": 6
+                },
+                {
+                  "id": "route-cancel",
+                  "name": "billing.cancel",
+                  "path": "routes/billing.php",
+                  "line": 41
+                }
+              ]
+            },
+            "diagnostics": {
+              "details": [
+                {
+                  "code": "DYNAMIC_ROUTE_UNRESOLVED"
+                }
+              ]
+            },
+            "truncated": false
+          }
+        },
+        {
+          "name": "architecture-graph",
+          "arguments": {
+            "subject": "route-cancel",
+            "mode": "context"
+          },
+          "response": {
+            "ok": true,
+            "result": {
+              "records": [
+                {
+                  "element": {
+                    "name": "App\\Billing\\Actions\\CancelSubscription"
+                  },
+                  "source": "routes/billing.php:41"
+                }
+              ]
+            },
+            "analysis_complete": false,
+            "diagnostics": {
+              "code": "DYNAMIC_ROUTE_UNRESOLVED"
+            }
+          }
+        },
+        {
+          "name": "architecture-target",
+          "arguments": {},
+          "response": {
+            "v": 1,
+            "cmd": "architecture-target",
+            "ok": true,
+            "configured": false,
+            "next": [
+              "declare:.architecture-kit/target.json"
+            ]
+          }
+        }
+      ],
+      "requirements": [
+        [
+          {
+            "name": "architecture-search",
+            "arguments": {
+              "query": "billing.cancel"
+            }
+          },
+          {
+            "name": "search",
+            "arguments": {
+              "query": "billing.cancel"
+            }
+          }
+        ],
+        [
+          {
+            "name": "architecture-graph",
+            "arguments": {
+              "subject": "route-cancel",
+              "mode": "context"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "event-job",
+      "prompt": "Explain the possible path from the InvoicePaid event to the DeliverReceipt job handler. Resolve identifiers with source evidence and distinguish queue submission from execution of handle().",
+      "required_evidence": [
+        "app/Listeners/QueueReceipt.php:23"
+      ],
+      "rules": [
+        {
+          "name": "enabled-architectures",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "enabled": [
+              "actions"
+            ],
+            "skills": [
+              "architecture-kit-actions"
+            ]
+          }
+        },
+        {
+          "name": "read-resource",
+          "arguments": {
+            "path": ".ai/skills/architecture-kit-actions/SKILL.md"
+          },
+          "response": {
+            "ok": true,
+            "content": "Use the configured action folder. Source tests are candidates, not executed tests."
+          }
+        },
+        {
+          "name": "architecture-search",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "result": {
+              "candidates": [
+                {
+                  "id": "event-paid",
+                  "name": "App\\Events\\InvoicePaid",
+                  "kind": "class",
+                  "path": "app/Events/InvoicePaid.php"
+                },
+                {
+                  "id": "listener-handle",
+                  "name": "App\\Listeners\\QueueReceipt::handle",
+                  "kind": "method",
+                  "path": "app/Listeners/QueueReceipt.php",
+                  "line": 20
+                },
+                {
+                  "id": "job-receipt",
+                  "name": "App\\Jobs\\DeliverReceipt::handle",
+                  "kind": "method",
+                  "path": "app/Jobs/DeliverReceipt.php"
+                }
+              ]
+            },
+            "analysis_complete": true
+          }
+        },
+        {
+          "name": "search",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "result": {
+              "candidates": [
+                {
+                  "id": "event-paid",
+                  "name": "App\\Events\\InvoicePaid",
+                  "kind": "class",
+                  "path": "app/Events/InvoicePaid.php"
+                },
+                {
+                  "id": "listener-handle",
+                  "name": "App\\Listeners\\QueueReceipt::handle",
+                  "kind": "method",
+                  "path": "app/Listeners/QueueReceipt.php",
+                  "line": 20
+                },
+                {
+                  "id": "job-receipt",
+                  "name": "App\\Jobs\\DeliverReceipt::handle",
+                  "kind": "method",
+                  "path": "app/Jobs/DeliverReceipt.php"
+                }
+              ]
+            },
+            "analysis_complete": true
+          }
+        },
+        {
+          "name": "architecture-graph",
+          "arguments": {
+            "subject": "event-paid",
+            "target": "job-receipt",
+            "mode": "path"
+          },
+          "response": {
+            "ok": true,
+            "status": "found",
+            "analysis_complete": true,
+            "truncated": false,
+            "result": {
+              "status": "found",
+              "traversal_complete": true,
+              "records": [
+                {
+                  "nodes": [
+                    "event-paid",
+                    "listener-handle",
+                    "job-receipt"
+                  ],
+                  "execution_proven": false,
+                  "relations": [
+                    {
+                      "from": "event-paid",
+                      "to": "listener-handle",
+                      "kind": "event-listener",
+                      "path": "app/Providers/EventServiceProvider.php",
+                      "line": 19,
+                      "end_line": 19,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "execution_proven": false,
+                        "conditions": [
+                          "Event is dispatched; registered listener is selected"
+                        ]
+                      }
+                    },
+                    {
+                      "from": "listener-handle",
+                      "to": "job-receipt",
+                      "kind": "job-handler",
+                      "path": "app/Listeners/QueueReceipt.php",
+                      "line": 23,
+                      "end_line": 23,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "mode": "queue-requested",
+                        "queue_delivery_required": true,
+                        "execution_proven": false,
+                        "conditions": [
+                          "Listener handles event; queued job is delivered by a worker"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "path",
+          "arguments": {
+            "from": "App\\Events\\InvoicePaid",
+            "to": "App\\Jobs\\DeliverReceipt::handle"
+          },
+          "response": {
+            "ok": true,
+            "status": "found",
+            "analysis_complete": true,
+            "truncated": false,
+            "result": {
+              "status": "found",
+              "traversal_complete": true,
+              "records": [
+                {
+                  "nodes": [
+                    "event-paid",
+                    "listener-handle",
+                    "job-receipt"
+                  ],
+                  "execution_proven": false,
+                  "relations": [
+                    {
+                      "from": "event-paid",
+                      "to": "listener-handle",
+                      "kind": "event-listener",
+                      "path": "app/Providers/EventServiceProvider.php",
+                      "line": 19,
+                      "end_line": 19,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "execution_proven": false,
+                        "conditions": [
+                          "Event is dispatched; registered listener is selected"
+                        ]
+                      }
+                    },
+                    {
+                      "from": "listener-handle",
+                      "to": "job-receipt",
+                      "kind": "job-handler",
+                      "path": "app/Listeners/QueueReceipt.php",
+                      "line": 23,
+                      "end_line": 23,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "mode": "queue-requested",
+                        "queue_delivery_required": true,
+                        "execution_proven": false,
+                        "conditions": [
+                          "Listener handles event; queued job is delivered by a worker"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "architecture-target",
+          "arguments": {},
+          "response": {
+            "v": 1,
+            "cmd": "architecture-target",
+            "ok": true,
+            "configured": false,
+            "next": [
+              "declare:.architecture-kit/target.json"
+            ]
+          }
+        },
+        {
+          "name": "architecture-graph",
+          "arguments": {
+            "subject": "event-paid",
+            "mode": "context"
+          },
+          "response": {
+            "ok": true,
+            "analysis_complete": true,
+            "result": {
+              "records": [
+                {
+                  "element": {
+                    "id": "listener-handle",
+                    "name": "App\\Listeners\\QueueReceipt::handle"
+                  },
+                  "relation": {
+                    "from": "event-paid",
+                    "to": "listener-handle",
+                    "kind": "event-listener",
+                    "path": "app/Providers/EventServiceProvider.php",
+                    "line": 19,
+                    "end_line": 19,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "execution_proven": false,
+                      "conditions": [
+                        "Event is dispatched; registered listener is selected"
+                      ]
+                    }
+                  },
+                  "semantic_transition": true
+                }
+              ]
+            },
+            "truncated": false
+          }
+        },
+        {
+          "name": "architecture-context",
+          "arguments": {
+            "subject": "App\\Events\\InvoicePaid"
+          },
+          "response": {
+            "ok": true,
+            "analysis_complete": true,
+            "result": {
+              "records": [
+                {
+                  "element": {
+                    "id": "listener-handle",
+                    "name": "App\\Listeners\\QueueReceipt::handle"
+                  },
+                  "relation": {
+                    "from": "event-paid",
+                    "to": "listener-handle",
+                    "kind": "event-listener",
+                    "path": "app/Providers/EventServiceProvider.php",
+                    "line": 19,
+                    "end_line": 19,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "execution_proven": false,
+                      "conditions": [
+                        "Event is dispatched; registered listener is selected"
+                      ]
+                    }
+                  },
+                  "semantic_transition": true
+                }
+              ]
+            },
+            "truncated": false
+          }
+        },
+        {
+          "name": "impact",
+          "arguments": {
+            "subject": "App\\Events\\InvoicePaid"
+          },
+          "response": {
+            "ok": true,
+            "analysis_complete": true,
+            "result": {
+              "records": [
+                {
+                  "element": {
+                    "id": "listener-handle",
+                    "name": "App\\Listeners\\QueueReceipt::handle"
+                  },
+                  "relation": {
+                    "from": "event-paid",
+                    "to": "listener-handle",
+                    "kind": "event-listener",
+                    "path": "app/Providers/EventServiceProvider.php",
+                    "line": 19,
+                    "end_line": 19,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "execution_proven": false,
+                      "conditions": [
+                        "Event is dispatched; registered listener is selected"
+                      ]
+                    }
+                  },
+                  "semantic_transition": true
+                }
+              ]
+            },
+            "truncated": false,
+            "tests": [],
+            "analysis": {
+              "status": "complete",
+              "notices": [],
+              "notice_total": 0,
+              "truncated": false,
+              "limitations": [
+                "Source relationships do not prove execution, test coverage or PASS."
+              ]
+            }
+          }
+        },
+        {
+          "name": "architecture-graph",
+          "arguments": {
+            "subject": "listener-handle",
+            "mode": "context"
+          },
+          "response": {
+            "ok": true,
+            "status": "found",
+            "analysis_complete": true,
+            "truncated": false,
+            "result": {
+              "status": "found",
+              "subject": {
+                "id": "listener-handle",
+                "name": "App\\Listeners\\QueueReceipt::handle",
+                "kind": "method",
+                "path": "app/Listeners/QueueReceipt.php",
+                "line": 20
+              },
+              "records": [
+                {
+                  "direction": "incoming",
+                  "relation": {
+                    "from": "event-paid",
+                    "to": "listener-handle",
+                    "kind": "event-listener",
+                    "path": "app/Providers/EventServiceProvider.php",
+                    "line": 19,
+                    "end_line": 19,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "execution_proven": false,
+                      "conditions": [
+                        "Event is dispatched; registered listener is selected"
+                      ]
+                    }
+                  },
+                  "element": {
+                    "id": "event-paid",
+                    "name": "App\\Events\\InvoicePaid",
+                    "kind": "class",
+                    "path": "app/Events/InvoicePaid.php"
+                  },
+                  "semantic_transition": true
+                },
+                {
+                  "direction": "outgoing",
+                  "relation": {
+                    "from": "listener-handle",
+                    "to": "job-receipt",
+                    "kind": "job-handler",
+                    "path": "app/Listeners/QueueReceipt.php",
+                    "line": 23,
+                    "end_line": 23,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "mode": "queue-requested",
+                      "queue_delivery_required": true,
+                      "execution_proven": false,
+                      "conditions": [
+                        "Listener handles event; queued job is delivered by a worker"
+                      ]
+                    }
+                  },
+                  "element": {
+                    "id": "job-receipt",
+                    "name": "App\\Jobs\\DeliverReceipt::handle",
+                    "kind": "method",
+                    "path": "app/Jobs/DeliverReceipt.php"
+                  },
+                  "semantic_transition": true
+                }
+              ],
+              "traversal_complete": true
+            }
+          }
+        },
+        {
+          "name": "architecture-graph",
+          "arguments": {
+            "subject": "job-receipt",
+            "mode": "context"
+          },
+          "response": {
+            "ok": true,
+            "status": "found",
+            "analysis_complete": true,
+            "truncated": false,
+            "result": {
+              "status": "found",
+              "subject": {
+                "id": "job-receipt",
+                "name": "App\\Jobs\\DeliverReceipt::handle",
+                "kind": "method",
+                "path": "app/Jobs/DeliverReceipt.php"
+              },
+              "records": [
+                {
+                  "direction": "incoming",
+                  "relation": {
+                    "from": "listener-handle",
+                    "to": "job-receipt",
+                    "kind": "job-handler",
+                    "path": "app/Listeners/QueueReceipt.php",
+                    "line": 23,
+                    "end_line": 23,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "mode": "queue-requested",
+                      "queue_delivery_required": true,
+                      "execution_proven": false,
+                      "conditions": [
+                        "Listener handles event; queued job is delivered by a worker"
+                      ]
+                    }
+                  },
+                  "element": {
+                    "id": "listener-handle",
+                    "name": "App\\Listeners\\QueueReceipt::handle",
+                    "kind": "method",
+                    "path": "app/Listeners/QueueReceipt.php",
+                    "line": 20
+                  },
+                  "semantic_transition": true
+                }
+              ],
+              "traversal_complete": true
+            }
+          }
+        },
+        {
+          "name": "impact",
+          "arguments": {
+            "subject": "App\\Listeners\\QueueReceipt::handle"
+          },
+          "response": {
+            "v": 1,
+            "cmd": "impact",
+            "ok": true,
+            "subject": {
+              "name": "App\\Listeners\\QueueReceipt::handle",
+              "kind": "method",
+              "path": "app/Listeners/QueueReceipt.php"
+            },
+            "dependents": [
+              {
+                "symbol": "App\\Events\\InvoicePaid",
+                "path": "app/Events/InvoicePaid.php",
+                "distance": 1,
+                "via": [
+                  {
+                    "from": "event-paid",
+                    "to": "listener-handle",
+                    "kind": "event-listener",
+                    "path": "app/Providers/EventServiceProvider.php",
+                    "line": 19,
+                    "end_line": 19,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "execution_proven": false,
+                      "conditions": [
+                        "Event is dispatched; registered listener is selected"
+                      ]
+                    }
+                  },
+                  {
+                    "from": "listener-handle",
+                    "to": "job-receipt",
+                    "kind": "job-handler",
+                    "path": "app/Listeners/QueueReceipt.php",
+                    "line": 23,
+                    "end_line": 23,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "mode": "queue-requested",
+                      "queue_delivery_required": true,
+                      "execution_proven": false,
+                      "conditions": [
+                        "Listener handles event; queued job is delivered by a worker"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            "dependencies": [],
+            "possible": {
+              "dependents": [],
+              "dependencies": []
+            },
+            "references": {
+              "dependents": [],
+              "dependencies": []
+            },
+            "tests": [],
+            "analysis": {
+              "status": "complete",
+              "notices": [],
+              "notice_total": 0,
+              "truncated": false,
+              "limitations": [
+                "Source relationships do not prove execution, test coverage or PASS."
+              ]
+            },
+            "execution": {
+              "status": "complete",
+              "flows": [
+                {
+                  "nodes": [
+                    "event-paid",
+                    "listener-handle",
+                    "job-receipt"
+                  ],
+                  "execution_proven": false,
+                  "relations": [
+                    {
+                      "from": "event-paid",
+                      "to": "listener-handle",
+                      "kind": "event-listener",
+                      "path": "app/Providers/EventServiceProvider.php",
+                      "line": 19,
+                      "end_line": 19,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "execution_proven": false,
+                        "conditions": [
+                          "Event is dispatched; registered listener is selected"
+                        ]
+                      }
+                    },
+                    {
+                      "from": "listener-handle",
+                      "to": "job-receipt",
+                      "kind": "job-handler",
+                      "path": "app/Listeners/QueueReceipt.php",
+                      "line": 23,
+                      "end_line": 23,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "mode": "queue-requested",
+                        "queue_delivery_required": true,
+                        "execution_proven": false,
+                        "conditions": [
+                          "Listener handles event; queued job is delivered by a worker"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "unresolved": []
+            },
+            "next": [
+              "continue",
+              "Relationships do not prove execution or test PASS."
+            ]
+          }
+        },
+        {
+          "name": "architecture-context",
+          "arguments": {
+            "subject": "App\\Listeners\\QueueReceipt"
+          },
+          "response": {
+            "ok": true,
+            "symbol": {
+              "name": "App\\Listeners\\QueueReceipt",
+              "path": "app/Listeners/QueueReceipt.php"
+            },
+            "dependencies": [],
+            "dependents": [],
+            "tests": [],
+            "execution_proven": false
+          }
+        },
+        {
+          "name": "impact",
+          "arguments": {
+            "subject": "App\\Listeners\\QueueReceipt"
+          },
+          "response": {
+            "v": 1,
+            "cmd": "impact",
+            "ok": true,
+            "subject": {
+              "name": "App\\Listeners\\QueueReceipt",
+              "kind": "class",
+              "path": "app/Listeners/QueueReceipt.php"
+            },
+            "dependents": [
+              {
+                "symbol": "App\\Events\\InvoicePaid",
+                "path": "app/Events/InvoicePaid.php",
+                "distance": 1,
+                "via": [
+                  {
+                    "from": "event-paid",
+                    "to": "listener-handle",
+                    "kind": "event-listener",
+                    "path": "app/Providers/EventServiceProvider.php",
+                    "line": 19,
+                    "end_line": 19,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "execution_proven": false,
+                      "conditions": [
+                        "Event is dispatched; registered listener is selected"
+                      ]
+                    }
+                  },
+                  {
+                    "from": "listener-handle",
+                    "to": "job-receipt",
+                    "kind": "job-handler",
+                    "path": "app/Listeners/QueueReceipt.php",
+                    "line": 23,
+                    "end_line": 23,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "mode": "queue-requested",
+                      "queue_delivery_required": true,
+                      "execution_proven": false,
+                      "conditions": [
+                        "Listener handles event; queued job is delivered by a worker"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            "dependencies": [],
+            "possible": {
+              "dependents": [],
+              "dependencies": []
+            },
+            "references": {
+              "dependents": [],
+              "dependencies": []
+            },
+            "tests": [],
+            "analysis": {
+              "status": "complete",
+              "notices": [],
+              "notice_total": 0,
+              "truncated": false,
+              "limitations": [
+                "Source relationships do not prove execution, test coverage or PASS."
+              ]
+            },
+            "execution": {
+              "status": "complete",
+              "flows": [
+                {
+                  "nodes": [
+                    "event-paid",
+                    "listener-handle",
+                    "job-receipt"
+                  ],
+                  "execution_proven": false,
+                  "relations": [
+                    {
+                      "from": "event-paid",
+                      "to": "listener-handle",
+                      "kind": "event-listener",
+                      "path": "app/Providers/EventServiceProvider.php",
+                      "line": 19,
+                      "end_line": 19,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "execution_proven": false,
+                        "conditions": [
+                          "Event is dispatched; registered listener is selected"
+                        ]
+                      }
+                    },
+                    {
+                      "from": "listener-handle",
+                      "to": "job-receipt",
+                      "kind": "job-handler",
+                      "path": "app/Listeners/QueueReceipt.php",
+                      "line": 23,
+                      "end_line": 23,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "mode": "queue-requested",
+                        "queue_delivery_required": true,
+                        "execution_proven": false,
+                        "conditions": [
+                          "Listener handles event; queued job is delivered by a worker"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "unresolved": []
+            },
+            "next": [
+              "continue",
+              "Relationships do not prove execution or test PASS."
+            ]
+          }
+        },
+        {
+          "name": "architecture-context",
+          "arguments": {
+            "subject": "App\\Listeners\\QueueReceipt"
+          },
+          "response": {
+            "ok": true,
+            "symbol": {
+              "name": "App\\Listeners\\QueueReceipt",
+              "path": "app/Listeners/QueueReceipt.php"
+            },
+            "dependencies": [],
+            "dependents": [],
+            "tests": [],
+            "execution_proven": false
+          }
+        },
+        {
+          "name": "impact",
+          "arguments": {
+            "subject": "App\\Jobs\\DeliverReceipt"
+          },
+          "response": {
+            "v": 1,
+            "cmd": "impact",
+            "ok": true,
+            "subject": {
+              "name": "App\\Jobs\\DeliverReceipt",
+              "kind": "class",
+              "path": "app/Jobs/DeliverReceipt.php"
+            },
+            "dependents": [
+              {
+                "symbol": "App\\Events\\InvoicePaid",
+                "path": "app/Events/InvoicePaid.php",
+                "distance": 2,
+                "via": [
+                  {
+                    "from": "event-paid",
+                    "to": "listener-handle",
+                    "kind": "event-listener",
+                    "path": "app/Providers/EventServiceProvider.php",
+                    "line": 19,
+                    "end_line": 19,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "execution_proven": false,
+                      "conditions": [
+                        "Event is dispatched; registered listener is selected"
+                      ]
+                    }
+                  },
+                  {
+                    "from": "listener-handle",
+                    "to": "job-receipt",
+                    "kind": "job-handler",
+                    "path": "app/Listeners/QueueReceipt.php",
+                    "line": 23,
+                    "end_line": 23,
+                    "resolution": "conditional",
+                    "metadata": {
+                      "mode": "queue-requested",
+                      "queue_delivery_required": true,
+                      "execution_proven": false,
+                      "conditions": [
+                        "Listener handles event; queued job is delivered by a worker"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            "dependencies": [],
+            "possible": {
+              "dependents": [],
+              "dependencies": []
+            },
+            "references": {
+              "dependents": [],
+              "dependencies": []
+            },
+            "tests": [],
+            "analysis": {
+              "status": "complete",
+              "notices": [],
+              "notice_total": 0,
+              "truncated": false,
+              "limitations": [
+                "Source relationships do not prove execution, test coverage or PASS."
+              ]
+            },
+            "execution": {
+              "status": "complete",
+              "flows": [
+                {
+                  "nodes": [
+                    "event-paid",
+                    "listener-handle",
+                    "job-receipt"
+                  ],
+                  "execution_proven": false,
+                  "relations": [
+                    {
+                      "from": "event-paid",
+                      "to": "listener-handle",
+                      "kind": "event-listener",
+                      "path": "app/Providers/EventServiceProvider.php",
+                      "line": 19,
+                      "end_line": 19,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "execution_proven": false,
+                        "conditions": [
+                          "Event is dispatched; registered listener is selected"
+                        ]
+                      }
+                    },
+                    {
+                      "from": "listener-handle",
+                      "to": "job-receipt",
+                      "kind": "job-handler",
+                      "path": "app/Listeners/QueueReceipt.php",
+                      "line": 23,
+                      "end_line": 23,
+                      "resolution": "conditional",
+                      "metadata": {
+                        "mode": "queue-requested",
+                        "queue_delivery_required": true,
+                        "execution_proven": false,
+                        "conditions": [
+                          "Listener handles event; queued job is delivered by a worker"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "unresolved": []
+            },
+            "next": [
+              "continue",
+              "Relationships do not prove execution or test PASS."
+            ]
+          }
+        },
+        {
+          "name": "architecture-context",
+          "arguments": {
+            "subject": "App\\Jobs\\DeliverReceipt"
+          },
+          "response": {
+            "ok": true,
+            "symbol": {
+              "name": "App\\Jobs\\DeliverReceipt",
+              "path": "app/Jobs/DeliverReceipt.php"
+            },
+            "dependencies": [],
+            "dependents": [],
+            "tests": [],
+            "execution_proven": false
+          }
+        }
+      ],
+      "requirements": [
+        [
+          {
+            "name": "architecture-search",
+            "arguments": {}
+          },
+          {
+            "name": "search",
+            "arguments": {}
+          }
+        ],
+        [
+          {
+            "name": "architecture-graph",
+            "arguments": {
+              "subject": "event-paid",
+              "target": "job-receipt",
+              "mode": "path"
+            }
+          },
+          {
+            "name": "path",
+            "arguments": {
+              "from": "App\\Events\\InvoicePaid",
+              "to": "App\\Jobs\\DeliverReceipt::handle"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "guard-doctor",
+      "prompt": "Check guard after the proposed changes, explain its exact reported finding. Generated guidance is also missing; diagnose that setup problem and report whether finishing is blocked.",
+      "required_evidence": [
+        "E_LAYER_DEPENDENCY",
+        "app/Http/Controllers/InvoiceController.php",
+        "37",
+        "GENERATED_GUIDANCE_MISSING"
+      ],
+      "rules": [
+        {
+          "name": "enabled-architectures",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "enabled": [
+              "actions"
+            ],
+            "skills": [
+              "architecture-kit-actions"
+            ]
+          }
+        },
+        {
+          "name": "read-resource",
+          "arguments": {
+            "path": ".ai/skills/architecture-kit-actions/SKILL.md"
+          },
+          "response": {
+            "ok": true,
+            "content": "Use the configured action folder. Source tests are candidates, not executed tests."
+          }
+        },
+        {
+          "name": "guard",
+          "arguments": {},
+          "response": {
+            "ok": false,
+            "findings": [
+              {
+                "code": "E_LAYER_DEPENDENCY",
+                "path": "app/Http/Controllers/InvoiceController.php",
+                "line": 37
+              }
+            ]
+          }
+        },
+        {
+          "name": "explain-finding",
+          "arguments": {
+            "code": "E_LAYER_DEPENDENCY",
+            "path": "app/Http/Controllers/InvoiceController.php",
+            "line": 37
+          },
+          "response": {
+            "ok": true,
+            "occurrence": {
+              "code": "E_LAYER_DEPENDENCY",
+              "path": "app/Http/Controllers/InvoiceController.php",
+              "line": 37
+            },
+            "explanation": "Controller depends directly on external transport."
+          }
+        },
+        {
+          "name": "doctor",
+          "arguments": {},
+          "response": {
+            "ok": false,
+            "issues": [
+              {
+                "code": "GENERATED_GUIDANCE_MISSING",
+                "next": "architecture-kit:sync"
+              }
+            ]
+          }
+        },
+        {
+          "name": "architecture-target",
+          "arguments": {},
+          "response": {
+            "v": 1,
+            "cmd": "architecture-target",
+            "ok": true,
+            "configured": false,
+            "next": [
+              "declare:.architecture-kit/target.json"
+            ]
+          }
+        }
+      ],
+      "requirements": [
+        [
+          {
+            "name": "guard",
+            "arguments": {}
+          }
+        ],
+        [
+          {
+            "name": "explain-finding",
+            "arguments": {
+              "code": "E_LAYER_DEPENDENCY",
+              "path": "app/Http/Controllers/InvoiceController.php",
+              "line": 37
+            }
+          }
+        ],
+        [
+          {
+            "name": "doctor",
+            "arguments": {}
+          }
+        ]
+      ]
+    },
+    {
+      "id": "ai-upgrade",
+      "prompt": "Plan the laravel/ai upgrade to 0.11. Load only the active atomic guide, verify that synthetic step through the test host, then ask the planner for the next step. Do not change files.",
+      "required_evidence": [
+        ".ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md",
+        ".ai/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md"
+      ],
+      "rules": [
+        {
+          "name": "enabled-architectures",
+          "arguments": {},
+          "response": {
+            "ok": true,
+            "enabled": [
+              "actions"
+            ],
+            "skills": [
+              "architecture-kit-actions"
+            ]
+          }
+        },
+        {
+          "name": "read-resource",
+          "arguments": {
+            "path": ".ai/skills/architecture-kit-actions/SKILL.md"
+          },
+          "response": {
+            "ok": true,
+            "content": "Use the configured action folder. Source tests are candidates, not executed tests."
+          }
+        },
+        {
+          "name": "plan-upgrade",
+          "arguments": {
+            "package": "laravel/ai",
+            "target": "0.11"
+          },
+          "response": {
+            "ok": true,
+            "active_guide": ".ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md",
+            "verification_required": true
+          },
+          "after_verification": {
+            "ok": true,
+            "active_guide": ".ai/skills/architecture-kit-upgrade-laravel-ai-0-10-to-0-11/SKILL.md",
+            "verification_required": true
+          }
+        },
+        {
+          "name": "read-resource",
+          "arguments": {
+            "path": ".ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md"
+          },
+          "response": {
+            "ok": true,
+            "content": "Synthetic active step. Verify fixture step ai-0.9-to-0.10 before asking for the next guide."
+          }
+        },
+        {
+          "name": "verify-step",
+          "arguments": {
+            "step": "ai-0.9-to-0.10"
+          },
+          "response": {
+            "ok": true,
+            "verified": true,
+            "source_unchanged": true
+          },
+          "requires_read": ".ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md"
+        },
+        {
+          "name": "architecture-target",
+          "arguments": {},
+          "response": {
+            "v": 1,
+            "cmd": "architecture-target",
+            "ok": true,
+            "configured": false,
+            "next": [
+              "declare:.architecture-kit/target.json"
+            ]
+          }
+        }
+      ],
+      "requirements": [
+        [
+          {
+            "name": "plan-upgrade",
+            "arguments": {
+              "package": "laravel/ai",
+              "target": "0.11"
+            }
+          }
+        ],
+        [
+          {
+            "name": "read-resource",
+            "arguments": {
+              "path": ".ai/skills/architecture-kit-upgrade-laravel-ai-0-9-to-0-10/SKILL.md"
+            }
+          }
+        ],
+        [
+          {
+            "name": "verify-step",
+            "arguments": {
+              "step": "ai-0.9-to-0.10"
+            }
+          }
+        ]
+      ]
+    }
+  ]
+}

@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Discovery;
 
+use Closure;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
 use PhpParser\ConstExprEvaluator;
 use PhpParser\Node;
 use PhpParser\Node\Stmt;
-use PhpParser\ParserFactory;
 
 /** Read analysis settings without requiring project PHP or resolving project classes. */
 final readonly class DiscoverySettings
@@ -20,7 +21,7 @@ final readonly class DiscoverySettings
      * @param  list<string>  $fingerprint
      * @param  list<int>  $configStat
      */
-    public function __construct(public AuditScope $scope, public array $exclude, public ?ProjectGraphCache $cache, public array $fingerprint, public array $configStat) {}
+    public function __construct(public AuditScope $scope, public array $exclude, public ?ProjectGraphCache $cache, public array $fingerprint, public array $configStat, public ?FileContext $sourceFile = null) {}
 
     public static function safe(string $base, string $path): bool
     {
@@ -37,7 +38,8 @@ final readonly class DiscoverySettings
         return true;
     }
 
-    public static function load(Filesystem $files, string $base): self
+    /** @param (Closure(string): void)|null $onParse */
+    public static function load(Filesystem $files, string $base, ?Closure $onParse = null): self
     {
         $path = 'config/architectures.php';
         if (! self::safe($base, $path)) {
@@ -45,11 +47,16 @@ final readonly class DiscoverySettings
         }
         $stat = self::stat($base.'/'.$path);
         $audit = [];
+        $sourceFile = null;
         if ($files->isFile($base.'/'.$path)) {
             if (($stat[1] ?? 0) > 100000) {
                 throw new InvalidArgumentException('Analysis configuration exceeds 100 KB.');
             }
-            $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($files->get($base.'/'.$path)) ?? [];
+            $sourceFile = new FileContext($path, $files->get($base.'/'.$path), $onParse, newestSyntax: true);
+            $ast = $sourceFile->ast();
+            if ($ast === null) {
+                throw new InvalidArgumentException('Analysis configuration could not be parsed: '.$sourceFile->parseError());
+            }
             if (count($ast) === 1 && $ast[0] instanceof Stmt\Namespace_) {
                 $ast = $ast[0]->stmts;
             }
@@ -100,7 +107,7 @@ final readonly class DiscoverySettings
             throw new InvalidArgumentException('Analysis cache contains an unsafe path.');
         }
 
-        return new self(new AuditScope(['app', ...$paths]), $exclude, $cache === false ? null : new ProjectGraphCache($files, $base, $cachePath), ['discovery-source-only-v1', hash('sha256', serialize($audit))], $stat);
+        return new self(new AuditScope(['app', ...$paths]), $exclude, $cache === false ? null : new ProjectGraphCache($files, $base, $cachePath), ['discovery-source-only-v1', hash('sha256', serialize($audit))], $stat, $sourceFile);
     }
 
     /** @return list<int> */

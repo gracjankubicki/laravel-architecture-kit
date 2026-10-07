@@ -1,5 +1,20 @@
 # Upgrade Guide
 
+## Unreleased static graph changes
+
+`architecture-search` and `architecture-graph` add source-only graph discovery. Existing MCP tools retain their names and parameters. Graph roots are configured separately from audit roots; see [the static graph reference](docs/static-graph.md).
+
+The cache fingerprint includes package sources, so upgrading rebuilds graph facts automatically. Source-bounded partial facts retain their diagnostics when cached; memory-dependent or unclassified limits are retried. No application migration is required.
+
+Regenerate Architecture Kit resources and update installed Boost guidance through the existing install or sync workflow after upgrading. Generated instructions describe when to search, inspect relationships, and check result completeness. The development graph still reports `catalog_incomplete` until the accepted catalog is fully verified.
+
+```bash
+php artisan architecture-kit:sync --no-interaction
+php artisan boost:update --no-interaction
+```
+
+Run the Boost command only in applications that use Boost.
+
 ## Upgrading to v0.6.2 from v0.6.1
 
 No configuration or baseline-format migration is required.

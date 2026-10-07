@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
+use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
 
 /**
@@ -27,5 +28,6 @@ final readonly class FileGraphEntry
         public array $edges,
         public array $testInvocations = [],
         public ?ImpactFacts $impact = null,
+        public ?CatalogFacts $catalog = null,
     ) {}
 }

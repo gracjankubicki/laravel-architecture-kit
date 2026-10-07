@@ -26,9 +26,14 @@ final class DistributionContractTest extends TestCase
         $lintCommands = array_column($jobs['lint']['steps'], 'run');
         $this->assertArrayNotHasKey('permissions', $jobs['lint']);
         $this->assertArrayNotHasKey('permissions', $jobs['tests']);
+        $this->assertArrayNotHasKey('permissions', $jobs['eval-harness']);
         $this->assertArrayNotHasKey('permissions', $jobs['coverage']);
         $this->assertContains('composer audit --locked --no-interaction', $lintCommands);
-        $this->assertSame(['lint', 'tests', 'laravel-ai-contract', 'framework-contract', 'runtime-install', 'boost-composition', 'workbench-commands', 'project-graph-consumer'], $jobs['coverage']['needs']);
+        $this->assertSame(['lint', 'tests', 'eval-harness', 'laravel-ai-contract', 'framework-contract', 'runtime-install', 'boost-composition', 'workbench-commands', 'project-graph-consumer'], $jobs['coverage']['needs']);
+        $evalCommands = array_column($jobs['eval-harness']['steps'], 'run');
+        $this->assertContains('python3 tests/Evals/tool-selection/test_runner.py', $evalCommands);
+        $this->assertContains('bash tests/Evals/tool-selection/pest.sh harness', $evalCommands);
+        $this->assertStringNotContainsString('--run', implode("\n", $evalCommands));
         $this->assertSame(
             ['0.8.0', '^0.8', '0.9.0', '^0.9', '0.10.0', '^0.10', '0.11.0', '^0.11'],
             $jobs['laravel-ai-contract']['strategy']['matrix']['ai'],

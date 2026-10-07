@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('scaffold')]
-#[Description('Return the files and skeletons needed for a new element of an enabled architecture, following project conventions. Writes nothing; the agent decides what to create.')]
+#[Description('When creating an element of an enabled architecture, request its proposed files and skeletons by architecture slug and element name. Use the returned paths and project conventions to create the authorized code. This tool writes nothing.')]
 #[IsReadOnly]
 class Scaffold extends Tool
 {

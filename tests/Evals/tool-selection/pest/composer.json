@@ -1,0 +1,21 @@
+{
+    "name": "architecture-kit/tool-selection-evals",
+    "type": "project",
+    "require": {
+        "php": "^8.4"
+    },
+    "require-dev": {
+        "illuminate/support": "^13.0",
+        "pestphp/pest": "^5.2.1",
+        "pestphp/pest-plugin-evals": "5.1.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "scripts": {
+        "test:harness": "pest tests/HarnessTest.php",
+        "test:report": "pest --evals tests/ReportTest.php"
+    }
+}

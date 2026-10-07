@@ -11,6 +11,8 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\DependencyEdge;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\FileGraphEntry;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
+use GracjanKubicki\ArchitectureKit\Catalog\CatalogElement;
+use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 
@@ -205,6 +207,34 @@ final class ProjectGraphCacheTest extends TestCase
 
         $this->assertTrue($cache->write($this->graph($this->signature())));
         $this->assertFalse($cache->write($this->largeGraph($this->signature())));
+    }
+
+    public function test_catalog_write_budget_accepts_shared_metadata_but_refuses_large_strings(): void
+    {
+        $cache = new ProjectGraphCache(
+            new Filesystem,
+            $this->tempPath,
+            ProjectGraphCache::DIRECTORY,
+            memoryLimitBytes: 1_000_000,
+            memoryUsage: static fn (): int => 0,
+        );
+        $path = 'app/Actions/SendInvoice.php';
+        $metadata = ['slots' => array_fill(0, 1000, ['type' => 'App\\Models\\Invoice', 'nullable' => false])];
+        $facts = new CatalogFacts($path, [new CatalogElement('method:send', 'send', 'method', 1, 1, 0, metadata: $metadata)]);
+        $graph = new CachedGraph($this->signature(), [$path => new FileGraphEntry([], [], catalog: $facts)]);
+
+        $this->assertTrue($cache->write($graph));
+        $restored = $this->cache()->read($this->signature())->graph;
+        $this->assertNotNull($restored);
+        $this->assertSame($facts->toArray(), $restored->entries[$path]->catalog?->toArray());
+        $storedBefore = (new Filesystem)->get($this->storedFile());
+
+        $largeFacts = new CatalogFacts($path, [new CatalogElement('method:send', 'send', 'method', 1, 1, 0,
+            metadata: ['descriptor' => str_repeat('x', 500_000)])]);
+        $largeGraph = new CachedGraph($this->signature(), [$path => new FileGraphEntry([], [], catalog: $largeFacts)]);
+
+        $this->assertFalse($cache->write($largeGraph));
+        $this->assertSame($storedBefore, (new Filesystem)->get($this->storedFile()));
     }
 
     public function test_a_symbol_cannot_disagree_with_the_file_it_is_stored_under(): void

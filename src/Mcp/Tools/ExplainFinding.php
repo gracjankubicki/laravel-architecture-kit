@@ -29,7 +29,7 @@ class ExplainFinding extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'code' => $schema->string()->required(),
+            'code' => $schema->string()->required()->description('Exact finding code from guard or audit-changed. Add its reported path and line for an occurrence-specific explanation.'),
             'path' => $schema->string()->description('Application-relative path the finding was reported for.'),
             'line' => $schema->integer()->description('Line the finding was reported on.'),
         ];

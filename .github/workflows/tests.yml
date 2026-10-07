@@ -45,7 +45,22 @@ jobs:
         run: |
           composer require "laravel/framework:${{ matrix.laravel }}" --no-interaction --no-update
           composer update --prefer-dist --no-interaction --no-progress ${{ matrix.dependencies == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
-      - run: vendor/bin/phpunit
+      - run: php -d memory_limit=512M vendor/bin/phpunit
+
+  eval-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - run: python3 tests/Evals/tool-selection/test_runner.py
+      - run: bash tests/Evals/tool-selection/pest.sh harness
 
   laravel-ai-contract:
     runs-on: ubuntu-latest
@@ -139,7 +154,7 @@ jobs:
       - run: bash tests/Smoke/project-graph-consumer.sh
 
   coverage:
-    needs: [lint, tests, laravel-ai-contract, framework-contract, runtime-install, boost-composition, workbench-commands, project-graph-consumer]
+    needs: [lint, tests, eval-harness, laravel-ai-contract, framework-contract, runtime-install, boost-composition, workbench-commands, project-graph-consumer]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -150,7 +165,7 @@ jobs:
       - run: |
           composer require "laravel/framework:13.*" --no-interaction --no-update
           composer update --prefer-dist --no-interaction --no-progress
-      - run: vendor/bin/phpunit --coverage-clover build/logs/clover.xml
+      - run: php -d memory_limit=512M vendor/bin/phpunit --coverage-clover build/logs/clover.xml
       - run: php bin/generate-coverage-badge build/logs/clover.xml art/coverage.svg
       - uses: actions/upload-artifact@v4
         with:

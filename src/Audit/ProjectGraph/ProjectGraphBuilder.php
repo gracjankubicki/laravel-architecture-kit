@@ -9,6 +9,20 @@ use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocationExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\AuthConfigCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\BladeCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
+use GracjanKubicki\ArchitectureKit\Catalog\ComposerCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\ContainerCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\DataCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\DataOperationCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\ExecutionCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\HttpCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\PhpCallCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\PhpCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\ResourceCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\TestCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\ValidationCatalogExtractor;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
 use PhpParser\Node;
@@ -30,7 +44,10 @@ final class ProjectGraphBuilder
     /** @var list<ImpactFacts> */
     private array $impactFacts = [];
 
-    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier, private readonly bool $impact = false, private readonly bool $preserveOccurrences = false) {}
+    /** @var list<CatalogFacts> */
+    private array $catalogFacts = [];
+
+    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier, private readonly bool $impact = false, private readonly bool $preserveOccurrences = false, private readonly bool $catalog = false, private readonly ?string $basePath = null) {}
 
     /**
      * @param  array<int, FileContext>  $files
@@ -41,6 +58,7 @@ final class ProjectGraphBuilder
         $this->edges = [];
         $this->testInvocations = [];
         $this->impactFacts = [];
+        $this->catalogFacts = [];
 
         foreach ($files as $file) {
             $this->add($file);
@@ -69,6 +87,9 @@ final class ProjectGraphBuilder
         if ($entry->impact !== null) {
             $this->impactFacts[] = $entry->impact;
         }
+        if ($entry->catalog !== null) {
+            $this->catalogFacts[] = $entry->catalog;
+        }
     }
 
     /**
@@ -76,33 +97,67 @@ final class ProjectGraphBuilder
      */
     public function collect(FileContext $file): FileGraphEntry
     {
-        if ($this->impact && ($reason = ImpactExtractor::sourceLimit(strlen($file->contents))) !== null) {
-            return new FileGraphEntry([], [], impact: new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => $reason]]));
+        if ($this->catalog && in_array($file->path, ComposerCatalogExtractor::FILES, true)) {
+            return new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($file->path, [], [], []) : null,
+                catalog: (new ComposerCatalogExtractor)->extract($file));
+        }
+        if (($this->impact || $this->catalog) && ($reason = ImpactExtractor::sourceLimit(strlen($file->contents))) !== null) {
+            return new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => $reason]]) : null,
+                catalog: $this->catalog ? (new PhpCatalogExtractor)->extract($file) : null);
         }
         $nodes = null;
+        $catalogFile = $file;
         $symbols = [];
         $edges = [];
 
         try {
-            $nodes = $file->ast();
+            $catalogFile = $this->catalog && str_ends_with($file->path, '.blade.php') ? BladeCatalogExtractor::phpSource($file) : $file;
+            $nodes = $catalogFile->ast();
 
             if ($nodes === null) {
-                return new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => 'Unparseable source.']]) : null);
+                $partial = $this->catalog ? (new PhpCatalogExtractor)->extract($catalogFile) : null;
+                if ($partial !== null) {
+                    $blade = (new BladeCatalogExtractor)->extract($file);
+                    $partial = new CatalogFacts($file->path, [...$partial->elements, ...$blade->elements], $blade->relations,
+                        [...$partial->diagnostics, ...$blade->diagnostics]);
+                }
+
+                return new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => 'Unparseable source.']]) : null,
+                    catalog: $partial);
             }
 
-            $impactFacts = $this->impact ? (new ImpactExtractor)->extract($file) : null;
-            $invocations = (new TestInvocationExtractor)->extract($file);
-            $source = $this->fileSymbol($file, $nodes, $symbols);
+            $testExtractor = new TestInvocationExtractor;
+            $invocations = $testExtractor->extract($catalogFile);
+            $impactFacts = $this->impact ? (new ImpactExtractor)->extract($catalogFile) : null;
+            $catalogFacts = $this->catalog ? (new PhpCatalogExtractor)->extract($catalogFile) : null;
+            if ($catalogFacts !== null) {
+                $catalogFacts = (new DataCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                $dataOperations = (new DataOperationCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                $resources = (new ResourceCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                $calls = (new PhpCallCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                $container = (new ContainerCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                $http = (new HttpCatalogExtractor($this->basePath ?? HttpCatalogExtractor::SOURCE_ROOT))->extract($catalogFile, $catalogFacts, $calls);
+                $execution = (new ExecutionCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                $blade = (new BladeCatalogExtractor)->extract($file);
+                $auth = (new AuthConfigCatalogExtractor)->extract($catalogFile);
+                $tests = (new TestCatalogExtractor)->extract($catalogFile, $catalogFacts, $invocations, $testExtractor->sourceOffsets());
+                $validation = (new ValidationCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                $catalogFacts = new CatalogFacts($file->path, [...$catalogFacts->elements, ...$tests->elements, ...$dataOperations->elements, ...$resources->elements, ...$blade->elements, ...$auth->elements, ...$validation->elements], [...$catalogFacts->relations, ...$tests->relations, ...$resources->relations, ...$blade->relations, ...$calls->relations, ...$container->relations, ...$http->relations, ...$execution->relations, ...$auth->relations, ...$validation->relations], [...$catalogFacts->diagnostics, ...$tests->diagnostics, ...$dataOperations->diagnostics, ...$resources->diagnostics, ...$blade->diagnostics, ...$calls->diagnostics, ...$container->diagnostics, ...$http->diagnostics, ...$execution->diagnostics, ...$auth->diagnostics, ...$validation->diagnostics]);
+            }
+            $source = $this->fileSymbol($catalogFile, $nodes, $symbols);
 
             foreach ($nodes as $node) {
-                $this->visit($file, $node, $source, $symbols, $edges, []);
+                $this->visit($catalogFile, $node, $source, $symbols, $edges, []);
             }
         } finally {
             unset($nodes);
             $file->releaseAst();
+            if ($catalogFile !== $file) {
+                $catalogFile->releaseAst();
+            }
         }
 
-        return new FileGraphEntry($symbols, $this->distinct($edges), $invocations, $impactFacts);
+        return new FileGraphEntry($symbols, $this->distinct($edges), $invocations, $impactFacts, $catalogFacts);
     }
 
     /**
@@ -192,6 +247,7 @@ final class ProjectGraphBuilder
             $this->sorted($edges, static fn (DependencyEdge $edge): string => self::key($edge->from, $edge->to, $edge->path, $edge->line, $edge->kind)),
             $this->testInvocations,
             $this->impactFacts,
+            $this->catalogFacts,
         );
     }
 

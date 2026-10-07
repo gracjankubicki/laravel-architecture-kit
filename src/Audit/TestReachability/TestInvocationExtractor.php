@@ -19,12 +19,22 @@ final class TestInvocationExtractor
     /** @var array<string, true> */
     private array $activeHelpers = [];
 
+    /** @var list<int> Exact positions for the most recent extraction; not serialized. */
+    private array $sourceOffsets = [];
+
+    /** @return list<int> */
+    public function sourceOffsets(): array
+    {
+        return $this->sourceOffsets;
+    }
+
     public const SYMBOLIC = "\x00id\x00";
 
     /** @return list<TestInvocation> */
     public function extract(FileContext $file): array
     {
         $this->helpers = $this->activeHelpers = [];
+        $this->sourceOffsets = [];
         $result = [];
         // Factory configuration can live in a provider; keep it beside file facts so
         // a warm cache does not reparse every provider to discover naming overrides.
@@ -33,6 +43,7 @@ final class TestInvocationExtractor
                 if ($call->class instanceof Node\Name && $file->resolvedName($call->class) === 'Illuminate\Database\Eloquent\Factories\Factory'
                     && $call->name instanceof Node\Identifier && in_array($call->name->toString(), ['guessFactoryNamesUsing', 'useNamespace'], true)) {
                     $argument = $call->getArgs()[0]->value ?? null;
+                    $this->sourceOffsets[] = max(0, $call->getStartFilePos());
                     $result[] = new TestInvocation($file->path, $call->getStartLine(), 'factory-config', uri: $call->name->toString() === 'useNamespace' && $argument instanceof Node\Scalar\String_ ? $argument->value : null);
                 }
             }
@@ -95,11 +106,13 @@ final class TestInvocationExtractor
                 $variables[$node->var->name] = $this->value($node->expr, $variables);
             }
             if ($active && $node instanceof Expr\StaticCall && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'factory' && ! $node->isFirstClassCallable()) {
+                $this->sourceOffsets[] = max(0, $node->getStartFilePos());
                 $result[] = new TestInvocation($file->path, $node->getStartLine(), 'factory', $context, model: $node->class instanceof Node\Name ? $file->resolvedName($node->class) : null, reason: $node->class instanceof Node\Name ? null : 'Dynamic factory receiver.');
             }
             if ($active && ($node instanceof Expr\MethodCall || $node instanceof Expr\FuncCall) && ! $node->isFirstClassCallable()) {
                 $method = null;
                 if ($node instanceof Expr\MethodCall && ! $node->name instanceof Node\Identifier && $this->testReceiver($node->var)) {
+                    $this->sourceOffsets[] = max(0, $node->getStartFilePos());
                     $result[] = new TestInvocation($file->path, $node->getStartLine(), 'http', $context, reason: 'Dynamic test method; HTTP dispatch cannot be determined.');
                 }
                 if ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier && $this->testReceiver($node->var)) {
@@ -149,6 +162,7 @@ final class TestInvocationExtractor
                             $parameters[] = $this->value($params, $variables);
                         }
                     }
+                    $this->sourceOffsets[] = max(0, $node->getStartFilePos());
                     $result[] = new TestInvocation($file->path, $node->getStartLine(), 'http', $context, $verb !== null ? strtoupper($verb) : null, $uri, $route, $parameters, reason: $verb === null || ($uri === null && $route === null) ? 'Dynamic HTTP method or address.' : null, dispatch: $method);
                 }
             }
