@@ -220,6 +220,15 @@ PHP);
         $this->assertSame('S_MOVE_WRITE_TO_ACTION', $this->audit()[0]->code);
     }
 
+    public function test_later_dispatch_preserves_the_earlier_write_advice_after_unknowns(): void
+    {
+        $this->fixture(str_repeat('$unknown->call();', 30).'$invoice->save(); dispatch("job");');
+        $findings = $this->audit();
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
+        $this->assertStringContainsString('Invoice::save()', $findings[0]->message);
+        $this->assertContains('A_OBSERVATION_LIMIT', array_column($findings, 'code'));
+    }
+
     public function test_deep_helper_write_and_mixed_route_are_reported(): void
     {
         $this->fixture('return $this->fetch();', 'private function fetch() { Invoice::create([]); }');
