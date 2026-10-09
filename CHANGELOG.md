@@ -4,6 +4,10 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ## Unreleased
 
+### Fixed
+
+- Preserve earlier endpoint write and effect witnesses when later observations exceed the bounded report; replace unknown observations without overwriting concrete effects.
+
 ## v0.7.0 - 2026-10-07
 
 This release adds source maps and change preflight for Laravel applications: find an entry point, follow its relationships, inspect the effects of a proposed change, and compare architecture across revisions. CLI and MCP reports retain source evidence and explicit uncertainty. Static relationships do not prove runtime execution or passing tests.
