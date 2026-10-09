@@ -134,6 +134,131 @@ PHP);
         $this->assertStringContainsString('app/Services/ViewService.php:1', $findings[0]->message);
     }
 
+    #[DataProvider('eloquentChains')]
+    public function test_eloquent_chains_preserve_model_effects(string $body, bool $write): void
+    {
+        $this->fixture($body);
+        $findings = $this->audit();
+        if ($write) {
+            $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
+            $this->assertStringContainsString('Invoice::save()', $findings[0]->message);
+        } else {
+            $this->assertSame([], $findings);
+        }
+        $this->assertNotContains('A_CALL_UNRESOLVED', array_column($findings, 'code'));
+    }
+
+    public static function eloquentChains(): iterable
+    {
+        yield 'fill then save' => ['$invoice->fill(["total" => 1])->save();', true];
+        yield 'force fill then save' => ['$invoice->forceFill(["total" => 1])->save();', true];
+        yield 'force fill only' => ['$invoice->forceFill(["total" => 1]);', false];
+        yield 'where key then save' => ['Invoice::query()->whereKey(1)->firstOrFail()->save();', true];
+        yield 'where key read' => ['Invoice::query()->whereKey(1)->count();', false];
+    }
+
+    private function customBuilderFixture(string $body, string $builderBody, string $factory = 'return new \App\Models\Builders\InvoiceBuilder($query);', string $builderExtra = ''): void
+    {
+        $this->fixture($body);
+        $this->write('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model { public function newEloquentBuilder($query) { '.$factory.' } }');
+        $this->write('app/Models/Builders/InvoiceBuilder.php', '<?php namespace App\Models\Builders; class InvoiceBuilder extends \Illuminate\Database\Eloquent\Builder { public function forProject(int $id) { '.$builderBody.' } '.$builderExtra.' }');
+    }
+
+    public function test_custom_builder_chain_preserves_the_model_and_read_only_methods(): void
+    {
+        $this->customBuilderFixture('Invoice::query()->forProject(1)->firstOrFail()->save();', 'return $this->where("project_id", $id);');
+        $findings = $this->audit();
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
+        $this->assertStringContainsString('Invoice::save()', $findings[0]->message);
+        $this->assertNotContains('A_CALL_UNRESOLVED', array_column($findings, 'code'));
+
+        $this->customBuilderFixture('Invoice::query()->forProject(1)->count();', 'return $this->where("project_id", $id);');
+        $this->assertSame([], $this->audit());
+    }
+
+    public function test_custom_builder_override_is_inspected_before_a_framework_method(): void
+    {
+        $this->customBuilderFixture('Invoice::query()->whereKey(1)->count();', 'return $this;', builderExtra: 'public function whereKey($id) { \App\Models\Invoice::create([]); return $this; }');
+        $findings = $this->audit();
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
+        $this->assertStringContainsString('InvoiceBuilder::whereKey', $findings[0]->message);
+    }
+
+    public function test_custom_builder_each_passes_the_model_to_the_callback(): void
+    {
+        $this->customBuilderFixture('Invoice::query()->forProject(1)->each(fn ($item) => $item->save());', 'return $this->where("project_id", $id);');
+        $findings = $this->audit();
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
+        $this->assertStringContainsString('Invoice::save()', $findings[0]->message);
+    }
+
+    public function test_dynamic_builder_factory_remains_explicitly_incomplete(): void
+    {
+        $this->customBuilderFixture('Invoice::query()->forProject(1)->firstOrFail()->save();', 'return $this;', '$class = config("builder"); return new $class($query);');
+        $findings = $this->audit();
+        $this->assertContains('A_CALL_UNRESOLVED', array_column($findings, 'code'));
+        $this->assertNotContains('S_MOVE_WRITE_TO_ACTION', array_column($findings, 'code'));
+    }
+
+    public function test_ambiguous_builder_factory_does_not_select_one_branch(): void
+    {
+        $this->customBuilderFixture('Invoice::query()->forProject(1)->firstOrFail()->save();', 'return $this;', 'if ($flag) { return new \App\Models\Builders\InvoiceBuilder($query); } return new \Illuminate\Database\Eloquent\Builder($query);');
+        $findings = $this->audit();
+        $this->assertContains('A_CALL_UNRESOLVED', array_column($findings, 'code'));
+        $this->assertNotContains('S_MOVE_WRITE_TO_ACTION', array_column($findings, 'code'));
+    }
+
+    public function test_inherited_custom_builder_method_keeps_its_model_context(): void
+    {
+        $this->customBuilderFixture('Invoice::query()->forProject(1)->firstOrFail()->save();', 'return $this;');
+        $this->write('app/Models/Builders/InvoiceBuilder.php', '<?php namespace App\Models\Builders; final class InvoiceBuilder extends BaseBuilder {}');
+        $this->write('app/Models/Builders/BaseBuilder.php', '<?php namespace App\Models\Builders; class BaseBuilder extends \Illuminate\Database\Eloquent\Builder { public function forProject($id): static { return $this->where("project_id", $id); } }');
+        $findings = $this->audit();
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
+        $this->assertStringContainsString('Invoice::save()', $findings[0]->message);
+        $this->assertNotContains('A_CALL_UNRESOLVED', array_column($findings, 'code'));
+    }
+
+    public function test_custom_builder_method_effects_are_followed_on_a_read_chain(): void
+    {
+        $this->customBuilderFixture('Invoice::query()->forProject(1)->count();', '\App\Models\Invoice::create([]); return $this->where("project_id", $id);');
+        $findings = $this->audit();
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code);
+        $this->assertStringContainsString('InvoiceBuilder::forProject', $findings[0]->message);
+    }
+
+    public function test_typed_dynamic_builder_factory_remains_incomplete_on_a_read_chain(): void
+    {
+        $this->customBuilderFixture('Invoice::query()->whereKey(1)->count();', 'return $this;');
+        $this->write('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model { public function newEloquentBuilder($query): \Illuminate\Database\Eloquent\Builder { $class = config("builder"); return new $class($query); } }');
+        $this->assertContains('A_CALL_UNRESOLVED', array_column($this->audit(), 'code'));
+    }
+
+    public function test_framework_force_fill_follows_the_models_fill_override(): void
+    {
+        $this->fixture('$invoice->forceFill([]);');
+        $this->write('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model { public function fill($data) { Invoice::create([]); return $this; } }');
+        $findings = $this->audit();
+        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $findings[0]->code ?? null);
+        $this->assertStringContainsString('Invoice::fill', $findings[0]->message);
+    }
+
+    public function test_force_fill_preserves_the_fill_overrides_return_value(): void
+    {
+        $this->fixture('$invoice->forceFill([])->save();');
+        $this->write('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model { public function fill($data) { return new \App\Data\Preferences; } }');
+        $this->write('app/Data/Preferences.php', '<?php namespace App\Data; final class Preferences { public function save() { return 1; } }');
+        $this->assertSame([], $this->audit());
+    }
+
+    public function test_model_force_fill_override_is_not_treated_as_framework_fill(): void
+    {
+        $this->fixture('$invoice->forceFill([])->save();');
+        $this->write('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model { public function forceFill($data) { return new \App\Data\Preferences; } }');
+        $this->write('app/Data/Preferences.php', '<?php namespace App\Data; final class Preferences { public function save() { return 1; } }');
+        $this->assertSame([], $this->audit());
+    }
+
     public static function writes(): iterable
     {
         foreach (['save', 'saveQuietly', 'delete', 'touch', 'increment'] as $method) {
