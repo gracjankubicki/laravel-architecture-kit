@@ -429,7 +429,7 @@ final readonly class FrameworkSemantics
         $type = $receiver->type ?? '';
         $model = str_starts_with($type, '@query:')
             ? FrameworkValue::type(substr($type, 7))
-            : ($this->sources->isA($type, 'Illuminate\\Database\\Eloquent\\Model') ? FrameworkValue::type($type) : FrameworkValue::unknown());
+            : ($receiver->element ?? ($this->sources->isA($type, 'Illuminate\\Database\\Eloquent\\Model') ? FrameworkValue::type($type) : FrameworkValue::unknown()));
 
         if (in_array($method, ['when', 'unless', 'tap', 'each'], true)) {
             $callbacks = [];
@@ -453,7 +453,7 @@ final readonly class FrameworkSemantics
         }
 
         return match ($method) {
-            'query', 'newquery', 'newmodelquery', 'where', 'orwhere', 'wherenull', 'wherenotnull', 'wherein', 'wherenotin', 'wherebetween', 'wheredate', 'whereyear', 'wheremonth', 'wherehas', 'orwherehas', 'has', 'doesnthave', 'wheredoesnthave', 'with', 'without', 'withcount', 'withsum', 'withavg', 'orderby', 'orderbydesc', 'latest', 'oldest', 'limit', 'take', 'skip', 'offset', 'select', 'addselect', 'distinct', 'groupby', 'having', 'join', 'leftjoin', 'rightjoin', 'withoutglobalscopes', 'withoutglobalscope', 'withtrashed', 'onlytrashed', 'usewritepdo', 'lockforupdate', 'sharedlock' => FrameworkCallResult::value(str_starts_with($type, '@query:') ? $receiver : FrameworkValue::type('@query:'.($model->type ?? '@unknown'))),
+            'query', 'newquery', 'newmodelquery', 'where', 'wherekey', 'wherekeynot', 'orwhere', 'wherenull', 'wherenotnull', 'wherein', 'wherenotin', 'wherebetween', 'wheredate', 'whereyear', 'wheremonth', 'wherehas', 'orwherehas', 'has', 'doesnthave', 'wheredoesnthave', 'with', 'without', 'withcount', 'withsum', 'withavg', 'orderby', 'orderbydesc', 'latest', 'oldest', 'limit', 'take', 'skip', 'offset', 'select', 'addselect', 'distinct', 'groupby', 'having', 'join', 'leftjoin', 'rightjoin', 'withoutglobalscopes', 'withoutglobalscope', 'withtrashed', 'onlytrashed', 'usewritepdo', 'lockforupdate', 'sharedlock' => FrameworkCallResult::value((str_starts_with($type, '@query:') || $this->sources->isA($type, 'Illuminate\\Database\\Eloquent\\Builder')) ? $receiver : FrameworkValue::type('@query:'.($model->type ?? '@unknown'))),
             'get', 'all', 'cursor', 'lazy', 'pluck' => FrameworkCallResult::value(
                 FrameworkValue::collection($method === 'pluck' ? FrameworkValue::scalar() : $model),
             ),

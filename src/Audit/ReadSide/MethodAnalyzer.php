@@ -29,7 +29,7 @@ final class MethodAnalyzer
     private const WRITES = ['save', 'savequietly', 'saveorfail', 'saveorrestore', 'update', 'updatequietly', 'updateorfail', 'delete', 'deletequietly', 'deleteorfail', 'destroy', 'forcedelete', 'forcedeletequietly', 'forcedestroy', 'restore', 'restorequietly', 'create', 'createquietly', 'createorfirst', 'firstorcreate', 'updateorcreate', 'updateorinsert', 'insert', 'insertgetid', 'insertorignore', 'insertusing', 'insertorignoreusing', 'upsert', 'increment', 'decrement', 'incrementeach', 'decrementeach', 'incrementquietly', 'decrementquietly', 'touch', 'touchquietly', 'push', 'pushquietly', 'truncate'];
 
     /** @var list<string> */
-    private const CHAIN = ['query', 'newquery', 'newmodelquery', 'where', 'orwhere', 'wherenull', 'wherenotnull', 'wherein', 'wherenotin', 'wherebetween', 'wheredate', 'whereyear', 'wheremonth', 'wherehas', 'orwherehas', 'has', 'doesnthave', 'wheredoesnthave', 'with', 'without', 'withcount', 'withsum', 'withavg', 'orderby', 'orderbydesc', 'latest', 'oldest', 'limit', 'take', 'skip', 'offset', 'select', 'addselect', 'distinct', 'groupby', 'having', 'join', 'leftjoin', 'rightjoin', 'withoutglobalscopes', 'withoutglobalscope', 'withtrashed', 'onlytrashed', 'usewritepdo', 'lockforupdate', 'sharedlock', 'when', 'unless', 'tap', 'each'];
+    private const CHAIN = ['query', 'newquery', 'newmodelquery', 'where', 'wherekey', 'wherekeynot', 'orwhere', 'wherenull', 'wherenotnull', 'wherein', 'wherenotin', 'wherebetween', 'wheredate', 'whereyear', 'wheremonth', 'wherehas', 'orwherehas', 'has', 'doesnthave', 'wheredoesnthave', 'with', 'without', 'withcount', 'withsum', 'withavg', 'orderby', 'orderbydesc', 'latest', 'oldest', 'limit', 'take', 'skip', 'offset', 'select', 'addselect', 'distinct', 'groupby', 'having', 'join', 'leftjoin', 'rightjoin', 'withoutglobalscopes', 'withoutglobalscope', 'withtrashed', 'onlytrashed', 'usewritepdo', 'lockforupdate', 'sharedlock', 'when', 'unless', 'tap', 'each'];
 
     /** @var list<string> */
     private const READS = ['get', 'all', 'first', 'firstorfail', 'find', 'findorfail', 'findmany', 'value', 'solevalue', 'pluck', 'count', 'exists', 'doesntexist', 'sum', 'avg', 'min', 'max', 'paginate', 'simplepaginate', 'cursorpaginate', 'cursor', 'lazy', 'tosql', 'torawsql', 'getbindings'];
@@ -85,7 +85,7 @@ final class MethodAnalyzer
      * @param  array<int|string, FrameworkValue|null>  $arguments
      * @param  list<string>  $trace
      */
-    private function visitMethod(string $class, string $method, array $arguments, array $trace): ?FrameworkValue
+    private function visitMethod(string $class, string $method, array $arguments, array $trace, ?FrameworkValue $receiver = null): ?FrameworkValue
     {
         $found = $this->sources->method($class, $method);
         if ($found === null) {
@@ -113,7 +113,7 @@ final class MethodAnalyzer
         }
         $this->active[$key] = true;
         $trace[] = $class.'::'.$method;
-        $variables = ['this' => FrameworkValue::type($class)];
+        $variables = ['this' => $receiver ?? FrameworkValue::type($class)];
         foreach ($node->params as $i => $param) {
             if (is_string($param->var->name)) {
                 $argument = $arguments[$param->var->name] ?? $arguments[$i] ?? null;
@@ -366,13 +366,26 @@ final class MethodAnalyzer
                 $this->unknown($source, $expr, 'Receiver has multiple possible or nullable types at '.$method.'().', $trace);
             }
             $lower = strtolower($method);
+            // Resolve an explicitly declared builder before its framework methods.
+            // Keep ordinary model overrides ahead of this forwarding boundary.
+            if ($this->sources->method($receiverType, $method) === null
+                && $this->sources->isA($receiverType, self::MODEL)
+                && in_array($lower, [...self::CHAIN, ...self::READS], true)
+                && $this->sources->method($receiverType, 'newEloquentBuilder') !== null) {
+                $builder = $this->customBuilder($receiverType, $source, $expr, $trace);
+                if ($builder === null) {
+                    return null;
+                }
+                $receiver = $builder;
+                $receiverType = $builder->type;
+            }
             // Project overrides must be inspected before recognizing a framework API.
             if ($this->sources->method($receiverType, $method) !== null) {
                 if ($receiverType !== (isset($variables['this']) ? $variables['this']->type : null) && $this->sources->method($receiverType, '__construct') !== null) {
                     $this->visitMethod($receiverType, '__construct', [], $trace);
                 }
 
-                return $this->visitMethod($receiverType, $method, $arguments, $trace);
+                return $this->visitMethod($receiverType, $method, $arguments, $trace, $receiver);
             }
             $framework = $this->framework->describe($receiver, null, $method, $arguments, $source, $expr);
             if ($framework->handled) {
@@ -414,6 +427,14 @@ final class MethodAnalyzer
             $model = $this->sources->isA($receiverType, self::MODEL);
             $query = str_starts_with($receiverType, '@query') || $model || $this->sources->isA($receiverType, self::BUILDER) || $this->sources->isA($receiverType, self::QUERY);
             $relation = $receiverType === '@relation' || $this->sources->isA($receiverType, self::RELATION);
+            if ($model && in_array($lower, ['fill', 'forcefill'], true)) {
+                // Laravel's inherited forceFill delegates to the model's fill.
+                if ($lower === 'forcefill' && $this->sources->method($receiverType, 'fill') !== null) {
+                    return $this->visitMethod($receiverType, 'fill', $arguments, $trace, $receiver);
+                }
+
+                return $receiver;
+            }
             if ($query || $relation) {
                 if (in_array($lower, self::WRITES, true) || ($relation && in_array($lower, ['attach', 'detach', 'sync', 'syncwithoutdetaching', 'syncwithpivotvalues', 'toggle', 'updateexistingpivot', 'savemany', 'createmany'], true))) {
                     $this->result->add('write', $source, $expr->getStartLine(), $receiverType.'::'.$method.'()', $trace);
@@ -427,7 +448,7 @@ final class MethodAnalyzer
                         $this->callbacks($expr->getArgs(), $source, $variables, $trace);
                     }
 
-                    return FrameworkValue::type($model ? '@query:'.$receiverType : $receiverType);
+                    return $model ? FrameworkValue::type('@query:'.$receiverType) : $receiver;
                 }
                 if (in_array($lower, self::READS, true)) {
                     return $this->queryReadValue($receiverType, $lower, $model);
@@ -699,6 +720,20 @@ final class MethodAnalyzer
         $this->walk($value->callback instanceof Expr\Closure ? $value->callback->stmts : [$value->callback->expr], $value->callbackSource, $variables, [...$trace, '{callback}'], $returns);
 
         return FrameworkValue::merge($returns);
+    }
+
+    /** @param list<string> $trace */
+    private function customBuilder(string $model, SourceClass $source, Node $call, array $trace): ?FrameworkValue
+    {
+        $builder = $this->visitMethod($model, 'newEloquentBuilder', [FrameworkValue::type(self::QUERY)], $trace);
+        if ($builder === null || $builder->isUnknown() || $builder->isAmbiguous() || $builder->nullable
+            || $builder->type === null || ! $this->sources->isA($builder->type, self::BUILDER)) {
+            $this->unknown($source, $call, 'Custom Eloquent builder cannot be resolved unambiguously.', $trace);
+
+            return null;
+        }
+
+        return new FrameworkValue(type: $builder->type, element: FrameworkValue::type($model), possibleTypes: [$builder->type]);
     }
 
     private function queryReadValue(string $receiverType, string $method, bool $model): FrameworkValue

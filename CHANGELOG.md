@@ -4,6 +4,10 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 
 ## Unreleased
 
+### Fixed
+
+- Preserve endpoint model writes through fill/forceFill and whereKey chains, and follow statically resolved custom Eloquent builders while keeping model identity, project overrides and unresolved factories explicit.
+
 ## v0.7.0 - 2026-10-07
 
 This release adds source maps and change preflight for Laravel applications: find an entry point, follow its relationships, inspect the effects of a proposed change, and compare architecture across revisions. CLI and MCP reports retain source evidence and explicit uncertainty. Static relationships do not prove runtime execution or passing tests.
