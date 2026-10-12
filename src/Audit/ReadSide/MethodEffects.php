@@ -31,12 +31,22 @@ final class MethodEffects
         $observation = ['kind' => $kind, 'path' => $path, 'line' => $line, 'detail' => $detail, 'trace' => $trace];
         if (count($this->observations) < 20) {
             $this->observations[] = $observation;
-        } elseif ($kind !== 'unknown') {
-            // Unknown calls must not crowd out a later, concrete write.
-            $this->observations[19] = $observation;
-            $this->truncated = true;
-        } else {
-            $this->truncated = true;
+
+            return;
+        }
+        $this->truncated = true;
+        if ($kind === 'unknown') {
+            return;
+        }
+        // Replace an unknown witness, never a previously recognized effect.
+        // Append in encounter order so placement advice keeps its first effect.
+        for ($i = count($this->observations) - 1; $i >= 0; $i--) {
+            if ($this->observations[$i]['kind'] === 'unknown') {
+                array_splice($this->observations, $i, 1);
+                $this->observations[] = $observation;
+
+                return;
+            }
         }
     }
 }

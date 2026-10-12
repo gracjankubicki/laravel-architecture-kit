@@ -7,6 +7,7 @@ All notable changes to `gracjankubicki/laravel-architecture-kit` will be documen
 ### Fixed
 
 - Preserve endpoint model writes through fill/forceFill and whereKey chains, and follow statically resolved custom Eloquent builders while keeping model identity, project overrides and unresolved factories explicit.
+- Preserve earlier endpoint write and effect witnesses when later observations exceed the bounded report; replace unknown observations without overwriting concrete effects.
 
 ## v0.7.0 - 2026-10-07
 
