@@ -262,7 +262,7 @@ final class CatalogJsonResourceResolver
         if ($result !== []) {
             return $result;
         }
-        $descriptor = json_decode(substr($receiver, 8), true, 32);
+        $descriptor = ReceiverDescriptors::decode(substr($receiver, 8), $this->index->descriptorReceivers);
         if (! is_array($descriptor) || array_keys($descriptor) !== [0, 1, 2] || ! is_string($descriptor[0]) || ! is_string($descriptor[1]) || ! is_bool($descriptor[2])) {
             return [];
         }

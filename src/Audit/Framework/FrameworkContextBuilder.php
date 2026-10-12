@@ -59,6 +59,8 @@ final class FrameworkContextBuilder
 
     private ?string $unavailable = null;
 
+    private string $unavailableReason = 'unresolved_call';
+
     private int $methods = 0;
 
     private ?string $defaultAuthGuard = null;
@@ -75,6 +77,14 @@ final class FrameworkContextBuilder
         private readonly ?RouteEntry $route = null,
     ) {}
 
+    private function markUnavailable(string $detail, string $reason = 'unresolved_call'): void
+    {
+        if ($this->unavailable === null) {
+            $this->unavailable = $detail;
+            $this->unavailableReason = $reason;
+        }
+    }
+
     public function build(): FrameworkContext
     {
         $routeContext = $this->routes?->context;
@@ -83,9 +93,9 @@ final class FrameworkContextBuilder
             $this->unavailable = 'Laravel framework context is unavailable in the supplied route map.';
         }
         if (($routeContext['status'] ?? null) === FrameworkContext::UNAVAILABLE) {
-            $this->unavailable ??= is_string($routeContext['unavailable'] ?? null)
+            $this->markUnavailable(is_string($routeContext['unavailable'] ?? null)
                 ? $routeContext['unavailable']
-                : 'Laravel framework context is unavailable.';
+                : 'Laravel framework context is unavailable.', 'unresolved_call');
         }
         if ($routeContext !== null) {
             $missing = array_values(array_filter(
@@ -93,7 +103,7 @@ final class FrameworkContextBuilder
                 fn (string $key): bool => ! array_key_exists($key, $routeContext) || ! is_array($routeContext[$key]),
             ));
             if ($missing !== []) {
-                $this->unavailable ??= 'Laravel framework context is incomplete; missing '.implode(', ', $missing).'.';
+                $this->markUnavailable('Laravel framework context is incomplete; missing '.implode(', ', $missing).'.', 'unresolved_call');
             }
             $this->readAuthContext($routeContext['auth'] ?? null);
         }
@@ -107,7 +117,7 @@ final class FrameworkContextBuilder
                 continue;
             }
             if ($this->sources->get($provider) === null) {
-                $this->unavailable ??= $this->sources->unavailableReason($provider) ?? 'Provider source is unavailable for '.$provider.'.';
+                $this->markUnavailable($this->sources->unavailableReason($provider) ?? 'Provider source is unavailable for '.$provider.'.', $this->sources->unavailableCode($provider));
 
                 continue;
             }
@@ -121,7 +131,7 @@ final class FrameworkContextBuilder
             if ($this->sources->method($middleware, 'share') !== null) {
                 $this->visit($middleware, 'share', 0);
             } elseif (($reason = $this->sources->unavailableReason($middleware)) !== null) {
-                $this->unavailable ??= $reason;
+                $this->markUnavailable($reason, $this->sources->unavailableCode($middleware));
             }
         }
         $this->routeAuthGuards = $this->routeAuthGuards();
@@ -145,6 +155,7 @@ final class FrameworkContextBuilder
             bindings: $this->bindings,
             origins: array_keys($this->origins),
             unavailable: $this->unavailable,
+            unavailableReason: $this->unavailableReason,
             defaultAuthGuard: $this->defaultAuthGuard,
             authGuards: $this->authGuards,
             routeAuthGuards: $this->routeAuthGuards,
@@ -194,7 +205,7 @@ final class FrameworkContextBuilder
     {
         $key = strtolower($class.'::'.$method);
         if ($depth >= 12 || isset($this->active[$key]) || ++$this->methods > 128) {
-            $this->unavailable ??= 'Provider registration cycle or method limit at '.$class.'::'.$method.'.';
+            $this->markUnavailable('Provider registration cycle or method limit at '.$class.'::'.$method.'.', 'analysis_limit');
 
             return;
         }
@@ -222,7 +233,7 @@ final class FrameworkContextBuilder
     {
         foreach ($nodes as $node) {
             if (++$this->nodes > 20_000) {
-                $this->unavailable ??= 'Framework registration AST node budget exceeded.';
+                $this->markUnavailable('Framework registration AST node budget exceeded.', 'analysis_limit');
 
                 return;
             }
@@ -257,11 +268,11 @@ final class FrameworkContextBuilder
                             $previous = $this->bindingCandidates[$abstract] ?? null;
                             if ($previous !== null && $previous != $candidate) {
                                 $candidate = (FrameworkValue::union([$previous, $candidate]) ?? FrameworkValue::unknown())->markAmbiguous();
-                                $this->unavailable ??= 'Container binding registration is ambiguous for '.$abstract.'.';
+                                $this->markUnavailable('Container binding registration is ambiguous for '.$abstract.'.', 'unresolved_call');
                             }
                             if (isset($this->bindings[$abstract]) && $candidate->typeNames() !== [$this->bindings[$abstract]]) {
                                 $candidate = $candidate->markAmbiguous();
-                                $this->unavailable ??= 'Container binding registration is ambiguous for '.$abstract.'.';
+                                $this->markUnavailable('Container binding registration is ambiguous for '.$abstract.'.', 'unresolved_call');
                             }
                             $this->bindingCandidates[$abstract] = $candidate;
                             if (! $candidate->isUnknown() && ! $candidate->isAmbiguous() && ! $candidate->nullable) {
@@ -274,11 +285,11 @@ final class FrameworkContextBuilder
                 if (in_array(strtolower($node->name->toString()), ['bind', 'singleton', 'scoped', 'instance'], true) && $contract !== null && $implementation !== null) {
                     if (isset($this->bindingCandidates[$contract]) && $this->bindingCandidates[$contract]->typeNames() !== [$implementation]) {
                         $this->bindingCandidates[$contract] = $this->bindingCandidates[$contract]->markAmbiguous();
-                        $this->unavailable ??= 'Container binding registration is ambiguous for '.$contract.'.';
+                        $this->markUnavailable('Container binding registration is ambiguous for '.$contract.'.', 'unresolved_call');
                     }
                     $this->registerUnique($this->bindings, $contract, $implementation, 'Container binding');
                 } elseif (in_array(strtolower($node->name->toString()), ['bind', 'singleton', 'scoped', 'instance'], true) && $contract !== null && str_starts_with($contract, 'Laravel\\Fortify\\Contracts\\')) {
-                    $this->unavailable ??= 'Fortify container binding is dynamic for '.$contract.'.';
+                    $this->markUnavailable('Fortify container binding is dynamic for '.$contract.'.', 'unresolved_call');
                 }
             }
             if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\Function_) {
@@ -342,7 +353,7 @@ final class FrameworkContextBuilder
             return;
         }
         if (isset($actionMap[$method])) {
-            $this->unavailable ??= 'Fortify action registration '.$method.' is dynamic.';
+            $this->markUnavailable('Fortify action registration '.$method.' is dynamic.', 'unresolved_call');
 
             return;
         }
@@ -352,7 +363,7 @@ final class FrameworkContextBuilder
             return;
         }
         if (str_ends_with($method, 'view')) {
-            $this->unavailable ??= 'Fortify view registration '.$method.' is dynamic.';
+            $this->markUnavailable('Fortify view registration '.$method.' is dynamic.', 'unresolved_call');
 
             return;
         }
@@ -362,24 +373,24 @@ final class FrameworkContextBuilder
             return;
         }
         if ($method === 'authenticateusing') {
-            $this->unavailable ??= 'Fortify authentication callback is dynamic.';
+            $this->markUnavailable('Fortify authentication callback is dynamic.', 'unresolved_call');
 
             return;
         }
         if ($method === 'authenticatethrough' && ($args[0] ?? null)?->callback !== null) {
             $pipeline = $this->callbackReturn($args[0]);
             if ($pipeline?->type !== '@array') {
-                $this->unavailable ??= 'Fortify authentication pipeline is dynamic.';
+                $this->markUnavailable('Fortify authentication pipeline is dynamic.', 'unresolved_call');
 
                 return;
             }
             if ($pipeline->isUnknown()) {
-                $this->unavailable ??= 'Fortify authentication pipeline contains dynamic stages.';
+                $this->markUnavailable('Fortify authentication pipeline contains dynamic stages.', 'unresolved_call');
             }
             foreach ($pipeline->items as $stage) {
                 $class = $stage?->literal;
                 if ($class === null) {
-                    $this->unavailable ??= 'Fortify authentication pipeline contains a dynamic stage.';
+                    $this->markUnavailable('Fortify authentication pipeline contains a dynamic stage.', 'unresolved_call');
 
                     return;
                 }
@@ -388,7 +399,9 @@ final class FrameworkContextBuilder
                 }
                 $entry = $this->sources->method($class, '__invoke') !== null ? '__invoke' : 'handle';
                 if ($this->sources->method($class, $entry) === null) {
-                    $this->unavailable ??= 'Fortify authentication pipeline stage '.$class.' has no resolvable entrypoint.';
+                    $unavailable = $this->sources->unavailableReason($class);
+                    $this->markUnavailable($unavailable ?? 'Fortify authentication pipeline stage '.$class.' has no resolvable entrypoint.',
+                        $unavailable === null ? 'unresolved_call' : $this->sources->unavailableCode($class));
 
                     return;
                 }
@@ -398,7 +411,7 @@ final class FrameworkContextBuilder
             return;
         }
         if ($method === 'authenticatethrough') {
-            $this->unavailable ??= 'Fortify authentication pipeline is dynamic.';
+            $this->markUnavailable('Fortify authentication pipeline is dynamic.', 'unresolved_call');
         }
     }
 
@@ -406,7 +419,7 @@ final class FrameworkContextBuilder
     private function registerUnique(array &$registrations, string $key, mixed $value, string $kind): void
     {
         if (array_key_exists($key, $registrations) && $registrations[$key] != $value) {
-            $this->unavailable ??= $kind.' registration is ambiguous for '.$key.'.';
+            $this->markUnavailable($kind.' registration is ambiguous for '.$key.'.', 'unresolved_call');
 
             return;
         }
@@ -561,14 +574,14 @@ final class FrameworkContextBuilder
                 if ($this->sources->get($class) !== null) {
                     $resolved[] = $class;
                 } else {
-                    $this->unavailable ??= $this->sources->unavailableReason($class) ?? 'Route middleware source is unavailable for '.$class.'.';
+                    $this->markUnavailable($this->sources->unavailableReason($class) ?? 'Route middleware source is unavailable for '.$class.'.', $this->sources->unavailableCode($class));
                 }
             } elseif (is_string($class) && str_starts_with(ltrim($class, '\\'), 'App\\')) {
-                $this->unavailable ??= 'Route middleware source is unavailable for '.$class.'.';
+                $this->markUnavailable('Route middleware source is unavailable for '.$class.'.', 'source_unavailable');
             } elseif (! isset($aliases[$base]) && ! str_contains($base, '\\')) {
-                $this->unavailable ??= 'Route middleware alias or group is unavailable for '.$base.'.';
+                $this->markUnavailable('Route middleware alias or group is unavailable for '.$base.'.', 'unresolved_call');
             } elseif (is_string($class) && ! $this->isKnownVendorMiddleware($class)) {
-                $this->unavailable ??= 'Route middleware source is unavailable for '.$class.'.';
+                $this->markUnavailable('Route middleware source is unavailable for '.$class.'.', 'source_unavailable');
             }
         }
 
@@ -602,7 +615,7 @@ final class FrameworkContextBuilder
                 return $this->middlewareDefinitions($statement->expr, $source, $this->route->method);
             }
         }
-        $this->unavailable ??= 'Controller middleware declaration is dynamic for '.$this->route->class.'::middleware.';
+        $this->markUnavailable('Controller middleware declaration is dynamic for '.$this->route->class.'::middleware.', 'unresolved_call');
 
         return [];
     }
@@ -632,7 +645,7 @@ final class FrameworkContextBuilder
             $only = $this->literalStrings($arguments['only'] ?? $arguments[1] ?? null);
             $except = $this->literalStrings($arguments['except'] ?? $arguments[2] ?? null);
             if (! $name instanceof Node\Scalar\String_ || $only === null || $except === null) {
-                $this->unavailable ??= 'Controller middleware assignment is dynamic for '.$this->route?->class.'::'.$routeMethod.'.';
+                $this->markUnavailable('Controller middleware assignment is dynamic for '.$this->route?->class.'::'.$routeMethod.'.', 'unresolved_call');
 
                 return [];
             }
@@ -643,7 +656,7 @@ final class FrameworkContextBuilder
             return [];
         }
 
-        $this->unavailable ??= 'Controller middleware assignment is dynamic for '.$this->route?->class.'::'.$routeMethod.'.';
+        $this->markUnavailable('Controller middleware assignment is dynamic for '.$this->route?->class.'::'.$routeMethod.'.', 'unresolved_call');
 
         return [];
     }

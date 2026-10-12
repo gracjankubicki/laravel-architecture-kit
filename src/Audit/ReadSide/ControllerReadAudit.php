@@ -80,7 +80,7 @@ final readonly class ControllerReadAudit
             if ($source === null) {
                 $notices[] = $this->notice(
                     'A_SOURCE_UNAVAILABLE',
-                    'source_budget',
+                    $sources->unavailableCode($symbol->name),
                     $symbol->path,
                     $symbol->line,
                     'Controller source is unavailable or exceeds the read-analysis source budget.',
@@ -134,9 +134,9 @@ final readonly class ControllerReadAudit
 
                     foreach ($effects->observations as $observation) {
                         if ($observation['kind'] === 'unknown') {
-                            $reason = $this->reason($observation['detail']);
+                            $reason = $observation['reason'];
                             $notices[] = $this->notice(
-                                $reason === 'source_budget' ? 'A_SOURCE_UNAVAILABLE' : 'A_CALL_UNRESOLVED',
+                                in_array($reason, ['source_budget', 'source_unavailable'], true) ? 'A_SOURCE_UNAVAILABLE' : 'A_CALL_UNRESOLVED',
                                 $reason,
                                 $observation['path'],
                                 $observation['line'],
@@ -212,9 +212,9 @@ final readonly class ControllerReadAudit
                 if ($observation['kind'] !== 'unknown') {
                     continue;
                 }
-                $reason = $this->reason($observation['detail']);
+                $reason = $observation['reason'];
                 $notices[] = $this->notice(
-                    $reason === 'source_budget' ? 'A_SOURCE_UNAVAILABLE' : 'A_CALL_UNRESOLVED',
+                    in_array($reason, ['source_budget', 'source_unavailable'], true) ? 'A_SOURCE_UNAVAILABLE' : 'A_CALL_UNRESOLVED',
                     $reason,
                     $observation['path'],
                     $observation['line'],
@@ -331,19 +331,6 @@ final readonly class ControllerReadAudit
     private function notice(string $code, string $reason, string $path, int $line, string $message, array $trace = [], ?array $route = null): AnalysisNotice
     {
         return new AnalysisNotice($code, $reason, $path, $line, $message, $trace, $route);
-    }
-
-    private function reason(string $detail): string
-    {
-        $detail = strtolower($detail);
-
-        return match (true) {
-            str_contains($detail, 'limit'), str_contains($detail, 'cycle') => 'analysis_limit',
-            str_contains($detail, 'source'), str_contains($detail, 'budget') => 'source_budget',
-            str_contains($detail, 'sql') => 'unresolved_sql',
-            str_contains($detail, 'receiver'), str_contains($detail, 'authentication guard') => 'unresolved_receiver',
-            default => 'unresolved_call',
-        };
     }
 
     /** @param array<int, Architecture|string> $enabled */

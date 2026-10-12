@@ -655,7 +655,7 @@ final class CatalogCallResolver
         if (! str_starts_with($receiver, '@after-argument:')) {
             return null;
         }
-        $value = json_decode(substr($receiver, 16), true, 32);
+        $value = ReceiverDescriptors::decode(substr($receiver, 16), $this->index->descriptorReceivers);
         if (! is_array($value) || array_keys($value) !== [0, 1, 2, 3, 4, 5, 6]
             || ! is_string($value[0]) || ! is_string($value[1]) || ! is_string($value[2]) || ! is_bool($value[3])
             || ! is_array($value[4]) || ! is_array($value[5]) || ! array_is_list($value[5]) || count($value[5]) > 128
@@ -916,18 +916,17 @@ final class CatalogCallResolver
             return $original === null ? [] : $this->types($original, $depth + 1);
         }
         if (str_starts_with($receiver, '@property:')) {
-            $pair = substr($receiver, 10);
-            $separator = strrpos($pair, '#');
-            if ($separator === false) {
+            $pair = ReceiverDescriptors::property($receiver, $this->index->descriptorReceivers);
+            if ($pair === null) {
                 return [];
             }
             $types = [];
-            foreach ($this->types(substr($pair, 0, $separator), $depth + 1) as $class) {
+            foreach ($this->types($pair[0], $depth + 1) as $class) {
                 $ids = $this->index->namedTypes($class);
                 if (count($ids) !== 1) {
                     continue;
                 }
-                foreach ($this->member($ids[0], '$'.substr($pair, $separator + 1)) as $property) {
+                foreach ($this->member($ids[0], '$'.$pair[1]) as $property) {
                     if ($this->receiverInspection) {
                         if (count($this->receiverSources) >= 128) {
                             $this->limited = true;
@@ -1103,7 +1102,7 @@ final class CatalogCallResolver
     /** @return array{string, string, bool}|null */
     private function descriptor(string $json): ?array
     {
-        $value = json_decode($json, true, 32);
+        $value = ReceiverDescriptors::decode($json, $this->index->descriptorReceivers);
 
         return is_array($value) && array_keys($value) === [0, 1, 2] && is_string($value[0]) && is_string($value[1]) && is_bool($value[2]) ? $value : null;
     }

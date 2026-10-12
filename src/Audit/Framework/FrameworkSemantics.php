@@ -147,6 +147,18 @@ final readonly class FrameworkSemantics
             return $this->date($receiver, $method);
         }
 
+        $enum = $this->sources->get($type)?->node;
+        if ($enum instanceof Node\Stmt\Enum_) {
+            if ($method === 'cases') {
+                return FrameworkCallResult::value(new FrameworkValue(type: '@array', element: FrameworkValue::type($type)));
+            }
+            if ($enum->scalarType !== null && in_array($method, ['from', 'tryfrom'], true)) {
+                $value = FrameworkValue::type($type);
+
+                return FrameworkCallResult::value($method === 'tryfrom' ? $value->nullable() : $value);
+            }
+        }
+
         return FrameworkCallResult::unhandled();
     }
 
@@ -154,6 +166,43 @@ final readonly class FrameworkSemantics
     private function function(string $function, array $arguments, SourceClass $source, Node $call): FrameworkCallResult
     {
         $function = strtolower(ltrim($function, '\\'));
+        if (in_array($function, ['now', 'today'], true)) {
+            return FrameworkCallResult::value(FrameworkValue::type('Illuminate\\Support\\Carbon'));
+        }
+        if (in_array($function, ['hash', 'hash_equals', 'preg_match'], true)) {
+            return FrameworkCallResult::value(FrameworkValue::scalar());
+        }
+        if ($function === 'json_decode') {
+            // Payload-dependent shapes are not concrete application class types.
+            return FrameworkCallResult::value(FrameworkValue::unknown());
+        }
+        if (in_array($function, ['array_map', 'array_filter', 'array_reduce', 'preg_replace_callback'], true)) {
+            $position = in_array($function, ['array_filter', 'array_reduce', 'preg_replace_callback'], true) ? 1 : 0;
+            $callback = $this->argument($arguments, 'callback', $position);
+            if ($callback?->callback === null) {
+                $callbackNode = null;
+                if ($call instanceof Node\Expr\FuncCall) {
+                    foreach ($call->getArgs() as $index => $argument) {
+                        if ($argument->name?->toString() === 'callback' || $index === $position && $argument->name === null) {
+                            $callbackNode = $argument->value;
+                        }
+                    }
+                }
+                if (in_array($function, ['array_map', 'array_filter'], true)
+                    && ($function === 'array_filter' && $callbackNode === null || $callbackNode instanceof Node\Expr\ConstFetch && strtolower($callbackNode->name->toString()) === 'null')) {
+                    return FrameworkCallResult::value(FrameworkValue::array([]));
+                }
+
+                return new FrameworkCallResult(true, FrameworkValue::unknown(), incomplete: $function.' callback is dynamic or unavailable.');
+            }
+            $array = $this->argument($arguments, 'array', $function === 'array_map' ? 1 : 0);
+            $element = $array->element ?? FrameworkValue::merge(array_values($array->items ?? []));
+            $callback = $callback->withParameters($function === 'array_reduce'
+                ? [0 => $arguments['initial'] ?? $arguments[2] ?? FrameworkValue::unknown(), 1 => $element]
+                : [0 => $function === 'preg_replace_callback' ? FrameworkValue::array([]) : $element]);
+
+            return FrameworkCallResult::callbacks([$callback], FrameworkValue::unknown());
+        }
         if ($function === 'response') {
             return $this->materialize(
                 FrameworkCallResult::value(FrameworkValue::type('@response')),
@@ -530,13 +579,17 @@ final readonly class FrameworkSemantics
             handled: true,
             value: $value ?? FrameworkValue::unknown(),
             incomplete: $incomplete,
+            incompleteReason: 'unresolved_receiver',
         );
     }
 
     private function date(?FrameworkValue $receiver, string $method): FrameworkCallResult
     {
-        if (($receiver === null || $receiver->type === 'Illuminate\\Support\\Facades\\Date') && in_array($method, ['parse', 'instance', 'create', 'createfromformat'], true)) {
-            return FrameworkCallResult::value(FrameworkValue::type('Carbon\\CarbonInterface'));
+        if (in_array($method, ['now', 'today', 'parse', 'instance', 'create', 'createfromformat'], true)) {
+            return FrameworkCallResult::value(FrameworkValue::type($receiver?->type === 'Illuminate\\Support\\Facades\\Date' ? 'Carbon\\CarbonInterface' : ($receiver->type ?? 'Carbon\\CarbonInterface')));
+        }
+        if (in_array($method, ['toimmutable', 'tomutable'], true)) {
+            return FrameworkCallResult::value(FrameworkValue::type($method === 'toimmutable' ? 'Carbon\\CarbonImmutable' : 'Carbon\\Carbon'));
         }
         if (in_array($method, ['copy', 'startofweek', 'endofweek', 'addday', 'subday', 'format', 'todatestring', 'todatetimestring'], true)) {
             return FrameworkCallResult::value(in_array($method, ['format', 'todatestring', 'todatetimestring'], true)
@@ -565,7 +618,8 @@ final readonly class FrameworkSemantics
         $targets = $base->targets;
         $callbacks = $base->callbacks;
         $incomplete = $base->incomplete;
-        $walk = function (?FrameworkValue $value) use (&$targets, &$callbacks, &$incomplete, &$walk): void {
+        $incompleteReason = $base->incompleteReason;
+        $walk = function (?FrameworkValue $value) use (&$targets, &$callbacks, &$incomplete, &$incompleteReason, &$walk): void {
             if ($value === null) {
                 return;
             }
@@ -573,7 +627,10 @@ final readonly class FrameworkSemantics
                 $resource = $this->resources->describe($value, 'resolve', []);
                 array_push($targets, ...$resource->targets);
                 array_push($callbacks, ...$resource->callbacks);
-                $incomplete ??= $resource->incomplete;
+                if ($incomplete === null && $resource->incomplete !== null) {
+                    $incomplete = $resource->incomplete;
+                    $incompleteReason = $resource->incompleteReason;
+                }
             } elseif ($value->type !== null && $this->sources->inScope($value->type)) {
                 foreach (['toArray', 'toResponse'] as $method) {
                     if ($this->sources->method($value->type, $method) !== null) {
@@ -590,6 +647,6 @@ final readonly class FrameworkSemantics
             $walk($value);
         }
 
-        return new FrameworkCallResult(true, $base->value, $targets, $callbacks, $base->effects, $incomplete);
+        return new FrameworkCallResult(true, $base->value, $targets, $callbacks, $base->effects, $incomplete, $incompleteReason);
     }
 }

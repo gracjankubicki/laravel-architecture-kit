@@ -146,7 +146,7 @@ final class PhpCallCatalogExtractor
             $diagnostics[] = new CatalogDiagnostic(str_contains(strtolower($notice['reason']), 'limit') ? 'call_limit' : 'call_analysis', $notice['reason'], max(1, $notice['line']));
         }
 
-        return new CatalogFacts($file->path, relations: $relations, diagnostics: $diagnostics);
+        return new CatalogFacts($file->path, relations: $relations, diagnostics: $diagnostics, descriptorReceivers: $extractor->descriptorReceivers());
     }
 
     /** @param array<string, mixed>|null $binding

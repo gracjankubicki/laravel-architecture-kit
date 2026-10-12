@@ -67,6 +67,9 @@ final class CatalogIndex
     /** @var list<array<string, mixed>> */
     public array $diagnostics = [];
 
+    /** @var array<string, string> */
+    public array $descriptorReceivers = [];
+
     /** @var array<string, list<string>> */
     public array $names = [];
 
@@ -89,6 +92,9 @@ final class CatalogIndex
         $pendingHttp = [];
         $pendingExecution = [];
         foreach ($files as $file) {
+            foreach ($file->descriptorReceivers as $hash => $receiver) {
+                $this->descriptorReceivers[$hash] = $receiver;
+            }
             foreach ($file->elements as $element) {
                 $row = [...$element->toArray(), 'path' => $file->path, 'knowledge' => 'static', 'role_evidence' => []];
                 $row['sources'] = [...($this->elements[$element->id]['sources'] ?? []), ['path' => $file->path, 'line' => $element->line, 'end_line' => $element->endLine]];

@@ -644,7 +644,7 @@ final class CatalogAiResolver
         $exact = $value['exact'];
         $form = str_starts_with($receiver, '@function:') ? 'function' : $value['form'];
         if (str_starts_with($receiver, '@method-callable:')) {
-            $descriptor = json_decode(substr($receiver, 17), true, 32);
+            $descriptor = ReceiverDescriptors::decode(substr($receiver, 17), $this->index->descriptorReceivers);
             if (! is_array($descriptor) || count($descriptor) !== 3 || ! is_string($descriptor[0]) || ! is_string($descriptor[1]) || ! is_bool($descriptor[2])) {
                 return [];
             }
@@ -828,7 +828,7 @@ final class CatalogAiResolver
         if ($selected['types'] !== [] || ! str_starts_with($receiver, '@return:')) {
             return $selected['types'];
         }
-        $descriptor = json_decode(substr($receiver, 8), true, 8);
+        $descriptor = ReceiverDescriptors::decode(substr($receiver, 8), $this->index->descriptorReceivers);
         if (! is_array($descriptor) || count($descriptor) !== 3 || ! is_string($descriptor[0]) || ! is_string($descriptor[1])) {
             return [];
         }

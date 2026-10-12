@@ -68,7 +68,7 @@ final class MethodAnalyzer
             }
             if ($entrypoint->incomplete !== null) {
                 $origin = $this->framework->context()->origins[0] ?? 'routes/web.php';
-                $this->result->addAt('unknown', $origin, 1, $entrypoint->incomplete, [$class.'::'.$method]);
+                $this->result->addAt('unknown', $origin, 1, $entrypoint->incomplete, [$class.'::'.$method], $entrypoint->incompleteReason);
             }
 
             return $this->result;
@@ -95,6 +95,7 @@ final class MethodAnalyzer
                 1,
                 $this->sources->unavailableReason($class) ?? 'Source is unavailable for '.$class.'::'.$method.'.',
                 $trace,
+                $this->sources->unavailableCode($class),
             );
 
             return null;
@@ -102,7 +103,7 @@ final class MethodAnalyzer
         [$source, $node] = $found;
         $key = strtolower($class.'::'.$method);
         if (isset($this->active[$key]) || count($trace) >= 12 || ++$this->calls > 128) {
-            $this->result->add('unknown', $source, $node->getStartLine(), 'Call cycle or analysis limit reached at '.$key, $trace);
+            $this->result->add('unknown', $source, $node->getStartLine(), 'Call cycle or analysis limit reached at '.$key, $trace, 'analysis_limit');
 
             return null;
         }
@@ -139,7 +140,7 @@ final class MethodAnalyzer
     {
         foreach ($nodes as $node) {
             if (++$this->nodes > 20_000) {
-                $this->result->add('unknown', $source, $node->getStartLine(), 'AST node limit reached.', $trace);
+                $this->result->add('unknown', $source, $node->getStartLine(), 'AST node limit reached.', $trace, 'analysis_limit');
 
                 return;
             }
@@ -202,7 +203,7 @@ final class MethodAnalyzer
     private function expression(Expr $expr, SourceClass $source, array &$variables, array $trace): ?FrameworkValue
     {
         if (++$this->nodes > 20_000) {
-            $this->result->add('unknown', $source, $expr->getStartLine(), 'AST node limit reached.', $trace);
+            $this->result->add('unknown', $source, $expr->getStartLine(), 'AST node limit reached.', $trace, 'analysis_limit');
 
             return null;
         }
@@ -281,6 +282,15 @@ final class MethodAnalyzer
 
             return FrameworkValue::array($items);
         }
+        if ($expr instanceof Expr\ArrayDimFetch) {
+            $array = $this->expression($expr->var, $source, $variables, $trace);
+            if ($expr->dim !== null) {
+                $this->expression($expr->dim, $source, $variables, $trace);
+            }
+            $key = $expr->dim instanceof Node\Scalar\Int_ || $expr->dim instanceof Node\Scalar\String_ ? $expr->dim->value : null;
+
+            return $key !== null ? ($array?->items[$key] ?? $array?->element) : $array?->element;
+        }
         if ($expr instanceof Expr\PropertyFetch || $expr instanceof Expr\NullsafePropertyFetch) {
             $owner = $this->expression($expr->var, $source, $variables, $trace);
             if ($expr->name instanceof Expr) {
@@ -325,7 +335,7 @@ final class MethodAnalyzer
                     if ($receiverType !== null
                         && ($this->sources->inScope($receiverType) || str_starts_with($receiverType, 'App\\'))
                         && ! $this->framework->isKnownExternal($receiverType)) {
-                        $this->unknown($source, $expr, 'Unresolved constructor.', $trace);
+                        $this->unknown($source, $expr, 'Unresolved constructor.', $trace, $this->sources->unavailableReason($receiverType) === null ? 'unresolved_call' : $this->sources->unavailableCode($receiverType));
                     }
                 } elseif ($this->sources->method($receiverType, '__construct') !== null) {
                     $this->visitMethod($receiverType, '__construct', $arguments, $trace);
@@ -336,7 +346,16 @@ final class MethodAnalyzer
                     : $receiver;
             }
             if ($expr instanceof Expr\FuncCall) {
-                $function = $expr->name instanceof Name ? strtolower(ltrim($expr->name->toString(), '\\')) : '';
+                $resolved = $expr->name instanceof Name ? $this->sources->functionCall($expr->name, $source) : null;
+                $function = strtolower($resolved['name'] ?? '');
+                if (($resolved['reason'] ?? null) !== null) {
+                    $this->unknown($source, $expr, 'Function source selection is unavailable for '.$function.'().', $trace, $resolved['reason']);
+
+                    return null;
+                }
+                if (($resolved['source'] ?? null) !== null && $resolved['node'] !== null) {
+                    return $this->visitFunction($resolved['source'], $resolved['node'], $arguments, $trace);
+                }
                 if (in_array($function, ['event', 'dispatch', 'dispatch_sync'], true)) {
                     $this->result->add('effect', $source, $expr->getStartLine(), $function.'()', $trace);
 
@@ -344,6 +363,15 @@ final class MethodAnalyzer
                 }
                 $framework = $this->framework->describe(null, $function, null, $arguments, $source, $expr);
                 if ($framework->handled) {
+                    if ($function === 'preg_match') {
+                        foreach ($expr->getArgs() as $position => $arg) {
+                            if (($arg->name?->toString() === 'matches' || $position === 2 && $arg->name === null)
+                                && $arg->value instanceof Expr\Variable && is_string($arg->value->name)) {
+                                $variables[$arg->value->name] = FrameworkValue::array([]);
+                            }
+                        }
+                    }
+
                     return $this->applyFramework($framework, $source, $expr, $variables, $trace);
                 }
                 if (! in_array($function, ['count', 'strlen', 'strtolower', 'strtoupper', 'trim', 'ltrim', 'rtrim', 'sprintf', 'implode', 'explode', 'in_array', 'array_key_exists', 'array_values', 'array_keys', 'array_unique', 'array_merge', 'is_null', 'is_string', 'is_int', 'is_array', 'abs', 'round', 'min', 'max', 'config', 'now', 'today', 'trans', '__'], true)) {
@@ -358,12 +386,12 @@ final class MethodAnalyzer
             }
             $method = $expr->name instanceof Node\Identifier ? $expr->name->toString() : null;
             if ($receiverType === null || $method === null) {
-                $this->unknown($source, $expr, 'Unresolved receiver or dynamic method.', $trace);
+                $this->unknown($source, $expr, 'Unresolved receiver or dynamic method.', $trace, 'unresolved_receiver');
 
                 return null;
             }
             if ($receiver->isAmbiguous() && ! $expr instanceof Expr\NullsafeMethodCall) {
-                $this->unknown($source, $expr, 'Receiver has multiple possible or nullable types at '.$method.'().', $trace);
+                $this->unknown($source, $expr, 'Receiver has multiple possible or nullable types at '.$method.'().', $trace, 'unresolved_receiver');
             }
             $lower = strtolower($method);
             // Resolve an explicitly declared builder before its framework methods.
@@ -386,6 +414,11 @@ final class MethodAnalyzer
                 }
 
                 return $this->visitMethod($receiverType, $method, $arguments, $trace, $receiver);
+            }
+            if (($unavailable = $this->sources->unavailableReason($receiverType)) !== null) {
+                $this->unknown($source, $expr, $unavailable, $trace, $this->sources->unavailableCode($receiverType));
+
+                return null;
             }
             $framework = $this->framework->describe($receiver, null, $method, $arguments, $source, $expr);
             if ($framework->handled) {
@@ -414,7 +447,7 @@ final class MethodAnalyzer
             if ($db && in_array($lower, ['statement', 'unprepared', 'select', 'selectone', 'cursor'], true)) {
                 $sql = $expr->getArgs()[0]->value ?? null;
                 // SELECT can call mutating functions. Raw SQL is not a proved read.
-                $this->unknown($source, $expr, $sql instanceof Node\Scalar\String_ ? 'Raw SQL requires review.' : 'Dynamic SQL cannot be classified.', $trace);
+                $this->unknown($source, $expr, $sql instanceof Node\Scalar\String_ ? 'Raw SQL requires review.' : 'Dynamic SQL cannot be classified.', $trace, 'unresolved_sql');
 
                 return null;
             }
@@ -486,6 +519,7 @@ final class MethodAnalyzer
                 $this->sources->unavailableReason($receiverType)
                     ?? 'Unresolved call '.$receiverType.'::'.$method.'().',
                 $trace,
+                $this->sources->unavailableReason($receiverType) === null ? 'unresolved_call' : $this->sources->unavailableCode($receiverType),
             );
 
             return null;
@@ -674,7 +708,7 @@ final class MethodAnalyzer
             $callbackResults[] = $this->walkCallback($callback, $trace);
         }
         if ($result->incomplete !== null) {
-            $this->unknown($source, $expr, $result->incomplete, $trace);
+            $this->unknown($source, $expr, $result->incomplete, $trace, $result->incompleteReason);
         }
 
         return $this->resolveCallbackResults($result->value, $callbackResults);
@@ -829,8 +863,33 @@ final class MethodAnalyzer
     /**
      * @param  list<string>  $trace
      */
-    private function unknown(SourceClass $source, Node $node, string $detail, array $trace): void
+    private function unknown(SourceClass $source, Node $node, string $detail, array $trace, string $reason = 'unresolved_call'): void
     {
-        $this->result->add('unknown', $source, $node->getStartLine(), $detail, $trace);
+        $this->result->add('unknown', $source, $node->getStartLine(), $detail, $trace, $reason);
+    }
+
+    /** @param array<int|string, FrameworkValue|null> $arguments
+     * @param  list<string>  $trace
+     */
+    private function visitFunction(SourceClass $source, Stmt\Function_ $node, array $arguments, array $trace): ?FrameworkValue
+    {
+        $key = strtolower($source->name);
+        if (isset($this->active[$key]) || count($trace) >= 12 || ++$this->calls > 128) {
+            $this->unknown($source, $node, 'Function cycle or analysis limit reached.', $trace, 'analysis_limit');
+
+            return null;
+        }
+        $this->active[$key] = true;
+        $variables = [];
+        foreach ($node->params as $position => $param) {
+            if (is_string($param->var->name)) {
+                $variables[$param->var->name] = $arguments[$param->var->name] ?? $arguments[$position] ?? $this->type($source, $param->type);
+            }
+        }
+        $returns = [];
+        $this->walk($node->stmts, $source, $variables, [...$trace, $node->namespacedName->toString().'()'], $returns);
+        unset($this->active[$key]);
+
+        return FrameworkValue::merge($returns) ?? $this->type($source, $node->returnType);
     }
 }

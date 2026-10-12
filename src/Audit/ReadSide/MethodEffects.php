@@ -6,7 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
 final class MethodEffects
 {
-    /** @var list<array{kind: string, path: string, line: int, detail: string, trace: list<string>}> */
+    /** @var list<array{kind: string, path: string, line: int, detail: string, reason: string, trace: list<string>}> */
     public array $observations = [];
 
     /** @var array<string, array{type: string, line: int, path: string}> */
@@ -19,16 +19,16 @@ final class MethodEffects
     /**
      * @param  list<string>  $trace
      */
-    public function add(string $kind, SourceClass $source, int $line, string $detail, array $trace): void
+    public function add(string $kind, SourceClass $source, int $line, string $detail, array $trace, string $reason = 'unresolved_call'): void
     {
-        $this->addAt($kind, $source->file->path, $line, $detail, $trace);
+        $this->addAt($kind, $source->file->path, $line, $detail, $trace, $reason);
     }
 
     /** @param list<string> $trace */
-    public function addAt(string $kind, string $path, int $line, string $detail, array $trace): void
+    public function addAt(string $kind, string $path, int $line, string $detail, array $trace, string $reason = 'unresolved_call'): void
     {
         $this->totalObservations++;
-        $observation = ['kind' => $kind, 'path' => $path, 'line' => $line, 'detail' => $detail, 'trace' => $trace];
+        $observation = ['kind' => $kind, 'path' => $path, 'line' => $line, 'detail' => $detail, 'reason' => $reason, 'trace' => $trace];
         if (count($this->observations) < 20) {
             $this->observations[] = $observation;
 

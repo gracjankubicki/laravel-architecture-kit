@@ -57,7 +57,8 @@ final readonly class ResourceSemantics
             }
         }
         if ($targets === [] && $this->sources->inScope($class)) {
-            return new FrameworkCallResult(true, FrameworkValue::scalar(), incomplete: 'Resource transformation is unavailable for '.$class.'.');
+            return new FrameworkCallResult(true, FrameworkValue::scalar(), incomplete: 'Resource transformation is unavailable for '.$class.'.',
+                incompleteReason: $this->sources->unavailableReason($class) === null ? 'unresolved_call' : $this->sources->unavailableCode($class));
         }
 
         return new FrameworkCallResult(true, FrameworkValue::scalar(), $targets);

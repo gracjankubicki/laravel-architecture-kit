@@ -115,7 +115,7 @@ final class CatalogCashierResolver
         if ($result !== [] || ! str_starts_with($receiver, '@return:')) {
             return $result;
         }
-        $value = json_decode(substr($receiver, 8), true, 32);
+        $value = ReceiverDescriptors::decode(substr($receiver, 8), $this->index->descriptorReceivers);
         if (! is_array($value) || count($value) !== 3 || ! is_string($value[0]) || ! is_string($value[1])) {
             return [];
         }

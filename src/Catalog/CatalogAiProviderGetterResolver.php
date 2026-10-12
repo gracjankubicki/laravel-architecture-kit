@@ -21,7 +21,7 @@ final class CatalogAiProviderGetterResolver
     public function resolve(array $profile, array $sites, array $inventory): void
     {
         $selector = new CatalogCallResolver($this->index);
-        $setterReturns = new CatalogAiProviderSetterReturns;
+        $setterReturns = new CatalogAiProviderSetterReturns($this->index);
         $constructed = [];
         foreach ($this->index->elements as $element) {
             $setterReturns->add($element);

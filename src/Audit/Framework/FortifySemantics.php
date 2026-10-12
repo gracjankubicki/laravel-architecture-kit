@@ -61,7 +61,7 @@ final readonly class FortifySemantics
     private function authentication(string $key): FrameworkCallResult
     {
         if ($this->context->status === FrameworkContext::UNAVAILABLE) {
-            return new FrameworkCallResult(true, incomplete: $this->context->unavailable ?? 'Fortify authentication context is unavailable for '.$key.'.');
+            return new FrameworkCallResult(true, incomplete: $this->context->unavailable ?? 'Fortify authentication context is unavailable for '.$key.'.', incompleteReason: $this->context->unavailableReason);
         }
 
         $callbacks = [];
@@ -95,7 +95,7 @@ final readonly class FortifySemantics
         }
 
         if ($this->context->status === FrameworkContext::UNAVAILABLE) {
-            return new FrameworkCallResult(true, incomplete: $this->context->unavailable ?? 'Fortify view context is unavailable for '.$key.'.');
+            return new FrameworkCallResult(true, incomplete: $this->context->unavailable ?? 'Fortify view context is unavailable for '.$key.'.', incompleteReason: $this->context->unavailableReason);
         }
 
         return FrameworkCallResult::value(FrameworkValue::type('@response'));
@@ -114,6 +114,7 @@ final readonly class FortifySemantics
         return new FrameworkCallResult(
             true,
             incomplete: $this->context->unavailable ?? 'Fortify registration '.$registration.' is unavailable for '.$key.'.',
+            incompleteReason: $this->context->unavailableReason,
         );
     }
 }

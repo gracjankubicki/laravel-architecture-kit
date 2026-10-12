@@ -130,7 +130,7 @@ final class CatalogSaloonPoolResolver
                 continue;
             }
             $receiver = $call['metadata']['receiver'];
-            $descriptor = str_starts_with($receiver, '@return:') ? json_decode(substr($receiver, 8), true) : null;
+            $descriptor = str_starts_with($receiver, '@return:') ? ReceiverDescriptors::decode(substr($receiver, 8), $this->index->descriptorReceivers) : null;
             $poolIds = $this->index->namedTypes($receiver);
             $poolReceiver = strcasecmp($receiver, 'Saloon\Http\Pool') === 0
                 || count($poolIds) === 1 && $this->index->hasContract($poolIds[0], 'Saloon\Http\Pool');
@@ -300,7 +300,7 @@ final class CatalogSaloonPoolResolver
         $complete = $descriptor['complete'];
         foreach ($descriptor['members'] as $member) {
             $receiver = $member['receiver'];
-            $returned = str_starts_with($receiver, '@return:') ? json_decode(substr($receiver, 8), true) : null;
+            $returned = str_starts_with($receiver, '@return:') ? ReceiverDescriptors::decode(substr($receiver, 8), $this->index->descriptorReceivers) : null;
             $prepared = is_array($returned) && strtolower($returned[1] ?? '') === 'sendasync' && is_int($member['origin'])
                 ? ($promiseOrigins[$member['path'] ?? $call['path']][$member['origin']] ?? []) : [];
             $matched = false;
@@ -442,7 +442,7 @@ final class CatalogSaloonPoolResolver
             $method = '__invoke';
             $exact = $value['exact'];
             if (str_starts_with($receiver, '@method-callable:')) {
-                $descriptor = json_decode(substr($receiver, 17), true);
+                $descriptor = ReceiverDescriptors::decode(substr($receiver, 17), $this->index->descriptorReceivers);
                 if (! is_array($descriptor) || count($descriptor) !== 3) {
                     return [];
                 }

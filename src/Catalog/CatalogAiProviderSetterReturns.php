@@ -7,6 +7,8 @@ namespace GracjanKubicki\ArchitectureKit\Catalog;
 /** Only a validated standard SDK setter binding proves its fluent provider return. */
 final class CatalogAiProviderSetterReturns
 {
+    public function __construct(private readonly ?CatalogIndex $index = null) {}
+
     /** @var array<string, array<string, array<int, list<array<string, mixed>>>>> */
     private array $returns = [];
 
@@ -72,7 +74,7 @@ final class CatalogAiProviderSetterReturns
     public function candidates(array $call): array
     {
         $receiver = $call['metadata']['receiver'];
-        $descriptor = str_starts_with($receiver, '@return:') ? json_decode(substr($receiver, 8), true, 32) : null;
+        $descriptor = str_starts_with($receiver, '@return:') ? ReceiverDescriptors::decode(substr($receiver, 8), $this->index->descriptorReceivers ?? []) : null;
         if (! is_array($descriptor) || count($descriptor) !== 3 || ! is_string($descriptor[1] ?? null)
             || ! in_array(strtolower($descriptor[1]), CatalogAiGateways::SETTERS, true)) {
             return [];

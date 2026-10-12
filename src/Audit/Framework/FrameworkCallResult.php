@@ -19,6 +19,7 @@ final readonly class FrameworkCallResult
         public array $callbacks = [],
         public array $effects = [],
         public ?string $incomplete = null,
+        public string $incompleteReason = 'unresolved_call',
     ) {}
 
     public static function unhandled(): self

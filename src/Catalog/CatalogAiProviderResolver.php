@@ -28,7 +28,7 @@ final class CatalogAiProviderResolver
         $factories = new CatalogCallResolver($this->index);
         $inventory = CatalogAiProviderTypes::gatewayTraits($profile['version']);
         $this->constructors($profile, $receivers, $methods, $factories, $inventory);
-        $setterReturns = new CatalogAiProviderSetterReturns;
+        $setterReturns = new CatalogAiProviderSetterReturns($this->index);
         $operations = 0;
         $bindings = 0;
         $seen = [];

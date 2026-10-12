@@ -21,31 +21,33 @@ final readonly class InertiaSemantics
             return FrameworkCallResult::value(FrameworkValue::type('@inertia'));
         }
         if (in_array($method, ['lazy', 'defer', 'optional', 'always', 'merge', 'deepmerge', 'once'], true)) {
-            [$targets, $callbacks, $incomplete] = $this->executables($arguments);
+            [$targets, $callbacks, $incomplete, $reason] = $this->executables($arguments);
 
-            return new FrameworkCallResult(true, FrameworkValue::scalar(), $targets, $callbacks, incomplete: $incomplete);
+            return new FrameworkCallResult(true, FrameworkValue::scalar(), $targets, $callbacks, incomplete: $incomplete, incompleteReason: $reason);
         }
         if ($method !== 'render') {
             return FrameworkCallResult::unhandled();
         }
 
-        [$targets, $callbacks, $incomplete] = $this->executables([...$arguments, ...$this->context->inertiaShares]);
-        if ($this->context->status === FrameworkContext::UNAVAILABLE) {
-            $incomplete ??= $this->context->unavailable ?? 'Inertia shared-prop context is unavailable.';
+        [$targets, $callbacks, $incomplete, $reason] = $this->executables([...$arguments, ...$this->context->inertiaShares]);
+        if ($incomplete === null && $this->context->status === FrameworkContext::UNAVAILABLE) {
+            $reason = $this->context->unavailableReason;
+            $incomplete = $this->context->unavailable ?? 'Inertia shared-prop context is unavailable.';
         }
 
-        return new FrameworkCallResult(true, FrameworkValue::type('Inertia\Response'), $targets, $callbacks, incomplete: $incomplete);
+        return new FrameworkCallResult(true, FrameworkValue::type('Inertia\Response'), $targets, $callbacks, incomplete: $incomplete, incompleteReason: $reason);
     }
 
     /** @param array<int|string, FrameworkValue|null> $values
-     * @return array{list<array{class: string, method: string}>, list<FrameworkValue>, ?string}
+     * @return array{list<array{class: string, method: string}>, list<FrameworkValue>, ?string, string}
      */
     private function executables(array $values): array
     {
         $targets = [];
         $callbacks = [];
         $incomplete = null;
-        $walk = function (?FrameworkValue $value) use (&$targets, &$callbacks, &$incomplete, &$walk): void {
+        $reason = 'unresolved_call';
+        $walk = function (?FrameworkValue $value) use (&$targets, &$callbacks, &$incomplete, &$reason, &$walk): void {
             if ($value === null) {
                 $incomplete ??= 'Inertia prop or callback is dynamic.';
 
@@ -71,7 +73,11 @@ final readonly class InertiaSemantics
                     return;
                 }
                 if ($class !== null && $method !== null && $this->sources->inScope($class)) {
-                    $incomplete ??= 'Inertia callable '.$class.'::'.$method.' is unavailable.';
+                    if ($incomplete === null) {
+                        $unavailable = $this->sources->unavailableReason($class);
+                        $incomplete = $unavailable ?? 'Inertia callable '.$class.'::'.$method.' is unavailable.';
+                        $reason = $unavailable === null ? 'unresolved_call' : $this->sources->unavailableCode($class);
+                    }
 
                     return;
                 }
@@ -84,6 +90,6 @@ final readonly class InertiaSemantics
             $walk($value);
         }
 
-        return [$targets, $callbacks, $incomplete];
+        return [$targets, $callbacks, $incomplete, $reason];
     }
 }

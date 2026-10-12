@@ -2,9 +2,13 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
-## Unreleased
+## v0.7.1 - 2026-10-12
 
 ### Fixed
+
+- Classify endpoint analysis notices by explicit reason codes instead of symbol text. Recognize bounded Carbon factories and conversions, native enum factories and case arrays, JSON/hash/regex calls and separately analyzed PHP callbacks; inspect project function and method overrides first.
+
+- Store catalog receiver chains as per-file links instead of repeatedly nested JSON. Preserve legacy descriptor resolution and cache round trips, and stop with explicit partial-analysis diagnostics before receiver allocation exceeds safe budgets.
 
 - Preserve endpoint model writes through fill/forceFill and whereKey chains, and follow statically resolved custom Eloquent builders while keeping model identity, project overrides and unresolved factories explicit.
 - Preserve earlier endpoint write and effect witnesses when later observations exceed the bounded report; replace unknown observations without overwriting concrete effects.

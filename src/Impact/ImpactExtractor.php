@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Catalog\CatalogAiAttachments;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogAiGateways;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogAiOperations;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogSaloonOperations;
+use GracjanKubicki\ArchitectureKit\Catalog\ReceiverDescriptors;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
@@ -41,6 +42,15 @@ final class ImpactExtractor
     /** @var list<array<string, mixed>> */
     private array $catalogReturns = [];
 
+    /** @var array<string, string> */
+    private array $descriptorReceivers = [];
+
+    /** @return array<string, string> */
+    public function descriptorReceivers(): array
+    {
+        return $this->descriptorReceivers;
+    }
+
     /** @return list<array<string, mixed>> */
     public function catalogReturns(): array
     {
@@ -52,6 +62,7 @@ final class ImpactExtractor
         $this->catalogMode = $catalog;
         $this->referenceScopes = $this->referenceNotices = [];
         $this->catalogReturns = [];
+        $this->descriptorReceivers = [];
         $this->calls = $this->notices = [];
         $this->nodes = 0;
         $this->limited = false;
@@ -137,6 +148,7 @@ final class ImpactExtractor
     {
         $this->catalogMode = false;
         $this->catalogReturns = [];
+        $this->descriptorReceivers = [];
         $this->calls = $this->notices = [];
         $this->nodes = 0;
         $this->limited = false;
@@ -156,7 +168,9 @@ final class ImpactExtractor
         return new ImpactFacts($file->path, [], $this->calls, $this->notices);
     }
 
-    /** Check before allocating either source or parser nodes. */
+    /** Check before allocating either source or parser nodes.
+     * @phpstan-impure
+     */
     public static function sourceLimit(int $bytes): ?string
     {
         if ($bytes > 100_000) {
@@ -177,11 +191,12 @@ final class ImpactExtractor
     private function walk(array $nodes, FileContext $file, string $class, string $from, ?string $parent, array $properties, array &$vars): void
     {
         foreach ($nodes as $node) {
+            if ($this->limited) {
+                return;
+            }
             if (++$this->nodes > 20000) {
-                if (! $this->limited) {
-                    $this->notices[] = ['line' => $node->getStartLine(), 'reason' => 'Per-file impact AST limit reached.'];
-                    $this->limited = true;
-                }
+                $this->notices[] = ['line' => $node->getStartLine(), 'reason' => 'Per-file impact AST limit reached.'];
+                $this->limited = true;
 
                 return;
             }
@@ -312,18 +327,21 @@ final class ImpactExtractor
     /** @param array<string, string> $properties
      * @param  array<string, array{type: ?string, exact: bool, bound_this?: bool, catalog_origin?: int, catalog_instance_origin?: int, catalog_attachments?: array<string, mixed>, catalog_pool_members?: array{complete: bool, members: list<array{receiver: string, origin: ?int}>}, callable_form?: string, callable_name?: array{string, ?string, ?string}, factory_call?: array{creator: string, form: string, binding: ?string, receiver_call?: array<string, mixed>}, bound_callable?: array{method: string, this: bool, late: bool, lexical: ?string, creator: string, scope_bound: bool}}>  $vars
      * @return array{type: ?string, exact: bool, bound_this?: bool, catalog_origin?: int, catalog_instance_origin?: int, catalog_attachments?: array<string, mixed>, catalog_pool_members?: array{complete: bool, members: list<array{receiver: string, origin: ?int}>}, callable_form?: string, callable_name?: array{string, ?string, ?string}, factory_call?: array{creator: string, form: string, binding: ?string, receiver_call?: array<string, mixed>}, bound_callable?: array{method: string, this: bool, late: bool, lexical: ?string, creator: string, scope_bound: bool}}
+     *
+     * @phpstan-impure
      */
     private function expression(Expr $expr, FileContext $file, string $class, string $from, ?string $parent, array $properties, array &$vars): array
     {
         $unknown = ['type' => null, 'exact' => false];
+        if ($this->limited) {
+            return $unknown;
+        }
         if ($this->catalogMode && $expr instanceof Node\Scalar\String_) {
             return [...$unknown, 'callable_name' => self::namedCallable($expr->value)];
         }
         if (++$this->nodes > 20000) {
-            if (! $this->limited) {
-                $this->notices[] = ['line' => $expr->getStartLine(), 'reason' => 'Per-file impact AST limit reached.'];
-                $this->limited = true;
-            }
+            $this->notices[] = ['line' => $expr->getStartLine(), 'reason' => 'Per-file impact AST limit reached.'];
+            $this->limited = true;
 
             return $unknown;
         }
@@ -411,7 +429,7 @@ final class ImpactExtractor
                     return $vars['@property:'.$owner['type'].'#'.$prop];
                 }
 
-                return ['type' => $owner['type'] === $class && isset($properties[$prop]) ? $properties[$prop] : '@property:'.$owner['type'].'#'.$prop, 'exact' => false];
+                return ['type' => $owner['type'] === $class && isset($properties[$prop]) ? $properties[$prop] : '@property:'.($this->catalogMode ? $this->compactReceiver($owner['type']) : $owner['type']).'#'.$prop, 'exact' => false];
             }
 
             return $unknown;
@@ -426,8 +444,8 @@ final class ImpactExtractor
             $method = $expr instanceof Expr\New_ ? '__construct' : ($expr->name instanceof Node\Identifier ? $expr->name->toString() : null);
             $this->calls[] = ['from' => $from, 'receiver' => $receiver['type'], 'method' => $method, 'exact' => $receiver['exact'],
                 'kind' => $expr->isFirstClassCallable() ? 'reference' : 'call', 'line' => $expr->getStartLine(), 'site' => MethodSignature::site($expr, $class, $this->staticContext)];
+            $position = array_key_last($this->calls);
             if ($this->catalogMode) {
-                $position = array_key_last($this->calls);
                 if (isset($receiver['factory_call'])) {
                     $this->calls[$position]['receiver_factory_call'] = $receiver['factory_call'];
                 }
@@ -548,7 +566,21 @@ final class ImpactExtractor
                 return $receiver;
             }
             if ($this->catalogMode && $receiver['type'] !== null && $method !== null) {
-                $result = ['type' => ($expr->isFirstClassCallable() ? '@method-callable:' : '@return:').json_encode([$receiver['type'], $method, $receiver['exact']], JSON_THROW_ON_ERROR), 'exact' => false];
+                if (self::sourceLimit(0) !== null) {
+                    $this->notices[] = ['line' => $expr->getStartLine(), 'reason' => 'Impact memory limit reached during extraction.'];
+                    $this->limited = true;
+
+                    return $unknown;
+                }
+                // Each previous result is stored once, not quoted inside every later result.
+                $type = $this->compactReceiver($receiver['type']);
+                $descriptor = json_encode([$type, $method, $receiver['exact']], JSON_THROW_ON_ERROR);
+                if (strlen($descriptor) > 8192) {
+                    $this->notices[] = ['line' => $expr->getStartLine(), 'reason' => 'Receiver descriptor exceeded its source budget.'];
+
+                    return $unknown;
+                }
+                $result = ['type' => ($expr->isFirstClassCallable() ? '@method-callable:' : '@return:').$descriptor, 'exact' => false];
                 if (! $expr->isFirstClassCallable()) {
                     $result['catalog_origin'] = max(0, $expr->getEndFilePos());
                     $result['factory_call'] = ['creator' => $class, 'form' => $expr instanceof Expr\StaticCall ? 'static' : 'instance',
@@ -838,7 +870,7 @@ final class ImpactExtractor
         if ($expression instanceof Expr\FuncCall && str_starts_with($call['receiver'], '@method-callable:')) {
             $bound = $invocation['bound_callable'] ?? null;
             $callableForm = $invocation['callable_form'] ?? null;
-            $target = json_decode(substr($call['receiver'], 17), true, 32);
+            $target = ReceiverDescriptors::decode(substr($call['receiver'], 17), $this->descriptorReceivers);
             if (! is_array($bound) || ! ($bound['scope_bound'] ?? false)
                 || ! in_array($callableForm, ['instance', 'static', 'bound-class'], true)
                 || ! is_array($target) || count($target) !== 3 || ! is_string($target[0]) || ! is_string($target[1]) || ! is_bool($target[2])) {
@@ -857,7 +889,13 @@ final class ImpactExtractor
         if ($expression instanceof Expr\FuncCall && str_starts_with($call['receiver'], '@return:') && isset($invocation['factory_call'])) {
             $context['factory_call'] = $invocation['factory_call'];
         }
-        $descriptor = json_encode([$value['type'], $call['receiver'], $call['method'], $call['exact'],
+        if (self::sourceLimit(0) !== null) {
+            $this->notices[] = ['line' => $expression->getStartLine(), 'reason' => 'Impact memory limit reached during extraction.'];
+            $this->limited = true;
+
+            return $unknown;
+        }
+        $descriptor = json_encode([$this->compactReceiver($value['type']), $this->compactReceiver($call['receiver']), $call['method'], $call['exact'],
             $context, $arguments, $aliases], JSON_THROW_ON_ERROR);
         if (strlen($descriptor) > 8192) {
             $this->notices[] = ['line' => $expression->getStartLine(), 'reason' => 'Argument value flow descriptor exceeded its source budget.'];
@@ -866,6 +904,17 @@ final class ImpactExtractor
         }
 
         return [...$value, 'type' => '@after-argument:'.$descriptor];
+    }
+
+    private function compactReceiver(string $receiver): string
+    {
+        if (! str_starts_with($receiver, '@return:') && ! str_starts_with($receiver, '@method-callable:') && ! str_starts_with($receiver, '@after-argument:') && ! str_starts_with($receiver, '@property:')) {
+            return $receiver;
+        }
+        $hash = hash('sha256', $receiver);
+        $this->descriptorReceivers[$hash] = $receiver;
+
+        return ReceiverDescriptors::PREFIX.$hash;
     }
 
     /** @return list<Node> */

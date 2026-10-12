@@ -139,6 +139,8 @@ Completeness describes the current inputs within the supported source contracts.
 
 Graph discovery reuses the existing per-file cache in `storage/framework/cache/architecture-kit`. Source statistics, file membership, graph configuration, and package source fingerprints invalidate affected entries. Memory guards can refuse a cache read or write and fall back to rebuilding.
 
+Catalog receiver chains store each intermediate receiver once in a file-local table. Later descriptors use a content-addressed link; resolvers decode one step at a time, with the same dispatch budgets and support for inline legacy descriptors. The table travels with the cached facts and remains usable in another process. Catalog cache format 3 replaces format 2; the package source fingerprint rebuilds older entries automatically. Receiver and argument descriptors retain size guards, and memory guards stop extraction with a source location and previously collected facts. These diagnostics do not prove that later unresolved calls are safe.
+
 Some partial results repeat for unchanged source. Diagnostics with `limit_reason: "structure"` retain source-bounded node, depth, or descriptor limits in cache. The warning remains in the reused result. Memory-dependent and unclassified limits are retried. Editing the source or changing the package fingerprint refreshes the facts.
 
 The benchmark runs isolated synthetic projects with 1,000 and 10,000 PHP files and a copy of this package's `src`. It reports cold, warm, one-file-edit, and disabled-cache builds, query timings, payload sizes, memory, cache bytes, input hashes, and observed parser calls. It does not scan neighboring repositories.

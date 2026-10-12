@@ -49,6 +49,7 @@ final readonly class FrameworkContext
         public array $authGuards = [],
         public array $routeAuthGuards = [],
         public array $bindingCandidates = [],
+        public string $unavailableReason = 'unresolved_call',
     ) {}
 
     public static function unavailable(string $reason): self
