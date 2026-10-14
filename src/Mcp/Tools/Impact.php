@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactPages;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -47,11 +48,11 @@ final class Impact extends Tool
                 return Response::structured(ArchitectureImpact::error('E_IMPACT_PAGE_INPUT', 'Continuation uses the saved analysis depth.'));
             }
 
-            return Response::structured((new ImpactPages($this->files(), base_path()))->inspect($request->get('subject', ''), $request->get('limit', 20), $request->get('depth', 4), $request->get('change'), $request->get('signature'), $request->get('target_class'), $request->get('target_path'), $request->get('report_id'), $request->get('page', 1)));
+            return Response::structured((new ImpactPages($this->files(), RepositoryContext::root()))->inspect($request->get('subject', ''), $request->get('limit', 20), $request->get('depth', 4), $request->get('change'), $request->get('signature'), $request->get('target_class'), $request->get('target_path'), $request->get('report_id'), $request->get('page', 1)));
         }
         try {
-            $state = DiscoverySettings::load($this->files(), base_path());
-            $result = (new ArchitectureImpact($this->files(), base_path(), $state->scope, $state->cache, $state->fingerprint))
+            $state = DiscoverySettings::load($this->files(), RepositoryContext::root());
+            $result = (new ArchitectureImpact($this->files(), RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint))
                 ->inspect($request->get('subject', ''), $state->exclude, $request->get('limit', 20), $request->get('depth', 4), $request->get('change'), $request->get('signature'), $request->get('target_class'), $request->get('target_path'), $request->get('table'), $request->get('table_match'), $request->get('connection'), $request->get('operation'));
         } catch (Throwable $exception) {
             $result = ArchitectureImpact::error('E_IMPACT_FAILED', $exception->getMessage());

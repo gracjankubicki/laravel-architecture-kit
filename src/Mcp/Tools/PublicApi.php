@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\PublicApi\ArchitecturePublicApi;
 use GracjanKubicki\ArchitectureKit\PublicApi\SemverAdvice;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -48,6 +49,6 @@ final class PublicApi extends Tool
             return Response::structured(ArchitecturePublicApi::error('E_PUBLIC_API_INPUT', $invalid ?? 'public_paths must be a list of literal string paths.'));
         }
 
-        return Response::structured((new ArchitecturePublicApi(base_path()))->compare($request->get('from', ''), $request->get('to', 'working'), $paths, $request->get('current_version'), $request->get('zero_policy'), $request->get('limit', 50)));
+        return Response::structured((new ArchitecturePublicApi(RepositoryContext::root()))->compare($request->get('from', ''), $request->get('to', 'working'), $paths, $request->get('current_version'), $request->get('zero_policy'), $request->get('limit', 50)));
     }
 }

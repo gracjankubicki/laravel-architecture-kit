@@ -12,14 +12,15 @@
         "ai"
     ],
     "require": {
-        "php": "^8.3",
         "composer/semver": "^3.4",
         "illuminate/console": "^12.41.1|^13.0",
         "illuminate/filesystem": "^12.41.1|^13.0",
         "illuminate/support": "^12.41.1|^13.0",
+        "laravel/framework": "^12.41.1|^13.0",
         "laravel/mcp": "^0.8.2 || ^0.9.0 || ^1.0.0",
         "laravel/prompts": "^0.3|^1.0",
         "nikic/php-parser": "^5",
+        "php": "^8.3",
         "symfony/process": "^7.2|^8.0",
         "symfony/yaml": "^7.2|^8.0"
     },
@@ -56,5 +57,8 @@
         }
     },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "bin": [
+        "bin/architecture-kit"
+    ]
 }

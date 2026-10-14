@@ -26,6 +26,7 @@ use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourceDeployment;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -43,7 +44,7 @@ class InstallCommand extends Command
 
     public function handle(Filesystem $files, ComposerPackageInstaller $composer): int
     {
-        $runtimeRequirement = (new ArchitectureKitRuntimeRequirement(new ProjectPackageInventory($files, base_path())))->check();
+        $runtimeRequirement = (new ArchitectureKitRuntimeRequirement(new ProjectPackageInventory($files, RepositoryContext::root())))->check();
 
         if (! $runtimeRequirement->satisfied) {
             $this->error($runtimeRequirement->message);
@@ -52,9 +53,9 @@ class InstallCommand extends Command
             return self::FAILURE;
         }
 
-        $catalog = new ArchitectureCatalog($files, base_path());
+        $catalog = new ArchitectureCatalog($files, RepositoryContext::root());
         $config = new ArchitectureConfig(config_path('architectures.php'), $files, $catalog);
-        $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files, $catalog);
+        $resources = new ArchitectureResources(dirname(__DIR__, 2), RepositoryContext::root(), $files, $catalog);
 
         try {
             $current = $config->readOrDefault();
@@ -62,7 +63,7 @@ class InstallCommand extends Command
 
             if (
                 ! $files->exists(config_path('architectures.php'))
-                && LaravelAiRequirement::resolve($files, base_path())->supported()
+                && LaravelAiRequirement::resolve($files, RepositoryContext::root())->supported()
                 && ! in_array(Architecture::LaravelAi, $current, true)
             ) {
                 $current[] = Architecture::LaravelAi;
@@ -70,7 +71,7 @@ class InstallCommand extends Command
 
             if (
                 ! $files->exists(config_path('architectures.php'))
-                && InertiaRequirement::resolve($files, base_path())->supported()
+                && InertiaRequirement::resolve($files, RepositoryContext::root())->supported()
                 && ! in_array(Architecture::Inertia, $current, true)
             ) {
                 $current[] = Architecture::Inertia;
@@ -78,7 +79,7 @@ class InstallCommand extends Command
 
             if (
                 ! $files->exists(config_path('architectures.php'))
-                && FortifyRequirement::resolve($files, base_path())->supported()
+                && FortifyRequirement::resolve($files, RepositoryContext::root())->supported()
                 && ! in_array(Architecture::Fortify, $current, true)
             ) {
                 $current[] = Architecture::Fortify;
@@ -86,7 +87,7 @@ class InstallCommand extends Command
 
             if (
                 ! $files->exists(config_path('architectures.php'))
-                && ServicesRequirement::projectHasServices($files, base_path())
+                && ServicesRequirement::projectHasServices($files, RepositoryContext::root())
                 && ! in_array(Architecture::Services, $current, true)
             ) {
                 $current[] = Architecture::Services;
@@ -110,7 +111,7 @@ class InstallCommand extends Command
         try {
             $enabled = $config->normalize($selected);
             $laravelAi = in_array(Architecture::LaravelAi, $enabled, true)
-                ? LaravelAiRequirement::resolve($files, base_path())
+                ? LaravelAiRequirement::resolve($files, RepositoryContext::root())
                 : null;
 
             if ($laravelAi !== null && ! $laravelAi->supported()) {
@@ -118,7 +119,7 @@ class InstallCommand extends Command
             }
 
             $inertia = in_array(Architecture::Inertia, $enabled, true)
-                ? InertiaRequirement::resolve($files, base_path())
+                ? InertiaRequirement::resolve($files, RepositoryContext::root())
                 : null;
 
             if ($inertia !== null && ! $inertia->supported()) {
@@ -126,14 +127,14 @@ class InstallCommand extends Command
             }
 
             $fortify = in_array(Architecture::Fortify, $enabled, true)
-                ? FortifyRequirement::resolve($files, base_path())
+                ? FortifyRequirement::resolve($files, RepositoryContext::root())
                 : null;
 
             if ($fortify !== null && ! $fortify->supported()) {
                 throw new \RuntimeException($fortify->message.' '.$fortify->remediation);
             }
 
-            $resources = new ArchitectureResources(dirname(__DIR__, 2), base_path(), $files, $catalog, $laravelAi);
+            $resources = new ArchitectureResources(dirname(__DIR__, 2), RepositoryContext::root(), $files, $catalog, $laravelAi);
             $resources->assertSourcesExist($enabled);
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
@@ -182,7 +183,7 @@ class InstallCommand extends Command
 
         if (
             in_array(Architecture::LaravelBestPractices, $enabled, true)
-            && $files->isDirectory(base_path('.ai/skills/laravel-best-practices'))
+            && $files->isDirectory(RepositoryContext::root('.ai/skills/laravel-best-practices'))
         ) {
             $this->warn('Generic laravel-best-practices skill is present. Architecture Kit will generate architecture-kit-laravel-best-practices, which supersedes the generic skill.');
             $this->line('Remove or disable .ai/skills/laravel-best-practices if your agent loads both skills.');
@@ -197,7 +198,7 @@ class InstallCommand extends Command
 
         if (
             in_array(Architecture::ModernPhp85, $enabled, true)
-            && ! PhpRequirement::projectRequiresPhp85($files, base_path())
+            && ! PhpRequirement::projectRequiresPhp85($files, RepositoryContext::root())
         ) {
             $this->error('Modern PHP 8.5 is enabled, but composer.json does not require PHP 8.5 or newer.');
             $this->line('Update composer.json require.php to a PHP 8.5+ constraint, then run php artisan architecture-kit:install again.');
@@ -325,13 +326,13 @@ class InstallCommand extends Command
      */
     private function plannedSaloonPackages(Filesystem $files): ?array
     {
-        $violations = SaloonRequirement::violations($files, base_path());
+        $violations = SaloonRequirement::violations($files, RepositoryContext::root());
 
         if ($violations === []) {
             return [];
         }
 
-        $packages = SaloonRequirement::missingInstallPackages($files, base_path());
+        $packages = SaloonRequirement::missingInstallPackages($files, RepositoryContext::root());
 
         if ($packages === []) {
             $this->showSaloonRequirementFailure($violations);
@@ -351,7 +352,7 @@ class InstallCommand extends Command
             return true;
         }
 
-        $result = $composer->requirePackages($packages, base_path());
+        $result = $composer->requirePackages($packages, RepositoryContext::root());
 
         if (! $result->successful) {
             $this->error('Composer could not install required Saloon packages.');
@@ -364,7 +365,7 @@ class InstallCommand extends Command
             return false;
         }
 
-        $remainingViolations = SaloonRequirement::violations($files, base_path());
+        $remainingViolations = SaloonRequirement::violations($files, RepositoryContext::root());
 
         if ($remainingViolations !== []) {
             $this->showSaloonRequirementFailure($remainingViolations);
@@ -418,8 +419,8 @@ class InstallCommand extends Command
 
     private function relative(string $path): string
     {
-        return str_starts_with($path, base_path().'/')
-            ? str_replace(base_path().'/', '', $path)
+        return str_starts_with($path, RepositoryContext::root().'/')
+            ? str_replace(RepositoryContext::root().'/', '', $path)
             : $path;
     }
 
@@ -429,7 +430,7 @@ class InstallCommand extends Command
      */
     private function runtime(Filesystem $files, array $current): array
     {
-        $compose = new ComposeServices($files, base_path());
+        $compose = new ComposeServices($files, RepositoryContext::root());
         $default = $current['driver'] !== 'local' ? $current['driver'] : $compose->detectedRuntimeDriver();
         $driver = select(
             label: 'How does this project run PHP?',
@@ -524,12 +525,12 @@ class InstallCommand extends Command
             return null;
         }
 
-        $detector = new AgentsDetector($files, base_path());
+        $detector = new AgentsDetector($files, RepositoryContext::root());
         $agentNames = $this->agentNames($detector);
         $features = $this->agentFeatures();
 
         return [
-            'installer' => new AgentInstaller($files, base_path(), $runtime),
+            'installer' => new AgentInstaller($files, RepositoryContext::root(), $runtime),
             'agents' => $detector->resolve($agentNames),
             'mcp' => $features['mcp'],
             'hooks' => $features['hooks'],

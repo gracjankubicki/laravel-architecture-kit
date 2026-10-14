@@ -2,6 +2,13 @@
 
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
+## v0.8.0 - 2026-10-14
+
+### Added
+
+- Add an isolated standalone CLI and MCP host for externally configured repositories, with source-only defaults, external caches/reports and explicit execution/write opt-ins. Document global installation through composer-bin-plugin.
+- Export user-level Codex and Claude Code hooks without changing client settings. Preserve immutable task beginnings through retries/resume, compare new errors separately from existing findings, and keep missing/incomplete/drift/skipped results unverified. Report exported and historically observed integration states without claiming activation.
+
 ## v0.7.1 - 2026-10-12
 
 ### Fixed

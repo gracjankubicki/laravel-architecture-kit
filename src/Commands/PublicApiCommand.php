@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\PublicApi\ArchitecturePublicApi;
 use GracjanKubicki\ArchitectureKit\PublicApi\PublicApiSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 
 final class PublicApiCommand extends Command
@@ -23,7 +24,7 @@ final class PublicApiCommand extends Command
         }
         $limit = (string) $this->option('limit');
         $result = ctype_digit($limit)
-            ? (new ArchitecturePublicApi(base_path()))->compare((string) $this->argument('from'), (string) $this->option('to'), $this->option('public-path'), $this->option('current-version'), $this->option('zero-policy'), (int) $limit)
+            ? (new ArchitecturePublicApi(RepositoryContext::root()))->compare((string) $this->argument('from'), (string) $this->option('to'), $this->option('public-path'), $this->option('current-version'), $this->option('zero-policy'), (int) $limit)
             : ArchitecturePublicApi::error('E_PUBLIC_API_INPUT', 'Limit must be an integer 0..500.');
         if ($this->option('agent')) {
             $this->line(json_encode($result, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));

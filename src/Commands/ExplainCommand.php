@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrence;
 use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrenceResolver;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 
@@ -125,7 +126,7 @@ class ExplainCommand extends Command
 
         $line = $this->option('line');
 
-        return (new FindingOccurrenceResolver(new Filesystem, dirname(__DIR__, 2), base_path()))
+        return (new FindingOccurrenceResolver(new Filesystem, dirname(__DIR__, 2), RepositoryContext::root()))
             ->resolve(trim($path), is_numeric($line) ? (int) $line : null, $code);
     }
 

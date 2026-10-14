@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -42,6 +43,6 @@ final class Target extends Tool
             return Response::structured(ArchitectureTarget::error('E_TARGET_INPUT', $invalid));
         }
 
-        return Response::structured((new ArchitectureTarget(base_path()))->inspect($request->get('subject', ''), $request->get('limit', 50)));
+        return Response::structured((new ArchitectureTarget(RepositoryContext::root()))->inspect($request->get('subject', ''), $request->get('limit', 50)));
     }
 }

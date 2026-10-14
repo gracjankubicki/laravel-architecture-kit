@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Reach\ArchitectureReach;
 use GracjanKubicki\ArchitectureKit\Reach\ReachSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 
@@ -24,7 +25,7 @@ final class ReachCommand extends Command
         }
         $numbers = [(string) $this->option('limit'), (string) $this->option('depth'), (string) $this->option('page')];
         $result = count(array_filter($numbers, 'ctype_digit')) === 3
-            ? (new ArchitectureReach($files, base_path()))->inspect((string) $this->argument('subject'), (int) $numbers[0], (int) $numbers[1], $this->option('report'), (int) $numbers[2])
+            ? (new ArchitectureReach($files, RepositoryContext::root()))->inspect((string) $this->argument('subject'), (int) $numbers[0], (int) $numbers[1], $this->option('report'), (int) $numbers[2])
             : ArchitectureReach::error('E_REACH_INPUT', 'Use integer limit, depth and page.');
         if ($this->option('agent')) {
             $this->line(json_encode($result, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));

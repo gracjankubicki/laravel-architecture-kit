@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactPages;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -53,10 +54,10 @@ final class ImpactCommand extends Command
                 $filters = [$this->option('table'), $this->option('table-match'), $this->option('connection'), $this->option('operation')];
                 $result = ! is_string($page) || ! ctype_digit($page) || array_filter($filters, fn ($value) => $value !== null) !== []
                     ? ArchitectureImpact::error('E_IMPACT_PAGE_INPUT', 'Use integer page; proposal pagination cannot be combined with table filters.')
-                    : (new ImpactPages($files, base_path()))->inspect((string) ($this->argument('subject') ?? ''), (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('report'), (int) $page);
+                    : (new ImpactPages($files, RepositoryContext::root()))->inspect((string) ($this->argument('subject') ?? ''), (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('report'), (int) $page);
             } else {
-                $state = DiscoverySettings::load($files, base_path());
-                $result = (new ArchitectureImpact($files, base_path(), $state->scope, $state->cache, $state->fingerprint))
+                $state = DiscoverySettings::load($files, RepositoryContext::root());
+                $result = (new ArchitectureImpact($files, RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint))
                     ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('table'), $this->option('table-match'), $this->option('connection'), $this->option('operation'));
             }
         } catch (Throwable $exception) {

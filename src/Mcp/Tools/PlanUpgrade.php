@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePathPlanner;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -57,7 +58,7 @@ class PlanUpgrade extends Tool
             $plan = (new UpgradePathPlanner(
                 files: $this->files(),
                 packagePath: $this->packagePath(),
-                basePath: base_path(),
+                basePath: RepositoryContext::root(),
             ))->plan(trim($package), trim($target));
         } catch (Throwable $exception) {
             return Response::structured($agent->error('upgrade-plan', $exception->getMessage()));

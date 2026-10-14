@@ -12,6 +12,8 @@ use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
+use GracjanKubicki\ArchitectureKit\Standalone\StandaloneAudit;
 use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Application as ConsoleApplication;
@@ -27,6 +29,10 @@ final readonly class ArchitectureGuard
 
     public function run(bool $changedOnly, ?string $baseRef, bool $strict, ?ProjectState $state = null, bool $includeTarget = false): ArchitectureGuardResult
     {
+        if (($context = RepositoryContext::forRoot($this->basePath)) !== null) {
+            return StandaloneAudit::guard($context, $changedOnly, $baseRef, $strict, $includeTarget);
+        }
+
         try {
             $state ??= ProjectState::load($this->files, $this->packagePath, $this->basePath);
             $config = $state->config;

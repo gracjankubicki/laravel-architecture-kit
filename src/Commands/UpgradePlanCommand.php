@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePathPlanner;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
@@ -41,7 +42,7 @@ final class UpgradePlanCommand extends Command
             $plan = (new UpgradePathPlanner(
                 files: $files,
                 packagePath: dirname(__DIR__, 2),
-                basePath: base_path(),
+                basePath: RepositoryContext::root(),
             ))->plan(trim($package), trim($target));
         } catch (Throwable $exception) {
             return $this->failCommand($agent, $exception->getMessage());

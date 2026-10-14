@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Scaffolding\Scaffolder;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldException;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -24,6 +25,9 @@ final class MakeCommand extends Command
 
     public function handle(Filesystem $files): int
     {
+        if (! $this->option('agent') && ! $this->option('schema')) {
+            RepositoryContext::current()?->assertWrite();
+        }
         $agent = new AgentOutput;
 
         if ((bool) $this->option('schema')) {
@@ -40,8 +44,8 @@ final class MakeCommand extends Command
         }
 
         try {
-            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
-            $scaffolder = new Scaffolder($files, base_path(), $state->catalog);
+            $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
+            $scaffolder = new Scaffolder($files, RepositoryContext::root(), $state->catalog);
             $plan = $scaffolder->plan($architecture, $name, $state->enabled);
         } catch (ScaffoldException $exception) {
             return $this->failWith($agent, $exception->errorCode, $exception->getMessage());

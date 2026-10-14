@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Composer;
 
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
 
@@ -62,7 +63,7 @@ final readonly class ProjectPackageInventory
     {
         $phpPath = $this->basePath.'/vendor/composer/installed.php';
 
-        if ($this->files->isFile($phpPath)) {
+        if (RepositoryContext::forRoot($this->basePath) === null && $this->files->isFile($phpPath)) {
             $installed = require $phpPath;
             $version = is_array($installed) ? ($installed['versions'][$name]['pretty_version'] ?? $installed['versions'][$name]['version'] ?? null) : null;
 

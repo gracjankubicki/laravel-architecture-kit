@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrence;
 use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrenceResolver;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -78,7 +79,7 @@ class ExplainFinding extends Tool
         $line = $request->get('line');
 
         // Same resolver as the command: resolving this twice is how the two drifted.
-        return (new FindingOccurrenceResolver($this->files(), $this->packagePath(), base_path()))
+        return (new FindingOccurrenceResolver($this->files(), $this->packagePath(), RepositoryContext::root()))
             ->resolve(trim($path), is_numeric($line) ? (int) $line : null, $code);
     }
 }

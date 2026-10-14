@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 
 use GracjanKubicki\ArchitectureKit\Discovery\ArchitectureDiscovery;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Request;
@@ -34,6 +35,6 @@ final class Search extends Tool
             return Response::structured(ArchitectureDiscovery::error('E_INVALID_TOOL_INPUT', $message));
         }
 
-        return Response::structured((new ArchitectureDiscovery(app(Filesystem::class), base_path()))->search($request->get('query', ''), $request->get('kind'), $request->get('limit', 20)));
+        return Response::structured((new ArchitectureDiscovery(app(Filesystem::class), RepositoryContext::root()))->search($request->get('query', ''), $request->get('kind'), $request->get('limit', 20)));
     }
 }

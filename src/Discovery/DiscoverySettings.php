@@ -8,6 +8,7 @@ use Closure;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
 use PhpParser\ConstExprEvaluator;
@@ -45,14 +46,16 @@ final readonly class DiscoverySettings
         if (! self::safe($base, $path)) {
             throw new InvalidArgumentException('Analysis configuration crosses an unsafe path or symlink.');
         }
-        $stat = self::stat($base.'/'.$path);
+        $context = RepositoryContext::forRoot($base);
+        $absoluteConfig = RepositoryContext::configurationPath($base);
+        $stat = self::stat($absoluteConfig);
         $audit = [];
         $sourceFile = null;
-        if ($files->isFile($base.'/'.$path)) {
+        if ($files->isFile($absoluteConfig)) {
             if (($stat[1] ?? 0) > 100000) {
                 throw new InvalidArgumentException('Analysis configuration exceeds 100 KB.');
             }
-            $sourceFile = new FileContext($path, $files->get($base.'/'.$path), $onParse, newestSyntax: true);
+            $sourceFile = new FileContext($path, $files->get($absoluteConfig), $onParse, newestSyntax: true);
             $ast = $sourceFile->ast();
             if ($ast === null) {
                 throw new InvalidArgumentException('Analysis configuration could not be parsed: '.$sourceFile->parseError());

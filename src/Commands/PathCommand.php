@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitecturePath;
 use GracjanKubicki\ArchitectureKit\Impact\PathSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -36,8 +37,8 @@ final class PathCommand extends Command
             if (! ctype_digit((string) $limit) || ! ctype_digit((string) $depth)) {
                 $result = ArchitecturePath::error('E_PATH_LIMIT_INVALID', 'Limits must be non-negative integers.');
             } else {
-                $state = DiscoverySettings::load($files, base_path());
-                $result = (new ArchitecturePath($files, base_path(), $state->scope, $state->cache, $state->fingerprint))->inspect((string) $this->argument('from'), (string) $this->argument('to'), $state->exclude, (int) $limit, (int) $depth);
+                $state = DiscoverySettings::load($files, RepositoryContext::root());
+                $result = (new ArchitecturePath($files, RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint))->inspect((string) $this->argument('from'), (string) $this->argument('to'), $state->exclude, (int) $limit, (int) $depth);
             }
         } catch (Throwable $exception) {
             $result = ArchitecturePath::error('E_PATH_FAILED', $exception->getMessage());

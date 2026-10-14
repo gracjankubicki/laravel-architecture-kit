@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextException;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -57,7 +58,7 @@ final class ArchitectureContext extends Tool
             $state = $this->projectState();
             $context = (new ContextQuery(
                 $this->files(),
-                base_path(),
+                RepositoryContext::root(),
                 scope: $state->auditScope,
                 cache: $state->graphCache,
                 cacheConfiguration: $state->graphConfiguration(),

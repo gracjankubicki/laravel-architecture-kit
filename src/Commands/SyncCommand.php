@@ -11,6 +11,7 @@ use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResourceManifest;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourceDeployment;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -26,6 +27,9 @@ final class SyncCommand extends Command
 
     public function handle(Filesystem $files): int
     {
+        if (! $this->option('dry-run') && ! $this->option('schema')) {
+            RepositoryContext::current()?->assertWrite();
+        }
         $agent = new AgentOutput;
 
         if ((bool) $this->option('schema')) {
@@ -34,7 +38,7 @@ final class SyncCommand extends Command
             return self::SUCCESS;
         }
 
-        $runtime = (new ArchitectureKitRuntimeRequirement(new ProjectPackageInventory($files, base_path())))->check();
+        $runtime = (new ArchitectureKitRuntimeRequirement(new ProjectPackageInventory($files, RepositoryContext::root())))->check();
 
         if (! $runtime->satisfied) {
             return $this->failure($agent, $runtime->message.' '.$runtime->remediation);
@@ -43,7 +47,7 @@ final class SyncCommand extends Command
         $state = null;
 
         try {
-            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
+            $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
             $state->assertCompatibility();
 
             $state->resources->assertSourcesExist($state->enabled);
@@ -176,7 +180,7 @@ final class SyncCommand extends Command
 
     private function relative(string $path): string
     {
-        return str_starts_with($path, base_path().'/') ? substr($path, strlen(base_path()) + 1) : $path;
+        return str_starts_with($path, RepositoryContext::root().'/') ? substr($path, strlen(RepositoryContext::root()) + 1) : $path;
     }
 
     /** @param array<string, mixed> $payload */

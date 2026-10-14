@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Revision\ArchitectureRevisionDiff;
 use GracjanKubicki\ArchitectureKit\Revision\RevisionDiffSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 
 final class RevisionDiffCommand extends Command
@@ -32,7 +33,7 @@ final class RevisionDiffCommand extends Command
         }
         if (! isset($result)) {
             $limit = (string) $this->option('limit');
-            $result = ctype_digit($limit) ? (new ArchitectureRevisionDiff(base_path()))->compare(
+            $result = ctype_digit($limit) ? (new ArchitectureRevisionDiff(RepositoryContext::root()))->compare(
                 (string) $this->argument('from'), (string) $this->option('to'), $this->option('shared-config'), $pairs, (int) $limit,
             ) : ArchitectureRevisionDiff::error('E_REVISION_INPUT', 'Limit must be an integer 0..500.');
         }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache;
 
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
+use GracjanKubicki\ArchitectureKit\Standalone\StateStore;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -289,6 +291,13 @@ final readonly class ProjectGraphCache
 
     public function absoluteDirectory(): string
     {
+        if (($context = RepositoryContext::forRoot($this->basePath)) !== null) {
+            $path = $context->storage.'/graph/'.hash('sha256', $this->directory);
+            StateStore::assertBoundary($path, $context->home);
+
+            return $path;
+        }
+
         return str_starts_with($this->directory, '/')
             ? rtrim($this->directory, '/')
             : $this->basePath.'/'.trim($this->directory, '/');

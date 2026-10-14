@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Discovery\ArchitectureDiscovery;
 use GracjanKubicki\ArchitectureKit\Discovery\SearchSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 
@@ -24,7 +25,7 @@ final class SearchCommand extends Command
         }
         $limit = (string) $this->option('limit');
         $result = ctype_digit($limit)
-            ? (new ArchitectureDiscovery($files, base_path()))->search((string) $this->argument('query'), $this->option('kind'), (int) $limit)
+            ? (new ArchitectureDiscovery($files, RepositoryContext::root()))->search((string) $this->argument('query'), $this->option('kind'), (int) $limit)
             : ArchitectureDiscovery::error('E_SEARCH_INPUT', 'Use an integer limit 0..500.');
         if ($this->option('agent')) {
             $this->line(json_encode($result, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));

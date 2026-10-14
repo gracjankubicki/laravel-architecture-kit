@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -60,16 +61,16 @@ final class CacheClearCommand extends Command
         // A project that moved or disabled the cache no longer has the old directory in
         // its configuration, and that is exactly when the old entry needs removing.
         if (is_string($path) && trim($path) !== '') {
-            return new ProjectGraphCache($files, base_path(), trim($path));
+            return new ProjectGraphCache($files, RepositoryContext::root(), trim($path));
         }
 
         try {
             // A project that just turned the cache off still wants whatever was written
             // while it was on to go away.
-            return ProjectState::load($files, dirname(__DIR__, 2), base_path())->graphCache
-                ?? new ProjectGraphCache($files, base_path());
+            return ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root())->graphCache
+                ?? new ProjectGraphCache($files, RepositoryContext::root());
         } catch (Throwable) {
-            return new ProjectGraphCache($files, base_path());
+            return new ProjectGraphCache($files, RepositoryContext::root());
         }
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Classification;
 
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
 use PhpParser\ConstExprEvaluator;
@@ -73,10 +74,11 @@ final readonly class ClassificationMappings
         if (! DiscoverySettings::safe($base, $path)) {
             throw new InvalidArgumentException('Unsafe classification configuration path.');
         }
-        if (! $files->isFile($base.'/'.$path)) {
+        $absoluteConfig = RepositoryContext::configurationPath($base);
+        if (! $files->isFile($absoluteConfig)) {
             return new self;
         }
-        $source = $files->get($base.'/'.$path);
+        $source = $files->get($absoluteConfig);
         if (strlen($source) > 100000) {
             if (! DeclaredConfiguration::hasDeclarationKey($source)) {
                 return new self;

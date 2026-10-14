@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -33,7 +34,7 @@ class GuidelinesCommand extends Command
         }
 
         try {
-            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
+            $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
             $state->assertCompatibility();
             $enabled = $state->enabled;
             $resources = $state->resources;

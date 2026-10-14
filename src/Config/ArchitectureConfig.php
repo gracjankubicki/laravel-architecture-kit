@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Classification\DeclaredConfiguration;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
 
@@ -196,6 +197,10 @@ final class ArchitectureConfig
      */
     private function config(): array
     {
+        $context = RepositoryContext::current();
+        if ($context !== null && $context->configPath === $this->path) {
+            $context->fingerprint();
+        }
         if ($this->configLoaded) {
             return $this->loadedConfig ?? [];
         }
@@ -206,7 +211,9 @@ final class ArchitectureConfig
             return $this->loadedConfig = [];
         }
 
-        $config = DeclaredConfiguration::read($this->files->get($this->path)) ?? require $this->path;
+        $config = $context !== null && $context->configPath === $this->path
+            ? $context->settings
+            : (DeclaredConfiguration::read($this->files->get($this->path)) ?? require $this->path);
 
         if (! is_array($config)) {
             throw new InvalidArgumentException('config/architectures.php must return an array.');
@@ -916,6 +923,10 @@ final class ArchitectureConfig
 
     private function projectPath(): string
     {
+        if (($context = RepositoryContext::current()) !== null && $context->configPath === $this->path) {
+            return $context->rootPath;
+        }
+
         $directory = dirname($this->path);
 
         return basename($directory) === 'config'

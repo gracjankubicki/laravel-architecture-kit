@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
 use GracjanKubicki\ArchitectureKit\Target\TargetDefinition;
 use GracjanKubicki\ArchitectureKit\Target\TargetSchema;
@@ -24,7 +25,7 @@ final class TargetCommand extends Command
         }
         $limit = (string) $this->option('limit');
         $result = ctype_digit($limit)
-            ? (new ArchitectureTarget(base_path()))->inspect((string) $this->argument('subject'), (int) $limit)
+            ? (new ArchitectureTarget(RepositoryContext::root()))->inspect((string) $this->argument('subject'), (int) $limit)
             : ArchitectureTarget::error('E_TARGET_INPUT', 'Limit must be an integer 0..500.');
         if ($this->option('agent')) {
             $this->line(json_encode($result, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));

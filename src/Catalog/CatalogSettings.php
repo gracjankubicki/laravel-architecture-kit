@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Catalog;
 use Closure;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
 use PhpParser\ConstExprEvaluator;
@@ -120,7 +121,8 @@ final readonly class CatalogSettings
     public function fresh(string $base): bool
     {
         foreach ($this->inputStats as $path => $stat) {
-            if (DiscoverySettings::stat($base.'/'.$path) !== $stat) {
+            $absolute = $path === 'config/architectures.php' ? RepositoryContext::configurationPath($base) : $base.'/'.$path;
+            if (DiscoverySettings::stat($absolute) !== $stat) {
                 return false;
             }
         }

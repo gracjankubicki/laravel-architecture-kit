@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Scaffolding\Scaffolder;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldException;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -54,7 +55,7 @@ class Scaffold extends Tool
 
         try {
             $state = $this->projectState();
-            $plan = (new Scaffolder($this->files(), base_path(), $state->catalog))
+            $plan = (new Scaffolder($this->files(), RepositoryContext::root(), $state->catalog))
                 ->plan($architecture, $name, $state->enabled);
 
             return Response::structured($agent->make($plan, written: false));

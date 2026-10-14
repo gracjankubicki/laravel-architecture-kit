@@ -11,6 +11,7 @@ use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
 use GracjanKubicki\ArchitectureKit\ProjectState;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 
 trait UsesArchitectureKitState
@@ -27,7 +28,7 @@ trait UsesArchitectureKitState
 
     protected function projectState(): ProjectState
     {
-        return ProjectState::load($this->files(), $this->packagePath(), base_path());
+        return ProjectState::load($this->files(), $this->packagePath(), RepositoryContext::root());
     }
 
     protected function doctor(ProjectState $state): ArchitectureDoctorResult
@@ -36,14 +37,14 @@ trait UsesArchitectureKitState
             config: $state->config,
             resources: $state->resources,
             files: $this->files(),
-            basePath: base_path(),
+            basePath: RepositoryContext::root(),
             console: null,
         ))->run(state: $state);
     }
 
     protected function audit(ProjectState $state, bool $changedOnly, ?string $baseRef): ApplicationAuditResult
     {
-        return (new ApplicationAudit($this->files(), base_path()))->run(
+        return (new ApplicationAudit($this->files(), RepositoryContext::root()))->run(
             enabled: $state->enabled,
             changedOnly: $changedOnly,
             baseRef: $baseRef,
@@ -61,7 +62,7 @@ trait UsesArchitectureKitState
         return (new ArchitectureGuard(
             files: $this->files(),
             packagePath: $this->packagePath(),
-            basePath: base_path(),
+            basePath: RepositoryContext::root(),
             console: null,
         ))->run($changedOnly, $baseRef, $strict, $state, $includeTarget);
     }

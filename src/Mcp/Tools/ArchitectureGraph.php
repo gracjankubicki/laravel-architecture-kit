@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Context\GraphPage;
 use GracjanKubicki\ArchitectureKit\Context\GraphQuery;
 use GracjanKubicki\ArchitectureKit\Context\GraphSource;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Request;
@@ -60,7 +61,7 @@ final class ArchitectureGraph extends Tool
                 ['status' => 'invalid_input', 'records' => [], 'message' => $invalid ?? 'A non-empty subject is required.'], 'records'));
         }
         try {
-            $source = (new GraphSource(app(Filesystem::class), base_path()))->load();
+            $source = (new GraphSource(app(Filesystem::class), RepositoryContext::root()))->load();
             $result = (new GraphQuery($source['index']))->query($request->get('subject'), $request->get('mode', 'context'), $request->get('target'), $request->get('depth', 4));
             if (! $result['traversal_complete']) {
                 $source['index']->diagnostics[] = ['code' => 'traversal_limit', 'message' => 'Traversal reached a depth, node or edge budget. Counts are lower bounds; a missing path is not a no-path result.'];

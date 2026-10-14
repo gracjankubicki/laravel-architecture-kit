@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Impact\ExecutionLinks;
 use GracjanKubicki\ArchitectureKit\Impact\ExecutionSources;
 use GracjanKubicki\ArchitectureKit\Impact\HttpRouteDiscovery;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
 
@@ -126,7 +127,7 @@ final class ArchitectureDiscovery
             }
             usort($matches, fn ($a, $b) => [$a['exact'] ? 0 : 1, strtolower($a['name']), $a['kind'], $a['path'], $a['line'], $a['id']] <=> [$b['exact'] ? 0 : 1, strtolower($b['name']), $b['kind'], $b['path'], $b['line'], $b['id']]);
             $limited = $limited || $this->candidateLimited;
-            $fresh = $sources->fresh() && $httpSource->freshness()['fresh'] && $loader->currentSignature($exclude)->files === $plan->signature->files && DiscoverySettings::stat($this->basePath.'/config/architectures.php') === $settings->configStat;
+            $fresh = $sources->fresh() && $httpSource->freshness()['fresh'] && $loader->currentSignature($exclude)->files === $plan->signature->files && DiscoverySettings::stat(RepositoryContext::configurationPath($this->basePath)) === $settings->configStat;
             $total = count($matches);
 
             return ['v' => 1, 'cmd' => 'search', 'ok' => true, 'query' => $query, 'kind' => $kind, 'candidates' => array_slice($matches, 0, $limit), 'total' => $total, 'total_is_lower_bound' => $limited, 'ambiguous' => $total > 1, 'truncated' => $total > $limit, 'status' => $limited ? 'limit' : (! $fresh ? 'stale' : ($notices !== [] ? 'incomplete' : ($total === 0 ? 'no_matches' : 'found'))), 'limited' => $limited, 'fresh' => $fresh, 'notices' => array_slice($notices, 0, $limit), 'notice_total' => count($notices), 'cache' => $plan->cacheStatus->value, 'analysis' => ['scope' => $settings->scope->directories, 'source_signature' => $facts['signature'], 'limitations' => ['Only supported static PHP and Laravel declarations are recognized.', 'Dynamic or unrecognized sources remain notices; results do not prove runtime execution.', 'Freshness uses path/mtime/size; same-stat edits are outside this guarantee.', 'No fuzzy search or automatic candidate selection. Use the returned selector with impact/path; tables use impact table searches.']]];

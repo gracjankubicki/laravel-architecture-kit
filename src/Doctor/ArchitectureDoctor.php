@@ -24,6 +24,8 @@ use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\GeneratedFile;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
+use GracjanKubicki\ArchitectureKit\Standalone\StandaloneAudit;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Application as ConsoleApplication;
@@ -42,6 +44,10 @@ final readonly class ArchitectureDoctor
 
     public function run(bool $deep = false, ?ProjectState $state = null): ArchitectureDoctorResult
     {
+        if (($context = RepositoryContext::forRoot($this->basePath)) !== null) {
+            return StandaloneAudit::doctor($context);
+        }
+
         $checks = [];
         $enabled = [];
         $laravelAi = $state?->laravelAi;

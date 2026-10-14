@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitecturePath;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -37,8 +38,8 @@ final class Path extends Tool
             return Response::structured(ArchitecturePath::error('E_INVALID_TOOL_INPUT', $message));
         }
         try {
-            $state = DiscoverySettings::load($this->files(), base_path());
-            $result = (new ArchitecturePath($this->files(), base_path(), $state->scope, $state->cache, $state->fingerprint))->inspect($request->get('from', ''), $request->get('to', ''), $state->exclude, $request->get('limit', 20), $request->get('depth', 8));
+            $state = DiscoverySettings::load($this->files(), RepositoryContext::root());
+            $result = (new ArchitecturePath($this->files(), RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint))->inspect($request->get('from', ''), $request->get('to', ''), $state->exclude, $request->get('limit', 20), $request->get('depth', 8));
         } catch (Throwable $exception) {
             $result = ArchitecturePath::error('E_PATH_FAILED', $exception->getMessage());
         }

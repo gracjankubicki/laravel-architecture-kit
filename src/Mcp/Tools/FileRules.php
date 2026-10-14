@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Guidance\FileGuidance;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -51,7 +52,7 @@ class FileRules extends Tool
 
         try {
             $state = $this->projectState();
-            $guidance = (new FileGuidance($this->files(), base_path(), $state->catalog, $state->auditScope))->for(
+            $guidance = (new FileGuidance($this->files(), RepositoryContext::root(), $state->catalog, $state->auditScope))->for(
                 path: trim($path),
                 enabled: $state->enabled,
                 customRules: $state->customRules,

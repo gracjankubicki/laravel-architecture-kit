@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Context\GraphPage;
 use GracjanKubicki\ArchitectureKit\Context\GraphSearch;
 use GracjanKubicki\ArchitectureKit\Context\GraphSource;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Request;
@@ -57,7 +58,7 @@ final class ArchitectureSearch extends Tool
                 ['status' => 'invalid_input', 'candidates' => [], 'message' => $invalid ?? 'A non-empty query is required.'], 'candidates'));
         }
         try {
-            $source = (new GraphSource(app(Filesystem::class), base_path()))->load();
+            $source = (new GraphSource(app(Filesystem::class), RepositoryContext::root()))->load();
             $result = (new GraphSearch($source['index']))->find($request->get('query'), $request->get('kind'), $request->get('path'));
             if ($source['changed']) {
                 $result['status'] = 'stale_snapshot';

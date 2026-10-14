@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlanner;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -29,7 +30,7 @@ final class PlanCommand extends Command
         }
 
         try {
-            $plan = (new ArchitecturePlanner($files, dirname(__DIR__, 2), base_path()))->plan();
+            $plan = (new ArchitecturePlanner($files, dirname(__DIR__, 2), RepositoryContext::root()))->plan();
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
                 $this->line($this->json($agent->error('plan', $exception->getMessage())));

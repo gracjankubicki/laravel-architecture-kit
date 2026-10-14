@@ -7,6 +7,8 @@ namespace GracjanKubicki\ArchitectureKit\Reach;
 use DirectoryIterator;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
+use GracjanKubicki\ArchitectureKit\Standalone\StateStore;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -59,7 +61,11 @@ final readonly class ReachReports
             if (! DiscoverySettings::safe($this->base, $required)) {
                 throw new InvalidArgumentException('Unsafe configuration source path.');
             }
-            $states[$required] = DiscoverySettings::stat($this->base.'/'.$required);
+            $absolute = $required === 'config/architectures.php' ? RepositoryContext::configurationPath($this->base) : $this->base.'/'.$required;
+            $states[$required] = DiscoverySettings::stat($absolute);
+        }
+        if (($context = RepositoryContext::forRoot($this->base)) !== null) {
+            $states['@configuration:'.$context->fingerprint()] = [];
         }
         ksort($states);
 
@@ -83,17 +89,25 @@ final readonly class ReachReports
         }
         $body = hash('sha256', $body)."\n".$body;
         $id = bin2hex(random_bytes(16));
-        $path = $this->base.'/'.self::DIRECTORY.'/'.$id.'.json';
-        $handle = fopen($path, 'x');
+        $path = $this->location().'/'.$id.'.json';
+        $temporary = tempnam($this->location(), '.report-');
+        if ($temporary === false) {
+            throw new InvalidArgumentException('Report storage unavailable.');
+        }
+        chmod($temporary, 0600);
+        $handle = fopen($temporary, 'w');
         if ($handle === false) {
             throw new InvalidArgumentException('Report storage unavailable.');
         }
         try {
-            if (fwrite($handle, $body) !== strlen($body)) {
+            if (fwrite($handle, $body) !== strlen($body) || ! fflush($handle) || ! rename($temporary, $path)) {
                 throw new InvalidArgumentException('Report storage write incomplete.');
             }
         } finally {
             fclose($handle);
+            if (is_file($temporary)) {
+                unlink($temporary);
+            }
         }
 
         return $id;
@@ -106,15 +120,15 @@ final readonly class ReachReports
             throw new InvalidArgumentException('Invalid report ID. Start a new reach analysis.');
         }
         $this->directory();
-        $path = self::DIRECTORY.'/'.$id.'.json';
-        if (! DiscoverySettings::safe($this->base, $path) || ! $this->files->isFile($this->base.'/'.$path)) {
+        $path = $this->location().'/'.$id.'.json';
+        if (! $this->files->isFile($path) || is_link($path)) {
             throw new InvalidArgumentException('Report unavailable. Start a new reach analysis.');
         }
-        $size = $this->files->size($this->base.'/'.$path);
+        $size = $this->files->size($path);
         if ($size > self::MAX_BYTES || ! $this->room($size * 8 + 65536)) {
             throw new InvalidArgumentException('Report read size/memory limit reached. Increase memory or start a narrower analysis.');
         }
-        $body = $this->files->get($this->base.'/'.$path);
+        $body = $this->files->get($path);
         $json = substr($body, 65);
         if (substr($body, 0, 65) !== hash('sha256', $json)."\n") {
             throw new InvalidArgumentException('Report corrupt. Start a new reach analysis.');
@@ -130,12 +144,22 @@ final readonly class ReachReports
         return $saved['report'];
     }
 
+    private function location(): string
+    {
+        $context = RepositoryContext::forRoot($this->base);
+
+        return $context === null ? $this->base.'/'.self::DIRECTORY : $context->storage.'/reports';
+    }
+
     private function directory(): void
     {
-        if (! DiscoverySettings::safe($this->base, self::DIRECTORY)) {
+        if (RepositoryContext::forRoot($this->base) === null && ! DiscoverySettings::safe($this->base, self::DIRECTORY)) {
             throw new InvalidArgumentException('Unsafe report storage path.');
         }
-        $this->files->ensureDirectoryExists($this->base.'/'.self::DIRECTORY);
+        if (($context = RepositoryContext::forRoot($this->base)) !== null) {
+            StateStore::assertBoundary($this->location(), $context->home);
+        }
+        $this->files->ensureDirectoryExists($this->location());
     }
 
     /** @param array<mixed> $values */

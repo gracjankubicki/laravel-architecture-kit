@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
@@ -161,6 +162,11 @@ final readonly class RouteMap
 
     public static function fresh(string $basePath): self
     {
+        $context = RepositoryContext::forRoot($basePath);
+        if ($context !== null && ! $context->execute) {
+            return new self(unavailable: 'Runtime route discovery requires explicit --allow-execution; source relationships remain available through the catalog.');
+        }
+
         if (! is_file($basePath.'/bootstrap/app.php') || ! is_file($basePath.'/vendor/autoload.php')) {
             return new self(unavailable: 'Laravel bootstrap is unavailable; pass an explicit RouteMap to the programmatic audit.');
         }
@@ -168,7 +174,7 @@ final readonly class RouteMap
             // A separate boot sees edited routes in a long-lived MCP process. The
             // cache override affects this child only, without deleting project files.
             $process = new Process([PHP_BINARY, __DIR__.'/route-snapshot.php', $basePath], $basePath, [
-                'APP_ROUTES_CACHE' => $basePath.'/bootstrap/cache/architecture-kit-'.bin2hex(random_bytes(12)).'.php',
+                'APP_ROUTES_CACHE' => ($context === null ? $basePath.'/bootstrap/cache' : $context->storage).'/architecture-kit-'.bin2hex(random_bytes(12)).'.php',
             ]);
             $process->setTimeout(15);
             $process->run();

@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 use GracjanKubicki\ArchitectureKit\Guidance\FileGuidance;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -37,8 +38,8 @@ final class FileRulesCommand extends Command
         }
 
         try {
-            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
-            $guidance = (new FileGuidance($files, base_path(), $state->catalog, $state->auditScope))->for(
+            $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
+            $guidance = (new FileGuidance($files, RepositoryContext::root(), $state->catalog, $state->auditScope))->for(
                 path: trim($path),
                 enabled: $state->enabled,
                 customRules: $state->customRules,

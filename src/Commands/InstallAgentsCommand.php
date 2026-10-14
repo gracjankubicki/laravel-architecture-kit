@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\Install\AgentInstaller;
 use GracjanKubicki\ArchitectureKit\Install\AgentsDetector;
 use GracjanKubicki\ArchitectureKit\Install\InstallResult;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -29,19 +30,19 @@ class InstallAgentsCommand extends Command
     public function handle(Filesystem $files): int
     {
         try {
-            $runtime = (new ArchitectureConfig(ArchitectureConfigPath::resolve($files, base_path()), $files))->runtime();
+            $runtime = (new ArchitectureConfig(ArchitectureConfigPath::resolve($files, RepositoryContext::root()), $files))->runtime();
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 
             return self::FAILURE;
         }
 
-        $detector = new AgentsDetector($files, base_path());
+        $detector = new AgentsDetector($files, RepositoryContext::root());
         $agentNames = $this->agentNames($detector);
         $features = $this->features();
 
         $agents = $detector->resolve($agentNames);
-        $installer = new AgentInstaller($files, base_path(), $runtime);
+        $installer = new AgentInstaller($files, RepositoryContext::root(), $runtime);
         $plan = $installer->plan($agents, $features['mcp'], $features['hooks']);
 
         if ($this->blocked($plan) !== []) {

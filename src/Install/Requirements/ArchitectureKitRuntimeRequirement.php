@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Install\Requirements;
 
 use GracjanKubicki\ArchitectureKit\Composer\ProjectPackageInventory;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Throwable;
 
 final readonly class ArchitectureKitRuntimeRequirement
@@ -15,6 +16,9 @@ final readonly class ArchitectureKitRuntimeRequirement
 
     public function check(): ArchitectureKitRuntimeRequirementResult
     {
+        if (RepositoryContext::current() !== null) {
+            return new ArchitectureKitRuntimeRequirementResult(true, null, 'Standalone literal configuration does not require installing the package in the project.', '');
+        }
         try {
             $package = $this->inventory->package(self::PACKAGE);
         } catch (Throwable $exception) {

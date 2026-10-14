@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\Reach\ArchitectureReach;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Request;
@@ -34,6 +35,6 @@ final class Reach extends Tool
             return Response::structured(ArchitectureReach::error('E_INVALID_TOOL_INPUT', $message));
         }
 
-        return Response::structured((new ArchitectureReach(app(Filesystem::class), base_path()))->inspect($request->get('subject', ''), $request->get('limit', 20), $request->get('depth', 4), $request->get('report_id'), $request->get('page', 1)));
+        return Response::structured((new ArchitectureReach(app(Filesystem::class), RepositoryContext::root()))->inspect($request->get('subject', ''), $request->get('limit', 20), $request->get('depth', 4), $request->get('report_id'), $request->get('page', 1)));
     }
 }

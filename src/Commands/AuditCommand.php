@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditSuggestion;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -53,7 +54,7 @@ class AuditCommand extends Command
         }
 
         try {
-            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
+            $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
                 $this->line($this->json($agent->error('audit', $exception->getMessage())));
@@ -66,7 +67,7 @@ class AuditCommand extends Command
             return self::FAILURE;
         }
 
-        $audit = new ApplicationAudit($files, base_path());
+        $audit = new ApplicationAudit($files, RepositoryContext::root());
         try {
             $result = $audit->run(
                 enabled: $state->enabled,

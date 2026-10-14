@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -36,7 +37,7 @@ class GuardCommand extends Command
         }
 
         try {
-            $result = (new ArchitectureGuard($files, dirname(__DIR__, 2), base_path(), $this->getApplication()))->run(
+            $result = (new ArchitectureGuard($files, dirname(__DIR__, 2), RepositoryContext::root(), $this->getApplication()))->run(
                 changedOnly: (bool) $this->option('changed'),
                 baseRef: $this->option('base') !== null ? (string) $this->option('base') : null,
                 strict: (bool) $this->option('strict'),

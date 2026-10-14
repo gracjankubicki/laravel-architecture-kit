@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Context\ArchitectureContext;
 use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextException;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -39,10 +40,10 @@ final class ArchitectureContextCommand extends Command
         }
 
         try {
-            $state = ProjectState::load($files, dirname(__DIR__, 2), base_path());
+            $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
             $context = (new ArchitectureContext(
                 $files,
-                base_path(),
+                RepositoryContext::root(),
                 scope: $state->auditScope,
                 cache: $state->graphCache,
                 cacheConfiguration: $state->graphConfiguration(),

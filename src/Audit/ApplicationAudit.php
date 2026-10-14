@@ -19,6 +19,7 @@ use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestReachability;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
@@ -95,6 +96,15 @@ final class ApplicationAudit
         array $cacheConfiguration = [],
         ?RouteMap $routes = null,
     ): ApplicationAuditResult {
+        if (($context = RepositoryContext::forRoot($this->basePath)) !== null) {
+            if ($updateBaseline) {
+                $context->assertWrite();
+            }
+            if (! $context->execute && ($customRules instanceof CustomRuleSet ? $customRules->knownRuleClasses() : $customRules) !== []) {
+                throw new RuntimeException('Custom PHP rules require --allow-execution; they are not silently skipped.');
+            }
+        }
+
         // The two cannot be set independently: a scope without tests plus an enabled
         // rule would report every class as untested, so the audit resolves the pair
         // itself rather than trusting each caller to keep them consistent.

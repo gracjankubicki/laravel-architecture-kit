@@ -27,6 +27,8 @@ Laravel tooling for four explicit capabilities: generated architecture guidance,
 
 This package is installed as a runtime dependency because the committed architecture configuration references its enum classes while the application boots. It lets a project choose the architecture patterns it uses, then generates commit-ready Laravel Boost guidelines and skills so AI agents code closer to the project's conventions.
 
+Use the [standalone global tool](STANDALONE.md) when you need local AI guidance and task checks without installing this package or writing its configuration into the application. The standalone integrations support Codex and Claude Code.
+
 ## Capabilities and enforcement
 
 | Capability | What it provides | Enforced by guard? |

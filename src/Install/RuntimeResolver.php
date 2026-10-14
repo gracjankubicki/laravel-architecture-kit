@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Install;
 
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use InvalidArgumentException;
 
 final readonly class RuntimeResolver
@@ -68,6 +69,9 @@ final readonly class RuntimeResolver
      */
     public function mcpCommand(): array
     {
+        if (($context = RepositoryContext::current()) !== null) {
+            return ['command' => PHP_BINARY, 'args' => [dirname(__DIR__, 2).'/bin/architecture-kit', '--project', $context->rootPath, '--tool-home', $context->home, ...($context->profile === null ? [] : ['--profile', $context->profile]), 'mcp']];
+        }
         $command = $this->artisanCommand('architecture-kit:mcp');
 
         return [
@@ -81,6 +85,10 @@ final readonly class RuntimeResolver
      */
     public function guardCommand(): array
     {
+        if (($context = RepositoryContext::current()) !== null) {
+            return [PHP_BINARY, dirname(__DIR__, 2).'/bin/architecture-kit', '--project', $context->rootPath, '--tool-home', $context->home, ...($context->profile === null ? [] : ['--profile', $context->profile]), 'guard', '--agent'];
+        }
+
         return $this->artisanCommand('architecture-kit:guard', ['--changed', '--strict', '--json']);
     }
 

@@ -1,0 +1,9 @@
+#!/usr/bin/env php
+<?php
+
+if (PHP_VERSION_ID < 80300) {
+    fwrite(STDERR, "Architecture Kit requires PHP 8.3 or newer for the tool process.\n");
+    exit(2);
+}
+require $_composer_autoload_path ?? __DIR__.'/../vendor/autoload.php';
+exit(GracjanKubicki\ArchitectureKit\Standalone\Runner::run($argv));

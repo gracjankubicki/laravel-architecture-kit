@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\Revision\ArchitectureRevisionDiff;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -47,7 +48,7 @@ final class RevisionDiff extends Tool
             return Response::structured(ArchitectureRevisionDiff::error('E_REVISION_INPUT', $invalid ?? 'manual_pairs must map old symbols to new symbols.'));
         }
 
-        return Response::structured((new ArchitectureRevisionDiff(base_path()))->compare(
+        return Response::structured((new ArchitectureRevisionDiff(RepositoryContext::root()))->compare(
             $request->get('from', ''), $request->get('to', 'working'), $request->get('shared_config'), $pairs, $request->get('limit', 50),
         ));
     }
