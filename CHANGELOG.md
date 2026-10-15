@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.9.0 - 2026-10-15
 
 - Bound runtime-route stdout and stderr reads before buffering to prevent continuous application output from exhausting memory on Linux. Preserve explicit runtime opt-in, incomplete results, timeout and process cleanup.
 
