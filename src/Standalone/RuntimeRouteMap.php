@@ -6,17 +6,19 @@ namespace GracjanKubicki\ArchitectureKit\Standalone;
 
 use GracjanKubicki\ArchitectureKit\Audit\AnalysisNotice;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
-use GracjanKubicki\ArchitectureKit\Audit\WorkerOutputGate;
 use RuntimeException;
-use Symfony\Component\Process\Process;
 use Throwable;
 
 /** Explicit application bootstrap, isolated from the tool's autoloader. */
 final class RuntimeRouteMap
 {
-    private ?Process $process = null;
+    /** @var resource|null */
+    private mixed $process = null;
 
-    private ?WorkerOutputGate $outputGate = null;
+    /** @var array<int, resource> */
+    private array $pipes = [];
+
+    private float $startedAt = 0;
 
     private ?RouteMap $result = null;
 
@@ -79,21 +81,28 @@ final class RuntimeRouteMap
                 throw new RuntimeException('Runtime worker unavailable.');
             }
             $script .= ' eval('.var_export(substr($worker, 5), true).');';
-            $process = new Process($command, $context->rootPath);
-            $process->setInput($script);
-            $process->setTimeout(30);
-            $pending->process = $process;
+            $input = tmpfile();
+            if ($input === false) {
+                throw new RuntimeException('Runtime worker input unavailable.');
+            }
+            try {
+                if (fwrite($input, $script) !== strlen($script) || ! rewind($input)) {
+                    throw new RuntimeException('Runtime worker input could not be prepared.');
+                }
+                $pending->startedAt = microtime(true);
+                $process = proc_open($command, [0 => $input, 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $context->rootPath);
+                if (! is_resource($process)) {
+                    throw new RuntimeException('Runtime worker unavailable.');
+                }
+                $pending->process = $process;
+                $pending->pipes = $pipes;
+                foreach ($pipes as $pipe) {
+                    stream_set_blocking($pipe, false);
+                }
+            } finally {
+                fclose($input);
+            }
             $pending->driver = $driver;
-            $bytes = 0;
-            $gate = $pending->outputGate = new WorkerOutputGate;
-            $process->start(static function (string $type, string $output) use (&$bytes, $gate): void {
-                if (! $gate->accepting) {
-                    return;
-                }
-                if (($bytes += strlen($output)) > 8_000_000) {
-                    throw new RuntimeException('Runtime route output exceeds its budget.');
-                }
-            });
         } catch (Throwable) {
             $pending->result = self::unavailable();
             $pending->stop();
@@ -109,18 +118,9 @@ final class RuntimeRouteMap
             return $this->result;
         }
         try {
-            $process = $this->process;
-            if ($process === null) {
-                throw new RuntimeException('Runtime worker unavailable.');
-            }
-            // Poll first, so independent checks taking longer than the runtime
-            // timeout do not mark an already completed registration read as failed.
-            if ($process->isRunning()) {
-                $process->wait();
-            }
-            $output = $process->getOutput();
+            [$output, $exitCode] = $this->readOutput();
             $marker = strrpos($output, 'ARCHITECTURE_KIT_ROUTES=');
-            if (! $process->isSuccessful() || $marker === false) {
+            if ($exitCode !== 0 || $marker === false) {
                 throw new RuntimeException('Application route bootstrap failed.');
             }
             $map = RouteMap::fromSnapshot(json_decode(substr($output, $marker + strlen('ARCHITECTURE_KIT_ROUTES=')), true, 64, JSON_THROW_ON_ERROR));
@@ -144,16 +144,66 @@ final class RuntimeRouteMap
         return new RouteMap(unavailable: $message, notices: [new AnalysisNotice('A_ROUTE_CONTEXT_UNAVAILABLE', 'runtime_routes_unavailable', 'routes', 1, $message)]);
     }
 
+    /** @return array{string, int} */
+    private function readOutput(): array
+    {
+        if (! is_resource($this->process)) {
+            throw new RuntimeException('Runtime worker unavailable.');
+        }
+        $output = '';
+        $bytes = 0;
+        $exitCode = -1;
+        do {
+            $status = proc_get_status($this->process);
+            if (! $status['running']) {
+                $exitCode = $status['exitcode'];
+            } elseif (microtime(true) - $this->startedAt > 30) {
+                throw new RuntimeException('Runtime route discovery timed out.');
+            }
+            $read = array_filter($this->pipes, static fn ($pipe): bool => ! feof($pipe));
+            if ($read !== []) {
+                $write = $except = [];
+                $ready = stream_select($read, $write, $except, 0, 10_000);
+                if ($ready === false) {
+                    throw new RuntimeException('Runtime worker output unavailable.');
+                }
+                if ($ready === 0 && microtime(true) - $this->startedAt > 30) {
+                    throw new RuntimeException('Runtime route discovery timed out.');
+                }
+                foreach ($read as $index => $pipe) {
+                    // Bound each read before accumulating it. Some process wrappers
+                    // drain a continuously writable pipe before invoking callbacks.
+                    $chunk = fread($pipe, 65536);
+                    if ($chunk === false || ($bytes += strlen($chunk)) > 8_000_000) {
+                        throw new RuntimeException('Runtime route output exceeds its budget.');
+                    }
+                    if ($index === 1) {
+                        $output .= $chunk;
+                    }
+                }
+            } elseif ($status['running']) {
+                usleep(1000);
+            }
+        } while ($status['running'] || array_filter($this->pipes, static fn ($pipe): bool => ! feof($pipe)) !== []);
+
+        return [$output, $exitCode];
+    }
+
     private function stop(): void
     {
-        if ($this->outputGate !== null) {
-            $this->outputGate->accepting = false;
-            $this->outputGate = null;
-        }
         $process = $this->process;
         $this->process = null;
+        foreach ($this->pipes as $pipe) {
+            fclose($pipe);
+        }
+        $this->pipes = [];
         try {
-            $process?->stop(0);
+            if (is_resource($process)) {
+                if (proc_get_status($process)['running']) {
+                    proc_terminate($process, 9);
+                }
+                proc_close($process);
+            }
         } catch (Throwable) {
             // Cleanup must not replace an unavailable result or throw on destruction.
         }

@@ -12,7 +12,6 @@ use GracjanKubicki\ArchitectureKit\Standalone\RuntimeRouteMap;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
-use Symfony\Component\Process\Process;
 
 final class RuntimeRouteMapTest extends TestCase
 {
@@ -113,19 +112,54 @@ final class RuntimeRouteMapTest extends TestCase
 
     public function test_continuous_oversized_output_returns_unavailable_and_stops_the_process(): void
     {
-        $this->docker('while (true) { echo str_repeat("x", 65536); }');
+        foreach (['echo str_repeat("x", 65536);', 'fwrite(STDERR, str_repeat("x", 65536));'] as $write) {
+            $this->docker('while (true) { '.$write.' }');
+            $pending = RuntimeRouteMap::start($this->context());
+            $process = (new ReflectionProperty(RuntimeRouteMap::class, 'process'))->getValue($pending);
+            self::assertIsResource($process);
+
+            $map = $pending->finish();
+
+            self::assertNotNull($map->unavailable);
+            self::assertNotEmpty($map->notices);
+            self::assertFalse(is_resource($process));
+            self::assertSame($map, $pending->finish());
+            unset($pending);
+            self::assertFalse(is_resource($process));
+        }
+    }
+
+    public function test_completed_registration_is_read_after_independent_work_outlasts_timeout(): void
+    {
+        $map = new RouteMap(entries: [new RouteEntry(['GET'], 'known', class: 'App\\Controller', method: 'index')]);
+        $this->docker('echo '.var_export('ARCHITECTURE_KIT_ROUTES='.json_encode($map->snapshot()), true).';');
         $pending = RuntimeRouteMap::start($this->context());
         $process = (new ReflectionProperty(RuntimeRouteMap::class, 'process'))->getValue($pending);
-        self::assertInstanceOf(Process::class, $process);
+        $deadline = microtime(true) + 5;
+        while (proc_get_status($process)['running'] && microtime(true) < $deadline) {
+            usleep(1000);
+        }
+        self::assertFalse(proc_get_status($process)['running']);
+        (new ReflectionProperty(RuntimeRouteMap::class, 'startedAt'))->setValue($pending, microtime(true) - 31);
 
-        $map = $pending->finish();
+        $result = $pending->finish();
 
-        self::assertNotNull($map->unavailable);
-        self::assertNotEmpty($map->notices);
-        self::assertFalse($process->isRunning());
-        self::assertSame($map, $pending->finish());
-        unset($pending);
-        self::assertFalse($process->isRunning());
+        self::assertNull($result->unavailable);
+        self::assertSame(['GET'], $result->verbs('App\\Controller', 'index'));
+    }
+
+    public function test_running_registration_past_timeout_stops_without_returning_a_partial_snapshot(): void
+    {
+        $this->docker('sleep(60);');
+        $pending = RuntimeRouteMap::start($this->context());
+        $process = (new ReflectionProperty(RuntimeRouteMap::class, 'process'))->getValue($pending);
+        self::assertTrue(proc_get_status($process)['running']);
+        (new ReflectionProperty(RuntimeRouteMap::class, 'startedAt'))->setValue($pending, microtime(true) - 31);
+
+        $result = $pending->finish();
+
+        self::assertNotNull($result->unavailable);
+        self::assertFalse(is_resource($process));
     }
 
     public function test_abandoning_pending_registration_stops_a_noisy_process_without_throwing(): void
@@ -133,12 +167,12 @@ final class RuntimeRouteMapTest extends TestCase
         $this->docker('while (true) { echo str_repeat("x", 65536); }');
         $pending = RuntimeRouteMap::start($this->context());
         $process = (new ReflectionProperty(RuntimeRouteMap::class, 'process'))->getValue($pending);
-        self::assertInstanceOf(Process::class, $process);
-        self::assertTrue($process->isRunning());
+        self::assertIsResource($process);
+        self::assertTrue(proc_get_status($process)['running']);
 
         unset($pending);
 
-        self::assertFalse($process->isRunning());
+        self::assertFalse(is_resource($process));
     }
 
     private function context(bool $enabled = true, string $driver = 'docker-compose'): RepositoryContext

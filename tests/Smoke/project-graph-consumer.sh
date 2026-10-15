@@ -28,6 +28,7 @@ $config = <<<'"'"'PHP'"'"'
 use GracjanKubicki\ArchitectureKit\Architecture;
 
 return [
+    "analysis" => ["engine" => "php"],
     "enabled" => [Architecture::ThinControllers, Architecture::Actions, Architecture::PortsAndAdapters],
 ];
 PHP;

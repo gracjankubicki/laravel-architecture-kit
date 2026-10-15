@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bound runtime-route stdout and stderr reads before buffering to prevent continuous application output from exhausting memory on Linux. Preserve explicit runtime opt-in, incomplete results, timeout and process cleanup.
+
 - Add interchangeable Mago/Rust and PHP analysis engines backed by a neutral syntax model across audits, catalogs, graph and impact queries, revisions, public API and AI task control. Default to Mago for existing and new configurations; require an explicit PHP choice instead of automatic fallback.
 - Derive analysis PHP versions from project settings and Composer, report engine and configuration origin through CLI and MCP, retain immutable task beginnings across engine changes, and include engine/source identities in analysis caches.
 - Block verification on syntax errors without baseline or inline suppression, retain analysis of other files, and distinguish unsupported valid syntax from project syntax errors. Preserve legacy PhpParser custom rules under explicit PHP and check portable-rule declarations before construction under Mago.
