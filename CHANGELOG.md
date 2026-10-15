@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.2 - 2026-10-15
+
+- Recognize native PHP reflection metadata for classes, properties, attributes and type descriptions in endpoint analysis on PHP and Mago. Preserve element types through array access, foreach and source helpers, and refine abstract reflection types with instanceof. Keep reflected execution, evaluated values, attribute argument evaluation and autoloading filters explicitly unresolved; preserve project overrides and argument effects.
+
 ## v0.9.1 - 2026-10-15
 
 - Read standalone runtime routes after source analysis so large snapshots cannot block on undrained process pipes or expire while source files are being analyzed. Preserve runtime opt-in, the 30 second registration timeout, bounded output and process cleanup.

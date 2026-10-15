@@ -69,6 +69,13 @@ final readonly class FrameworkSemantics
         if ($type === null || $method === '') {
             return FrameworkCallResult::unhandled();
         }
+        if ((Node::is($call, 'expression.method-call') || Node::is($call, 'expression.nullsafe-method-call'))
+            && ! $this->sources->inScope($type)) {
+            $reflection = ReflectionSemantics::describe($type, $method, $call);
+            if ($reflection->handled) {
+                return $reflection;
+            }
+        }
         if ($type === 'Illuminate\\Support\\Facades\\App' && in_array($method, ['runninginconsole', 'runningunittests', 'environment', 'isproduction', 'islocal'], true)) {
             return FrameworkCallResult::value(FrameworkValue::scalar());
         }

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Query;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContext;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkSemantics;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkValue;
+use GracjanKubicki\ArchitectureKit\Audit\Framework\ReflectionSemantics;
 
 /** Conservative, bounded interpretation of calls; never executes application PHP. */
 final class MethodAnalyzer
@@ -165,6 +167,55 @@ final class MethodAnalyzer
 
                 continue;
             }
+            if (Node::is($node, 'statement.foreach')) {
+                $iterable = $this->expression($node->expr, $source, $variables, $trace);
+                $branch = $variables;
+                // A later iteration can observe assignments from an earlier one.
+                // Forget carried facts before inspecting the body once, within the same budget.
+                foreach (Query::walk($node->stmts) as $child) {
+                    if (++$this->nodes > 20_000) {
+                        $this->unknown($source, $node, 'Foreach preparation node limit reached.', $trace, 'analysis_limit');
+
+                        return;
+                    }
+                    if (Node::is($child, 'statement.foreach')) {
+                        foreach ([$child->keyVar, $child->valueVar] as $binding) {
+                            if (Node::is($binding, 'expression.variable') && is_string($binding->name)) {
+                                $branch[$binding->name] = null;
+                            } elseif ($binding !== null) {
+                                $this->unknown($source, $binding, 'Nested foreach binding is unresolved.', $trace, 'unresolved_receiver');
+                            }
+                        }
+                    }
+                    if (Node::is($child, 'expression.assign') || Node::is($child, 'expression.assign-ref') || Node::is($child, 'expression.assign-op')) {
+                        if (Node::is($child->var, 'expression.variable') && is_string($child->var->name)) {
+                            $branch[$child->var->name] = null;
+                        }
+                    }
+                }
+                $element = $iterable?->type === '@array' && ! $iterable->isAmbiguous()
+                    ? ($iterable->element ?? FrameworkValue::merge(array_values($iterable->items))) : null;
+                if ($node->byRef) {
+                    $element = null;
+                    $this->unknown($source, $node, 'Foreach reference binding is unresolved.', $trace, 'unresolved_receiver');
+                }
+                foreach ([$node->keyVar, $node->valueVar] as $index => $variable) {
+                    if (Node::is($variable, 'expression.variable') && is_string($variable->name)) {
+                        $branch[$variable->name] = $index === 0 ? FrameworkValue::scalar() : $element;
+                    } elseif ($variable !== null) {
+                        $this->expression($variable, $source, $branch, $trace);
+                        $this->unknown($source, $variable, 'Foreach binding is unresolved.', $trace, 'unresolved_receiver');
+                    }
+                }
+                $returnCount = count($returns);
+                $this->walk($node->stmts, $source, $branch, $trace, $returns);
+                if (count($returns) > $returnCount) {
+                    $returns[] = null; // The iterable may be empty.
+                }
+                $this->mergeVariables($variables, [$variables, $branch]);
+
+                continue;
+            }
             if (Node::is($node, 'statement.return')) {
                 $value = $node->expr === null ? FrameworkValue::scalar() : $this->expression($node->expr, $source, $variables, $trace);
                 $this->followReturnedValue($value, $source, $node, $variables, $trace);
@@ -196,6 +247,8 @@ final class MethodAnalyzer
     /**
      * @param  array<string, FrameworkValue|null>  $variables
      * @param  list<string>  $trace
+     *
+     * @phpstan-impure
      */
     private function expression(Node $expr, SourceClass $source, array &$variables, array $trace): ?FrameworkValue
     {
@@ -828,6 +881,12 @@ final class MethodAnalyzer
             return $variables;
         }
         $class = $this->className($source, $condition->class);
+        if ($truth && ! $this->sources->inScope($class) && array_filter($value->typeNames(),
+            fn (string $type): bool => ! $this->sources->inScope($type) && ReflectionSemantics::refinesType($type, $class))) {
+            $variables[$name] = FrameworkValue::type($class);
+
+            return $variables;
+        }
         $matching = array_values(array_filter(
             $value->typeNames(),
             fn (string $type): bool => strcasecmp($type, $class) === 0 || $this->sources->isA($type, $class),
