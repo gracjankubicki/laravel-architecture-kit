@@ -106,7 +106,7 @@ final class ApplicationAudit
         array $cacheConfiguration = [],
         ?RouteMap $routes = null,
     ): ApplicationAuditResult {
-        $pendingRoutes = null;
+        $runtimeRouteContext = null;
         $sourceHash = null;
         $configurationHash = null;
         // Cache off disables persistence, not sharing facts already proven in this run.
@@ -125,7 +125,7 @@ final class ApplicationAudit
                 throw new RuntimeException('Custom PHP rules require --allow-execution; they are not silently skipped.');
             }
             if ($routes === null && $context->runtimeRoutes) {
-                $pendingRoutes = RuntimeRouteMap::start($context);
+                $runtimeRouteContext = $context;
             }
         }
 
@@ -149,7 +149,7 @@ final class ApplicationAudit
         $classification = new ProjectClassification($this->files, $this->basePath, $auditScope);
         $declaredClassification = $classification->roles->mappings->roles !== [] || $classification->roles->mappings->modules !== [] || $classification->roles->mappings->unknownLevel !== 'off';
         $sourceRoutes = RepositoryContext::forRoot($this->basePath)?->execute === false;
-        if ($declaredClassification && $routes === null && $pendingRoutes === null && ! $sourceRoutes) {
+        if ($declaredClassification && $routes === null && $runtimeRouteContext === null && ! $sourceRoutes) {
             $routes = new RouteMap(unavailable: 'Declared classification analysis does not boot the application. Supply an explicit RouteMap for endpoint read analysis.');
         }
         $rules = array_merge(BuiltInRules::all($this->files, $this->basePath, $enabled, $classification, $facts), $customAuditRules);
@@ -262,8 +262,10 @@ final class ApplicationAudit
         // check its budget on the path where the whole graph arrives at once.
         $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
 
-        $routes ??= $pendingRoutes?->finish();
-        unset($pendingRoutes);
+        // Start only when we can drain output immediately. During source analysis
+        // a large snapshot can fill the pipe and consume the child's 30s budget.
+        $routes ??= $runtimeRouteContext === null ? null : RuntimeRouteMap::fresh($runtimeRouteContext);
+        unset($runtimeRouteContext);
         // Snapshot decoding leaves temporary arrays alongside the retained graph.
         // Release their allocator pages before deciding whether workers fit.
         gc_mem_caches();

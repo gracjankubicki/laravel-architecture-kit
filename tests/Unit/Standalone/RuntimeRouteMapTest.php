@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Standalone;
 
+use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteEntry;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
+use GracjanKubicki\ArchitectureKit\Standalone\Host;
 use GracjanKubicki\ArchitectureKit\Standalone\Projects;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Standalone\RuntimeRouteMap;
+use GracjanKubicki\ArchitectureKit\Tests\Support\EngineFixture;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
@@ -110,6 +114,39 @@ final class RuntimeRouteMapTest extends TestCase
         self::assertFileDoesNotExist($this->directory.'/arguments');
     }
 
+    public function test_long_source_analysis_does_not_expire_a_large_runtime_route_snapshot(): void
+    {
+        file_put_contents($this->directory.'/repo/composer.json', '{"require":{"php":"^8.3"}}');
+        mkdir($this->directory.'/repo/app/Http/Controllers', 0700, true);
+        file_put_contents($this->directory.'/repo/app/Http/Controllers/InvoiceController.php', '<?php namespace App\\Http\\Controllers; final class InvoiceController { public function index(): string { return "ok"; } }');
+        $map = new RouteMap(entries: [new RouteEntry(['GET'], 'known', class: 'App\\Http\\Controllers\\InvoiceController', method: 'index')]);
+        // Larger than the pipe buffer: the child cannot finish until its parent reads.
+        $this->docker('echo str_repeat(" ", 1_000_000); echo '.var_export('ARCHITECTURE_KIT_ROUTES='.json_encode($map->snapshot()), true).';');
+        $context = $this->context();
+        if (EngineFixture::selected() === 'mago') {
+            EngineFixture::install($context->home);
+        }
+        Host::create($context->home);
+        RepositoryContext::activate($context);
+        $paused = false;
+        try {
+            $result = (new ApplicationAudit(new Filesystem, $context->rootPath, onParse: static function () use (&$paused): void {
+                if (! $paused) {
+                    $paused = true;
+                    // Exercise the real 30s deadline, without changing the worker clock.
+                    usleep(31_000_000);
+                }
+            }))->run([Architecture::ThinControllers], changedOnly: false, useBaseline: false);
+        } finally {
+            RepositoryContext::activate(null);
+        }
+
+        self::assertTrue($paused);
+        self::assertSame('complete', $result->analysisStatus);
+        self::assertSame([], $result->notices);
+        self::assertSame([], $result->findings);
+    }
+
     public function test_continuous_oversized_output_returns_unavailable_and_stops_the_process(): void
     {
         foreach (['echo str_repeat("x", 65536);', 'fwrite(STDERR, str_repeat("x", 65536));'] as $write) {
@@ -178,7 +215,7 @@ final class RuntimeRouteMapTest extends TestCase
     private function context(bool $enabled = true, string $driver = 'docker-compose'): RepositoryContext
     {
         $registration = (new Projects($this->directory.'/home'))->register($this->directory.'/repo', ['actions']);
-        file_put_contents($registration['config'], json_encode(['enabled' => ['actions'], 'runtime' => ['routes' => ['driver' => $driver]]]));
+        file_put_contents($registration['config'], json_encode(['enabled' => ['actions'], 'analysis' => ['engine' => EngineFixture::selected()], 'runtime' => ['routes' => ['driver' => $driver]]]));
 
         return new RepositoryContext(realpath($this->directory.'/repo'), $this->directory.'/home', runtimeRoutes: $enabled);
     }

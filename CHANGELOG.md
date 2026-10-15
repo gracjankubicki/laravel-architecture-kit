@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.1 - 2026-10-15
+
+- Read standalone runtime routes after source analysis so large snapshots cannot block on undrained process pipes or expire while source files are being analyzed. Preserve runtime opt-in, the 30 second registration timeout, bounded output and process cleanup.
+
 ## v0.9.0 - 2026-10-15
 
 - Bound runtime-route stdout and stderr reads before buffering to prevent continuous application output from exhausting memory on Linux. Preserve explicit runtime opt-in, incomplete results, timeout and process cleanup.
