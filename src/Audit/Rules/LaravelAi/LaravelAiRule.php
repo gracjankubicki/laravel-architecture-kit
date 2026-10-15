@@ -5,24 +5,27 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\LaravelAi;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\AnalysisFactsCache;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class LaravelAiRule implements AuditRule
+final readonly class LaravelAiRule implements PortableAuditRule
 {
+    private AiRelationshipCache $relationships;
+
     public function __construct(
         private Filesystem $files = new Filesystem,
         private ?string $basePath = null,
-    ) {}
+        ?AnalysisFactsCache $facts = null,
+    ) {
+        $this->relationships = new AiRelationshipCache($facts);
+    }
 
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -37,14 +40,14 @@ final readonly class LaravelAiRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
         }
 
         $findings = [];
-        $symbols = new AiSymbolResolver($this->files, $this->basePath);
+        $symbols = new AiSymbolResolver($this->files, $this->basePath, relationships: $this->relationships);
         $calls = (new AiCallAnalyzer($symbols))->analyse($file, $nodes);
         $confirmedCalls = array_values(array_filter($calls, static fn (AiCallMatch $call): bool => $call->confirmed));
 
@@ -180,7 +183,7 @@ final readonly class LaravelAiRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof StaticCall || ! $node->class instanceof Name || ! $node->name instanceof Node\Identifier) {
+                if (! Node::is($node, 'expression.static-call') || ! Node::is($node->class, 'name') || ! Node::is($node->name, 'identifier')) {
                     return null;
                 }
 
@@ -233,12 +236,12 @@ final readonly class LaravelAiRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Node\Expr\New_ || ! $node->class instanceof Stmt\Class_) {
+                if (! Node::is($node, 'expression.new') || ! Node::is($node->class, 'statement.class')) {
                     return null;
                 }
 
                 foreach ($node->class->implements as $implements) {
-                    if ($implements instanceof Name && $this->symbols->isTool($this->file->resolvedName($implements), $this->file)) {
+                    if (Node::is($implements, 'name') && $this->symbols->isTool($this->file->resolvedName($implements), $this->file)) {
                         $this->state->lines[] = $node->getStartLine();
                     }
                 }
@@ -276,7 +279,7 @@ final readonly class LaravelAiRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    ! $node instanceof Stmt\ClassMethod
+                    ! Node::is($node, 'statement.class-method')
                     || $node->name->toString() !== 'runAgent'
                     || count($node->params) !== 2
                     || $node->params[0]->var->name !== 'agent'
@@ -333,10 +336,10 @@ final readonly class LaravelAiRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof Node\Expr\New_
-                    && $node->class instanceof Name
-                    && $this->symbols->isAgent($this->file->resolvedName($node->class), $this->file)
+                    Node::is($node, 'expression.new')
+                    && Node::is($node->class, 'name')
                     && str_ends_with($this->file->resolvedName($node->class), '\\StructuredGatewayAgent')
+                    && $this->symbols->isAgent($this->file->resolvedName($node->class), $this->file)
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }
@@ -363,9 +366,9 @@ final readonly class LaravelAiRule implements AuditRule
 
             foreach ($match->call->args as $arg) {
                 if (
-                    $arg->name instanceof Node\Identifier
+                    Node::is($arg->name, 'identifier')
                     && in_array($arg->name->toString(), ['provider', 'model'], true)
-                    && $arg->value instanceof Node\Scalar\String_
+                    && Node::is($arg->value, 'scalar.string')
                 ) {
                     $lines[] = $match->line();
 
@@ -390,15 +393,15 @@ final readonly class LaravelAiRule implements AuditRule
             return [$type];
         }
 
-        if ($type instanceof Name || $type instanceof Node\Identifier) {
+        if (Node::is($type, 'name') || Node::is($type, 'identifier')) {
             return [$type->toString()];
         }
 
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->typeNames($type->type);
         }
 
-        if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+        if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
             $names = [];
 
             foreach ($type->types as $innerType) {

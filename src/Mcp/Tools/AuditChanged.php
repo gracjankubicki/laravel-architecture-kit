@@ -53,12 +53,19 @@ class AuditChanged extends Tool
             );
             $strict = $request->get('strict', false);
 
-            return Response::structured($agent->audit(
+            $payload = $agent->audit(
                 result: $audit,
                 ok: $audit->errors() === 0 && (! $strict || $audit->warnings() === 0),
                 limit: $agent->limit($request->get('limit', 20)),
                 full: $request->get('full', false),
-            ));
+            );
+            // The SDK serializes text and structured content for compatibility.
+            // Release the audit objects and parser allocator pages first.
+            unset($audit);
+            gc_collect_cycles();
+            gc_mem_caches();
+
+            return Response::structured($payload);
         } catch (Throwable $exception) {
             return Response::structured($agent->error('audit', $exception->getMessage()));
         }

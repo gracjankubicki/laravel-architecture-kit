@@ -43,6 +43,11 @@ final class InlineIgnores
         $remaining = [];
 
         foreach ($findings as $finding) {
+            if ($finding->rule === 'unparseable-file') {
+                $remaining[] = $finding;
+
+                continue;
+            }
             $inlineMatches = array_values(array_unique(array_merge(
                 $inline[$finding->line] ?? [],
                 $inline[$finding->line - 1] ?? [],

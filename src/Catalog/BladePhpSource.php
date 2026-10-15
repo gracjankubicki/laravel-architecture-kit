@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\SourceMap;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
 
 /** Piecewise byte mapping keeps copied expressions at their original source positions. */
 final class BladePhpSource
@@ -39,31 +39,15 @@ final class BladePhpSource
         if ($this->source === $file->contents) {
             return $file;
         }
-        $parsed = new FileContext($file->path, $this->source);
-        $nodes = $parsed->ast();
+        $parsed = $file->withContents($this->source);
+        $nodes = $parsed->syntax();
         if ($nodes === null) {
             return $parsed;
         }
-        $pending = $nodes;
-        while ($pending !== []) {
-            $node = array_pop($pending);
-            foreach (['startFilePos', 'endFilePos'] as $key) {
-                $position = $node->getAttribute($key);
-                if (is_int($position) && $position >= 0) {
-                    $node->setAttribute($key, $this->original($position));
-                }
-            }
-            // Every replacement preserves newlines, so parser line numbers already match the input.
-            foreach ($node->getSubNodeNames() as $key) {
-                foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                    if ($child instanceof Node) {
-                        $pending[] = $child;
-                    }
-                }
-            }
-        }
+        $map = new SourceMap($file->analysisDocument()->source, $this->original(...));
+        $nodes = array_map($map->node(...), $nodes);
 
-        return $file->withAst($nodes);
+        return $file->withSyntax($nodes);
     }
 
     private function html(string $text, int $base): void

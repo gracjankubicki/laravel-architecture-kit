@@ -4,17 +4,16 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Text as Standard;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Stmt;
-use PhpParser\PrettyPrinter\Standard;
 
 /** Serializable declaration facts and a parser that never evaluates a proposal. */
 final class MethodSignature
 {
     /** @return array<string, mixed> */
-    public static function extract(Stmt\ClassMethod $method, string $class = '', ?string $parent = null): array
+    public static function extract(Node $method, string $class = '', ?string $parent = null): array
     {
         $printer = new Standard;
         $params = [];
@@ -50,8 +49,8 @@ final class MethodSignature
         }
         $file = new FileContext('(proposal)', '<?php class SignatureProposal { '.$proposal.' {} }');
         try {
-            $nodes = $file->ast();
-            if (count($nodes ?? []) !== 1 || ! $nodes[0] instanceof Stmt\Class_ || count($nodes[0]->stmts) !== 1 || ! $nodes[0]->stmts[0] instanceof Stmt\ClassMethod) {
+            $nodes = $file->syntax();
+            if (count($nodes ?? []) !== 1 || ! Node::is($nodes[0], 'statement.class') || count($nodes[0]->stmts) !== 1 || ! Node::is($nodes[0]->stmts[0], 'statement.class-method')) {
                 throw new InvalidArgumentException('Proposal must contain one method declaration without a body.');
             }
             $method = $nodes[0]->stmts[0];
@@ -75,27 +74,27 @@ final class MethodSignature
         }
     }
 
-    private static function type(Node|string|null $type, string $class, ?string $parent): ?string
+    public static function type(Node|string|null $type, string $class, ?string $parent): ?string
     {
         if ($type === null) {
             return null;
         }
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return '?'.self::type($type->type, $class, $parent);
         }
-        if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+        if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
             $parts = array_map(static fn (Node $part): string => self::type($part, $class, $parent) ?? '', $type->types);
             sort($parts);
 
-            return '('.implode($type instanceof Node\UnionType ? '|' : '&', $parts).')';
+            return '('.implode(Node::is($type, 'union-type') ? '|' : '&', $parts).')';
         }
-        if ($type instanceof Node\Name) {
+        if (Node::is($type, 'name')) {
             $resolved = $type->getAttribute('resolvedName');
 
             return match (strtolower($type->toString())) {
                 'self' => strtolower($class), 'parent' => strtolower($parent ?? '@unknown-parent'),
                 'static' => '@static:'.strtolower($class),
-                default => strtolower(($resolved instanceof Node\Name ? $resolved : $type)->toString()),
+                default => strtolower((Node::is($resolved, 'name') ? $resolved : $type)->toString()),
             };
         }
 
@@ -135,13 +134,13 @@ final class MethodSignature
     }
 
     /** @return array<string, mixed> */
-    public static function site(Node\Expr\CallLike $call, string $class, bool $staticContext): array
+    public static function site(Node $call, string $class, bool $staticContext): array
     {
-        $form = $call instanceof Node\Expr\New_ ? 'new' : ($call instanceof Node\Expr\StaticCall ? ($call->class instanceof Node\Name && in_array(strtolower($call->class->toString()), ['self', 'parent', 'static'], true) ? strtolower($call->class->toString()) : 'class') : 'instance');
+        $form = Node::is($call, 'expression.new') ? 'new' : (Node::is($call, 'expression.static-call') ? (Node::is($call->class, 'name') && in_array(strtolower($call->class->toString()), ['self', 'parent', 'static'], true) ? strtolower($call->class->toString()) : 'class') : 'instance');
         $arguments = [];
         foreach ($call->isFirstClassCallable() ? [] : $call->getArgs() as $arg) {
             $value = $arg->value;
-            $ref = $value instanceof Node\Expr\Variable || $value instanceof Node\Expr\PropertyFetch || $value instanceof Node\Expr\StaticPropertyFetch || $value instanceof Node\Expr\ArrayDimFetch ? 'variable' : ($value instanceof Node\Expr\CallLike && ! $value instanceof Node\Expr\New_ ? 'unknown' : 'value');
+            $ref = Node::is($value, 'expression.variable') || Node::is($value, 'expression.property-fetch') || Node::is($value, 'expression.static-property-fetch') || Node::is($value, 'expression.array-dim-fetch') ? 'variable' : (Node::is($value, 'expression.call-like') && ! Node::is($value, 'expression.new') ? 'unknown' : 'value');
             $arguments[] = ['name' => $arg->name?->toString(), 'unpack' => $arg->unpack, 'reference' => $ref];
         }
 

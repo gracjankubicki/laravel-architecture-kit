@@ -4,78 +4,51 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Ast;
 
-use PhpParser\Error;
-use PhpParser\Node;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitor;
-use PhpParser\NodeVisitorAbstract;
-use PhpParser\ParserFactory;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Query;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Traverser;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor;
+use RuntimeException;
 
 final class PhpAst
 {
-    /**
-     * @return array<int, Node>|null
-     */
+    /** @return list<Node>|null */
     public static function parse(string $contents): ?array
     {
-        try {
-            return (new ParserFactory)->createForHostVersion()->parse($contents);
-        } catch (Error) {
-            return null;
+        $document = AnalysisRuntime::session()->analyze('(source)', $contents);
+        foreach ($document->diagnostics as $diagnostic) {
+            if ($diagnostic['category'] !== 'syntax_error') {
+                throw new RuntimeException($diagnostic['message']);
+            }
         }
+
+        return $document->complete() ? $document->syntax : null;
     }
 
-    /**
-     * @param  array<int, Node>  $nodes
-     */
-    public static function traverse(array $nodes, NodeVisitor $visitor): void
+    /** @param list<Node> $nodes
+     * @return list<Node> */
+    public static function traverse(array $nodes, Visitor $visitor): array
     {
-        $traverser = new NodeTraverser;
-        $traverser->addVisitor($visitor);
-        $traverser->traverse($nodes);
+        return (new Traverser($visitor))->traverse($nodes);
     }
 
-    /**
-     * @param  callable(Node): bool  $predicate
-     */
+    /** @param callable(Node): bool $predicate */
     public static function contains(Node $node, callable $predicate): bool
     {
         return self::containsAny([$node], $predicate);
     }
 
-    /**
-     * @param  array<int, Node>  $nodes
-     * @param  callable(Node): bool  $predicate
-     */
+    /** @param list<Node> $nodes
+     * @param callable(Node): bool $predicate */
     public static function containsAny(array $nodes, callable $predicate): bool
     {
-        $state = new class
-        {
-            public bool $found = false;
-        };
-
-        self::traverse($nodes, new class($predicate, $state) extends NodeVisitorAbstract
-        {
-            /**
-             * @param  callable(Node): bool  $predicate
-             */
-            public function __construct(
-                private $predicate,
-                private object $state,
-            ) {}
-
-            public function enterNode(Node $node): ?int
-            {
-                if (($this->predicate)($node)) {
-                    $this->state->found = true;
-
-                    return NodeTraverser::STOP_TRAVERSAL;
-                }
-
-                return null;
+        foreach (Query::walk($nodes) as $node) {
+            if ($predicate($node)) {
+                return true;
             }
-        });
+        }
 
-        return $state->found;
+        return false;
     }
 }

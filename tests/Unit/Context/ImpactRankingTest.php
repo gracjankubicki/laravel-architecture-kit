@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Context;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Query;
+use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\DependencyEdge;
 use GracjanKubicki\ArchitectureKit\Context\ImpactRanking;
 use PHPUnit\Framework\TestCase;
@@ -111,9 +114,15 @@ final class ImpactRankingTest extends TestCase
         );
         $kinds = [];
 
-        foreach (["/addName\([^;]*?'([a-z][a-z-]*)',\s*(?:true|false)\)/s", "/addType\([^;]*?'([a-z][a-z-]*)'\)/s"] as $pattern) {
-            preg_match_all($pattern, $source, $matches);
-            array_push($kinds, ...$matches[1]);
+        $nodes = (new FileContext('builder.php', $source))->syntax();
+        foreach (Query::ofKind($nodes, 'expression.method-call') as $call) {
+            if (! in_array($call->name->toString(), ['addName', 'addType'], true)) {
+                continue;
+            }
+            $kind = $call->args[5]->value ?? null;
+            if (Node::is($kind, 'scalar.string')) {
+                $kinds[] = $kind->value;
+            }
         }
 
         $kinds = array_values(array_unique($kinds));

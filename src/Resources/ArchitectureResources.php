@@ -6,6 +6,9 @@ namespace GracjanKubicki\ArchitectureKit\Resources;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
 use GracjanKubicki\ArchitectureKit\EnabledArchitecture;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
 use GracjanKubicki\ArchitectureKit\Mcp\ToolGuidance;
@@ -60,7 +63,7 @@ final class ArchitectureResources
         return GeneratedResourceMarker::top(implode("\n\n", [
             '## Architecture Kit',
             $this->globalRules(),
-            ToolGuidance::SERVER_INSTRUCTIONS,
+            $this->packageContents(ToolGuidance::SERVER_INSTRUCTIONS),
             $this->packageFirstRule(),
             $this->testabilityRule(),
             $this->behaviouralTestGuidance(),
@@ -81,6 +84,7 @@ final class ArchitectureResources
             '## '.$architecture->label(),
             'Status: '.(in_array($architecture->slug(), $this->enabledSlugs($enabled), true) ? 'enabled globally.' : 'available, not enabled globally.'),
             'Skill: `'.$architecture->skillName().'`',
+            'Placement: '.$this->placementCell($architecture).'. Follow explicit role mappings and existing project conventions.',
             trim($this->sourceContents($architecture, 'guideline', $enabled)),
             $this->behaviouralTestGuidance(),
         ]);
@@ -133,6 +137,9 @@ final class ArchitectureResources
     public function guidelineSource(EnabledArchitecture|Architecture|string $architecture): string
     {
         $architecture = $this->enabledArchitecture($architecture);
+        if (($source = $this->phpPackageSource($architecture, 'guideline.md')) !== null) {
+            return $source;
+        }
 
         if ($architecture->value === Architecture::LaravelAi) {
             return $this->laravelAiSource('guideline');
@@ -144,6 +151,9 @@ final class ArchitectureResources
     public function skillSource(EnabledArchitecture|Architecture|string $architecture): string
     {
         $architecture = $this->enabledArchitecture($architecture);
+        if (($source = $this->phpPackageSource($architecture, 'SKILL.md')) !== null) {
+            return $source;
+        }
 
         if ($architecture->value === Architecture::LaravelAi) {
             return $this->laravelAiSource('skill');
@@ -155,6 +165,9 @@ final class ArchitectureResources
     public function summarySource(EnabledArchitecture|Architecture|string $architecture): string
     {
         $architecture = $this->enabledArchitecture($architecture);
+        if (($source = $this->phpPackageSource($architecture, 'summary.md')) !== null) {
+            return $source;
+        }
 
         if ($architecture->value === Architecture::LaravelAi) {
             return $this->laravelAiSource('summary');
@@ -258,6 +271,7 @@ final class ArchitectureResources
                 '### '.$architecture->label(),
                 'Status: enabled globally.',
                 'Skill: `'.$architecture->skillName().'`',
+                'Placement: '.$this->placementCell($architecture).'. Follow explicit role mappings and existing project conventions.',
                 $guideline,
             ]);
         }
@@ -267,12 +281,12 @@ final class ArchitectureResources
 
     private function compactIntro(): string
     {
-        return ToolGuidance::COMPACT_INSTRUCTIONS;
+        return $this->packageContents(ToolGuidance::COMPACT_INSTRUCTIONS);
     }
 
     private function globalRules(): string
     {
-        return <<<'MARKDOWN'
+        return $this->packageContents(<<<'MARKDOWN'
 This project MUST follow the enabled Architecture Kit patterns globally.
 
 Project classification and organization proposals:
@@ -304,7 +318,7 @@ Architecture folder purity:
 - `app/Http/Resources/**` contains API Resources and Resource Collections only.
 - `app/Exceptions/**` contains Exceptions only.
 - If the project uses domain-first structure, keep the same purity under the domain folder, for example `app/Documents/Actions`, `app/Documents/Data`, `app/Documents/Enums`, and `app/Documents/Exceptions`.
-MARKDOWN;
+MARKDOWN);
     }
 
     private function behaviouralTestGuidance(): string
@@ -399,7 +413,15 @@ MARKDOWN;
 
     private function placementCell(EnabledArchitecture $architecture): string
     {
-        $placement = $architecture->defaultPlacement();
+        try {
+            $placement = $architecture->defaultPlacement();
+        } catch (\InvalidArgumentException $error) {
+            if (! str_contains($error->getMessage(), 'placement is ambiguous')) {
+                throw $error;
+            }
+
+            return 'Select `placements.'.$architecture->slug().'.path` and `.namespace`';
+        }
 
         return $placement === null ? '—' : '`'.$placement.'`';
     }
@@ -419,7 +441,7 @@ MARKDOWN;
 
     private function beforeFinishing(): string
     {
-        return ToolGuidance::BEFORE_FINISHING;
+        return $this->packageContents(ToolGuidance::BEFORE_FINISHING);
     }
 
     /**
@@ -437,7 +459,7 @@ MARKDOWN;
             Architecture::FormRequests->value => 'FormRequest',
             Architecture::DataObjects->value => 'Data Object',
             Architecture::Actions->value => 'Action',
-            Architecture::ValueObjects->value => 'Eloquent/Value Objects',
+            Architecture::ValueObjects->value => ProjectLayout::read($this->projectPath)->usesLaravel() ? 'Eloquent/Value Objects' : 'Value Objects',
             Architecture::ApiResources->value => 'API Resource',
         ], $enabledValues);
 
@@ -544,6 +566,9 @@ MARKDOWN;
 
     private function profiledContents(EnabledArchitecture $architecture, string $kind, string $contents): string
     {
+        if ($architecture->value instanceof Architecture) {
+            $contents = $this->packageContents($contents);
+        }
         if ($architecture->value !== Architecture::LaravelAi || $kind === 'summary' || $this->laravelAi?->profile === null) {
             return $contents;
         }
@@ -570,6 +595,28 @@ MARKDOWN;
         $frontmatterEnd = $end + 4;
 
         return substr($contents, 0, $frontmatterEnd)."\n\n{$provenance}\n\n".ltrim(substr($contents, $frontmatterEnd));
+    }
+
+    private function phpPackageSource(EnabledArchitecture $architecture, string $filename): ?string
+    {
+        $layout = ProjectLayout::read($this->projectPath);
+        if (! $layout->isPackage() || $layout->usesLaravel() || ! $architecture->value instanceof Architecture) {
+            return null;
+        }
+        $path = $this->packagePath.'/resources/profiles/php/'.$architecture->slug().'/'.$filename;
+
+        return $this->files->isFile($path) ? $path : null;
+    }
+
+    private function packageContents(string $contents): string
+    {
+        $layout = ProjectLayout::read($this->projectPath);
+        if (! $layout->isPackage()) {
+            return $contents;
+        }
+        $settings = (new ArchitectureConfig(ArchitectureConfigPath::resolve($this->files, $this->projectPath), $this->files, $this->catalog))->projectSettings();
+
+        return (new PackageGuidance($layout, $settings))->rewrite($contents);
     }
 
     /**

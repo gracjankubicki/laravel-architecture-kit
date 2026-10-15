@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Derived;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Local scope evidence retains query shape, never predicates or argument values. */
 final class CatalogQueryScopes
@@ -19,7 +18,7 @@ final class CatalogQueryScopes
     public static function extract(FileContext $file): array
     {
         $result = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassMethod::class) as $method) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-method') as $method) {
             $name = strtolower($method->name->toString());
             $style = str_starts_with($name, 'scope') && strlen($name) > 5 ? 'legacy' : null;
             foreach ($method->attrGroups as $group) {
@@ -33,39 +32,39 @@ final class CatalogQueryScopes
                 continue;
             }
             $first = $method->params[0]->var ?? null;
-            $valid = $first instanceof Expr\Variable && is_string($first->name) && self::preservesQuery($method, $first->name, expression: true);
+            $valid = Node::is($first, 'expression.variable') && is_string($first->name) && self::preservesQuery($method, $first->name, expression: true);
             $result[max(0, $method->getStartFilePos())] = ['style' => $style, 'preserves_query' => $valid];
         }
 
         return $result;
     }
 
-    public static function preservesQuery(Stmt\ClassMethod|Expr\Closure|Expr\ArrowFunction $method, string $variable, bool $expression = false): bool
+    public static function preservesQuery(Node $method, string $variable, bool $expression = false): bool
     {
-        $body = $method instanceof Expr\ArrowFunction ? [new Stmt\Return_($method->expr)] : ($method->stmts ?? []);
-        $value = count($body) === 1 && ($body[0] instanceof Stmt\Return_ || $expression && $body[0] instanceof Stmt\Expression) ? $body[0]->expr : null;
+        $body = Node::is($method, 'expression.arrow-function') ? [Derived::returnValue($method->expr)] : ($method->stmts ?? []);
+        $value = count($body) === 1 && (Node::is($body[0], 'statement.return') || $expression && Node::is($body[0], 'statement.expression')) ? $body[0]->expr : null;
         $steps = 0;
-        while ($value instanceof Expr\MethodCall) {
-            if (++$steps > 64 || ! $value->name instanceof Node\Identifier || $value->isFirstClassCallable()
+        while (Node::is($value, 'expression.method-call')) {
+            if (++$steps > 64 || ! Node::is($value->name, 'identifier') || $value->isFirstClassCallable()
                 || ! in_array(strtolower($value->name->toString()), self::CONSTRAINTS, true)) {
                 return false;
             }
             foreach ($value->getArgs() as $argument) {
-                if ($argument->unpack || $argument->value instanceof Expr\Closure || $argument->value instanceof Expr\ArrowFunction) {
+                if ($argument->unpack || Node::is($argument->value, 'expression.closure') || Node::is($argument->value, 'expression.arrow-function')) {
                     return false;
                 }
             }
             $value = $value->var;
         }
 
-        return $value instanceof Expr\Variable && $value->name === $variable;
+        return Node::is($value, 'expression.variable') && $value->name === $variable;
     }
 
     /** @return array<int, bool> */
     public static function builderMethods(FileContext $file): array
     {
         $result = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassMethod::class) as $method) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-method') as $method) {
             $result[max(0, $method->getStartFilePos())] = self::preservesQuery($method, 'this');
         }
 
@@ -76,9 +75,9 @@ final class CatalogQueryScopes
     public static function scopeMethods(FileContext $file): array
     {
         $result = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassMethod::class) as $method) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-method') as $method) {
             $first = $method->params[0]->var ?? null;
-            $result[max(0, $method->getStartFilePos())] = $first instanceof Expr\Variable && is_string($first->name) && self::preservesQuery($method, $first->name, expression: true);
+            $result[max(0, $method->getStartFilePos())] = Node::is($first, 'expression.variable') && is_string($first->name) && self::preservesQuery($method, $first->name, expression: true);
         }
 
         return $result;

@@ -217,7 +217,7 @@ PHP);
     /** @param array<string, string> $extra */
     private function contracts(string $source, array $extra = []): FrameworkContracts
     {
-        $files = ['composer.json' => '{"autoload":{"classmap":["src"]}}', 'src/Api.php' => $source, ...$extra];
+        $files = ['composer.json' => '{"require":{"php":"^8.5"},"autoload":{"classmap":["src"]}}', 'src/Api.php' => $source, ...$extra];
         $snapshot = new SourceSnapshot('git', 'abc', 'hash', $files, [], array_keys($files));
         $surface = new AutoloadSurface($snapshot);
 

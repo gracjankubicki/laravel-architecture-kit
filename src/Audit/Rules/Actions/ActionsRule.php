@@ -5,18 +5,16 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Actions;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class ActionsRule implements AuditRule
+final readonly class ActionsRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -34,7 +32,7 @@ final readonly class ActionsRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -73,7 +71,7 @@ final readonly class ActionsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\UseUse) {
+                if (! Node::is($node, 'use-item')) {
                     return null;
                 }
 
@@ -134,7 +132,7 @@ final readonly class ActionsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\ClassMethod || $node->name->toString() !== 'handle') {
+                if (! Node::is($node, 'statement.class-method') || $node->name->toString() !== 'handle') {
                     return null;
                 }
 
@@ -196,15 +194,15 @@ final readonly class ActionsRule implements AuditRule
             return [$type];
         }
 
-        if ($type instanceof Name || $type instanceof Node\Identifier) {
+        if (Node::is($type, 'name') || Node::is($type, 'identifier')) {
             return [$type->toString()];
         }
 
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->typeNames($type->type);
         }
 
-        if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+        if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
             $names = [];
 
             foreach ($type->types as $innerType) {

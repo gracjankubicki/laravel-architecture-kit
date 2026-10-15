@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContext;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkSemantics;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkValue;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
 
 /** Conservative, bounded interpretation of calls; never executes application PHP. */
 final class MethodAnalyzer
@@ -144,10 +141,10 @@ final class MethodAnalyzer
 
                 return;
             }
-            if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\Function_) {
+            if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.function')) {
                 continue;
             }
-            if ($node instanceof Stmt\If_) {
+            if (Node::is($node, 'statement.if')) {
                 $this->expression($node->cond, $source, $variables, $trace);
                 $branches = [];
                 $branch = $this->narrow($variables, $node->cond, true, $source);
@@ -168,15 +165,15 @@ final class MethodAnalyzer
 
                 continue;
             }
-            if ($node instanceof Stmt\Return_) {
+            if (Node::is($node, 'statement.return')) {
                 $value = $node->expr === null ? FrameworkValue::scalar() : $this->expression($node->expr, $source, $variables, $trace);
                 $this->followReturnedValue($value, $source, $node, $variables, $trace);
                 $returns[] = $value;
 
                 return;
-            } elseif ($node instanceof Expr) {
+            } elseif (Node::is($node, 'expression')) {
                 $this->expression($node, $source, $variables, $trace);
-            } elseif ($node instanceof Stmt\Expression) {
+            } elseif (Node::is($node, 'statement.expression')) {
                 $this->expression($node->expr, $source, $variables, $trace);
             } else {
                 // Inspect every branch but do not let a conditional assignment become
@@ -184,7 +181,7 @@ final class MethodAnalyzer
                 $branch = $variables;
                 foreach ($node->getSubNodeNames() as $name) {
                     $child = $node->$name;
-                    $children = $child instanceof Node ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($n) => $n instanceof Node)) : []);
+                    $children = Node::is($child, 'node') ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($n) => Node::is($n, 'node'))) : []);
                     $this->walk($children, $source, $branch, $trace, $returns);
                 }
                 foreach (array_unique([...array_keys($variables), ...array_keys($branch)]) as $name) {
@@ -200,20 +197,20 @@ final class MethodAnalyzer
      * @param  array<string, FrameworkValue|null>  $variables
      * @param  list<string>  $trace
      */
-    private function expression(Expr $expr, SourceClass $source, array &$variables, array $trace): ?FrameworkValue
+    private function expression(Node $expr, SourceClass $source, array &$variables, array $trace): ?FrameworkValue
     {
         if (++$this->nodes > 20_000) {
             $this->result->add('unknown', $source, $expr->getStartLine(), 'AST node limit reached.', $trace, 'analysis_limit');
 
             return null;
         }
-        if ($expr instanceof Expr\Variable) {
+        if (Node::is($expr, 'expression.variable')) {
             return is_string($expr->name) ? ($variables[$expr->name] ?? null) : null;
         }
-        if ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction) {
+        if (Node::is($expr, 'expression.closure') || Node::is($expr, 'expression.arrow-function')) {
             return FrameworkValue::callback($source, $expr, $variables);
         }
-        if ($expr instanceof Expr\Ternary) {
+        if (Node::is($expr, 'expression.ternary')) {
             $condition = $this->expression($expr->cond, $source, $variables, $trace);
             $yes = $this->narrow($variables, $expr->cond, true, $source);
             $no = $this->narrow($variables, $expr->cond, false, $source);
@@ -223,15 +220,15 @@ final class MethodAnalyzer
 
             return FrameworkValue::merge([$left, $right]);
         }
-        if ($expr instanceof Expr\BinaryOp\BooleanAnd || $expr instanceof Expr\BinaryOp\BooleanOr || $expr instanceof Expr\BinaryOp\LogicalAnd || $expr instanceof Expr\BinaryOp\LogicalOr || $expr instanceof Expr\BinaryOp\Coalesce) {
+        if (Node::is($expr, 'expression.binary-op.boolean-and') || Node::is($expr, 'expression.binary-op.boolean-or') || Node::is($expr, 'expression.binary-op.logical-and') || Node::is($expr, 'expression.binary-op.logical-or') || Node::is($expr, 'expression.binary-op.coalesce')) {
             $left = $this->expression($expr->left, $source, $variables, $trace);
             $branch = $variables;
             $right = $this->expression($expr->right, $source, $branch, $trace);
             $this->mergeVariables($variables, [$variables, $branch]);
 
-            return $expr instanceof Expr\BinaryOp\Coalesce ? ($left == $right ? $left : FrameworkValue::unknown()) : FrameworkValue::scalar();
+            return Node::is($expr, 'expression.binary-op.coalesce') ? ($left == $right ? $left : FrameworkValue::unknown()) : FrameworkValue::scalar();
         }
-        if ($expr instanceof Expr\Match_) {
+        if (Node::is($expr, 'expression.match')) {
             $this->expression($expr->cond, $source, $variables, $trace);
             $branches = $types = [];
             foreach ($expr->arms as $arm) {
@@ -246,9 +243,9 @@ final class MethodAnalyzer
 
             return FrameworkValue::merge($types);
         }
-        if ($expr instanceof Expr\Assign) {
+        if (Node::is($expr, 'expression.assign')) {
             $type = $this->expression($expr->expr, $source, $variables, $trace);
-            if ($expr->var instanceof Expr\Variable && is_string($expr->var->name)) {
+            if (Node::is($expr->var, 'expression.variable') && is_string($expr->var->name)) {
                 $variables[$expr->var->name] = $type;
             } else {
                 $this->expression($expr->var, $source, $variables, $trace);
@@ -256,62 +253,62 @@ final class MethodAnalyzer
 
             return $type;
         }
-        if ($expr instanceof Expr\ClassConstFetch && $expr->class instanceof Name && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class') {
+        if (Node::is($expr, 'expression.class-const-fetch') && Node::is($expr->class, 'name') && Node::is($expr->name, 'identifier') && strtolower($expr->name->toString()) === 'class') {
             $class = $this->className($source, $expr->class);
 
             return new FrameworkValue(type: $class, literal: $class);
         }
-        if ($expr instanceof Expr\ConstFetch && strtolower($expr->name->toString()) === 'null') {
+        if (Node::is($expr, 'expression.const-fetch') && strtolower($expr->name->toString()) === 'null') {
             return null;
         }
-        if ($expr instanceof Node\Scalar\String_) {
+        if (Node::is($expr, 'scalar.string')) {
             return FrameworkValue::scalar($expr->value);
         }
-        if ($expr instanceof Expr\Array_) {
+        if (Node::is($expr, 'expression.array')) {
             $items = [];
             foreach ($expr->items as $index => $item) {
                 if ($item === null) {
                     continue;
                 }
-                if ($item->key instanceof Expr) {
+                if (Node::is($item->key, 'expression')) {
                     $this->expression($item->key, $source, $variables, $trace);
                 }
-                $key = $item->key instanceof Node\Scalar\String_ ? $item->key->value : ($item->key instanceof Node\Scalar\Int_ ? $item->key->value : $index);
+                $key = Node::is($item->key, 'scalar.string') ? $item->key->value : (Node::is($item->key, 'scalar.int') ? $item->key->value : $index);
                 $items[$key] = $this->expression($item->value, $source, $variables, $trace);
             }
 
             return FrameworkValue::array($items);
         }
-        if ($expr instanceof Expr\ArrayDimFetch) {
+        if (Node::is($expr, 'expression.array-dim-fetch')) {
             $array = $this->expression($expr->var, $source, $variables, $trace);
             if ($expr->dim !== null) {
                 $this->expression($expr->dim, $source, $variables, $trace);
             }
-            $key = $expr->dim instanceof Node\Scalar\Int_ || $expr->dim instanceof Node\Scalar\String_ ? $expr->dim->value : null;
+            $key = Node::is($expr->dim, 'scalar.int') || Node::is($expr->dim, 'scalar.string') ? $expr->dim->value : null;
 
             return $key !== null ? ($array?->items[$key] ?? $array?->element) : $array?->element;
         }
-        if ($expr instanceof Expr\PropertyFetch || $expr instanceof Expr\NullsafePropertyFetch) {
+        if (Node::is($expr, 'expression.property-fetch') || Node::is($expr, 'expression.nullsafe-property-fetch')) {
             $owner = $this->expression($expr->var, $source, $variables, $trace);
-            if ($expr->name instanceof Expr) {
+            if (Node::is($expr->name, 'expression')) {
                 $this->expression($expr->name, $source, $variables, $trace);
                 $this->unknown($source, $expr, 'Dynamic property access.', $trace);
             }
 
-            return $owner?->type !== null && $expr->name instanceof Node\Identifier
+            return $owner?->type !== null && Node::is($expr->name, 'identifier')
                 ? $this->property($owner->type, $expr->name->toString(), $trace)
                 : null;
         }
-        if ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall || $expr instanceof Expr\StaticCall || $expr instanceof Expr\New_ || $expr instanceof Expr\FuncCall) {
+        if (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call') || Node::is($expr, 'expression.static-call') || Node::is($expr, 'expression.new') || Node::is($expr, 'expression.func-call')) {
             $receiver = null;
-            if ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall) {
+            if (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call')) {
                 $receiver = $this->expression($expr->var, $source, $variables, $trace);
-            } elseif (($expr instanceof Expr\StaticCall || $expr instanceof Expr\New_) && $expr->class instanceof Name) {
+            } elseif ((Node::is($expr, 'expression.static-call') || Node::is($expr, 'expression.new')) && Node::is($expr->class, 'name')) {
                 $receiver = FrameworkValue::type($this->className($source, $expr->class));
-            } elseif (($expr instanceof Expr\StaticCall || $expr instanceof Expr\New_) && $expr->class instanceof Expr) {
+            } elseif ((Node::is($expr, 'expression.static-call') || Node::is($expr, 'expression.new')) && Node::is($expr->class, 'expression')) {
                 $this->expression($expr->class, $source, $variables, $trace);
             }
-            if (! $expr instanceof Expr\New_ && $expr->name instanceof Expr) {
+            if (! Node::is($expr, 'expression.new') && Node::is($expr->name, 'expression')) {
                 $this->expression($expr->name, $source, $variables, $trace);
             }
             if ($expr->isFirstClassCallable()) {
@@ -329,7 +326,7 @@ final class MethodAnalyzer
             if ($unpacked) {
                 $arguments = [];
             }
-            if ($expr instanceof Expr\New_) {
+            if (Node::is($expr, 'expression.new')) {
                 $receiverType = $receiver?->type;
                 if ($receiverType === null || $this->sources->get($receiverType) === null) {
                     if ($receiverType !== null
@@ -345,8 +342,8 @@ final class MethodAnalyzer
                     ? FrameworkValue::resource($receiverType, $this->sources->isA($receiverType, 'Illuminate\Http\Resources\Json\ResourceCollection'))
                     : $receiver;
             }
-            if ($expr instanceof Expr\FuncCall) {
-                $resolved = $expr->name instanceof Name ? $this->sources->functionCall($expr->name, $source) : null;
+            if (Node::is($expr, 'expression.func-call')) {
+                $resolved = Node::is($expr->name, 'name') ? $this->sources->functionCall($expr->name, $source) : null;
                 $function = strtolower($resolved['name'] ?? '');
                 if (($resolved['reason'] ?? null) !== null) {
                     $this->unknown($source, $expr, 'Function source selection is unavailable for '.$function.'().', $trace, $resolved['reason']);
@@ -366,7 +363,7 @@ final class MethodAnalyzer
                     if ($function === 'preg_match') {
                         foreach ($expr->getArgs() as $position => $arg) {
                             if (($arg->name?->toString() === 'matches' || $position === 2 && $arg->name === null)
-                                && $arg->value instanceof Expr\Variable && is_string($arg->value->name)) {
+                                && Node::is($arg->value, 'expression.variable') && is_string($arg->value->name)) {
                                 $variables[$arg->value->name] = FrameworkValue::array([]);
                             }
                         }
@@ -381,16 +378,17 @@ final class MethodAnalyzer
                 return FrameworkValue::scalar();
             }
             $receiverType = $receiver?->type;
+            $method = Node::is($expr->name, 'identifier') ? $expr->name->toString() : null;
             if ($receiverType !== null && str_starts_with($receiverType, 'App\\Services\\') && str_starts_with($source->file->path, 'app/Http/Controllers/')) {
-                $this->result->services[strtolower($receiverType)] ??= ['type' => $receiverType, 'line' => $expr->getStartLine(), 'path' => $source->file->path];
+                $this->result->services[strtolower($receiverType)] ??= ['type' => $receiverType, 'line' => $expr->getStartLine(), 'path' => $source->file->path,
+                    'trace' => $method === null ? $trace : [...$trace, $receiverType.'::'.$method]];
             }
-            $method = $expr->name instanceof Node\Identifier ? $expr->name->toString() : null;
             if ($receiverType === null || $method === null) {
                 $this->unknown($source, $expr, 'Unresolved receiver or dynamic method.', $trace, 'unresolved_receiver');
 
                 return null;
             }
-            if ($receiver->isAmbiguous() && ! $expr instanceof Expr\NullsafeMethodCall) {
+            if ($receiver->isAmbiguous() && ! Node::is($expr, 'expression.nullsafe-method-call')) {
                 $this->unknown($source, $expr, 'Receiver has multiple possible or nullable types at '.$method.'().', $trace, 'unresolved_receiver');
             }
             $lower = strtolower($method);
@@ -432,7 +430,7 @@ final class MethodAnalyzer
                         $callback = $arg->value;
                     }
                 }
-                if (! $callback instanceof Expr\Closure && ! $callback instanceof Expr\ArrowFunction) {
+                if (! Node::is($callback, 'expression.closure') && ! Node::is($callback, 'expression.arrow-function')) {
                     $this->unknown($source, $expr, 'Unresolved transaction callback.', $trace);
                 }
                 $this->callbacks($expr->getArgs(), $source, $variables, $trace);
@@ -447,7 +445,7 @@ final class MethodAnalyzer
             if ($db && in_array($lower, ['statement', 'unprepared', 'select', 'selectone', 'cursor'], true)) {
                 $sql = $expr->getArgs()[0]->value ?? null;
                 // SELECT can call mutating functions. Raw SQL is not a proved read.
-                $this->unknown($source, $expr, $sql instanceof Node\Scalar\String_ ? 'Raw SQL requires review.' : 'Dynamic SQL cannot be classified.', $trace, 'unresolved_sql');
+                $this->unknown($source, $expr, Node::is($sql, 'scalar.string') ? 'Raw SQL requires review.' : 'Dynamic SQL cannot be classified.', $trace, 'unresolved_sql');
 
                 return null;
             }
@@ -524,31 +522,31 @@ final class MethodAnalyzer
 
             return null;
         }
-        if ($expr instanceof Expr\Include_ || $expr instanceof Expr\Eval_ || $expr instanceof Expr\ShellExec) {
+        if (Node::is($expr, 'expression.include') || Node::is($expr, 'expression.eval') || Node::is($expr, 'expression.shell-exec')) {
             $this->unknown($source, $expr, 'Dynamic code execution.', $trace);
         }
         foreach ($expr->getSubNodeNames() as $name) {
             $child = $expr->$name;
-            foreach ($child instanceof Node ? [$child] : (is_array($child) ? $child : []) as $node) {
-                if ($node instanceof Node) {
+            foreach (Node::is($child, 'node') ? [$child] : (is_array($child) ? $child : []) as $node) {
+                if (Node::is($node, 'node')) {
                     $returns = [];
                     $this->walk([$node], $source, $variables, $trace, $returns);
                 }
             }
         }
 
-        return $expr instanceof Expr\ConstFetch || $expr instanceof Node\Scalar || $expr instanceof Expr\BinaryOp || $expr instanceof Expr\Cast ? FrameworkValue::scalar() : null;
+        return Node::is($expr, 'expression.const-fetch') || Node::is($expr, 'scalar') || Node::is($expr, 'expression.binary-op') || Node::is($expr, 'expression.cast') ? FrameworkValue::scalar() : null;
     }
 
     /**
-     * @param  list<Node\Arg>  $args
+     * @param  list<Node>  $args
      * @param  array<string, FrameworkValue|null>  $variables
      * @param  list<string>  $trace
      */
     private function callbacks(array $args, SourceClass $source, array $variables, array $trace): void
     {
         foreach ($args as $arg) {
-            if ($arg->value instanceof Expr\Closure || $arg->value instanceof Expr\ArrowFunction) {
+            if (Node::is($arg->value, 'expression.closure') || Node::is($arg->value, 'expression.arrow-function')) {
                 $callback = $arg->value;
                 foreach ($callback->params as $param) {
                     if (is_string($param->var->name)) {
@@ -557,7 +555,7 @@ final class MethodAnalyzer
                     }
                 }
                 $returns = [];
-                $this->walk($callback instanceof Expr\Closure ? $callback->stmts : [$callback->expr], $source, $variables, $trace, $returns);
+                $this->walk(Node::is($callback, 'expression.closure') ? $callback->stmts : [$callback->expr], $source, $variables, $trace, $returns);
             }
         }
     }
@@ -568,7 +566,7 @@ final class MethodAnalyzer
      * @param  array<int|string, FrameworkValue|null>  $arguments
      */
     private function queryCallbacks(
-        Expr\MethodCall|Expr\NullsafeMethodCall $call,
+        Node $call,
         ?FrameworkValue $receiver,
         string $method,
         SourceClass $source,
@@ -577,7 +575,7 @@ final class MethodAnalyzer
         array $arguments,
     ): void {
         foreach ($call->getArgs() as $index => $arg) {
-            if (! $arg->value instanceof Expr\Closure && ! $arg->value instanceof Expr\ArrowFunction) {
+            if (! Node::is($arg->value, 'expression.closure') && ! Node::is($arg->value, 'expression.arrow-function')) {
                 continue;
             }
             $callback = FrameworkValue::callback($source, $arg->value, $variables);
@@ -630,7 +628,7 @@ final class MethodAnalyzer
                 return $this->type($source, $param->type);
             }
         }
-        if ($source->node instanceof Stmt\Class_ && $source->node->extends !== null) {
+        if (Node::is($source->node, 'statement.class') && $source->node->extends !== null) {
             return $this->property($source->file->resolvedName($source->node->extends), $name, $trace, $depth + 1);
         }
 
@@ -639,16 +637,16 @@ final class MethodAnalyzer
 
     private function type(SourceClass $source, Node|string|null $type): ?FrameworkValue
     {
-        if ($type instanceof Name) {
+        if (Node::is($type, 'name')) {
             return FrameworkValue::type($this->className($source, $type));
         }
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->type($source, $type->type)?->nullable();
         }
-        if ($type instanceof Node\UnionType) {
+        if (Node::is($type, 'union-type')) {
             $values = [];
             foreach ($type->types as $part) {
-                if ($part instanceof Node\Identifier && strtolower($part->toString()) === 'null') {
+                if (Node::is($part, 'identifier') && strtolower($part->toString()) === 'null') {
                     $values[] = null;
                 } elseif (($value = $this->type($source, $part)) !== null) {
                     $values[] = $value;
@@ -657,7 +655,7 @@ final class MethodAnalyzer
 
             return FrameworkValue::union($values);
         }
-        if ($type instanceof Node\Identifier) {
+        if (Node::is($type, 'identifier')) {
             return match (strtolower($type->toString())) {
                 'null' => FrameworkValue::scalar()->nullable(),
                 'mixed', 'object', 'callable', 'iterable' => null,
@@ -668,13 +666,13 @@ final class MethodAnalyzer
         return null;
     }
 
-    private function className(SourceClass $source, Name $name): string
+    private function className(SourceClass $source, Node $name): string
     {
-        if (strtolower($name->toString()) === 'parent' && $source->node instanceof Stmt\Class_ && $source->node->extends !== null) {
+        if (strtolower($name->toString()) === 'parent' && Node::is($source->node, 'statement.class') && $source->node->extends !== null) {
             return $source->file->resolvedName($source->node->extends);
         }
 
-        return in_array(strtolower($name->toString()), ['self', 'static'], true) ? $source->name : $source->file->resolvedName($name);
+        return in_array(strtolower($name->toString()), ['self', 'static'], true) ? $source->name : $this->framework->resolveAlias($source->file->resolvedName($name));
     }
 
     /**
@@ -751,7 +749,7 @@ final class MethodAnalyzer
             }
         }
         $returns = [];
-        $this->walk($value->callback instanceof Expr\Closure ? $value->callback->stmts : [$value->callback->expr], $value->callbackSource, $variables, [...$trace, '{callback}'], $returns);
+        $this->walk(Node::is($value->callback, 'expression.closure') ? $value->callback->stmts : [$value->callback->expr], $value->callbackSource, $variables, [...$trace, '{callback}'], $returns);
 
         return FrameworkValue::merge($returns);
     }
@@ -791,20 +789,20 @@ final class MethodAnalyzer
      * @param  array<string, FrameworkValue|null>  $variables
      * @return array<string, FrameworkValue|null>
      */
-    private function narrow(array $variables, Expr $condition, bool $truth, SourceClass $source): array
+    private function narrow(array $variables, Node $condition, bool $truth, SourceClass $source): array
     {
-        if ($condition instanceof Expr\BooleanNot) {
+        if (Node::is($condition, 'expression.boolean-not')) {
             return $this->narrow($variables, $condition->expr, ! $truth, $source);
         }
-        if ($condition instanceof Expr\Instanceof_) {
+        if (Node::is($condition, 'expression.instanceof')) {
             return $this->narrowInstance($variables, $condition, $truth, $source);
         }
-        if ($truth && ($condition instanceof Expr\BinaryOp\BooleanAnd || $condition instanceof Expr\BinaryOp\LogicalAnd)) {
+        if ($truth && (Node::is($condition, 'expression.binary-op.boolean-and') || Node::is($condition, 'expression.binary-op.logical-and'))) {
             $variables = $this->narrow($variables, $condition->left, true, $source);
 
             return $this->narrow($variables, $condition->right, true, $source);
         }
-        if (! $truth && ($condition instanceof Expr\BinaryOp\BooleanOr || $condition instanceof Expr\BinaryOp\LogicalOr)) {
+        if (! $truth && (Node::is($condition, 'expression.binary-op.boolean-or') || Node::is($condition, 'expression.binary-op.logical-or'))) {
             $variables = $this->narrow($variables, $condition->left, false, $source);
 
             return $this->narrow($variables, $condition->right, false, $source);
@@ -817,11 +815,11 @@ final class MethodAnalyzer
      * @param  array<string, FrameworkValue|null>  $variables
      * @return array<string, FrameworkValue|null>
      */
-    private function narrowInstance(array $variables, Expr\Instanceof_ $condition, bool $truth, SourceClass $source): array
+    private function narrowInstance(array $variables, Node $condition, bool $truth, SourceClass $source): array
     {
-        if (! $condition->expr instanceof Expr\Variable
+        if (! Node::is($condition->expr, 'expression.variable')
             || ! is_string($condition->expr->name)
-            || ! $condition->class instanceof Name) {
+            || ! Node::is($condition->class, 'name')) {
             return $variables;
         }
         $name = $condition->expr->name;
@@ -871,7 +869,7 @@ final class MethodAnalyzer
     /** @param array<int|string, FrameworkValue|null> $arguments
      * @param  list<string>  $trace
      */
-    private function visitFunction(SourceClass $source, Stmt\Function_ $node, array $arguments, array $trace): ?FrameworkValue
+    private function visitFunction(SourceClass $source, Node $node, array $arguments, array $trace): ?FrameworkValue
     {
         $key = strtolower($source->name);
         if (isset($this->active[$key]) || count($trace) >= 12 || ++$this->calls > 128) {

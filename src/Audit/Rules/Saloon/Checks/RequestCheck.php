@@ -4,19 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\ClassInspector;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\IntegrationPaths;
-use PhpParser\Node;
-use PhpParser\Node\Expr\New_;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Scalar\String_;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class RequestCheck implements FileCheck
 {
@@ -24,7 +19,7 @@ final readonly class RequestCheck implements FileCheck
 
     public function findings(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
         $class = $nodes === null ? null : ClassInspector::firstClass($nodes);
 
         if (! $this->paths->isIntegrationPath($file->path) || $class === null || ! ClassInspector::classExtendsAny($class, ['Request', 'SoloRequest'])) {
@@ -51,7 +46,7 @@ final readonly class RequestCheck implements FileCheck
      * @param  array<int, Node>  $nodes
      * @return array<int, AuditFinding>
      */
-    private function requestAstFindings(string $path, array $nodes, Stmt\Class_ $class): array
+    private function requestAstFindings(string $path, array $nodes, Node $class): array
     {
         $state = new class
         {
@@ -72,15 +67,15 @@ final readonly class RequestCheck implements FileCheck
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Stmt\UseUse && $node->name->toString() === 'GuzzleHttp\\Client') {
+                if (Node::is($node, 'use-item') && $node->name->toString() === 'GuzzleHttp\\Client') {
                     $this->state->importsGuzzleClient = true;
                 }
 
-                if ($node instanceof StaticCall && $node->class instanceof Name && $node->class->toString() === 'Http') {
+                if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && $node->class->toString() === 'Http') {
                     $this->state->findings[] = $this->finding($node, 'Do not call the Laravel HTTP facade inside Saloon Requests.');
                 }
 
-                if ($node instanceof New_ && $node->class instanceof Name) {
+                if (Node::is($node, 'expression.new') && Node::is($node->class, 'name')) {
                     $class = $node->class->toString();
 
                     if ($class === 'GuzzleHttp\\Client' || ($class === 'Client' && $this->state->importsGuzzleClient)) {
@@ -106,11 +101,11 @@ final readonly class RequestCheck implements FileCheck
         return $state->findings;
     }
 
-    private function methodHardcodedUrlLine(Stmt\Class_ $class, string $method): ?int
+    private function methodHardcodedUrlLine(Node $class, string $method): ?int
     {
         $classMethod = ClassInspector::classMethod($class, $method);
 
-        if (! $classMethod instanceof Stmt\ClassMethod) {
+        if (! Node::is($classMethod, 'statement.class-method')) {
             return null;
         }
 
@@ -125,7 +120,7 @@ final readonly class RequestCheck implements FileCheck
 
             public function enterNode(Node $node): null
             {
-                if ($this->state->line === null && $node instanceof String_ && str_starts_with($node->value, 'http')) {
+                if ($this->state->line === null && Node::is($node, 'scalar.string') && str_starts_with($node->value, 'http')) {
                     $this->state->line = $node->getStartLine();
                 }
 

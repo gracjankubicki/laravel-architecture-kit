@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\TestReachability;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContext;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkSemantics;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkValue;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceClass;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Method-scoped traversal. Its results must never seed the class dependency BFS. */
 final class MethodReachability
@@ -133,22 +131,22 @@ final class MethodReachability
 
                 return;
             }
-            if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\Function_) {
+            if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.function')) {
                 continue;
             }
-            if ($node instanceof Stmt\Return_) {
+            if (Node::is($node, 'statement.return')) {
                 $value = $node->expr !== null ? $this->expression($node->expr, $source, $vars, $trace) : null;
                 $this->followReturnedValue($value, $source, $node, $trace);
                 $returns[] = $value;
 
                 return;
             }
-            if ($node instanceof Expr) {
+            if (Node::is($node, 'expression')) {
                 $this->expression($node, $source, $vars, $trace);
 
                 continue;
             }
-            if ($node instanceof Stmt\Expression) {
+            if (Node::is($node, 'statement.expression')) {
                 $this->expression($node->expr, $source, $vars, $trace);
 
                 continue;
@@ -157,7 +155,7 @@ final class MethodReachability
             $changed = [];
             foreach ($node->getSubNodeNames() as $key) {
                 $child = $node->$key;
-                if ($node instanceof Stmt\If_) {
+                if (Node::is($node, 'statement.if')) {
                     $branch = $vars;
                 }
                 $this->walk($this->children($child), $source, $branch, $trace, $returns);
@@ -176,70 +174,70 @@ final class MethodReachability
     /** @param array<string, FrameworkValue|null> $vars
      * @param  list<string>  $trace
      */
-    private function expression(Expr $expr, SourceClass $source, array &$vars, array $trace): ?FrameworkValue
+    private function expression(Node $expr, SourceClass $source, array &$vars, array $trace): ?FrameworkValue
     {
         if (++$this->nodes > 20000) {
             $this->result->incomplete($source->file->path, $expr->getStartLine(), 'Method AST node budget exceeded.');
 
             return null;
         }
-        if ($expr instanceof Expr\Variable) {
+        if (Node::is($expr, 'expression.variable')) {
             return is_string($expr->name) ? ($vars[$expr->name] ?? null) : null;
         }
-        if ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction) {
+        if (Node::is($expr, 'expression.closure') || Node::is($expr, 'expression.arrow-function')) {
             return FrameworkValue::callback($source, $expr, $vars);
         }
-        if ($expr instanceof Expr\Assign) {
+        if (Node::is($expr, 'expression.assign')) {
             $value = $this->expression($expr->expr, $source, $vars, $trace);
-            if ($expr->var instanceof Expr\Variable && is_string($expr->var->name)) {
+            if (Node::is($expr->var, 'expression.variable') && is_string($expr->var->name)) {
                 $vars[$expr->var->name] = $value;
             }
 
             return $value;
         }
-        if ($expr instanceof Expr\ClassConstFetch && $expr->class instanceof Node\Name && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class') {
+        if (Node::is($expr, 'expression.class-const-fetch') && Node::is($expr->class, 'name') && Node::is($expr->name, 'identifier') && strtolower($expr->name->toString()) === 'class') {
             $class = $this->name($source, $expr->class, $source->name);
 
             return new FrameworkValue(type: $class, literal: $class);
         }
-        if ($expr instanceof Node\Scalar\String_) {
+        if (Node::is($expr, 'scalar.string')) {
             return FrameworkValue::scalar($expr->value);
         }
-        if ($expr instanceof Expr\Array_) {
+        if (Node::is($expr, 'expression.array')) {
             $items = [];
             foreach ($expr->items as $index => $item) {
                 if ($item === null) {
                     continue;
                 }
-                if ($item->key instanceof Expr) {
+                if (Node::is($item->key, 'expression')) {
                     $this->expression($item->key, $source, $vars, $trace);
                 }
-                $key = $item->key instanceof Node\Scalar\String_ ? $item->key->value : ($item->key instanceof Node\Scalar\Int_ ? $item->key->value : $index);
+                $key = Node::is($item->key, 'scalar.string') ? $item->key->value : (Node::is($item->key, 'scalar.int') ? $item->key->value : $index);
                 $items[$key] = $this->expression($item->value, $source, $vars, $trace);
             }
 
             return FrameworkValue::array($items);
         }
-        if ($expr instanceof Expr\PropertyFetch || $expr instanceof Expr\NullsafePropertyFetch) {
+        if (Node::is($expr, 'expression.property-fetch') || Node::is($expr, 'expression.nullsafe-property-fetch')) {
             $owner = $this->expression($expr->var, $source, $vars, $trace);
 
-            return $owner?->type !== null && $expr->name instanceof Node\Identifier ? $this->property($owner->type, $expr->name->toString(), $source->file->path, $expr->getStartLine()) : null;
+            return $owner?->type !== null && Node::is($expr->name, 'identifier') ? $this->property($owner->type, $expr->name->toString(), $source->file->path, $expr->getStartLine()) : null;
         }
-        if ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall || $expr instanceof Expr\StaticCall || $expr instanceof Expr\New_ || $expr instanceof Expr\FuncCall) {
+        if (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call') || Node::is($expr, 'expression.static-call') || Node::is($expr, 'expression.new') || Node::is($expr, 'expression.func-call')) {
             if ($expr->isFirstClassCallable()) {
                 return FrameworkValue::type('@callback');
             }
             $receiver = match (true) {
-                $expr instanceof Expr\MethodCall, $expr instanceof Expr\NullsafeMethodCall => $this->expression($expr->var, $source, $vars, $trace),
-                ($expr instanceof Expr\StaticCall || $expr instanceof Expr\New_) && $expr->class instanceof Node\Name => FrameworkValue::type($this->name($source, $expr->class, isset($vars['this']) ? ($vars['this']->type ?? $source->name) : $source->name)),
+                Node::is($expr, 'expression.method-call'), Node::is($expr, 'expression.nullsafe-method-call') => $this->expression($expr->var, $source, $vars, $trace),
+                (Node::is($expr, 'expression.static-call') || Node::is($expr, 'expression.new')) && Node::is($expr->class, 'name') => FrameworkValue::type($this->name($source, $expr->class, isset($vars['this']) ? ($vars['this']->type ?? $source->name) : $source->name)),
                 default => null,
             };
             $args = [];
             foreach ($expr->getArgs() as $i => $arg) {
                 $args[$arg->name?->toString() ?? $i] = $this->expression($arg->value, $source, $vars, $trace);
             }
-            if ($expr instanceof Expr\FuncCall) {
-                $function = $expr->name instanceof Node\Name ? strtolower(ltrim($source->file->resolvedName($expr->name), '\\')) : null;
+            if (Node::is($expr, 'expression.func-call')) {
+                $function = Node::is($expr->name, 'name') ? strtolower(ltrim($source->file->resolvedName($expr->name), '\\')) : null;
                 $framework = $this->framework->describe(null, $function, null, $args, $source, $expr);
                 if ($framework->handled) {
                     return $this->applyFramework($framework, $source, $expr, $trace);
@@ -251,7 +249,7 @@ final class MethodReachability
 
                 return FrameworkValue::type('@external');
             }
-            $method = $expr instanceof Expr\New_ ? '__construct' : ($expr->name instanceof Node\Identifier ? $expr->name->toString() : null);
+            $method = Node::is($expr, 'expression.new') ? '__construct' : (Node::is($expr->name, 'identifier') ? $expr->name->toString() : null);
             $receiverType = $receiver?->type;
             if ($receiverType === null || $method === null) {
                 $this->result->incomplete($source->file->path, $expr->getStartLine(), 'Unresolved receiver or dynamic method.');
@@ -267,9 +265,9 @@ final class MethodReachability
                 }
                 $return = $this->visit($receiverType, $method, $args, $trace);
 
-                return $expr instanceof Expr\New_ ? $receiver : $return;
+                return Node::is($expr, 'expression.new') ? $receiver : $return;
             }
-            if ($expr instanceof Expr\New_) {
+            if (Node::is($expr, 'expression.new')) {
                 if ($this->sources->get($receiverType) !== null) {
                     $this->result->reach($receiverType, [...$trace, $receiverType.'::__construct']);
                 } elseif ($this->sources->inScope($receiverType)) {
@@ -311,7 +309,7 @@ final class MethodReachability
     /** @return list<Node> */
     private function children(mixed $value): array
     {
-        return $value instanceof Node ? [$value] : (is_array($value) ? array_values(array_filter($value, fn ($node) => $node instanceof Node)) : []);
+        return Node::is($value, 'node') ? [$value] : (is_array($value) ? array_values(array_filter($value, fn ($node) => Node::is($node, 'node'))) : []);
     }
 
     private function property(string $class, string $name, string $path, int $line, int $depth = 0): ?FrameworkValue
@@ -336,21 +334,21 @@ final class MethodReachability
             }
         }
 
-        return $source->node instanceof Stmt\Class_ && $source->node->extends !== null ? $this->property($source->file->resolvedName($source->node->extends), $name, $path, $line, $depth + 1) : null;
+        return Node::is($source->node, 'statement.class') && $source->node->extends !== null ? $this->property($source->file->resolvedName($source->node->extends), $name, $path, $line, $depth + 1) : null;
     }
 
     private function type(SourceClass $source, Node|string|null $type): ?FrameworkValue
     {
-        if ($type instanceof Node\Name) {
+        if (Node::is($type, 'name')) {
             return FrameworkValue::type($this->name($source, $type, $source->name));
         }
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->type($source, $type->type)?->nullable();
         }
-        if ($type instanceof Node\UnionType) {
+        if (Node::is($type, 'union-type')) {
             $values = [];
             foreach ($type->types as $part) {
-                if ($part instanceof Node\Identifier && strtolower($part->toString()) === 'null') {
+                if (Node::is($part, 'identifier') && strtolower($part->toString()) === 'null') {
                     $values[] = null;
                 } elseif (($value = $this->type($source, $part)) !== null) {
                     $values[] = $value;
@@ -359,7 +357,7 @@ final class MethodReachability
 
             return FrameworkValue::union($values);
         }
-        if ($type instanceof Node\Identifier) {
+        if (Node::is($type, 'identifier')) {
             return match (strtolower($type->toString())) {
                 'null' => FrameworkValue::scalar()->nullable(),
                 'mixed', 'object', 'callable', 'iterable' => null,
@@ -370,7 +368,7 @@ final class MethodReachability
         return null;
     }
 
-    private function name(SourceClass $source, Node\Name $name, string $runtime): string
+    private function name(SourceClass $source, Node $name, string $runtime): string
     {
         if (strtolower($name->toString()) === 'static') {
             return $runtime;
@@ -378,7 +376,7 @@ final class MethodReachability
         if (strtolower($name->toString()) === 'self') {
             return $source->name;
         }
-        if (strtolower($name->toString()) === 'parent' && $source->node instanceof Stmt\Class_ && $source->node->extends !== null) {
+        if (strtolower($name->toString()) === 'parent' && Node::is($source->node, 'statement.class') && $source->node->extends !== null) {
             return $source->file->resolvedName($source->node->extends);
         }
 
@@ -436,7 +434,7 @@ final class MethodReachability
             }
         }
         $returns = [];
-        $this->walk($value->callback instanceof Expr\Closure ? $value->callback->stmts : [$value->callback->expr], $value->callbackSource, $vars, [...$trace, '{callback}'], $returns);
+        $this->walk(Node::is($value->callback, 'expression.closure') ? $value->callback->stmts : [$value->callback->expr], $value->callbackSource, $vars, [...$trace, '{callback}'], $returns);
 
         return FrameworkValue::merge($returns);
     }

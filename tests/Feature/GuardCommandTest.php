@@ -11,12 +11,32 @@ use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
+use Symfony\Component\Console\Formatter\OutputFormatter;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 class GuardCommandTest extends TestCase
 {
+    public function test_full_agent_report_is_written_without_terminal_formatting(): void
+    {
+        $this->writeCurrentResources([Architecture::Actions]);
+        $formatter = new class extends OutputFormatter
+        {
+            public function format(?string $message): ?string
+            {
+                throw new \RuntimeException('JSON must bypass terminal formatting.');
+            }
+        };
+        $output = new BufferedOutput(formatter: $formatter);
+        Artisan::call('architecture-kit:guard', ['--agent' => true, '--full' => true], $output);
+        $payload = json_decode(trim($output->fetch()), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('guard', $payload['cmd']);
+        self::assertArrayHasKey('analysis', $payload);
+    }
+
     public function test_incomplete_laravel_ai_analysis_alone_blocks_strict_guard(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => ['laravel/ai' => '^0.8'],
         ], JSON_THROW_ON_ERROR));
         $this->writeCurrentResources([Architecture::LaravelAi]);
@@ -729,6 +749,7 @@ PHP);
     public function test_modern_php_architecture_uses_real_declare_and_override_attributes(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'php' => '^8.5',
             ],
@@ -1240,6 +1261,7 @@ PHP);
     public function test_it_fails_when_laravel_ai_is_called_directly_from_controller(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'laravel/ai' => '^0.8',
             ],
@@ -1295,6 +1317,7 @@ PHP);
     public function test_it_fails_on_generic_laravel_ai_gateway_and_anonymous_tool(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'laravel/ai' => '^0.8',
             ],
@@ -1344,6 +1367,7 @@ PHP);
     public function test_laravel_ai_architecture_ignores_forbidden_tokens_in_comments_and_strings(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'laravel/ai' => '^0.8',
             ],

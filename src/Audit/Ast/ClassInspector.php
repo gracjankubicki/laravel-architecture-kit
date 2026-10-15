@@ -4,25 +4,23 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Ast;
 
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 
 final readonly class ClassInspector
 {
     /**
      * @param  array<int, Node>  $nodes
      */
-    public static function firstClass(array $nodes): ?Stmt\Class_
+    public static function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 foreach ($node->stmts as $statement) {
-                    if ($statement instanceof Stmt\Class_) {
+                    if (Node::is($statement, 'statement.class')) {
                         return $statement;
                     }
                 }
@@ -32,7 +30,7 @@ final readonly class ClassInspector
         return null;
     }
 
-    public static function className(Stmt\Class_ $class): ?string
+    public static function className(Node $class): ?string
     {
         return $class->name?->toString();
     }
@@ -40,9 +38,9 @@ final readonly class ClassInspector
     /**
      * @param  array<int, string>  $expected
      */
-    public static function classExtendsAny(Stmt\Class_ $class, array $expected): bool
+    public static function classExtendsAny(Node $class, array $expected): bool
     {
-        if (! $class->extends instanceof Name) {
+        if (! Node::is($class->extends, 'name')) {
             return false;
         }
 
@@ -57,10 +55,10 @@ final readonly class ClassInspector
         return false;
     }
 
-    public static function classUsesTrait(Stmt\Class_ $class, string $trait): bool
+    public static function classUsesTrait(Node $class, string $trait): bool
     {
         foreach ($class->stmts as $statement) {
-            if (! $statement instanceof Stmt\TraitUse) {
+            if (! Node::is($statement, 'statement.trait-use')) {
                 continue;
             }
 
@@ -76,10 +74,10 @@ final readonly class ClassInspector
         return false;
     }
 
-    public static function classHasProperty(Stmt\Class_ $class, string $property): bool
+    public static function classHasProperty(Node $class, string $property): bool
     {
         foreach ($class->stmts as $statement) {
-            if (! $statement instanceof Stmt\Property) {
+            if (! Node::is($statement, 'statement.property')) {
                 continue;
             }
 
@@ -93,12 +91,12 @@ final readonly class ClassInspector
         return false;
     }
 
-    public static function classHasMethod(Stmt\Class_ $class, string $method): bool
+    public static function classHasMethod(Node $class, string $method): bool
     {
         return self::classMethod($class, $method) !== null;
     }
 
-    public static function classMethod(Stmt\Class_ $class, string $method): ?Stmt\ClassMethod
+    public static function classMethod(Node $class, string $method): ?Node
     {
         foreach ($class->getMethods() as $classMethod) {
             if ($classMethod->name->toString() === $method) {

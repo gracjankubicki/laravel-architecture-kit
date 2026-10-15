@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature\Standalone;
 
+use GracjanKubicki\ArchitectureKit\Tests\Support\EngineFixture;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
@@ -22,14 +23,77 @@ final class StandaloneProcessTest extends TestCase
         $this->root = $this->temp.'/project';
         $this->home = $this->temp.'/tool';
         mkdir($this->root.'/app/Actions', 0700, true);
-        file_put_contents($this->root.'/composer.json', '{"name":"fixture/project"}');
+        file_put_contents($this->root.'/composer.json', '{"name":"fixture/project","type":"project","require":{"php":"^8.3"}}');
         $this->action(false);
-        $this->cli(['init', 'actions']);
+        if (EngineFixture::selected() === 'mago') {
+            EngineFixture::install($this->home);
+        }
+        $settings = $this->cli(['init', 'actions']);
+        $config = json_decode(file_get_contents($settings['config']), true, flags: JSON_THROW_ON_ERROR);
+        $config['analysis'] = ['engine' => EngineFixture::selected()];
+        file_put_contents($settings['config'], json_encode($config, JSON_THROW_ON_ERROR));
     }
 
     protected function tearDown(): void
     {
         (new Filesystem)->deleteDirectory($this->temp);
+    }
+
+    public function test_engine_diagnostics_show_shared_precedence_and_an_explicit_profile_override(): void
+    {
+        if (! getenv('ARCHITECTURE_KIT_TEST_ENGINE')) {
+            self::markTestSkipped('Set ARCHITECTURE_KIT_TEST_ENGINE.');
+        }
+        EngineFixture::install($this->home);
+        mkdir($this->root.'/.architecture-kit');
+        file_put_contents($this->root.'/.architecture-kit/settings.json', '{"enabled":["actions"]}');
+        $shared = $this->cli(['engine', 'describe']);
+        self::assertSame('mago', $shared['engine']);
+        self::assertSame('default', $shared['origin']);
+        self::assertSame('8.3.0', $shared['php_version']);
+        self::assertNull($shared['profile']);
+        $profile = $this->cli(['init', 'actions', '--profile', 'personal']);
+        $config = json_decode(file_get_contents($profile['config']), true, flags: JSON_THROW_ON_ERROR);
+        $config['analysis'] = ['engine' => 'php'];
+        file_put_contents($profile['config'], json_encode($config, JSON_THROW_ON_ERROR));
+        $local = $this->cli(['engine', 'describe', '--profile', 'personal']);
+        self::assertSame('php', $local['engine']);
+        self::assertSame('mago', $local['shared_engine']);
+        self::assertTrue($local['overrides_shared_engine']);
+        self::assertSame($profile['config'], $local['origin']);
+        $messages = [
+            ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-03-26', 'capabilities' => [], 'clientInfo' => ['name' => 'test', 'version' => '1']]],
+            ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'resources/read', 'params' => ['uri' => 'architecture-kit://analysis-engine']],
+        ];
+        $process = $this->process(['mcp', '--profile', 'personal']);
+        $process->setInput(implode("\n", array_map(json_encode(...), $messages))."\n");
+        $process->run();
+        self::assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $responses = array_map(static fn ($line) => json_decode($line, true, flags: JSON_THROW_ON_ERROR), explode("\n", trim($process->getOutput())));
+        $mcp = json_decode($responses[1]['result']['contents'][0]['text'], true, flags: JSON_THROW_ON_ERROR);
+        unset($local['ok']); // CLI status envelope is not part of the MCP resource.
+        self::assertSame($local, $mcp);
+    }
+
+    public function test_engine_switch_blocks_comparison_without_refreshing_the_task_beginning(): void
+    {
+        if (! getenv('ARCHITECTURE_KIT_TEST_ENGINE')) {
+            self::markTestSkipped('Set ARCHITECTURE_KIT_TEST_ENGINE.');
+        }
+        EngineFixture::install($this->home);
+        $registration = $this->cli(['init', 'actions']);
+        $begin = $this->cli(['task', 'begin', 'engine-switch']);
+        self::assertSame('started', $begin['status']);
+        $settings = json_decode(file_get_contents($registration['config']), true, flags: JSON_THROW_ON_ERROR);
+        $settings['analysis']['engine'] = $settings['analysis']['engine'] === 'php' ? 'mago' : 'php';
+        file_put_contents($registration['config'], json_encode($settings, JSON_THROW_ON_ERROR));
+        $checked = $this->cli(['task', 'check', 'engine-switch'], exit: 1);
+        self::assertSame('blocked', $checked['status']);
+        self::assertFalse($checked['ok']);
+        $again = $this->cli(['task', 'begin', 'engine-switch'], exit: 1);
+        foreach (['begin_sources', 'begin_errors', 'fingerprint', 'created_at'] as $key) {
+            self::assertSame($begin[$key], $again[$key]);
+        }
     }
 
     public function test_source_only_cli_and_mcp_use_target_not_host_and_write_nothing_in_repo(): void
@@ -66,10 +130,67 @@ final class StandaloneProcessTest extends TestCase
         self::assertSame($before, $this->files());
     }
 
+    public function test_cache_off_cold_and_warm_preserve_full_reports_and_control_decisions(): void
+    {
+        $registered = $this->cli(['init', 'actions']);
+        mkdir($this->root.'/app/Http/Controllers', 0700, true);
+        mkdir($this->root.'/app/Support', 0700, true);
+        mkdir($this->root.'/routes');
+        file_put_contents($this->root.'/routes/web.php', '<?php use Illuminate\\Support\\Facades\\Route; Route::get("probe", [App\\Http\\Controllers\\Probe::class, "index"]);');
+        for ($i = 0; $i < 400; $i++) {
+            file_put_contents($this->root.'/app/Support/Value'.$i.'.php', '<?php namespace App\\Support; class Value'.$i.' {}');
+        }
+        foreach (['complete' => 'return 1;', 'incomplete' => 'return \\Vendor\\Unknown::handle();'] as $status => $body) {
+            file_put_contents($this->root.'/app/Http/Controllers/Probe.php', '<?php namespace App\\Http\\Controllers; class Probe { public function index() { '.$body.' } }');
+            $reports = $decisions = [];
+            foreach (['off' => false, 'cold' => true, 'warm' => true] as $mode => $enabled) {
+                file_put_contents($registered['config'], json_encode(['analysis' => ['engine' => 'php'], 'enabled' => ['actions'], 'audit' => ['cache' => $enabled, 'missing_test' => 'off']], JSON_THROW_ON_ERROR));
+                $reports[$mode] = $this->cli(['audit', '--agent', '--full', '--limit=50000']);
+                self::assertSame($status, $reports[$mode]['analysis']['status']);
+                self::assertFalse($reports[$mode]['analysis']['truncated']);
+                $begin = $this->cli(['task', 'begin', $status.'-'.$mode], exit: $status === 'complete' ? 0 : 1);
+                $check = $this->cli(['task', 'check', $status.'-'.$mode], exit: $status === 'complete' ? 0 : 1);
+                $guard = $this->cli(['guard', '--agent'], exit: $status === 'complete' ? 0 : 1);
+                $decisions[$mode] = [$begin['status'], $check['status'], $check['ok'], $guard['ok']];
+            }
+            self::assertSame($reports['off'], $reports['cold']);
+            self::assertSame($reports['off'], $reports['warm']);
+            self::assertSame($decisions['off'], $decisions['cold']);
+            self::assertSame($decisions['off'], $decisions['warm']);
+        }
+    }
+
+    public function test_full_mcp_reports_keep_sdk_text_and_structured_content_on_repeated_requests(): void
+    {
+        mkdir($this->root.'/app/Http/Controllers', 0700, true);
+        mkdir($this->root.'/routes');
+        file_put_contents($this->root.'/routes/web.php', '<?php use Illuminate\\Support\\Facades\\Route; Route::get("pełny/raport", [App\\Http\\Controllers\\Probe::class, "index"]);');
+        file_put_contents($this->root.'/app/Http/Controllers/Probe.php', '<?php namespace App\\Http\\Controllers; class Probe { public function index() { '.str_repeat('\\Vendor\\Unknown::handle();'."\n", 100).' } }');
+        $messages = [['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-03-26', 'capabilities' => [], 'clientInfo' => ['name' => 'full-report-test', 'version' => '1']]]];
+        foreach (['audit-changed', 'audit-changed', 'guard', 'audit-changed', 'audit-changed'] as $index => $name) {
+            $messages[] = ['jsonrpc' => '2.0', 'id' => $index + 2, 'method' => 'tools/call', 'params' => ['name' => $name, 'arguments' => ['changed' => false, 'full' => true, 'limit' => 50000]]];
+        }
+        $process = $this->process(['mcp']);
+        $process->setInput(implode("\n", array_map(json_encode(...), $messages))."\n");
+        self::assertSame(0, $process->run(), $process->getErrorOutput());
+        $responses = array_map(static fn (string $line): array => json_decode($line, true, flags: JSON_THROW_ON_ERROR), explode("\n", trim($process->getOutput())));
+        self::assertCount(6, $responses);
+        foreach (array_slice($responses, 1) as $response) {
+            self::assertArrayNotHasKey('error', $response);
+            $result = $response['result'];
+            self::assertSame($result['structuredContent'], json_decode($result['content'][0]['text'], true, flags: JSON_THROW_ON_ERROR));
+            self::assertFalse($result['structuredContent']['analysis']['truncated']);
+            self::assertGreaterThan(20, $result['structuredContent']['analysis']['total']);
+        }
+        self::assertSame($responses[1]['result'], $responses[2]['result']);
+        self::assertSame($responses[1]['result'], $responses[4]['result']);
+        self::assertSame($responses[1]['result'], $responses[5]['result']);
+    }
+
     public function test_incomplete_required_test_relationship_never_passes_task_or_guard(): void
     {
         $settings = $this->cli(['init', 'actions']);
-        file_put_contents($settings['config'], '{"enabled":["actions"],"audit":{"missing_test":"error"}}');
+        file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["actions"],"audit":{"missing_test":"error"}}');
         mkdir($this->root.'/tests/Feature', 0700, true);
         file_put_contents($this->root.'/tests/Feature/UnknownTest.php', "<?php it('runs unknown command', function () { \$this->artisan(\$unknown); });");
         $audit = $this->cli(['audit', '--agent'], exit: 1);
@@ -96,7 +217,7 @@ final class StandaloneProcessTest extends TestCase
     public function test_ordinary_missing_test_warnings_do_not_block_task_verification(): void
     {
         $settings = $this->cli(['init', 'actions']);
-        file_put_contents($settings['config'], '{"enabled":["actions"],"audit":{"missing_test":"warn"}}');
+        file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["actions"],"audit":{"missing_test":"warn"}}');
         $audit = $this->cli(['audit', '--agent']);
         self::assertGreaterThan(0, $audit['warn']);
         self::assertNotContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit['find'], 'm'));
@@ -148,7 +269,7 @@ final class StandaloneProcessTest extends TestCase
         self::assertSame('pass', $this->cli(['task', 'check', 'one'])['status']);
         $shared = $this->root.'/.architecture-kit';
         mkdir($shared);
-        file_put_contents($shared.'/settings.json', '{"enabled":["services"]}');
+        file_put_contents($shared.'/settings.json', '{"analysis":{"engine":"php"},"enabled":["services"]}');
         self::assertSame('blocked', $this->cli(['task', 'check', 'one'], exit: 1)['status']);
         self::assertFalse($this->cli(['task', 'skip', 'one', '--confirm'])['ok']);
         self::assertSame('blocked', $this->cli(['task', 'check', 'missing'], exit: 1)['status']);
@@ -156,7 +277,10 @@ final class StandaloneProcessTest extends TestCase
 
     public function test_profiles_are_explicit_and_mutations_require_opt_in(): void
     {
-        $this->cli(['init', 'services', '--profile', 'personal']);
+        $profile = $this->cli(['init', 'services', '--profile', 'personal']);
+        $config = json_decode(file_get_contents($profile['config']), true, flags: JSON_THROW_ON_ERROR);
+        $config['analysis'] = ['engine' => 'php'];
+        file_put_contents($profile['config'], json_encode($config, JSON_THROW_ON_ERROR));
         $this->action(true);
         self::assertGreaterThan(0, $this->cli(['audit', '--agent'], exit: 1)['err']);
         self::assertSame(0, $this->cli(['audit', '--agent', '--profile', 'personal'])['err']);
@@ -208,6 +332,131 @@ final class StandaloneProcessTest extends TestCase
             self::assertSame('observed', $status['state']);
             self::assertFalse($status['active']);
         }
+    }
+
+    public function test_export_keeps_the_composer_proxy_that_supplies_the_autoloader(): void
+    {
+        $proxy = $this->temp.'/composer-proxy.php';
+        $autoload = dirname(__DIR__, 3).'/vendor/autoload.php';
+        $binary = dirname(__DIR__, 3).'/bin/architecture-kit';
+        file_put_contents($proxy, '<?php $_composer_autoload_path = '.var_export($autoload, true).'; require '.var_export($binary, true).';');
+        $process = new Process([PHP_BINARY, $proxy, '--tool-home', $this->home, '--project', $this->root, 'integration', 'export', 'codex']);
+        $process->mustRun();
+        $export = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame(realpath($proxy), $export['mcp']['args'][0]);
+        $hooks = json_decode(file_get_contents($export['directory'].'/hooks.json'), true, flags: JSON_THROW_ON_ERROR);
+        $hook = new Process(['sh', '-c', $hooks['hooks']['SessionStart'][0]['hooks'][0]['command']]);
+        $hook->setInput(json_encode(['hook_event_name' => 'SessionStart', 'source' => 'startup', 'cwd' => $this->root, 'session_id' => 'exported-session']));
+        $hook->mustRun();
+        self::assertStringContainsString('Status started', $hook->getOutput());
+    }
+
+    public function test_source_routes_and_declared_directories_allow_a_complete_task_without_execution(): void
+    {
+        $settings = $this->cli(['init', 'thin-controllers']);
+        file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["thin-controllers"],"audit":{"classification":{"roles":[{"path":"app/Dto","kind":"data"}]}}}');
+        mkdir($this->root.'/app/Http/Controllers', 0700, true);
+        mkdir($this->root.'/routes', 0700, true);
+        mkdir($this->root.'/bootstrap', 0700, true);
+        mkdir($this->root.'/vendor', 0700, true);
+        $trap = '<?php file_put_contents('.var_export($this->root.'/executed', true).', "executed");';
+        file_put_contents($this->root.'/bootstrap/app.php', $trap);
+        file_put_contents($this->root.'/vendor/autoload.php', $trap);
+        file_put_contents($this->root.'/app/Http/Controllers/InvoiceController.php', '<?php namespace App\\Http\\Controllers; class InvoiceController { public function index() { return "ok"; } }');
+        file_put_contents($this->root.'/routes/web.php', $trap.' use Illuminate\\Support\\Facades\\Route; Route::get("/invoices", [App\\Http\\Controllers\\InvoiceController::class, "index"]);');
+        $before = $this->files();
+        $audit = $this->cli(['audit', '--agent']);
+        self::assertSame('complete', $audit['analysis']['status']);
+        self::assertSame('started', $this->cli(['task', 'begin', 'source-http'])['status']);
+        self::assertSame('pass', $this->cli(['task', 'check', 'source-http'])['status']);
+        self::assertSame($before, $this->files());
+        self::assertFileDoesNotExist($this->root.'/executed');
+    }
+
+    public function test_unresolved_source_routes_preserve_known_endpoints_and_block_task_verification(): void
+    {
+        $settings = $this->cli(['init', 'thin-controllers']);
+        file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["thin-controllers"]}');
+        mkdir($this->root.'/app/Http/Controllers', 0700, true);
+        mkdir($this->root.'/routes', 0700, true);
+        file_put_contents($this->root.'/app/Http/Controllers/InvoiceController.php', '<?php namespace App\\Http\\Controllers; class InvoiceController { public function index() { return "ok"; } }');
+        file_put_contents($this->root.'/routes/web.php', '<?php use Illuminate\\Support\\Facades\\Route; Route::get("/invoices", [App\\Http\\Controllers\\InvoiceController::class, "index"]); Route::get("/dynamic", $handler);');
+        $audit = $this->cli(['audit', '--agent']);
+        self::assertSame('incomplete', $audit['analysis']['status']);
+        self::assertContains('A_ROUTE_SOURCE_UNRESOLVED', array_column($audit['analysis']['notices'], 'code'));
+        self::assertSame('blocked', $this->cli(['task', 'begin', 'dynamic-http'], exit: 1)['status']);
+        self::assertFalse($this->cli(['guard', '--agent'], exit: 1)['ok']);
+    }
+
+    public function test_missing_static_route_handler_blocks_task_without_executing_vendor(): void
+    {
+        $settings = $this->cli(['init', 'thin-controllers']);
+        file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["thin-controllers"]}');
+        mkdir($this->root.'/app/Http/Controllers', 0700, true);
+        mkdir($this->root.'/routes', 0700, true);
+        mkdir($this->root.'/vendor', 0700, true);
+        file_put_contents($this->root.'/vendor/autoload.php', '<?php file_put_contents(__DIR__."/executed", "yes");');
+        file_put_contents($this->root.'/app/Http/Controllers/InvoiceController.php', '<?php namespace App\\Http\\Controllers; class InvoiceController { public function index() { return "ok"; } }');
+        file_put_contents($this->root.'/routes/web.php', '<?php use Illuminate\\Support\\Facades\\Route; Route::get("/invoices", [App\\Http\\Controllers\\InvoiceController::class, "index"]); Route::get("/missing", [App\\Http\\Controllers\\MissingController::class, "index"]); Route::get("/external", [Vendor\\ExternalController::class, "index"]);');
+        $audit = $this->cli(['audit', '--agent']);
+        self::assertSame('incomplete', $audit['analysis']['status']);
+        $notices = array_values(array_filter($audit['analysis']['notices'], fn ($notice) => $notice['code'] === 'A_SOURCE_UNAVAILABLE'));
+        self::assertCount(2, $notices);
+        self::assertSame(['missing', 'external'], array_column(array_column($notices, 'route'), 'uri'));
+        self::assertSame('routes/web.php', $notices[0]['route']['source']['path']);
+        self::assertSame('blocked', $this->cli(['task', 'begin', 'missing-http'], exit: 1)['status']);
+        self::assertSame('blocked', $this->cli(['task', 'check', 'missing-http'], exit: 1)['status']);
+        self::assertFalse($this->cli(['guard', '--agent'], exit: 1)['ok']);
+        self::assertFileDoesNotExist($this->root.'/vendor/executed');
+    }
+
+    public function test_runtime_routes_are_explicit_fresh_and_propagated_to_exported_hooks(): void
+    {
+        $settings = $this->cli(['init', 'thin-controllers']);
+        file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["thin-controllers"],"audit":{"classification":{"roles":[{"path":"app/Dto","kind":"data"}]}}}');
+        mkdir($this->root.'/app/Http/Controllers', 0700, true);
+        mkdir($this->root.'/bootstrap', 0700, true);
+        mkdir($this->root.'/vendor', 0700, true);
+        file_put_contents($this->root.'/app/Http/Controllers/InvoiceController.php', '<?php namespace App\\Http\\Controllers; class InvoiceController { public function __construct() { throw new \\LogicException("Do not instantiate controllers"); } public function index() { return "ok"; } }');
+        $autoload = dirname(__DIR__, 3).'/vendor/autoload.php';
+        file_put_contents($this->root.'/vendor/autoload.php', '<?php require_once '.var_export($autoload, true).';');
+        $counter = $this->temp.'/runtime-boots';
+        file_put_contents($this->root.'/bootstrap/app.php', '<?php file_put_contents('.var_export($counter, true).', "boot\\n", FILE_APPEND); return \\Illuminate\\Foundation\\Application::configure(basePath: dirname(__DIR__))->withRouting(using: function () { app("router")->get("dynamic-".random_int(1, 10000), [\\App\\Http\\Controllers\\InvoiceController::class, "index"]); })->create();');
+        file_put_contents($this->root.'/bootstrap/providers.php', '<?php return [];');
+        $before = $this->files();
+        self::assertSame('incomplete', $this->cli(['audit', '--agent'])['analysis']['status']);
+        self::assertFileDoesNotExist($counter);
+        self::assertSame('complete', $this->cli(['--runtime-routes', 'audit', '--agent'])['analysis']['status']);
+        self::assertSame('started', $this->cli(['--runtime-routes', 'task', 'begin', 'runtime'])['status']);
+        self::assertSame('pass', $this->cli(['--runtime-routes', 'task', 'check', 'runtime'])['status']);
+        self::assertSame('stale', $this->cli(['task', 'status', 'runtime'], exit: 1)['status']);
+        self::assertCount(3, file($counter));
+        $export = $this->cli(['--runtime-routes', 'integration', 'export', 'codex']);
+        self::assertContains('--runtime-routes', $export['mcp']['args']);
+        $hooks = json_decode(file_get_contents($export['directory'].'/hooks.json'), true, flags: JSON_THROW_ON_ERROR);
+        $hook = new Process(['sh', '-c', $hooks['hooks']['SessionStart'][0]['hooks'][0]['command']]);
+        $hook->setInput(json_encode(['hook_event_name' => 'SessionStart', 'source' => 'startup', 'cwd' => $this->root, 'session_id' => 'runtime-hook']));
+        $hook->mustRun();
+        self::assertStringContainsString('Status started', $hook->getOutput());
+        self::assertSame($before, $this->files());
+    }
+
+    public function test_runtime_bootstrap_failure_and_invalid_settings_never_pass_task_verification(): void
+    {
+        self::assertSame('blocked', $this->cli(['--runtime-routes', 'task', 'begin', 'runtime-failed'], exit: 1)['status']);
+        self::assertFalse($this->cli(['--runtime-routes', 'guard', '--agent'], exit: 1)['ok']);
+        $settings = $this->cli(['init', 'actions']);
+        file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["actions"],"runtime":{"routes":{"driver":"docker-compose","service":"invalid;touch /tmp/unwanted"}}}');
+        self::assertSame('blocked', $this->cli(['--runtime-routes', 'task', 'begin', 'invalid-runtime'], exit: 1)['status']);
+        file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["actions"],"rules":["Fixture\\\\CustomRule"]}');
+        $custom = $this->process(['--runtime-routes', 'audit', '--agent']);
+        $custom->run();
+        self::assertSame(1, $custom->getExitCode());
+        self::assertStringContainsString('--allow-execution', $custom->getOutput().$custom->getErrorOutput());
+        $false = $this->process(['--runtime-routes=false', 'audit', '--agent']);
+        $false->run();
+        self::assertSame(2, $false->getExitCode());
+        self::assertStringContainsString('bare --runtime-routes', $false->getErrorOutput());
     }
 
     private function hook(string $client, array $input): array

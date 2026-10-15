@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Test declarations and sanitized requests reuse the builder's existing invocation collection. */
 final class TestCatalogExtractor
@@ -30,7 +28,7 @@ final class TestCatalogExtractor
         foreach ($php->elements as $element) {
             $byOffset[$element->offset] = $element;
         }
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassMethod::class) as $method) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-method') as $method) {
             $element = $byOffset[$method->getStartFilePos()] ?? null;
             if ($element === null) {
                 continue;
@@ -63,7 +61,7 @@ final class TestCatalogExtractor
                         }
                         if (isset($attribute->args[0])) {
                             $value = $attribute->args[0]->value;
-                            $priority = $value instanceof Node\Scalar\Int_ ? $value->value : ($value instanceof Expr\UnaryMinus && $value->expr instanceof Node\Scalar\Int_ ? -$value->expr->value : null);
+                            $priority = Node::is($value, 'scalar.int') ? $value->value : (Node::is($value, 'expression.unary-minus') && Node::is($value->expr, 'scalar.int') ? -$value->expr->value : null);
                         }
                         if (in_array($hook, array_column($hooks, 'api'), true)) {
                             $diagnostics[] = new CatalogDiagnostic('test_analysis', 'Repeated PHPUnit hook attributes require inspection.', $attribute->getStartLine(), $element->id);
@@ -80,8 +78,8 @@ final class TestCatalogExtractor
                     [...$element->metadata, ...($test && $method->isPublic() && ! $method->isAbstract() ? ['test_declaration_candidate' => true] : []), 'phpunit_hooks' => $hooks, 'phpunit_providers' => $providers]);
             }
         }
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Expr\FuncCall::class) as $call) {
-            if (! $call->name instanceof Node\Name || $call->isFirstClassCallable()) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'expression.func-call') as $call) {
+            if (! Node::is($call->name, 'name') || $call->isFirstClassCallable()) {
                 continue;
             }
             $function = strtolower($file->resolvedName($call->name));
@@ -90,7 +88,7 @@ final class TestCatalogExtractor
             }
             $callback = null;
             foreach ($call->getArgs() as $arg) {
-                if ($arg->value instanceof Expr\Closure || $arg->value instanceof Expr\ArrowFunction) {
+                if (Node::is($arg->value, 'expression.closure') || Node::is($arg->value, 'expression.arrow-function')) {
                     $callback = $byOffset[$arg->value->getStartFilePos()] ?? null;
                 }
             }
@@ -108,15 +106,15 @@ final class TestCatalogExtractor
                 $relations[] = new CatalogRelation($id, $callback->id, 'test-body', max(1, $call->getStartLine()), max(1, $call->getEndLine()), 'conditional', ['execution_proven' => false, 'test_executed' => false]);
             }
         }
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Expr\MethodCall::class) as $call) {
-            if (! $call->name instanceof Node\Identifier || strtolower($call->name->toString()) !== 'with' || $call->isFirstClassCallable()) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'expression.method-call') as $call) {
+            if (! Node::is($call->name, 'identifier') || strtolower($call->name->toString()) !== 'with' || $call->isFirstClassCallable()) {
                 continue;
             }
             $root = $call->var;
-            while ($root instanceof Expr\MethodCall) {
+            while (Node::is($root, 'expression.method-call')) {
                 $root = $root->var;
             }
-            if (! $root instanceof Expr\FuncCall) {
+            if (! Node::is($root, 'expression.func-call')) {
                 continue;
             }
             foreach ($elements as $position => $element) {
@@ -165,7 +163,7 @@ final class TestCatalogExtractor
     }
 
     /** @return array{api: string, class: ?string, method: string, validate_argument_count: ?bool}|null */
-    private function provider(FileContext $file, Node\Attribute $attribute): ?array
+    private function provider(FileContext $file, Node $attribute): ?array
     {
         $external = str_ends_with($file->resolvedName($attribute->name), 'External');
         $names = $external ? ['className', 'methodName', 'validateArgumentCount'] : ['methodName', 'validateArgumentCount'];
@@ -186,7 +184,7 @@ final class TestCatalogExtractor
         $class = null;
         if ($external) {
             $value = $args['className'] ?? null;
-            if ($value instanceof Expr\ClassConstFetch && $value->class instanceof Node\Name && $value->name instanceof Node\Identifier && strtolower($value->name->toString()) === 'class'
+            if (Node::is($value, 'expression.class-const-fetch') && Node::is($value->class, 'name') && Node::is($value->name, 'identifier') && strtolower($value->name->toString()) === 'class'
                 && ! in_array(strtolower($value->class->toString()), ['self', 'static', 'parent'], true)) {
                 $class = $file->resolvedName($value->class);
             } else {
@@ -198,7 +196,7 @@ final class TestCatalogExtractor
             $class = ltrim($class, '\\');
         }
         $flag = $args['validateArgumentCount'] ?? null;
-        $validate = $flag === null ? true : ($flag instanceof Expr\ConstFetch && in_array(strtolower($flag->name->toString()), ['true', 'false'], true) ? strtolower($flag->name->toString()) === 'true' : null);
+        $validate = $flag === null ? true : (Node::is($flag, 'expression.const-fetch') && in_array(strtolower($flag->name->toString()), ['true', 'false'], true) ? strtolower($flag->name->toString()) === 'true' : null);
 
         return ['api' => $external ? 'DataProviderExternal' : 'DataProvider', 'class' => $class, 'method' => $method, 'validate_argument_count' => $validate];
     }

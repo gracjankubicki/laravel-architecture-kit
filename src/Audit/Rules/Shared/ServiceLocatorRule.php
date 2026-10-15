@@ -4,24 +4,25 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Shared;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Name;
-use PhpParser\NodeVisitorAbstract;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 
-final readonly class ServiceLocatorRule implements AuditRule
+final readonly class ServiceLocatorRule implements PortableAuditRule
 {
+    public function __construct(private ?ProjectClassification $classification = null) {}
+
     /**
      * @param  array<int, mixed>  $enabled
      */
     public function supports(string $path, array $enabled): bool
     {
-        return str_starts_with($path, 'app/Http/Controllers/')
-            || str_starts_with($path, 'app/Http/Resources/')
+        return ($this->classification?->kindMatches($path, 'controller', str_starts_with($path, 'app/Http/Controllers/')) ?? str_starts_with($path, 'app/Http/Controllers/'))
+            || ($this->classification?->kindMatches($path, 'resource', str_starts_with($path, 'app/Http/Resources/')) ?? str_starts_with($path, 'app/Http/Resources/'))
             || str_contains($path, 'Payload');
     }
 
@@ -30,7 +31,7 @@ final readonly class ServiceLocatorRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -68,11 +69,11 @@ final readonly class ServiceLocatorRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof FuncCall
-                    && $node->name instanceof Name
+                    Node::is($node, 'expression.func-call')
+                    && Node::is($node->name, 'name')
                     && $node->name->toString() === 'app'
                     && isset($node->args[0])
-                    && $node->args[0]->value instanceof Node\Expr\ClassConstFetch
+                    && Node::is($node->args[0]->value, 'expression.class-const-fetch')
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }

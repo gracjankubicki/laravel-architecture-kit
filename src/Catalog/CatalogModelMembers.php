@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\DataCatalog;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Local relationship declarations retain selectors, not keys, constraints or values. */
 final class CatalogModelMembers
@@ -21,17 +19,17 @@ final class CatalogModelMembers
     public static function extract(FileContext $file): array
     {
         $rows = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassLike::class) as $class) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $class) {
             $name = DataCatalog::name($class, $file);
             foreach ($class->getMethods() as $method) {
                 $body = $method->stmts ?? [];
-                $expression = count($body) === 1 && $body[0] instanceof Stmt\Return_ ? $body[0]->expr : null;
+                $expression = count($body) === 1 && Node::is($body[0], 'statement.return') ? $body[0]->expr : null;
                 $pivotClass = null;
                 $pivotClassSelected = false;
                 $supported = true;
                 $root = $expression;
-                while ($root instanceof Expr\MethodCall && ! $root->var instanceof Expr\Variable) {
-                    if (! $root->name instanceof Node\Identifier || $root->isFirstClassCallable() || ! in_array(strtolower($root->name->toString()), ['where', 'wherein', 'orderby', 'withpivot', 'withtimestamps', 'as', 'using', 'withdefault'], true)) {
+                while (Node::is($root, 'expression.method-call') && ! Node::is($root->var, 'expression.variable')) {
+                    if (! Node::is($root->name, 'identifier') || $root->isFirstClassCallable() || ! in_array(strtolower($root->name->toString()), ['where', 'wherein', 'orderby', 'withpivot', 'withtimestamps', 'as', 'using', 'withdefault'], true)) {
                         $supported = false;
                     } elseif (strtolower($root->name->toString()) === 'using' && ! $pivotClassSelected) {
                         $pivotClassSelected = true;
@@ -40,7 +38,7 @@ final class CatalogModelMembers
                     }
                     $root = $root->var;
                 }
-                if (! $root instanceof Expr\MethodCall || ! $root->var instanceof Expr\Variable || $root->var->name !== 'this' || ! $root->name instanceof Node\Identifier
+                if (! Node::is($root, 'expression.method-call') || ! Node::is($root->var, 'expression.variable') || $root->var->name !== 'this' || ! Node::is($root->name, 'identifier')
                     || ! in_array(strtolower($root->name->toString()), self::RELATIONS, true) || $root->isFirstClassCallable()) {
                     continue;
                 }
@@ -48,7 +46,7 @@ final class CatalogModelMembers
                 $related = $type === 'morphto' ? null : self::type(self::argument($root, 0, 'related'), $file, $name);
                 $through = in_array($type, ['hasonethrough', 'hasmanythrough'], true) ? self::type(self::argument($root, 1, 'through'), $file, $name) : null;
                 $pivotNode = in_array($type, ['belongstomany', 'morphtomany', 'morphedbymany'], true) ? self::argument($root, $type === 'belongstomany' ? 1 : 2, 'table') : null;
-                $default = $pivotNode === null || $pivotNode instanceof Expr\ConstFetch && strtolower($pivotNode->name->toString()) === 'null';
+                $default = $pivotNode === null || Node::is($pivotNode, 'expression.const-fetch') && strtolower($pivotNode->name->toString()) === 'null';
                 $pivot = $default ? null : CatalogSelector::literal($pivotNode);
                 $pivot = $pivot !== null && preg_match('/\A[a-zA-Z_][a-zA-Z0-9_.-]{0,255}\z/D', $pivot) === 1 ? $pivot : null;
                 $morph = in_array($type, ['morphtomany', 'morphedbymany'], true) ? CatalogSelector::literal(self::argument($root, 1, 'name')) : null;
@@ -64,15 +62,15 @@ final class CatalogModelMembers
 
     private static function type(?Node $node, FileContext $file, string $class): ?string
     {
-        if ($node instanceof Expr\ClassConstFetch && $node->class instanceof Node\Name && strtolower($node->class->toString()) === 'static') {
+        if (Node::is($node, 'expression.class-const-fetch') && Node::is($node->class, 'name') && strtolower($node->class->toString()) === 'static') {
             return null;
         }
-        $value = $node instanceof Expr\ClassConstFetch ? DataCatalog::literal($node, $file, $class) : CatalogSelector::literal($node);
+        $value = Node::is($node, 'expression.class-const-fetch') ? DataCatalog::literal($node, $file, $class) : CatalogSelector::literal($node);
 
         return is_string($value) && strlen($value) <= 500 && preg_match('/\A\\\\?[a-zA-Z_][a-zA-Z0-9_]*(?:\\\\[a-zA-Z_][a-zA-Z0-9_]*)*\z/D', $value) === 1 ? ltrim($value, '\\') : null;
     }
 
-    private static function argument(Expr\MethodCall $call, int $position, string $name): ?Node
+    private static function argument(Node $call, int $position, string $name): ?Node
     {
         foreach ($call->getArgs() as $index => $arg) {
             if (! $arg->unpack && ($arg->name?->toString() === $name || $arg->name === null && $index === $position)) {

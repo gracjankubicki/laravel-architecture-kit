@@ -15,7 +15,9 @@ use Illuminate\Filesystem\Filesystem;
 
 final readonly class ControllerReadAudit
 {
-    public function __construct(private Filesystem $files, private string $basePath, private ?ProjectClassification $classification = null) {}
+    private const FORTIFY_CONTROLLERS = 'Laravel\\Fortify\\Http\\Controllers\\';
+
+    public function __construct(private Filesystem $files, private string $basePath, private ?ProjectClassification $classification = null, private ?AnalysisFactsCache $facts = null) {}
 
     /**
      * Compatibility adapter for callers that only consume enforced findings.
@@ -35,25 +37,74 @@ final readonly class ControllerReadAudit
      */
     public function analyze(ProjectGraphSnapshot $graph, array $enabled, ?array $focusPaths, ?RouteMap $routes): ControllerAnalysisResult
     {
-        $hasController = (bool) array_filter(
-            $graph->symbols,
-            fn ($symbol): bool => $symbol->kind === 'class' && ($this->classification?->kindMatches($symbol->path, 'controller', str_starts_with($symbol->path, 'app/Http/Controllers/')) ?? str_starts_with($symbol->path, 'app/Http/Controllers/')),
-        );
-        if ($routes === null && ! $hasController) {
+        $controllers = $this->controllers($graph);
+        if ($routes === null && $controllers === []) {
             return new ControllerAnalysisResult(status: ControllerAnalysisResult::NOT_RUN);
         }
         $routes ??= RouteMap::fresh($this->basePath);
         $focusPaths = $this->affectedControllers($graph, $focusPaths);
+
+        return $this->analyzePartition($graph, $enabled, $routes, $controllers,
+            array_values(array_filter($controllers, fn (int $ordinal): bool => $focusPaths === null || in_array($graph->symbols[$ordinal]->path, $focusPaths, true))), true, true);
+    }
+
+    /** @return list<int> Source order, including duplicate declarations. */
+    public function controllers(ProjectGraphSnapshot $graph): array
+    {
+        $controllers = [];
+        foreach ($graph->symbols as $ordinal => $symbol) {
+            if ($symbol->kind === 'class' && ($this->classification?->kindMatches($symbol->path, 'controller', str_starts_with($symbol->path, 'app/Http/Controllers/')) ?? str_starts_with($symbol->path, 'app/Http/Controllers/'))) {
+                $controllers[] = $ordinal;
+            }
+        }
+
+        return $controllers;
+    }
+
+    /** @internal Each partition uses the full source symbol index and fresh route context.
+     * @param  array<int, Architecture|string>  $enabled
+     * @param  list<int>  $controllers
+     * @param  list<int>  $selection
+     */
+    public function analyzePartition(ProjectGraphSnapshot $graph, array $enabled, RouteMap $routes, array $controllers, array $selection, bool $initial, bool $fortify): ControllerAnalysisResult
+    {
+        $controllerKeys = [];
+        foreach ($controllers as $ordinal) {
+            $symbol = $graph->symbols[$ordinal];
+            $controllerKeys[$symbol->path.'\0'.strtolower($symbol->name)] = true;
+        }
+        $selected = array_fill_keys($selection, true);
         $findings = [];
         $suggestions = [];
-        $notices = [];
-        $incomplete = false;
+        $notices = $initial ? $routes->notices : [];
+        foreach ($initial ? ($routes->entries ?? []) : [] as $entry) {
+            if ($entry->class === null || $entry->method === null) {
+                continue;
+            }
+            $handler = $graph->symbol($entry->class);
+            if ($handler !== null && isset($controllerKeys[$handler->path.'\0'.strtolower($handler->name)])) {
+                continue;
+            }
+            // Fortify's registered handlers have a dedicated framework pass below.
+            // That pass reports unavailable implementations and callback limits itself.
+            if (str_starts_with($entry->class, self::FORTIFY_CONTROLLERS)) {
+                continue;
+            }
+            $witness = $this->routeContext($entry, $entry->class, $entry->method, $entry->verbs);
+            $witness = [...$witness, ...($routes->context['source_routes'][$entry->identity()] ?? [])];
+            $notices[] = $this->notice('A_SOURCE_UNAVAILABLE', 'source_unavailable',
+                $witness['source']['path'] ?? $handler->path ?? 'routes',
+                $witness['source']['line'] ?? $handler->line ?? 1,
+                'Route handler '.$entry->class.'::'.$entry->method.' has no controller source available to endpoint analysis.',
+                [], $witness);
+        }
+        $incomplete = $notices !== [];
         $analysed = false;
+        $sourceFiles = new SourceFileCache($this->facts);
+        $providerContext = null;
 
-        foreach ($graph->symbols as $symbol) {
-            if ($symbol->kind !== 'class'
-                || ! ($this->classification?->kindMatches($symbol->path, 'controller', str_starts_with($symbol->path, 'app/Http/Controllers/')) ?? str_starts_with($symbol->path, 'app/Http/Controllers/'))
-                || ($focusPaths !== null && ! in_array($symbol->path, $focusPaths, true))) {
+        foreach ($graph->symbols as $ordinal => $symbol) {
+            if (! isset($selected[$ordinal])) {
                 continue;
             }
 
@@ -75,7 +126,9 @@ final readonly class ControllerReadAudit
                 continue;
             }
             $analysed = true;
-            $sources = new SourceIndex($this->files, $this->basePath, $graph);
+            unset($sources, $source, $resolved, $effects, $method);
+            $endpointEffects = [];
+            $sources = new SourceIndex($this->files, $this->basePath, $graph, $sourceFiles);
             $source = $sources->get($symbol->name);
             if ($source === null) {
                 $notices[] = $this->notice(
@@ -125,8 +178,25 @@ final readonly class ControllerReadAudit
                 foreach ($contexts as $context) {
                     $routeEntry = $context['route'];
                     $routeContext = $this->routeContext($routeEntry, $symbol->name, $context['method'], $context['verbs']);
-                    $framework = (new FrameworkContextBuilder($sources, $routes, $routeEntry))->build();
-                    $effects = (new MethodAnalyzer($sources, $framework))->analyze($symbol->name, $context['method']);
+                    if ($routeEntry !== null && isset($routes->context['source_routes'][$routeEntry->identity()])) {
+                        $routeContext = [...$routeContext, ...$routes->context['source_routes'][$routeEntry->identity()]];
+                    }
+                    if (isset($routes->context['runtime_routes'])) {
+                        $routeContext = [...$routeContext, ...$routes->context['runtime_routes']];
+                    }
+                    // Registration witnesses differ; analysis depends on the handler
+                    // and its effective middleware, not the URI/name/domain/verbs.
+                    $analysisKey = serialize([$context['method'], $routeEntry?->middleware, $routeEntry?->excludedMiddleware]);
+                    if (! isset($endpointEffects[$analysisKey])) {
+                        if ($providerContext === null) {
+                            $providerContext = new FrameworkContextBuilder(new SourceIndex($this->files, $this->basePath, $graph, $sourceFiles), $routes);
+                            $providerContext->build();
+                        }
+                        $framework = $providerContext->forRoute($sources, $routeEntry)->build();
+                        $endpointEffects[$analysisKey] = (new MethodAnalyzer($sources, $framework))->analyze($symbol->name, $context['method']);
+                        unset($framework);
+                    }
+                    $effects = $endpointEffects[$analysisKey];
                     $verbs = $context['verbs'];
                     $reads = array_intersect($verbs, ['GET', 'HEAD']) !== [];
                     $writes = array_diff($verbs, ['GET', 'HEAD', 'OPTIONS']) !== [];
@@ -175,7 +245,7 @@ final readonly class ControllerReadAudit
                                 'W_THIN_CONTROLLER_SERVICE_DEPENDENCY',
                                 $symbol->path,
                                 $service['path'] === $symbol->path ? $service['line'] : $method->getStartLine(),
-                                $prefix.' uses '.$service['type'].' for an endpoint accepting write HTTP verbs; route the write use case through an Action. '.implode(' -> ', $effects->observations[0]['trace'] ?? []),
+                                $prefix.' uses '.$service['type'].' for an endpoint accepting write HTTP verbs; route the write use case through an Action. '.implode(' -> ', $service['trace']),
                             );
                         }
                     }
@@ -193,10 +263,10 @@ final readonly class ControllerReadAudit
             }
         }
 
-        foreach ($this->fortifyContexts($routes) as $context) {
+        foreach ($fortify ? $this->fortifyContexts($routes) : [] as $context) {
             $entry = $context['entry'];
             $analysed = true;
-            $sources = new SourceIndex($this->files, $this->basePath, $graph);
+            $sources = new SourceIndex($this->files, $this->basePath, $graph, $sourceFiles);
             $framework = (new FrameworkContextBuilder($sources, $routes, $entry))->build();
             $effects = (new MethodAnalyzer($sources, $framework))->analyze($entry->class, $entry->method);
             $routeContext = $this->routeContext($entry, $entry->class, $entry->method, $entry->verbs);
@@ -244,6 +314,25 @@ final readonly class ControllerReadAudit
             notices: $this->deduplicateNotices($notices),
             status: $incomplete ? ControllerAnalysisResult::INCOMPLETE : ($analysed ? ControllerAnalysisResult::COMPLETE : ControllerAnalysisResult::NOT_RUN),
         );
+    }
+
+    /** @param list<ControllerAnalysisResult> $parts */
+    public function mergePartitions(array $parts): ControllerAnalysisResult
+    {
+        $findings = $suggestions = $notices = [];
+        $status = ControllerAnalysisResult::NOT_RUN;
+        foreach ($parts as $part) {
+            array_push($findings, ...$part->findings);
+            array_push($suggestions, ...$part->suggestions);
+            array_push($notices, ...$part->notices);
+            if ($part->status === ControllerAnalysisResult::INCOMPLETE) {
+                $status = ControllerAnalysisResult::INCOMPLETE;
+            } elseif ($part->status === ControllerAnalysisResult::COMPLETE && $status === ControllerAnalysisResult::NOT_RUN) {
+                $status = ControllerAnalysisResult::COMPLETE;
+            }
+        }
+
+        return new ControllerAnalysisResult($this->deduplicateFindings($findings), $this->deduplicateSuggestions($suggestions), $this->deduplicateNotices($notices), $status);
     }
 
     /**
@@ -297,7 +386,7 @@ final readonly class ControllerReadAudit
         foreach ($routes->entries ?? [] as $entry) {
             if ($entry->class === null
                 || $entry->method === null
-                || ! str_starts_with($entry->class, 'Laravel\\Fortify\\Http\\Controllers\\')) {
+                || ! str_starts_with($entry->class, self::FORTIFY_CONTROLLERS)) {
                 continue;
             }
             $contexts[$entry->identity()] ??= ['entry' => $entry];

@@ -4,21 +4,19 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Shared;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifyContractMap;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifySourceResolver;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects\ValueObjectsRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
 
-final readonly class FolderPurityRule implements AuditRule
+final readonly class FolderPurityRule implements PortableAuditRule
 {
     /**
      * Suffixes that mark a class as data rather than behaviour. Scaffolding reads the
@@ -64,7 +62,7 @@ final readonly class FolderPurityRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -134,7 +132,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return false;
         }
 
@@ -163,7 +161,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return false;
         }
 
@@ -198,7 +196,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return false;
         }
 
@@ -218,7 +216,7 @@ final readonly class FolderPurityRule implements AuditRule
     {
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return false;
         }
 
@@ -232,7 +230,7 @@ final readonly class FolderPurityRule implements AuditRule
     {
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_ || ! $class->extends instanceof Name) {
+        if (! Node::is($class, 'statement.class') || ! Node::is($class->extends, 'name')) {
             return false;
         }
 
@@ -250,7 +248,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return false;
         }
 
@@ -278,7 +276,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return false;
         }
 
@@ -298,7 +296,7 @@ final readonly class FolderPurityRule implements AuditRule
     {
         return PhpAst::containsAny(
             $nodes,
-            fn (Node $node): bool => $node instanceof Stmt\Enum_,
+            fn (Node $node): bool => Node::is($node, 'statement.enum'),
         );
     }
 
@@ -313,7 +311,7 @@ final readonly class FolderPurityRule implements AuditRule
 
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return false;
         }
 
@@ -332,23 +330,23 @@ final readonly class FolderPurityRule implements AuditRule
     {
         return PhpAst::containsAny(
             $nodes,
-            fn (Node $node): bool => $node instanceof Stmt\Enum_,
+            fn (Node $node): bool => Node::is($node, 'statement.enum'),
         );
     }
 
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstClass(array $nodes): ?Stmt\Class_
+    private function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 foreach ($node->stmts as $statement) {
-                    if ($statement instanceof Stmt\Class_) {
+                    if (Node::is($statement, 'statement.class')) {
                         return $statement;
                     }
                 }
@@ -358,14 +356,14 @@ final readonly class FolderPurityRule implements AuditRule
         return null;
     }
 
-    private function classHasPublicMethod(Stmt\Class_ $class, string $method): bool
+    private function classHasPublicMethod(Node $class, string $method): bool
     {
         $classMethod = $this->classMethod($class, $method);
 
-        return $classMethod instanceof Stmt\ClassMethod && $classMethod->isPublic();
+        return Node::is($classMethod, 'statement.class-method') && $classMethod->isPublic();
     }
 
-    private function classMethod(Stmt\Class_ $class, string $method): ?Stmt\ClassMethod
+    private function classMethod(Node $class, string $method): ?Node
     {
         foreach ($class->getMethods() as $classMethod) {
             if ($classMethod->name->toString() === $method) {
@@ -379,9 +377,9 @@ final readonly class FolderPurityRule implements AuditRule
     /**
      * @param  array<int, string>  $expected
      */
-    private function classExtendsAny(Stmt\Class_ $class, array $expected): bool
+    private function classExtendsAny(Node $class, array $expected): bool
     {
-        if (! $class->extends instanceof Name) {
+        if (! Node::is($class->extends, 'name')) {
             return false;
         }
 

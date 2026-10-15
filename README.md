@@ -186,6 +186,14 @@ Autoload assessment reads the current `composer.json` without loading Composer c
 
 Move analysis allows 10,000 evidence visits, Composer files up to 1 MB, 1,000 mappings, 128 directories per mapping and 256 expected paths per assessment, with PHP memory headroom checks. Limits and truncation require further inspection; absence of breaking rows does not establish safety.
 
+## Analysis engines and Composer packages
+
+Architecture Kit uses Mago by default, with PHP available through an explicit `analysis.engine` setting. Both engines feed the same neutral syntax model into audits, graph queries, impact, revision comparisons and public API analysis. A failed or missing Mago binary produces an explicit error; it never triggers a PHP fallback.
+
+Install the matching engine with `architecture-kit engine install`, then inspect a project's choice with `architecture-kit --project /absolute/path/project engine describe`. The tool runtime requires PHP 8.3 or newer; the analyzed language version comes from project settings or Composer. Binary distributions cover macOS and Linux on ARM64 and x64.
+
+The standalone workflow also applies architecture to plain PHP and Laravel Composer packages. It derives source directories and namespaces from Composer or explicit placements and supports guidance, generation, audit and task control without `artisan` or `app/`. See [standalone setup, engine selection and package examples](STANDALONE.md).
+
 ## Installation
 
 ```bash
@@ -437,7 +445,7 @@ Measured on that application, with `app/` in scope and nothing edited between ru
 
 A full audit gains nothing, and that is not an oversight: its rules need the syntax tree of every file they check, so those files are parsed either way. The cache removes parsing that nothing else needed, which is what `--changed` and `context` are made of.
 
-Staleness is the risk, not speed: a graph that describes code the project no longer has would report findings for deleted code and stay silent about new code, with nothing in the output to say so. An entry is discarded when the enabled architectures, custom rules or audited scope change, and when the package itself changes, which is decided by hashing its sources rather than by a version constant somebody has to remember to bump. A file is parsed again when its modification time or size moves, and the run is driven by the files the project actually has, so a deleted file leaves the graph and a contribution missing from the entry is rebuilt rather than assumed. The stored file carries a hash of its own contents, because a damaged entry can still be well formed: one stripped of its symbols looks exactly like a file that declares none, and no structural check can tell those apart.
+Staleness is the risk, not speed: a graph that describes code the project no longer has would report findings for deleted code and stay silent about new code, with nothing in the output to say so. An entry is discarded when the enabled architectures, custom rules or audited scope change, and when the package itself changes, which is decided by hashing its sources rather than by a version constant somebody has to remember to bump. A file is parsed again when its content hash, modification time or size changes, and the run is driven by the files the project actually has, so a deleted file leaves the graph and a contribution missing from the entry is rebuilt rather than assumed. The stored file carries a hash of its own contents, because a damaged entry can still be well formed: one stripped of its symbols looks exactly like a file that declares none, and no structural check can tell those apart.
 
 File state is stat rather than a content hash: hashing the same project costs 1.58s against 0.02s, on every run including the ones that hit the cache, and it would eat most of what the cache saves. The gap that leaves is narrow and named: content changed while both timestamp and size stayed identical, which `rsync -a`, an archive unpacked with its timestamps, and `touch -r` can do but Git, editors and agents cannot. `php artisan architecture-kit:cache-clear` is the answer to it, and to any entry you no longer trust. A corrupt or unreadable entry is not an error: the command rebuilds and moves on.
 
@@ -781,6 +789,10 @@ return [
 ### Custom Audit Rules
 
 Custom rules are PHP classes registered in `config/architectures.php` under `rules`. Each rule must implement `GracjanKubicki\ArchitectureKit\Audit\AuditRule`. Custom rule findings participate in inline suppression, baseline suppression, `audit`, `guard`, hooks, and MCP output.
+
+New parser-independent rules implement `GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule` and read `$file->syntax()`. It returns the neutral `Analysis\Syntax\Node` model for either engine. The marker declares engine compatibility; it does not itself provide an audit implementation.
+
+Existing rules that only implement `AuditRule` require explicit `analysis.engine = php`. Their `$file->ast()` interface remains available with PHP. Mago rejects legacy rules before their constructors run and explains migration or explicit PHP selection. A portable rule must not call `$file->ast()` or depend on PhpParser nodes. In standalone mode, custom PHP rule execution still requires `--allow-execution` and availability through the tool autoloader.
 
 Prefer architecture-scoped rules when the rule enforces one architecture:
 

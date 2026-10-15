@@ -192,7 +192,7 @@ PHP),
 <?php class Actual { public function action() {} } ?>
 SOURCE;
         $path = 'resources/views/mapped.blade.php';
-        $this->assertNull((new FileContext($path, $source))->ast(), 'The raw Blade comment deliberately contains invalid PHP.');
+        $this->assertNull((new FileContext($path, $source))->syntax(), 'The raw Blade comment deliberately contains invalid PHP.');
         $graph = (new ProjectGraphBuilder(impact: true, catalog: true))->build([new FileContext($path, $source)]);
         $this->assertNotNull($graph->symbol('Actual'));
         $facts = $graph->catalogFacts[0];

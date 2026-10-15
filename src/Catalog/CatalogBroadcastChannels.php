@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Local return descriptors contain channel selectors, never event payloads. */
 final class CatalogBroadcastChannels
@@ -20,20 +18,20 @@ final class CatalogBroadcastChannels
     public static function extract(FileContext $file): array
     {
         $rows = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassMethod::class) as $method) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-method') as $method) {
             if (strtolower($method->name->toString()) !== 'broadcaston') {
                 continue;
             }
             $body = $method->stmts ?? [];
-            $expression = count($body) === 1 && $body[0] instanceof Stmt\Return_ ? $body[0]->expr : null;
+            $expression = count($body) === 1 && Node::is($body[0], 'statement.return') ? $body[0]->expr : null;
             $row = ['resolved' => $expression !== null, 'channels' => []];
-            $values = $expression instanceof Expr\Array_ ? $expression->items : [$expression];
+            $values = Node::is($expression, 'expression.array') ? $expression->items : [$expression];
             if (count($values) > 128) {
                 $values = [];
                 $row['resolved'] = false;
             }
             foreach ($values as $value) {
-                if ($value instanceof Node\ArrayItem) {
+                if (Node::is($value, 'array-item')) {
                     if ($value->unpack) {
                         $row['resolved'] = false;
 
@@ -41,15 +39,15 @@ final class CatalogBroadcastChannels
                     }
                     $value = $value->value;
                 }
-                $class = $value instanceof Expr\New_ && $value->class instanceof Node\Name ? $file->resolvedName($value->class) : null;
+                $class = Node::is($value, 'expression.new') && Node::is($value->class, 'name') ? $file->resolvedName($value->class) : null;
                 if ($class !== null) {
                     $canonical = array_search(strtolower($class), array_map('strtolower', array_keys(self::TYPES)), true);
                     $class = $canonical === false ? null : array_keys(self::TYPES)[$canonical];
                 }
-                $argument = $value instanceof Expr\New_ ? ($value->args[0] ?? null) : null;
-                $name = $argument instanceof Node\Arg && ! $argument->unpack && ($argument->name === null || $argument->name->toString() === 'name')
+                $argument = Node::is($value, 'expression.new') ? ($value->args[0] ?? null) : null;
+                $name = Node::is($argument, 'arg') && ! $argument->unpack && ($argument->name === null || $argument->name->toString() === 'name')
                     ? CatalogSelector::literal($argument->value) : null;
-                if (! $value instanceof Expr\New_ || $class === null || ! isset(self::TYPES[$class]) || ! is_string($name) || preg_match('/\A[a-zA-Z0-9_.-]{1,256}\z/D', $name) !== 1 || count($value->args) !== 1) {
+                if (! Node::is($value, 'expression.new') || $class === null || ! isset(self::TYPES[$class]) || ! is_string($name) || preg_match('/\A[a-zA-Z0-9_.-]{1,256}\z/D', $name) !== 1 || count($value->args) !== 1) {
                     $row['resolved'] = false;
 
                     continue;

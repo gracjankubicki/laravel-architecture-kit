@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node;
-use PhpParser\NodeFinder;
 
-final readonly class FortifyRule implements AuditRule
+final readonly class FortifyRule implements PortableAuditRule
 {
     public function __construct(
         private Filesystem $files,
@@ -28,7 +28,7 @@ final readonly class FortifyRule implements AuditRule
     /** @return array<int, AuditFinding> */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
         if ($nodes === null) {
             return [];
         }
@@ -37,8 +37,8 @@ final readonly class FortifyRule implements AuditRule
         $findings = [];
         $finder = new NodeFinder;
 
-        foreach ($finder->findInstanceOf($nodes, Node\Expr\StaticCall::class) as $call) {
-            if (! $call->class instanceof Node\Name || ! $call->name instanceof Node\Identifier) {
+        foreach ($finder->findOfKind($nodes, 'expression.static-call') as $call) {
+            if (! Node::is($call->class, 'name') || ! Node::is($call->name, 'identifier')) {
                 continue;
             }
 
@@ -60,9 +60,9 @@ final readonly class FortifyRule implements AuditRule
             );
         }
 
-        foreach ($finder->findInstanceOf($nodes, Node\Expr\MethodCall::class) as $call) {
+        foreach ($finder->findOfKind($nodes, 'expression.method-call') as $call) {
             if (
-                ! $call->name instanceof Node\Identifier
+                ! Node::is($call->name, 'identifier')
                 || ! $this->isContainerCall($call)
                 || ! in_array(strtolower($call->name->toString()), ['bind', 'singleton', 'scoped', 'instance'], true)
             ) {
@@ -148,31 +148,31 @@ final readonly class FortifyRule implements AuditRule
     private function targetClass(FileContext $file, mixed $node): ?string
     {
         if (
-            $node instanceof Node\Expr\ClassConstFetch
-            && $node->class instanceof Node\Name
-            && $node->name instanceof Node\Identifier
+            Node::is($node, 'expression.class-const-fetch')
+            && Node::is($node->class, 'name')
+            && Node::is($node->name, 'identifier')
             && strtolower($node->name->toString()) === 'class'
         ) {
             return $file->resolvedName($node->class);
         }
 
-        if ($node instanceof Node\Scalar\String_) {
+        if (Node::is($node, 'scalar.string')) {
             return ltrim($node->value, '\\');
         }
 
-        if ($node instanceof Node\Expr\New_ && $node->class instanceof Node\Name) {
+        if (Node::is($node, 'expression.new') && Node::is($node->class, 'name')) {
             return $file->resolvedName($node->class);
         }
 
         return null;
     }
 
-    private function isContainerCall(Node\Expr\MethodCall $call): bool
+    private function isContainerCall(Node $call): bool
     {
-        return $call->var instanceof Node\Expr\PropertyFetch
-            && $call->var->var instanceof Node\Expr\Variable
+        return Node::is($call->var, 'expression.property-fetch')
+            && Node::is($call->var->var, 'expression.variable')
             && $call->var->var->name === 'this'
-            && $call->var->name instanceof Node\Identifier
+            && Node::is($call->var->name, 'identifier')
             && in_array($call->var->name->toString(), ['app', 'container'], true);
     }
 

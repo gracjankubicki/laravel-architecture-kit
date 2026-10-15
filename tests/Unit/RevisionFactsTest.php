@@ -31,10 +31,9 @@ final class RevisionFactsTest extends TestCase
     public function test_unknown_configuration_does_not_claim_roles_or_read_current_settings(): void
     {
         $source = $this->source(['config/architectures.php' => '<?php return env("CONFIG");', 'app/Actions/Run.php' => '<?php namespace App; class Run {}']);
-        $facts = RevisionFacts::collect($source, RevisionConfiguration::from($source));
-        $this->assertNull($facts->symbols['app\run']['role']);
-        $this->assertNull($facts->symbols['app\run']['module']);
-        $this->assertNotEmpty($facts->notices);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Cannot establish the project PHP target');
+        RevisionFacts::collect($source, RevisionConfiguration::from($source));
     }
 
     public function test_rule_source_changes_are_separate_from_rule_settings_and_comments(): void
@@ -89,6 +88,6 @@ final class RevisionFactsTest extends TestCase
     /** @param array<string, string> $files */
     private function source(array $files): SourceSnapshot
     {
-        return new SourceSnapshot('git', str_repeat('a', 40), 'hash', $files, [], array_keys($files));
+        return new SourceSnapshot('git', str_repeat('a', 40), 'hash', ['composer.json' => '{"type":"project","require":{"php":"^8.5"}}', ...$files], [], array_values(array_unique(['composer.json', ...array_keys($files)])));
     }
 }

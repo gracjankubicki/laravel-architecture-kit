@@ -229,6 +229,7 @@ class GuidelinesCommandTest extends TestCase
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'laravel/ai' => $constraint,

@@ -71,9 +71,8 @@ final class RevisionDiffTest extends TestCase
         $this->assertSame([], $shared['changes']['configuration']);
         $this->write('config/architectures.php', '<?php return env("CONFIG");');
         $unknown = $service->compare('HEAD');
-        $this->assertSame('incomplete', $unknown['analysis']['status']);
-        $this->assertFalse($unknown['analysis']['after_complete']);
-        $this->assertNotEmpty($unknown['notices']);
+        $this->assertFalse($unknown['ok']);
+        $this->assertStringContainsString('Cannot establish the project PHP target', $unknown['msg']);
         $this->assertFalse($service->compare('missing-ref')['ok']);
         $this->assertFalse($service->compare('HEAD', sharedConfig: 'current')['ok']);
         $this->assertFalse($service->compare('HEAD', manualPairs: ['Absent' => 'Other'])['ok']);

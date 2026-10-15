@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\ConstantValue as ConstExprEvaluator;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
-use PhpParser\ConstExprEvaluator;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 use Throwable;
 
 /** Graph settings are source data, separate from the host's audit configuration. */
@@ -34,13 +33,13 @@ final readonly class CatalogSettings
         $discovery = DiscoverySettings::load($files, $base, $onParse);
         $settings = [];
         if ($discovery->sourceFile !== null) {
-            $nodes = $discovery->sourceFile->ast() ?? [];
-            if (count($nodes) === 1 && $nodes[0] instanceof Stmt\Namespace_) {
+            $nodes = $discovery->sourceFile->syntax() ?? [];
+            if (count($nodes) === 1 && Node::is($nodes[0], 'statement.namespace')) {
                 $nodes = $nodes[0]->stmts;
             }
             $evaluator = new ConstExprEvaluator;
             foreach ($nodes as $node) {
-                if (! $node instanceof Stmt\Return_ || ! $node->expr instanceof Expr\Array_) {
+                if (! Node::is($node, 'statement.return') || ! Node::is($node->expr, 'expression.array')) {
                     continue;
                 }
                 foreach ($node->expr->items as $item) {

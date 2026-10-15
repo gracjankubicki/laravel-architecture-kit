@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Framework;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceClass;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
-use PhpParser\Node;
 
 /** Shared, bounded descriptions of framework calls. It never creates findings or executes application code. */
 final readonly class FrameworkSemantics
@@ -30,6 +30,11 @@ final readonly class FrameworkSemantics
     public function context(): FrameworkContext
     {
         return $this->context;
+    }
+
+    public function resolveAlias(string $name): string
+    {
+        return $this->sources->inScope($name) ? $name : ($this->context->aliases[$name] ?? $name);
     }
 
     public function isKnownExternal(string $type): bool
@@ -64,6 +69,15 @@ final readonly class FrameworkSemantics
         if ($type === null || $method === '') {
             return FrameworkCallResult::unhandled();
         }
+        if ($type === 'Illuminate\\Support\\Facades\\App' && in_array($method, ['runninginconsole', 'runningunittests', 'environment', 'isproduction', 'islocal'], true)) {
+            return FrameworkCallResult::value(FrameworkValue::scalar());
+        }
+        if (in_array($type, ['Illuminate\\Support\\Facades\\Auth', '@auth'], true) && $method === 'user') {
+            return $this->user($receiver?->literal === null ? [] : ['guard' => FrameworkValue::scalar($receiver->literal)]);
+        }
+        if ($type === 'Illuminate\\Support\\Str' && in_array($method, ['slug', 'uuid', 'ordereduuid', 'lower', 'upper', 'title', 'length', 'contains', 'startswith', 'endswith'], true)) {
+            return FrameworkCallResult::value(FrameworkValue::scalar());
+        }
 
         foreach ([$this->gate, $this->resources, $this->inertia] as $semantics) {
             $result = $semantics->describe($receiver, $method, $arguments);
@@ -75,7 +89,7 @@ final readonly class FrameworkSemantics
         }
 
         if ($this->sources->isA($type, 'Illuminate\Http\Request')) {
-            if (in_array($method, ['input', 'query', 'cookie', 'hascookie', 'boolean', 'integer', 'float', 'date', 'enum', 'enums', 'string', 'collect', 'validated', 'all', 'only', 'except', 'route'], true)) {
+            if (in_array($method, ['input', 'query', 'cookie', 'hascookie', 'boolean', 'integer', 'float', 'date', 'enum', 'enums', 'string', 'collect', 'validated', 'all', 'only', 'except', 'route', 'get', 'has', 'filled', 'bearertoken'], true)) {
                 return FrameworkCallResult::value(FrameworkValue::scalar());
             }
             if ($method === 'safe') {
@@ -122,7 +136,7 @@ final readonly class FrameworkSemantics
             return FrameworkCallResult::value(FrameworkValue::scalar());
         }
 
-        if ($type === '@response' && in_array($method, ['json', 'make'], true)) {
+        if ($type === '@response' && in_array($method, ['json', 'make', 'back', 'route', 'to'], true)) {
             return $this->materialize(
                 FrameworkCallResult::value(FrameworkValue::type('@response')),
                 $arguments,
@@ -133,6 +147,9 @@ final readonly class FrameworkSemantics
         }
         if ($type === '@response' && $method === 'header') {
             return FrameworkCallResult::value(FrameworkValue::type('@response'));
+        }
+        if ($type === '@response' && in_array($method, ['with', 'witherrors', 'withinput'], true)) {
+            return FrameworkCallResult::effect('write', 'RedirectResponse::'.$method.'() flashes session data.', FrameworkValue::type('@response'));
         }
 
         if ($type === '@collection') {
@@ -148,7 +165,7 @@ final readonly class FrameworkSemantics
         }
 
         $enum = $this->sources->get($type)?->node;
-        if ($enum instanceof Node\Stmt\Enum_) {
+        if (Node::is($enum, 'statement.enum')) {
             if ($method === 'cases') {
                 return FrameworkCallResult::value(new FrameworkValue(type: '@array', element: FrameworkValue::type($type)));
             }
@@ -166,6 +183,27 @@ final readonly class FrameworkSemantics
     private function function(string $function, array $arguments, SourceClass $source, Node $call): FrameworkCallResult
     {
         $function = strtolower(ltrim($function, '\\'));
+        if (in_array($function, ['abort', 'abort_if', 'abort_unless'], true)) {
+            return FrameworkCallResult::value(FrameworkValue::scalar());
+        }
+        if ($function === 'auth') {
+            $guard = $this->argument($arguments, 'guard', 0);
+            $provided = array_key_exists('guard', $arguments) || array_key_exists(0, $arguments);
+            $literalNull = false;
+            if (Node::is($call, 'expression.func-call')) {
+                foreach ($call->getArgs() as $position => $arg) {
+                    if (($arg->name?->toString() === 'guard' || ($position === 0 && $arg->name === null))
+                        && Node::is($arg->value, 'expression.const-fetch') && strtolower($arg->value->name->toString()) === 'null') {
+                        $literalNull = true;
+                    }
+                }
+            }
+            if ($provided && ! $literalNull && $guard?->literal === null) {
+                return new FrameworkCallResult(true, FrameworkValue::unknown(), incomplete: 'Dynamic authentication guard cannot be resolved.', incompleteReason: 'unresolved_receiver');
+            }
+
+            return FrameworkCallResult::value(new FrameworkValue(type: '@auth', literal: $guard?->literal));
+        }
         if (in_array($function, ['now', 'today'], true)) {
             return FrameworkCallResult::value(FrameworkValue::type('Illuminate\\Support\\Carbon'));
         }
@@ -181,7 +219,7 @@ final readonly class FrameworkSemantics
             $callback = $this->argument($arguments, 'callback', $position);
             if ($callback?->callback === null) {
                 $callbackNode = null;
-                if ($call instanceof Node\Expr\FuncCall) {
+                if (Node::is($call, 'expression.func-call')) {
                     foreach ($call->getArgs() as $index => $argument) {
                         if ($argument->name?->toString() === 'callback' || $index === $position && $argument->name === null) {
                             $callbackNode = $argument->value;
@@ -189,7 +227,7 @@ final readonly class FrameworkSemantics
                     }
                 }
                 if (in_array($function, ['array_map', 'array_filter'], true)
-                    && ($function === 'array_filter' && $callbackNode === null || $callbackNode instanceof Node\Expr\ConstFetch && strtolower($callbackNode->name->toString()) === 'null')) {
+                    && ($function === 'array_filter' && $callbackNode === null || Node::is($callbackNode, 'expression.const-fetch') && strtolower($callbackNode->name->toString()) === 'null')) {
                     return FrameworkCallResult::value(FrameworkValue::array([]));
                 }
 
@@ -384,7 +422,7 @@ final readonly class FrameworkSemantics
         if ($class === null || $depth >= 12 || ($source = $this->sources->get($class)) === null) {
             return false;
         }
-        if ($source->node instanceof Node\Stmt\Class_) {
+        if (Node::is($source->node, 'statement.class')) {
             foreach ($source->node->implements as $interface) {
                 if ($this->isSerializableInterface($source->file->resolvedName($interface), $depth + 1)) {
                     return true;
@@ -394,7 +432,7 @@ final readonly class FrameworkSemantics
                 return $this->isSerializable($source->file->resolvedName($source->node->extends), $depth + 1);
             }
         }
-        if ($source->node instanceof Node\Stmt\Interface_) {
+        if (Node::is($source->node, 'statement.interface')) {
             foreach ($source->node->extends as $interface) {
                 if ($this->isSerializableInterface($source->file->resolvedName($interface), $depth + 1)) {
                     return true;
@@ -414,7 +452,7 @@ final readonly class FrameworkSemantics
             return true;
         }
         $source = $this->sources->get($interface);
-        if ($source?->node instanceof Node\Stmt\Interface_) {
+        if (Node::is($source?->node, 'statement.interface')) {
             foreach ($source->node->extends as $parent) {
                 if ($this->isSerializableInterface($source->file->resolvedName($parent), $depth + 1)) {
                     return true;

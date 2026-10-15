@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Reads only authentication topology; credentials and unrelated config values are omitted. */
 final class AuthConfigCatalogExtractor
@@ -27,12 +25,12 @@ final class AuthConfigCatalogExtractor
         }
         $elements = $relations = $diagnostics = [];
         $owner = CatalogElement::identity($file->path, 'file', $file->path);
-        $returns = array_values(array_filter($file->ast() ?? [], fn ($node) => $node instanceof Stmt\Return_));
-        if (count($returns) !== 1 || ! $returns[0]->expr instanceof Expr\Array_) {
+        $returns = array_values(array_filter($file->syntax() ?? [], fn ($node) => Node::is($node, 'statement.return')));
+        if (count($returns) !== 1 || ! Node::is($returns[0]->expr, 'expression.array')) {
             return new CatalogFacts($file->path, diagnostics: [new CatalogDiagnostic('auth_config_dynamic', 'Authentication config return is dynamic or ambiguous.', 1, $owner)]);
         }
         $config = $this->map($returns[0]->expr);
-        if (($config['defaults'] ?? null) instanceof Expr\Array_) {
+        if (Node::is(($config['defaults'] ?? null), 'expression.array')) {
             $defaults = $this->map($config['defaults']);
             $guard = $this->name($file, $defaults['guard'] ?? null);
             if ($guard !== null) {
@@ -45,13 +43,13 @@ final class AuthConfigCatalogExtractor
             $diagnostics[] = new CatalogDiagnostic('auth_config_dynamic', 'Default authentication settings are dynamic.', $config['defaults']->getStartLine(), $owner);
         }
         foreach (['guards' => 'auth-guard', 'providers' => 'auth-user-provider'] as $section => $kind) {
-            if (! ($config[$section] ?? null) instanceof Expr\Array_) {
+            if (! Node::is(($config[$section] ?? null), 'expression.array')) {
                 $diagnostics[] = new CatalogDiagnostic('auth_config_dynamic', 'Authentication '.$section.' declaration is absent or dynamic.', 1, $owner);
 
                 continue;
             }
             foreach ($this->map($config[$section]) as $name => $definition) {
-                if (! $definition instanceof Expr\Array_) {
+                if (! Node::is($definition, 'expression.array')) {
                     $diagnostics[] = new CatalogDiagnostic('auth_config_dynamic', 'Authentication resource definition is dynamic.', $definition->getStartLine(), $owner);
 
                     continue;
@@ -85,8 +83,8 @@ final class AuthConfigCatalogExtractor
         return new CatalogFacts($file->path, $elements, $relations, [...$diagnostics, ...$this->mapDiagnostics]);
     }
 
-    /** @return array<string, Expr> */
-    private function map(Expr\Array_ $array): array
+    /** @return array<string, Node> */
+    private function map(Node $array): array
     {
         $result = [];
         foreach ($array->items as $item) {
@@ -94,7 +92,7 @@ final class AuthConfigCatalogExtractor
                 $this->mapDiagnostics[] = new CatalogDiagnostic('auth_config_limit', 'Authentication config extraction reached its operation or memory budget.', $array->getStartLine());
                 break;
             }
-            if ($item !== null && ! $item->unpack && $item->key instanceof Node\Scalar\String_) {
+            if ($item !== null && ! $item->unpack && Node::is($item->key, 'scalar.string')) {
                 if (array_key_exists($item->key->value, $result)) {
                     $this->mapDiagnostics[] = new CatalogDiagnostic('auth_config_duplicate', 'Duplicate literal config key uses its final source declaration.', $item->getStartLine());
                 }
@@ -107,12 +105,12 @@ final class AuthConfigCatalogExtractor
         return $result;
     }
 
-    private function name(FileContext $file, ?Expr $value): ?string
+    private function name(FileContext $file, ?Node $value): ?string
     {
-        if ($value instanceof Node\Scalar\String_) {
+        if (Node::is($value, 'scalar.string')) {
             return $value->value;
         }
-        if ($value instanceof Expr\ClassConstFetch && $value->class instanceof Node\Name && $value->name instanceof Node\Identifier && strtolower($value->name->toString()) === 'class') {
+        if (Node::is($value, 'expression.class-const-fetch') && Node::is($value->class, 'name') && Node::is($value->name, 'identifier') && strtolower($value->name->toString()) === 'class') {
             return $file->resolvedName($value->class);
         }
 

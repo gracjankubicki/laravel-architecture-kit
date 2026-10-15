@@ -7,8 +7,6 @@ namespace GracjanKubicki\ArchitectureKit\Standalone;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use Illuminate\Filesystem\Filesystem;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use RuntimeException;
 use Throwable;
 
@@ -25,29 +23,46 @@ final readonly class TaskControl
     /** @return array<string, mixed> */
     public function begin(string $task): array
     {
-        return $this->store->update($this->key($task), function (array $previous) use ($task): array {
+        $capture = bin2hex(random_bytes(16));
+        $reserved = $this->store->update($this->key($task), function (array $previous) use ($task, $capture): array {
             if ($previous !== []) {
                 return $previous; // retries/resume cannot refresh the beginning
             }
-            try {
-                [$audit, $sources] = $this->stableAudit();
-                $this->complete($audit);
 
-                return ['task' => $task, 'repository' => $this->context->id, 'status' => 'started', 'ok' => false,
-                    'fingerprint' => $this->context->fingerprint(), 'begin_sources' => $sources,
-                    'begin_errors' => $this->errors($audit), 'begin_warnings' => $audit->warnings(),
-                    'attempts' => 0, 'created_at' => gmdate('c')];
-            } catch (Throwable $error) {
-                return ['task' => $task, 'repository' => $this->context->id, 'status' => 'blocked', 'ok' => false,
-                    'reason' => $error->getMessage(), 'attempts' => 0, 'created_at' => gmdate('c')];
+            return ['task' => $task, 'repository' => $this->context->id, 'status' => 'blocked', 'ok' => false,
+                'capture_id' => $capture, 'reason' => 'Task beginning is being captured. Do not edit until a valid beginning exists.',
+                'attempts' => 0, 'created_at' => gmdate('c')];
+        });
+        if (($reserved['capture_id'] ?? null) !== $capture) {
+            return $reserved;
+        }
+        // Reserve the one immutable beginning under a short lock, then analyse
+        // outside it. A second caller cannot capture a later beginning.
+        try {
+            [$audit, $sources] = $this->stableAudit();
+            $this->complete($audit);
+            $result = ['status' => 'started', 'ok' => false,
+                'fingerprint' => $this->context->fingerprint(), 'begin_sources' => $sources,
+                'begin_errors' => $this->errors($audit), 'begin_warnings' => $audit->warnings()];
+        } catch (Throwable $error) {
+            $result = ['status' => 'blocked', 'ok' => false, 'reason' => $error->getMessage()];
+        }
+
+        return $this->store->update($this->key($task), static function (array $saved) use ($capture, $result): array {
+            if (($saved['capture_id'] ?? null) !== $capture || ($saved['status'] ?? null) === 'skipped') {
+                return $saved;
             }
+            unset($saved['capture_id'], $saved['reason']);
+
+            return [...$saved, ...$result];
         });
     }
 
     /** @return array<string, mixed> */
     public function check(string $task): array
     {
-        return $this->store->update($this->key($task), function (array $saved): array {
+        $initial = $this->store->read($this->key($task));
+        $result = (function (array $saved): array {
             if ($saved === []) {
                 return ['status' => 'blocked', 'ok' => false, 'reason' => 'Task beginning is missing. Begin a new task before editing code.'];
             }
@@ -81,6 +96,21 @@ final readonly class TaskControl
             $saved['checked_at'] = gmdate('c');
 
             return $saved;
+        })($initial);
+
+        return $this->store->update($this->key($task), static function (array $saved) use ($initial, $result): array {
+            if ($saved === $initial) {
+                return $result;
+            }
+            if (($saved['status'] ?? null) === 'skipped') {
+                return $saved;
+            }
+
+            // Never publish findings against a state another check has replaced.
+            // Preserve the original beginning and require a fresh comparison.
+            return [...$saved, 'status' => 'blocked', 'ok' => false,
+                'reason' => 'Task state changed during verification. Retry without refreshing its beginning.',
+                'attempts' => ($saved['attempts'] ?? 0) + 1, 'checked_at' => gmdate('c')];
         });
     }
 
@@ -125,7 +155,6 @@ final readonly class TaskControl
     /** @return array{ApplicationAuditResult, string} */
     private function stableAudit(): array
     {
-        $before = $this->sources();
         $config = $this->context->fingerprint();
         // Source hashes avoid treating same-stat edited files as reusable at a control boundary.
         $state = StandaloneAudit::state($this->context);
@@ -133,13 +162,15 @@ final readonly class TaskControl
             enabled: $state->enabled, changedOnly: false, customRules: $state->customRules,
             exclude: $state->exclude, useBaseline: false, scope: $state->auditScope,
             missingTestLevel: $state->missingTestLevel, cache: $state->graphCache,
-            cacheConfiguration: [...$state->graphConfiguration(), $config, $before],
+            cacheConfiguration: [...$state->graphConfiguration(), $config],
         );
-        if ($before !== $this->sources() || $config !== $this->context->fingerprint()) {
-            throw new RuntimeException('Inputs changed during audit. Retry without refreshing the task beginning.');
+        // The full audit already hashes source contents before analysis and after
+        // the result is assembled. Repeating those scans here adds no evidence.
+        if ($audit->sourceFingerprint === null) {
+            throw new RuntimeException('Audit input freshness was not verified for this repository. No reliable comparison.');
         }
 
-        return [$audit, $before];
+        return [$audit, $audit->sourceFingerprint];
     }
 
     private function complete(ApplicationAuditResult $audit): void
@@ -176,27 +207,6 @@ final readonly class TaskControl
 
     private function sources(): string
     {
-        $parts = [];
-        $root = $this->context->rootPath;
-        $iterator = new RecursiveIteratorIterator(new \RecursiveCallbackFilterIterator(
-            new RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
-            static fn (\SplFileInfo $file): bool => ! $file->isLink() && ! in_array($file->getFilename(), ['vendor', 'node_modules', '.git', '.env'], true),
-        ));
-        foreach ($iterator as $file) {
-            if (! $file instanceof \SplFileInfo || ! $file->isFile() || (! str_ends_with($file->getFilename(), '.php') && ! in_array($file->getFilename(), ['composer.json', 'composer.lock'], true))) {
-                continue;
-            }
-            if (count($parts) >= 20000 || $file->getSize() > 8000000) {
-                throw new RuntimeException('Task source fingerprint limit reached.');
-            }
-            $hash = hash_file('sha256', $file->getPathname());
-            if ($hash === false) {
-                throw new RuntimeException('Task source is unreadable.');
-            }
-            $parts[substr($file->getPathname(), strlen($root) + 1)] = $hash;
-        }
-        ksort($parts);
-
-        return hash('sha256', serialize($parts));
+        return SourceFingerprint::current($this->context->rootPath, $this->context->settings);
     }
 }

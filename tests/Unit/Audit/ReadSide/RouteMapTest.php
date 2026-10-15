@@ -13,6 +13,39 @@ use PHPUnit\Framework\TestCase;
 
 final class RouteMapTest extends TestCase
 {
+    public function test_handler_index_preserves_order_duplicates_and_distinct_registration_contexts(): void
+    {
+        $first = new RouteEntry(['GET'], 'first', class: '\\App\\Controller', method: 'index', middleware: ['auth:web']);
+        $second = new RouteEntry(['POST'], 'second', class: 'APP\\CONTROLLER', method: 'INDEX', middleware: ['auth:api']);
+        $other = new RouteEntry(['GET'], 'other', class: 'App\\Other', method: 'index');
+        $map = new RouteMap(entries: [$first, $other, $first, $second]);
+
+        self::assertSame([$first, $first, $second], $map->entriesFor('app\\controller', 'Index'));
+        self::assertSame(['index' => 'INDEX'], $map->methodsFor('\\app\\controller'));
+        self::assertSame([
+            ['method' => 'index', 'verbs' => ['GET'], 'route' => $first],
+            ['method' => 'INDEX', 'verbs' => ['POST'], 'route' => $second],
+        ], $map->contextsFor('App\\Controller', 'index'));
+        self::assertSame([], $map->methodsFor('App\\Missing'));
+        self::assertSame([], $map->entriesFor('App\\Other', 'missing'));
+
+        $legacy = new RouteMap(['app\\controller::index' => ['GET'], 'app\\controller::store' => ['POST']]);
+        self::assertSame(['index' => 'index', 'store' => 'store'], $legacy->methodsFor('\\APP\\Controller'));
+        self::assertSame([['method' => 'store', 'verbs' => ['POST'], 'route' => null]], $legacy->contextsFor('App\\Controller', 'store'));
+        self::assertSame([], (new RouteMap($legacy->methods, entries: []))->methodsFor('App\\Controller'));
+    }
+
+    public function test_fully_qualified_controller_matches_before_and_after_snapshot(): void
+    {
+        $class = 'App\\Http\\Controllers\\ProjectController';
+        $map = new RouteMap(entries: [new RouteEntry(['GET'], 'projects', class: '\\'.$class, method: 'index')]);
+        foreach ([$map, RouteMap::fromSnapshot($map->snapshot())] as $candidate) {
+            self::assertSame(['index' => 'index'], $candidate->methodsFor($class));
+            self::assertCount(1, $candidate->contextsFor($class, 'index'));
+        }
+        self::assertSame(['GET'], RouteMap::fromSnapshot($map->snapshot())->verbs($class, 'index'));
+    }
+
     public function test_registered_and_compiled_routes_produce_the_same_map_without_instantiating_controllers(): void
     {
         $container = new Container;

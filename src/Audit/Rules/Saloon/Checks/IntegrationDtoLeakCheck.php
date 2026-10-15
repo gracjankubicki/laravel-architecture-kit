@@ -4,16 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\IntegrationPaths;
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class IntegrationDtoLeakCheck implements FileCheck
 {
@@ -34,7 +32,7 @@ final readonly class IntegrationDtoLeakCheck implements FileCheck
             return [];
         }
 
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -48,19 +46,19 @@ final readonly class IntegrationDtoLeakCheck implements FileCheck
             public array $lines = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($state, $this->paths) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(private object $state, private IntegrationPaths $paths) {}
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Stmt\UseUse && $this->isIntegrationDtoName($node->name)) {
+                if (Node::is($node, 'use-item') && $this->isIntegrationDtoName($node->name)) {
                     $this->state->lines[] = $node->getStartLine();
                 }
 
                 if (
-                    ($node instanceof Node\Param || $node instanceof Stmt\Function_ || $node instanceof Stmt\ClassMethod)
-                    && PhpAst::contains($node, fn (Node $child): bool => $child instanceof Name && $this->isIntegrationDtoName($child))
+                    (Node::is($node, 'param') || Node::is($node, 'statement.function') || Node::is($node, 'statement.class-method'))
+                    && PhpAst::contains($node, fn (Node $child): bool => Node::is($child, 'name') && $this->isIntegrationDtoName($child))
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }
@@ -68,11 +66,11 @@ final readonly class IntegrationDtoLeakCheck implements FileCheck
                 return null;
             }
 
-            private function isIntegrationDtoName(Name $name): bool
+            private function isIntegrationDtoName(Node $name): bool
             {
                 $value = $name->toString();
 
-                return str_starts_with($value, 'App\\Http\\Integrations\\')
+                return $this->paths->isIntegrationName($value)
                     && str_contains($value, '\\Dto\\');
             }
         });

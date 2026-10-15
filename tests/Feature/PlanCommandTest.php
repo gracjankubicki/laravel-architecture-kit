@@ -147,6 +147,7 @@ PHP);
         $files = new Filesystem;
         $files->delete($this->tempPath.'/config/architectures.php');
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'saloonphp/saloon' => '^4.0',
@@ -217,6 +218,7 @@ PHP);
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'laravel/ai' => '^0.12',
@@ -336,6 +338,7 @@ PHP);
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'laravel/ai' => $constraint,

@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
+use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
 
 class AuditCommand extends Command
@@ -34,7 +35,7 @@ class AuditCommand extends Command
         $agent = new AgentOutput;
 
         if ((bool) $this->option('schema')) {
-            $this->line($this->json($agent->schema('audit')));
+            $this->writeJson($agent->schema('audit'));
 
             return self::SUCCESS;
         }
@@ -43,7 +44,7 @@ class AuditCommand extends Command
             $message = 'The --changed and --update-baseline options cannot be used together. Use --update-baseline without --changed, or run --changed without --update-baseline.';
 
             if ((bool) $this->option('agent')) {
-                $this->line($this->json($agent->error('audit', $message)));
+                $this->writeJson($agent->error('audit', $message));
 
                 return self::FAILURE;
             }
@@ -57,7 +58,7 @@ class AuditCommand extends Command
             $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
-                $this->line($this->json($agent->error('audit', $exception->getMessage())));
+                $this->writeJson($agent->error('audit', $exception->getMessage()));
 
                 return self::FAILURE;
             }
@@ -84,7 +85,7 @@ class AuditCommand extends Command
             );
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
-                $this->line($this->json($agent->error('audit', $exception->getMessage())));
+                $this->writeJson($agent->error('audit', $exception->getMessage()));
 
                 return self::FAILURE;
             }
@@ -98,13 +99,13 @@ class AuditCommand extends Command
             && (! (bool) $this->option('strict') || $result->warnings() === 0);
 
         if ((bool) $this->option('agent')) {
-            $this->line($this->json($agent->audit(
+            $this->writeJson($agent->audit(
                 result: $result,
                 ok: $ok,
                 limit: $agent->limit($this->option('limit')),
                 full: (bool) $this->option('full'),
                 baselineUpdated: (bool) $this->option('update-baseline'),
-            )));
+            ));
 
             return $ok ? self::SUCCESS : self::FAILURE;
         }
@@ -175,9 +176,19 @@ class AuditCommand extends Command
         $this->newLine();
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
+    /** @param array<string, mixed> $payload */
+    private function writeJson(array $payload): void
+    {
+        $json = $this->json($payload);
+        unset($payload);
+        $output = $this->output->getOutput();
+        for ($offset = 0, $length = strlen($json); $offset < $length; $offset += 65536) {
+            $output->write(substr($json, $offset, 65536), false, OutputInterface::OUTPUT_RAW);
+        }
+        $output->writeln('', OutputInterface::OUTPUT_RAW);
+    }
+
+    /** @param array<string, mixed> $payload */
     private function json(array $payload): string
     {
         return json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';

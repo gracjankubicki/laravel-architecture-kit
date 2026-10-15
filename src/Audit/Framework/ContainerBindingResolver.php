@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Framework;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceClass;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Reads factory returns without invoking the factory or claiming a dynamic result. */
 final class ContainerBindingResolver
@@ -29,13 +26,13 @@ final class ContainerBindingResolver
     /** @return list<string> */
     private function names(?Node $type, SourceClass $source): array
     {
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->names($type->type, $source);
         }
-        if ($type instanceof Name) {
+        if (Node::is($type, 'name')) {
             return in_array(strtolower($type->toString()), ['self', 'static', 'parent'], true) ? [] : [$source->file->resolvedName($type)];
         }
-        if ($type instanceof Node\UnionType) {
+        if (Node::is($type, 'union-type')) {
             $names = [];
             foreach ($type->types as $member) {
                 array_push($names, ...$this->names($member, $source));
@@ -54,8 +51,8 @@ final class ContainerBindingResolver
         if ($callback === null || $source === null) {
             return FrameworkValue::unknown();
         }
-        $variables = $callback instanceof Expr\ArrowFunction ? $factory->captures : [];
-        if ($callback instanceof Expr\Closure) {
+        $variables = Node::is($callback, 'expression.arrow-function') ? $factory->captures : [];
+        if (Node::is($callback, 'expression.closure')) {
             foreach ($callback->uses as $use) {
                 if (is_string($use->var->name)) {
                     $variables[$use->var->name] = $use->byRef ? FrameworkValue::unknown() : ($factory->captures[$use->var->name] ?? FrameworkValue::unknown());
@@ -68,14 +65,14 @@ final class ContainerBindingResolver
             }
         }
         $this->visits = 0;
-        if ($callback instanceof Expr\ArrowFunction) {
+        if (Node::is($callback, 'expression.arrow-function')) {
             return $this->expression($callback->expr, $source, $variables);
         }
 
         return $this->statements($callback->stmts, $source, $variables);
     }
 
-    /** @param list<Stmt> $statements
+    /** @param list<Node> $statements
      * @param  array<string, FrameworkValue|null>  $variables
      */
     private function statements(array $statements, SourceClass $source, array $variables): FrameworkValue
@@ -84,16 +81,16 @@ final class ContainerBindingResolver
             if (++$this->visits > 128) {
                 return FrameworkValue::unknown();
             }
-            if ($statement instanceof Stmt\Return_) {
+            if (Node::is($statement, 'statement.return')) {
                 return $statement->expr !== null ? $this->expression($statement->expr, $source, $variables) : FrameworkValue::unknown();
             }
-            if ($statement instanceof Stmt\Expression && $statement->expr instanceof Expr\Assign && $statement->expr->var instanceof Expr\Variable && is_string($statement->expr->var->name)) {
+            if (Node::is($statement, 'statement.expression') && Node::is($statement->expr, 'expression.assign') && Node::is($statement->expr->var, 'expression.variable') && is_string($statement->expr->var->name)) {
                 $variables = $this->conditionVariables($statement->expr->expr, $variables);
                 $variables[$statement->expr->var->name] = $this->expression($statement->expr->expr, $source, $variables);
 
                 continue;
             }
-            if ($statement instanceof Stmt\If_) {
+            if (Node::is($statement, 'statement.if')) {
                 $variables = $this->conditionVariables($statement->cond, $variables);
                 $rest = array_slice($statements, $index + 1);
                 $branches = [$this->statements([...$statement->stmts, ...$rest], $source, $variables)];
@@ -114,18 +111,18 @@ final class ContainerBindingResolver
     }
 
     /** @param array<string, FrameworkValue|null> $variables */
-    private function expression(Expr $expression, SourceClass $source, array $variables): FrameworkValue
+    private function expression(Node $expression, SourceClass $source, array $variables): FrameworkValue
     {
         if (++$this->visits > 128) {
             return FrameworkValue::unknown();
         }
-        if ($expression instanceof Expr\New_ && $expression->class instanceof Name) {
+        if (Node::is($expression, 'expression.new') && Node::is($expression->class, 'name')) {
             return FrameworkValue::type($source->file->resolvedName($expression->class));
         }
-        if ($expression instanceof Expr\Variable && is_string($expression->name)) {
+        if (Node::is($expression, 'expression.variable') && is_string($expression->name)) {
             return $variables[$expression->name] ?? FrameworkValue::unknown();
         }
-        if ($expression instanceof Expr\Ternary) {
+        if (Node::is($expression, 'expression.ternary')) {
             $variables = $this->conditionVariables($expression->cond, $variables);
 
             return $this->merge([
@@ -133,7 +130,7 @@ final class ContainerBindingResolver
                 $this->expression($expression->else, $source, $variables),
             ]);
         }
-        if ($expression instanceof Expr\Match_) {
+        if (Node::is($expression, 'expression.match')) {
             $variables = $this->conditionVariables($expression->cond, $variables);
             $results = [];
             foreach ($expression->arms as $arm) {
@@ -169,15 +166,15 @@ final class ContainerBindingResolver
     /** @param array<string, FrameworkValue|null> $variables
      * @return array<string, FrameworkValue|null>
      */
-    private function conditionVariables(Expr $condition, array $variables): array
+    private function conditionVariables(Node $condition, array $variables): array
     {
-        $mutation = (new NodeFinder)->findFirst($condition, fn (Node $node): bool => $node instanceof Expr\Assign
-            || $node instanceof Expr\AssignRef || $node instanceof Expr\AssignOp
-            || $node instanceof Expr\PreInc || $node instanceof Expr\PostInc
-            || $node instanceof Expr\PreDec || $node instanceof Expr\PostDec
-            || $node instanceof Expr\FuncCall || $node instanceof Expr\MethodCall
-            || $node instanceof Expr\StaticCall
-            || ($node instanceof Expr\New_ && $node->args !== []));
+        $mutation = (new NodeFinder)->findFirst($condition, fn (Node $node): bool => Node::is($node, 'expression.assign')
+            || Node::is($node, 'expression.assign-ref') || Node::is($node, 'expression.assign-op')
+            || Node::is($node, 'expression.pre-inc') || Node::is($node, 'expression.post-inc')
+            || Node::is($node, 'expression.pre-dec') || Node::is($node, 'expression.post-dec')
+            || Node::is($node, 'expression.func-call') || Node::is($node, 'expression.method-call')
+            || Node::is($node, 'expression.static-call')
+            || (Node::is($node, 'expression.new') && $node->args !== []));
         if ($mutation !== null) {
             return array_map(fn (): FrameworkValue => FrameworkValue::unknown(), $variables);
         }

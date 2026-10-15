@@ -6,9 +6,9 @@ namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\AdapterBoundaryCheck;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\ConnectorCheck;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\IntegrationDtoLeakCheck;
@@ -20,14 +20,14 @@ use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\SaloonInsideTransac
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks\SecurityCheck;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 
-final readonly class SaloonRule implements AuditRule
+final readonly class SaloonRule implements PortableAuditRule
 {
     /** @var array<int, FileCheck> */
     private array $checks;
 
     public function __construct(?ProjectClassification $classification = null)
     {
-        $paths = new IntegrationPaths;
+        $paths = new IntegrationPaths($classification);
         $this->checks = [
             new RawHttpCheck($paths), new AdapterBoundaryCheck($paths), new IntegrationFolderCheck($paths), new ConnectorCheck($paths),
             new RequestCheck($paths), new SecurityCheck, new RawSaloonResponseCheck($paths), new IntegrationDtoLeakCheck($paths, $classification?->roles), new SaloonInsideTransactionCheck,

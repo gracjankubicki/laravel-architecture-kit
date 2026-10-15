@@ -4,16 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\TestReachability;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 final class TestInvocationExtractor
 {
-    /** @var array<string, array<string, Stmt\ClassMethod>> */
+    /** @var array<string, array<string, Node>> */
     private array $helpers = [];
 
     /** @var array<string, true> */
@@ -39,12 +37,12 @@ final class TestInvocationExtractor
         // Factory configuration can live in a provider; keep it beside file facts so
         // a warm cache does not reparse every provider to discover naming overrides.
         if (str_contains($file->contents, 'guessFactoryNamesUsing') || str_contains($file->contents, 'useNamespace')) {
-            foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Expr\StaticCall::class) as $call) {
-                if ($call->class instanceof Node\Name && $file->resolvedName($call->class) === 'Illuminate\Database\Eloquent\Factories\Factory'
-                    && $call->name instanceof Node\Identifier && in_array($call->name->toString(), ['guessFactoryNamesUsing', 'useNamespace'], true)) {
+            foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'expression.static-call') as $call) {
+                if (Node::is($call->class, 'name') && $file->resolvedName($call->class) === 'Illuminate\Database\Eloquent\Factories\Factory'
+                    && Node::is($call->name, 'identifier') && in_array($call->name->toString(), ['guessFactoryNamesUsing', 'useNamespace'], true)) {
                     $argument = $call->getArgs()[0]->value ?? null;
                     $this->sourceOffsets[] = max(0, $call->getStartFilePos());
-                    $result[] = new TestInvocation($file->path, $call->getStartLine(), 'factory-config', uri: $call->name->toString() === 'useNamespace' && $argument instanceof Node\Scalar\String_ ? $argument->value : null);
+                    $result[] = new TestInvocation($file->path, $call->getStartLine(), 'factory-config', uri: $call->name->toString() === 'useNamespace' && Node::is($argument, 'scalar.string') ? $argument->value : null);
                 }
             }
         }
@@ -52,7 +50,7 @@ final class TestInvocationExtractor
             return $result;
         }
         $variables = [];
-        $this->walk($file->ast() ?? [], $file, null, false, $variables, $result);
+        $this->walk($file->syntax() ?? [], $file, null, false, $variables, $result);
 
         return $result;
     }
@@ -64,7 +62,7 @@ final class TestInvocationExtractor
     private function walk(array $nodes, FileContext $file, ?string $context, bool $active, array &$variables, array &$result): void
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 $className = isset($node->namespacedName) ? $node->namespacedName->toString() : '';
                 foreach ($node->getMethods() as $helper) {
                     $this->helpers[$className][strtolower($helper->name->toString())] = $helper;
@@ -74,7 +72,7 @@ final class TestInvocationExtractor
 
                 continue;
             }
-            if ($node instanceof Stmt\ClassMethod) {
+            if (Node::is($node, 'statement.class-method')) {
                 $test = str_starts_with(strtolower($node->name->toString()), 'test') || in_array(strtolower($node->name->toString()), ['setup', 'setupbeforeclass'], true)
                     || str_contains($node->getDocComment()?->getText() ?? '', '@test');
                 foreach ($node->attrGroups as $group) {
@@ -89,43 +87,43 @@ final class TestInvocationExtractor
 
                 continue;
             }
-            if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction || $node instanceof Stmt\Function_) {
+            if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function') || Node::is($node, 'statement.function')) {
                 continue;
             }
-            if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name && in_array(strtolower($file->resolvedName($node->name)), ['it', 'test', 'beforeeach', 'beforeall', 'describe'], true)) {
+            if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && in_array(strtolower($file->resolvedName($node->name)), ['it', 'test', 'beforeeach', 'beforeall', 'describe'], true)) {
                 foreach ($node->getArgs() as $arg) {
-                    if ($arg->value instanceof Expr\Closure || $arg->value instanceof Expr\ArrowFunction) {
+                    if (Node::is($arg->value, 'expression.closure') || Node::is($arg->value, 'expression.arrow-function')) {
                         $local = [];
-                        $this->walk($arg->value instanceof Expr\Closure ? $arg->value->stmts : [$arg->value->expr], $file, '@pest', true, $local, $result);
+                        $this->walk(Node::is($arg->value, 'expression.closure') ? $arg->value->stmts : [$arg->value->expr], $file, '@pest', true, $local, $result);
                     }
                 }
 
                 continue;
             }
-            if ($active && $node instanceof Expr\Assign && $node->var instanceof Expr\Variable && is_string($node->var->name)) {
+            if ($active && Node::is($node, 'expression.assign') && Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
                 $variables[$node->var->name] = $this->value($node->expr, $variables);
             }
-            if ($active && $node instanceof Expr\StaticCall && $node->class instanceof Node\Name
+            if ($active && Node::is($node, 'expression.static-call') && Node::is($node->class, 'name')
                 && $file->resolvedName($node->class) === 'Illuminate\\Support\\Facades\\Artisan'
-                && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'call' && ! $node->isFirstClassCallable()) {
+                && Node::is($node->name, 'identifier') && strtolower($node->name->toString()) === 'call' && ! $node->isFirstClassCallable()) {
                 $command = $this->value($node->getArgs()[0]->value ?? null, $variables);
                 $this->sourceOffsets[] = max(0, $node->getStartFilePos());
                 $result[] = new TestInvocation($file->path, $node->getStartLine(), 'artisan', $context,
                     reason: $command === null ? 'Dynamic Artisan command selector.' : null, dispatch: 'call', command: $command);
             }
-            if ($active && $node instanceof Expr\StaticCall && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'factory' && ! $node->isFirstClassCallable()) {
+            if ($active && Node::is($node, 'expression.static-call') && Node::is($node->name, 'identifier') && strtolower($node->name->toString()) === 'factory' && ! $node->isFirstClassCallable()) {
                 $this->sourceOffsets[] = max(0, $node->getStartFilePos());
-                $result[] = new TestInvocation($file->path, $node->getStartLine(), 'factory', $context, model: $node->class instanceof Node\Name ? $file->resolvedName($node->class) : null, reason: $node->class instanceof Node\Name ? null : 'Dynamic factory receiver.');
+                $result[] = new TestInvocation($file->path, $node->getStartLine(), 'factory', $context, model: Node::is($node->class, 'name') ? $file->resolvedName($node->class) : null, reason: Node::is($node->class, 'name') ? null : 'Dynamic factory receiver.');
             }
-            if ($active && ($node instanceof Expr\MethodCall || $node instanceof Expr\FuncCall) && ! $node->isFirstClassCallable()) {
+            if ($active && (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.func-call')) && ! $node->isFirstClassCallable()) {
                 $method = null;
-                if ($node instanceof Expr\MethodCall && ! $node->name instanceof Node\Identifier && $this->testReceiver($node->var)) {
+                if (Node::is($node, 'expression.method-call') && ! Node::is($node->name, 'identifier') && $this->testReceiver($node->var)) {
                     $this->sourceOffsets[] = max(0, $node->getStartFilePos());
                     $result[] = new TestInvocation($file->path, $node->getStartLine(), 'http', $context, reason: 'Dynamic test method; HTTP dispatch cannot be determined.');
                 }
-                if ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier && $this->testReceiver($node->var)) {
+                if (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier') && $this->testReceiver($node->var)) {
                     $method = strtolower($node->name->toString());
-                } elseif ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+                } elseif (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name')) {
                     $name = strtolower($file->resolvedName($node->name));
                     if (str_starts_with($name, 'pest\\laravel\\')) {
                         $method = substr($name, strlen('pest\\laravel\\'));
@@ -161,11 +159,11 @@ final class TestInvocationExtractor
                     $uri = $this->value($uriNode, $variables);
                     $route = null;
                     $parameters = [];
-                    if ($uriNode instanceof Expr\FuncCall && $uriNode->name instanceof Node\Name && $file->resolvedName($uriNode->name) === 'route') {
+                    if (Node::is($uriNode, 'expression.func-call') && Node::is($uriNode->name, 'name') && $file->resolvedName($uriNode->name) === 'route') {
                         $routeArgs = $uriNode->getArgs();
                         $route = $this->value($routeArgs[0]->value ?? null, $variables);
                         $params = $routeArgs[1]->value ?? null;
-                        if ($params instanceof Expr\Array_) {
+                        if (Node::is($params, 'expression.array')) {
                             foreach ($params->items as $i => $item) {
                                 if ($item !== null) {
                                     $key = $this->value($item->key, $variables) ?? $i;
@@ -183,11 +181,11 @@ final class TestInvocationExtractor
             $branch = $variables;
             $changedVariables = [];
             foreach ($node->getSubNodeNames() as $key) {
-                if ($node instanceof Stmt\If_) {
+                if (Node::is($node, 'statement.if')) {
                     $branch = $variables;
                 }
                 $child = $node->$key;
-                $children = $child instanceof Node ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($v) => $v instanceof Node)) : []);
+                $children = Node::is($child, 'node') ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($v) => Node::is($v, 'node'))) : []);
                 $this->walk($children, $file, $context, $active, $branch, $result);
                 foreach ($branch as $name => $value) {
                     if (($variables[$name] ?? null) !== $value) {
@@ -196,7 +194,7 @@ final class TestInvocationExtractor
                 }
             }
             // Assignments inside a branch cannot establish a value after that branch.
-            if ($node instanceof Stmt\If_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\While_ || $node instanceof Stmt\Switch_) {
+            if (Node::is($node, 'statement.if') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.while') || Node::is($node, 'statement.switch')) {
                 foreach ($changedVariables as $key => $_) {
                     $variables[$key] = null;
                 }
@@ -206,13 +204,13 @@ final class TestInvocationExtractor
         }
     }
 
-    private function testReceiver(Expr $node): bool
+    private function testReceiver(Node $node): bool
     {
-        if ($node instanceof Expr\Variable) {
+        if (Node::is($node, 'expression.variable')) {
             return $node->name === 'this';
         }
 
-        return $node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier
+        return Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier')
             && in_array(strtolower($node->name->toString()), ['actingas', 'be', 'withheaders', 'withheader', 'withservervariables', 'withsession', 'withoutmiddleware', 'withmiddleware', 'withoutexceptionhandling', 'withcookie', 'withcookies'], true)
             && $this->testReceiver($node->var);
     }
@@ -220,21 +218,21 @@ final class TestInvocationExtractor
     /** @param array<string, string|null> $variables */
     private function value(?Node $node, array $variables): ?string
     {
-        if ($node instanceof Node\Scalar\String_ || $node instanceof Node\Scalar\Int_) {
+        if (Node::is($node, 'scalar.string') || Node::is($node, 'scalar.int')) {
             return (string) $node->value;
         }
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             return $variables[$node->name] ?? null;
         }
-        if ($node instanceof Expr\PropertyFetch && $node->name instanceof Node\Identifier && $node->name->toString() === 'id') {
+        if (Node::is($node, 'expression.property-fetch') && Node::is($node->name, 'identifier') && $node->name->toString() === 'id') {
             return self::SYMBOLIC;
         }
-        if ($node instanceof Expr\Cast\Int_) {
+        if (Node::is($node, 'expression.cast.int')) {
             $value = $this->value($node->expr, $variables);
 
             return $value !== null && ! str_contains($value, self::SYMBOLIC) ? (string) (int) $value : self::SYMBOLIC;
         }
-        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name
+        if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name')
             && ! $node->isFirstClassCallable()
             && $node->name->getAttribute('namespacedName') === null
             && in_array(strtolower(($node->name->getAttribute('resolvedName') ?? $node->name)->toString()), ['rawurlencode', 'urlencode'], true)
@@ -244,16 +242,16 @@ final class TestInvocationExtractor
             return $value !== null && ! str_contains($value, self::SYMBOLIC)
                 ? (strtolower(($node->name->getAttribute('resolvedName') ?? $node->name)->toString()) === 'urlencode' ? urlencode($value) : rawurlencode($value)) : self::SYMBOLIC;
         }
-        if ($node instanceof Expr\BinaryOp\Concat) {
+        if (Node::is($node, 'expression.binary-op.concat')) {
             $left = $this->value($node->left, $variables);
             $right = $this->value($node->right, $variables);
 
             return $left !== null && $right !== null ? $left.$right : null;
         }
-        if ($node instanceof Node\Scalar\InterpolatedString) {
+        if (Node::is($node, 'scalar.interpolated-string')) {
             $result = '';
             foreach ($node->parts as $part) {
-                $value = $part instanceof Node\InterpolatedStringPart ? $part->value : $this->value($part, $variables);
+                $value = Node::is($part, 'interpolated-string-part') ? $part->value : $this->value($part, $variables);
                 if ($value === null) {
                     return null;
                 }

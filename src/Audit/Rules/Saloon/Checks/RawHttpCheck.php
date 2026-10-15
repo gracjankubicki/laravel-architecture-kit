@@ -4,18 +4,13 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\IntegrationPaths;
-use PhpParser\Node;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\New_;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Scalar\String_;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class RawHttpCheck implements FileCheck
 {
@@ -27,7 +22,7 @@ final readonly class RawHttpCheck implements FileCheck
             return [];
         }
 
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -51,8 +46,8 @@ final readonly class RawHttpCheck implements FileCheck
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof StaticCall
-                    && $node->class instanceof Name
+                    Node::is($node, 'expression.static-call')
+                    && Node::is($node->class, 'name')
                     && $this->file->resolvedClassName($node) === 'Illuminate\\Support\\Facades\\Http'
                 ) {
                     $this->state->findings[] = $this->finding($node, 'Raw Laravel Http:: calls are forbidden when Saloon is enabled; create a Saloon integration under app/Http/Integrations/**.');
@@ -62,7 +57,7 @@ final readonly class RawHttpCheck implements FileCheck
                     $this->state->findings[] = $this->finding($node, 'Direct Guzzle clients are forbidden when Saloon is enabled; create a Saloon Connector and Request.');
                 }
 
-                if ($node instanceof FuncCall && $node->name instanceof Name && in_array($node->name->toString(), ['curl_init', 'curl_exec'], true)) {
+                if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && in_array($node->name->toString(), ['curl_init', 'curl_exec'], true)) {
                     $this->state->findings[] = $this->finding($node, 'curl_* calls are forbidden when Saloon is enabled; create a Saloon integration.');
                 }
 
@@ -80,7 +75,7 @@ final readonly class RawHttpCheck implements FileCheck
 
             private function isDirectGuzzleClient(Node $node): bool
             {
-                if (! $node instanceof New_ || ! $node->class instanceof Name) {
+                if (! Node::is($node, 'expression.new') || ! Node::is($node->class, 'name')) {
                     return false;
                 }
 
@@ -91,13 +86,13 @@ final readonly class RawHttpCheck implements FileCheck
 
             private function isOutboundFileGetContents(Node $node): bool
             {
-                if (! $node instanceof FuncCall || ! $node->name instanceof Name || $node->name->toString() !== 'file_get_contents') {
+                if (! Node::is($node, 'expression.func-call') || ! Node::is($node->name, 'name') || $node->name->toString() !== 'file_get_contents') {
                     return false;
                 }
 
                 $argument = $node->args[0]->value ?? null;
 
-                return $argument instanceof String_ && str_starts_with($argument->value, 'http');
+                return Node::is($argument, 'scalar.string') && str_starts_with($argument->value, 'http');
             }
         });
 

@@ -11,6 +11,7 @@ use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Classification\DeclaredConfiguration;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
@@ -39,7 +40,7 @@ final class ArchitectureConfig
     public function readOrDefault(): array
     {
         if (! $this->files->exists($this->path)) {
-            return Architecture::defaultSelection();
+            return ProjectLayout::read($this->projectPath())->defaultSelection();
         }
 
         $config = $this->config();
@@ -91,9 +92,19 @@ final class ArchitectureConfig
             throw new InvalidArgumentException('config/architectures.php audit.paths must be an array.');
         }
 
-        $scope = new AuditScope([AuditScope::APPLICATION, ...array_values(array_filter($paths, 'is_string'))]);
+        $layout = ProjectLayout::read($this->projectPath());
+        $paths = array_values(array_filter($paths, 'is_string'));
+        $scope = $layout->isPackage()
+            ? AuditScope::package($paths === [] ? $layout->sources() : array_map(ProjectLayout::path(...), $paths))
+            : new AuditScope([AuditScope::APPLICATION, ...$paths]);
 
         return $this->missingTestLevel()->isEnabled() ? $scope->withTests() : $scope;
+    }
+
+    /** @return array<string, mixed> */
+    public function projectSettings(): array
+    {
+        return $this->config();
     }
 
     /**

@@ -94,7 +94,7 @@ final class PublicApiReportTest extends TestCase
 
     private function fixture(string $source): void
     {
-        (new Filesystem)->put($this->tempPath.'/composer.json', '{"autoload":{"classmap":["src"]}}');
+        (new Filesystem)->put($this->tempPath.'/composer.json', '{"require":{"php":"^8.5"},"autoload":{"classmap":["src"]}}');
         $this->writeSource($source);
         $this->git('init', '-q');
         $this->commit();

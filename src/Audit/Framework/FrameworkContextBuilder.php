@@ -4,14 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Framework;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteEntry;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceClass;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
 
 /** Collects framework registrations from active application providers without loading their classes. */
 final class FrameworkContextBuilder
@@ -71,11 +68,26 @@ final class FrameworkContextBuilder
     /** @var list<string> */
     private array $routeAuthGuards = [];
 
+    private bool $providersBuilt = false;
+
     public function __construct(
-        private readonly SourceIndex $sources,
+        private SourceIndex $sources,
         private readonly ?RouteMap $routes = null,
-        private readonly ?RouteEntry $route = null,
+        private ?RouteEntry $route = null,
     ) {}
+
+    /** Fork provider facts; route state is collected only on the fork. */
+    public function forRoute(SourceIndex $sources, ?RouteEntry $route): self
+    {
+        if ($this->route !== null || ! $this->providersBuilt) {
+            throw new \LogicException('Only a built provider context can be forked.');
+        }
+        $builder = clone $this;
+        $builder->sources = $sources;
+        $builder->route = $route;
+
+        return $builder;
+    }
 
     private function markUnavailable(string $detail, string $reason = 'unresolved_call'): void
     {
@@ -112,7 +124,7 @@ final class FrameworkContextBuilder
             return FrameworkContext::unavailable('Active Laravel providers are unavailable.');
         }
 
-        foreach ($providers as $provider) {
+        foreach ($this->providersBuilt ? [] : $providers as $provider) {
             if (! is_string($provider) || ! $this->sources->inScope($provider)) {
                 continue;
             }
@@ -127,6 +139,7 @@ final class FrameworkContextBuilder
                 }
             }
         }
+        $this->providersBuilt = true;
         foreach ($this->routeMiddleware() as $middleware) {
             if ($this->sources->method($middleware, 'share') !== null) {
                 $this->visit($middleware, 'share', 0);
@@ -160,6 +173,7 @@ final class FrameworkContextBuilder
             authGuards: $this->authGuards,
             routeAuthGuards: $this->routeAuthGuards,
             bindingCandidates: $this->bindingCandidates,
+            aliases: $routeContext['aliases'] ?? [],
         );
     }
 
@@ -237,30 +251,30 @@ final class FrameworkContextBuilder
 
                 return;
             }
-            if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+            if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
                 continue;
             }
-            if ($node instanceof Expr\Assign && $node->var instanceof Expr\Variable && is_string($node->var->name)) {
+            if (Node::is($node, 'expression.assign') && Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
                 $variables[$node->var->name] = $this->value($node->expr, $source, $variables);
             }
-            if ($node instanceof Expr\MethodCall && $node->var instanceof Expr\Variable && $node->var->name === 'this' && $node->name instanceof Node\Identifier) {
+            if (Node::is($node, 'expression.method-call') && Node::is($node->var, 'expression.variable') && $node->var->name === 'this' && Node::is($node->name, 'identifier')) {
                 $helper = $node->name->toString();
                 if ($this->sources->method($runtimeClass, $helper) !== null) {
                     $this->visit($runtimeClass, $helper, $depth + 1);
                 }
             }
-            if ($node instanceof Expr\StaticCall && $node->class instanceof Name && $node->name instanceof Node\Identifier) {
+            if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier')) {
                 $class = $source->file->resolvedName($node->class);
                 $method = strtolower($node->name->toString());
-                $args = array_map(fn (Node\Arg $arg): FrameworkValue => $this->value($arg->value, $source, $variables), $node->getArgs());
+                $args = array_map(fn (Node $arg): FrameworkValue => $this->value($arg->value, $source, $variables), $node->getArgs());
                 $this->registration($class, $method, $args);
             }
-            if ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier && $this->isContainerCall($node)) {
-                $args = array_map(fn (Node\Arg $arg): FrameworkValue => $this->value($arg->value, $source, $variables), $node->getArgs());
+            if (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier') && $this->isContainerCall($node)) {
+                $args = array_map(fn (Node $arg): FrameworkValue => $this->value($arg->value, $source, $variables), $node->getArgs());
                 $contract = ($args[0] ?? null)?->literal;
                 $implementation = ($args[1] ?? null)?->literal;
                 if (in_array(strtolower($node->name->toString()), ['bind', 'singleton', 'scoped'], true)) {
-                    $callback = count($args) === 1 ? ($args[0] ?? null) : ($args[1] ?? null);
+                    $callback = count($args) === 1 ? $args[0] : ($args[1] ?? null);
                     if ($callback?->callback !== null) {
                         $contracts = $contract !== null ? [$contract] : (new ContainerBindingResolver)->contracts($callback);
                         $candidate = (new ContainerBindingResolver)->resolve($callback);
@@ -292,15 +306,15 @@ final class FrameworkContextBuilder
                     $this->markUnavailable('Fortify container binding is dynamic for '.$contract.'.', 'unresolved_call');
                 }
             }
-            if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\Function_) {
+            if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.function')) {
                 continue;
             }
-            if ($runtimeMethod === 'share' && $node instanceof Stmt\Return_ && $node->expr !== null) {
+            if ($runtimeMethod === 'share' && Node::is($node, 'statement.return') && $node->expr !== null) {
                 $this->inertiaShares[] = $this->value($node->expr, $source, $variables);
             }
             foreach ($node->getSubNodeNames() as $name) {
                 $child = $node->$name;
-                $children = $child instanceof Node ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($item): bool => $item instanceof Node)) : []);
+                $children = Node::is($child, 'node') ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($item): bool => Node::is($item, 'node'))) : []);
                 $this->walk($children, $source, $runtimeClass, $runtimeMethod, $depth, $variables);
             }
         }
@@ -431,11 +445,11 @@ final class FrameworkContextBuilder
         if ($callback->callback === null || $callback->callbackSource === null) {
             return null;
         }
-        if ($callback->callback instanceof Expr\ArrowFunction) {
+        if (Node::is($callback->callback, 'expression.arrow-function')) {
             return $this->value($callback->callback->expr, $callback->callbackSource, $callback->captures);
         }
         foreach ($callback->callback->stmts as $statement) {
-            if ($statement instanceof Stmt\Return_ && $statement->expr !== null) {
+            if (Node::is($statement, 'statement.return') && $statement->expr !== null) {
                 return $this->value($statement->expr, $callback->callbackSource, $callback->captures);
             }
         }
@@ -460,35 +474,35 @@ final class FrameworkContextBuilder
     }
 
     /** @param array<string, FrameworkValue|null> $variables */
-    private function value(Expr $expr, SourceClass $source, array $variables): FrameworkValue
+    private function value(Node $expr, SourceClass $source, array $variables): FrameworkValue
     {
-        if ($expr instanceof Expr\ClassConstFetch && $expr->class instanceof Name && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class') {
+        if (Node::is($expr, 'expression.class-const-fetch') && Node::is($expr->class, 'name') && Node::is($expr->name, 'identifier') && strtolower($expr->name->toString()) === 'class') {
             $class = $source->file->resolvedName($expr->class);
 
             return new FrameworkValue(type: $class, literal: $class);
         }
-        if ($expr instanceof Node\Scalar\String_) {
+        if (Node::is($expr, 'scalar.string')) {
             return FrameworkValue::scalar($expr->value);
         }
-        if ($expr instanceof Expr\Array_) {
+        if (Node::is($expr, 'expression.array')) {
             $items = [];
             foreach ($expr->items as $index => $item) {
                 if ($item === null) {
                     continue;
                 }
-                $key = $item->key instanceof Node\Scalar\String_ ? $item->key->value : ($item->key instanceof Node\Scalar\Int_ ? $item->key->value : $index);
+                $key = Node::is($item->key, 'scalar.string') ? $item->key->value : (Node::is($item->key, 'scalar.int') ? $item->key->value : $index);
                 $items[$key] = $this->value($item->value, $source, $variables);
             }
 
             return FrameworkValue::array($items);
         }
-        if ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction) {
+        if (Node::is($expr, 'expression.closure') || Node::is($expr, 'expression.arrow-function')) {
             return FrameworkValue::callback($source, $expr, $variables);
         }
-        if ($expr instanceof Expr\Variable && is_string($expr->name)) {
+        if (Node::is($expr, 'expression.variable') && is_string($expr->name)) {
             return $variables[$expr->name] ?? FrameworkValue::unknown();
         }
-        if ($expr instanceof Expr\FuncCall && $expr->name instanceof Name && strtolower($expr->name->toString()) === 'array_merge') {
+        if (Node::is($expr, 'expression.func-call') && Node::is($expr->name, 'name') && strtolower($expr->name->toString()) === 'array_merge') {
             $items = [];
             $unknown = false;
             foreach ($expr->getArgs() as $arg) {
@@ -509,7 +523,7 @@ final class FrameworkContextBuilder
 
             return new FrameworkValue(type: '@array', items: $items, unknown: $unknown);
         }
-        if ($expr instanceof Expr\StaticCall && $expr->class instanceof Name && strtolower($expr->class->toString()) === 'parent' && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'share') {
+        if (Node::is($expr, 'expression.static-call') && Node::is($expr->class, 'name') && strtolower($expr->class->toString()) === 'parent' && Node::is($expr->name, 'identifier') && strtolower($expr->name->toString()) === 'share') {
             return FrameworkValue::array([]);
         }
 
@@ -518,22 +532,22 @@ final class FrameworkContextBuilder
 
     private function type(SourceClass $source, Node|string|null $type): ?FrameworkValue
     {
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->type($source, $type->type);
         }
-        if ($type instanceof Name) {
+        if (Node::is($type, 'name')) {
             return FrameworkValue::type($source->file->resolvedName($type));
         }
-        if ($type instanceof Node\Identifier && ! in_array(strtolower($type->toString()), ['mixed', 'object', 'callable', 'iterable'], true)) {
+        if (Node::is($type, 'identifier') && ! in_array(strtolower($type->toString()), ['mixed', 'object', 'callable', 'iterable'], true)) {
             return FrameworkValue::scalar();
         }
 
         return null;
     }
 
-    private function isContainerCall(Expr\MethodCall $call): bool
+    private function isContainerCall(Node $call): bool
     {
-        if ($call->var instanceof Expr\PropertyFetch && $call->var->var instanceof Expr\Variable && $call->var->var->name === 'this' && $call->var->name instanceof Node\Identifier) {
+        if (Node::is($call->var, 'expression.property-fetch') && Node::is($call->var->var, 'expression.variable') && $call->var->var->name === 'this' && Node::is($call->var->name, 'identifier')) {
             return in_array($call->var->name->toString(), ['app', 'container'], true);
         }
 
@@ -611,7 +625,7 @@ final class FrameworkContextBuilder
         [$source, $method] = $found;
         $this->origins[$source->file->path] = true;
         foreach ($method->stmts as $statement) {
-            if ($statement instanceof Stmt\Return_ && $statement->expr !== null) {
+            if (Node::is($statement, 'statement.return') && $statement->expr !== null) {
                 return $this->middlewareDefinitions($statement->expr, $source, $this->route->method);
             }
         }
@@ -621,12 +635,12 @@ final class FrameworkContextBuilder
     }
 
     /** @return list<string> */
-    private function middlewareDefinitions(Expr $expr, SourceClass $source, string $routeMethod): array
+    private function middlewareDefinitions(Node $expr, SourceClass $source, string $routeMethod): array
     {
-        if ($expr instanceof Node\Scalar\String_) {
+        if (Node::is($expr, 'scalar.string')) {
             return [$expr->value];
         }
-        if ($expr instanceof Expr\Array_) {
+        if (Node::is($expr, 'expression.array')) {
             $result = [];
             foreach ($expr->items as $item) {
                 if ($item !== null) {
@@ -636,7 +650,7 @@ final class FrameworkContextBuilder
 
             return $result;
         }
-        if ($expr instanceof Expr\New_ && $expr->class instanceof Name && str_ends_with($source->file->resolvedName($expr->class), '\\Middleware')) {
+        if (Node::is($expr, 'expression.new') && Node::is($expr->class, 'name') && str_ends_with($source->file->resolvedName($expr->class), '\\Middleware')) {
             $arguments = [];
             foreach ($expr->getArgs() as $index => $argument) {
                 $arguments[$argument->name?->toString() ?? $index] = $argument->value;
@@ -644,7 +658,7 @@ final class FrameworkContextBuilder
             $name = $arguments['middleware'] ?? $arguments[0] ?? null;
             $only = $this->literalStrings($arguments['only'] ?? $arguments[1] ?? null);
             $except = $this->literalStrings($arguments['except'] ?? $arguments[2] ?? null);
-            if (! $name instanceof Node\Scalar\String_ || $only === null || $except === null) {
+            if (! Node::is($name, 'scalar.string') || $only === null || $except === null) {
                 $this->markUnavailable('Controller middleware assignment is dynamic for '.$this->route?->class.'::'.$routeMethod.'.', 'unresolved_call');
 
                 return [];
@@ -667,13 +681,13 @@ final class FrameworkContextBuilder
         if ($value === null) {
             return [];
         }
-        if ($value instanceof Node\Scalar\String_) {
+        if (Node::is($value, 'scalar.string')) {
             return [$value->value];
         }
-        if ($value instanceof Expr\Array_) {
+        if (Node::is($value, 'expression.array')) {
             $strings = [];
             foreach ($value->items as $item) {
-                if ($item === null || ! $item->value instanceof Node\Scalar\String_) {
+                if ($item === null || ! Node::is($item->value, 'scalar.string')) {
                     return null;
                 }
                 $strings[] = $item->value->value;

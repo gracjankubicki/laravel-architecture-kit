@@ -41,7 +41,7 @@ final class StaticGraphDataTest extends TestCase
 
     public function test_dynamic_getters_and_connections_do_not_fall_back_to_conventions(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Models.php' => 'namespace App; class Dynamic extends \\Illuminate\\Database\\Eloquent\\Model { public function getTable() { return env("TABLE"); } } class DynamicConnection extends \\Illuminate\\Database\\Eloquent\\Model { protected $connection = unknown(); } class Invalid extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "https://host?credential=secret"; }']));
+        $index = new CatalogIndex($this->facts(['app/Models.php' => 'namespace App; class Dynamic extends \\Illuminate\\Database\\Eloquent\\Model { public function getTable() { return env("TABLE"); } } class DynamicConnection extends \\Illuminate\\Database\\Eloquent\\Model { public function getConnectionName() { return unknown(); } } class Invalid extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "https://host?credential=secret"; }']));
         $this->assertSame([], $this->edges($index, 'maps-table'));
         $this->assertCount(3, array_filter($index->diagnostics, fn ($row) => $row['code'] === 'data_analysis'));
     }
@@ -889,7 +889,7 @@ SOURCE]);
 namespace App;
 use Illuminate\Database\Eloquent\Attributes\Hidden as Conceal;
 class User extends \Illuminate\Database\Eloquent\Model { public function getNameAttribute($value) { return $value; } }
-#[Conceal(unknown())] class Dynamic extends User {}
+#[Conceal(HIDDEN_COLUMNS)] class Dynamic extends User {}
 #[Conceal(columns: ['name'])] class Named extends User {}
 #[Conceal('name'), Conceal('other')] class Repeated extends User {}
 class Hidden {}
@@ -1399,8 +1399,8 @@ class User extends \Illuminate\Database\Eloquent\Model {}
 class NamedFactory extends \Illuminate\Database\Eloquent\Factories\Factory {}
 #[FactoryModel(wrong: User::class)]
 class WrongFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; }
-#[FactoryModel(...MODEL_ARGUMENTS)]
-class UnpackedFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; }
+#[FactoryModel(MODEL_ARGUMENTS)]
+class DynamicFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; }
 #[FactoryModel(User::class), FactoryModel(User::class)]
 class RepeatedFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; }
 #[FactoryModel(User::class, User::class)]

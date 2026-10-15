@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\HttpRouteExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\NodeFinder;
 
 /** Keeps route templates file-local; no application registration or payload is executed/stored. */
 final class HttpCatalogExtractor
@@ -41,12 +40,12 @@ final class HttpCatalogExtractor
             }
         }
         $callbacks = [];
-        foreach ((new NodeFinder)->find($file->ast() ?? [], fn (Node $node) => $node instanceof Expr\CallLike) as $call) {
-            if (! $call instanceof Expr\CallLike || $call->isFirstClassCallable()) {
+        foreach ((new NodeFinder)->find($file->syntax() ?? [], fn (Node $node) => Node::is($node, 'expression.call-like')) as $call) {
+            if (! Node::is($call, 'expression.call-like') || $call->isFirstClassCallable()) {
                 continue;
             }
             foreach ($call->getArgs() as $arg) {
-                if ($arg instanceof Node\Arg && ($arg->value instanceof Expr\Closure || $arg->value instanceof Expr\ArrowFunction)) {
+                if (Node::is($arg, 'arg') && (Node::is($arg->value, 'expression.closure') || Node::is($arg->value, 'expression.arrow-function'))) {
                     $callbacks[$call->getStartFilePos()] = $closures[$arg->value->getStartFilePos()] ?? null;
                 }
             }

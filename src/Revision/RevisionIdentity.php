@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Revision;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node\Stmt\ClassLike;
-use PhpParser\NodeFinder;
 
 /** Content evidence for moves ignores comments and layout, never executes source. */
 final readonly class RevisionIdentity
@@ -15,7 +14,7 @@ final readonly class RevisionIdentity
     public static function declarations(FileContext $file): array
     {
         $shapes = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], ClassLike::class) as $class) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $class) {
             if ($class->name === null || ! isset($class->namespacedName)) {
                 continue;
             }

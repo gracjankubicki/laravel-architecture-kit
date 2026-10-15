@@ -4,12 +4,23 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
+use GracjanKubicki\ArchitectureKit\Analysis\PhpAnalysisEngine;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use PhpParser\Node;
+use PhpParser\NodeFinder;
+use PhpParser\ParserFactory;
 use PHPUnit\Framework\TestCase;
 
 final class FileContextTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        // This class verifies the retained legacy PHP AST contract explicitly.
+        AnalysisRuntime::activate(new AnalysisSession(new PhpAnalysisEngine, '8.5'));
+    }
+
     public function test_parse_observer_counts_real_attempts_and_resolved_views_do_not_parse_again(): void
     {
         $calls = [];
@@ -75,6 +86,37 @@ PHP);
 
         $this->assertNotNull($file->ast());
         $this->assertNull($file->parseError());
+    }
+
+    public function test_parser_reuse_preserves_previous_nodes_and_isolates_errors_imports_and_tokens(): void
+    {
+        $first = new FileContext('app/First.php', "<?php\nnamespace First;\nuse Vendor\\One as Client;\n/** First comment. */\nClient::send();");
+        $nodes = $first->ast();
+        $call = $this->firstStaticCall($nodes ?? []);
+        self::assertNotNull($call);
+        $before = serialize($nodes);
+
+        $invalid = new FileContext('app/Invalid.php', '<?php class {');
+        self::assertNull($invalid->ast());
+        self::assertNotNull($invalid->parseError());
+        $second = new FileContext('app/Second.php', "<?php\nnamespace Second;\nuse Vendor\\Two as Client;\nClient::send();", newestSyntax: true);
+        $otherCall = $this->firstStaticCall($second->ast() ?? []);
+        self::assertNotNull($otherCall);
+        self::assertSame('Vendor\\Two', $second->resolvedClassName($otherCall));
+        self::assertNull($second->parseError());
+        self::assertSame('Vendor\\One', $first->resolvedClassName($call));
+        self::assertSame(5, $call->getStartLine());
+        self::assertSame('/** First comment. */', (new NodeFinder)->findFirstInstanceOf($nodes, Node\Stmt\Expression::class)?->getDocComment()?->getText());
+        self::assertSame($before, serialize($first->ast()));
+
+        $property = new \ReflectionProperty(FileContext::class, 'parsers');
+        $empty = (new ParserFactory)->createForHostVersion();
+        $empty->parse('');
+        foreach ($property->getValue() as $parser) {
+            self::assertEquals($empty->getTokens(), $parser->getTokens());
+        }
+        $first->releaseAst();
+        self::assertSame($before, serialize($first->ast()));
     }
 
     /**

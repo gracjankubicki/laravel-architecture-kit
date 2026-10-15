@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
 
 /** Property sites store receiver types and names, never assigned values. */
 final class AttributeAccessCatalogExtractor
@@ -48,7 +45,7 @@ final class AttributeAccessCatalogExtractor
             }
         }
         $vars = [];
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path), '', $vars);
         }
 
@@ -69,7 +66,7 @@ final class AttributeAccessCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $declaration = $this->owners[$node->getStartFilePos()] ?? null;
             if ($declaration === null) {
                 return;
@@ -78,9 +75,9 @@ final class AttributeAccessCatalogExtractor
             $owner = $declaration->id;
             $outerChanges = $this->changes;
             $outerObjects = $this->objects;
-            $class = $node instanceof Stmt\ClassLike ? $declaration->name : $class;
-            $local = $node instanceof Expr\ArrowFunction ? $vars : [];
-            if ($node instanceof Expr\Closure) {
+            $class = Node::is($node, 'statement.class-like') ? $declaration->name : $class;
+            $local = Node::is($node, 'expression.arrow-function') ? $vars : [];
+            if (Node::is($node, 'expression.closure')) {
                 foreach ($node->uses as $use) {
                     if (is_string($use->var->name) && isset($vars[$use->var->name])) {
                         if ($use->byRef) {
@@ -95,19 +92,19 @@ final class AttributeAccessCatalogExtractor
                     $local['this'] = $vars['this'];
                 }
             }
-            if (($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) && $node->static) {
+            if ((Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) && $node->static) {
                 unset($local['this']);
             }
-            if ($node instanceof Stmt\ClassMethod && ! $node->isStatic() && $class !== '') {
+            if (Node::is($node, 'statement.class-method') && ! $node->isStatic() && $class !== '') {
                 $local['this'] = $class;
             }
-            foreach ($node instanceof Stmt\ClassLike ? [] : $node->params as $param) {
-                $type = $param->type instanceof Node\NullableType ? $param->type->type : $param->type;
-                if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
+            foreach (Node::is($node, 'statement.class-like') ? [] : $node->params as $param) {
+                $type = Node::is($param->type, 'nullable-type') ? $param->type->type : $param->type;
+                if (Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
                     unset($local[$param->var->name]);
                     $types = [];
-                    foreach ($type instanceof Node\UnionType ? $type->types : [$type] as $candidate) {
-                        if ($candidate instanceof Node\Name) {
+                    foreach (Node::is($type, 'union-type') ? $type->types : [$type] as $candidate) {
+                        if (Node::is($candidate, 'name')) {
                             $types[] = in_array(strtolower($candidate->toString()), ['self', 'static'], true) ? $class : $file->resolvedName($candidate);
                         }
                     }
@@ -124,15 +121,15 @@ final class AttributeAccessCatalogExtractor
                 }
             }
             foreach ($local as $name => $type) {
-                $captured = ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction)
-                    && ! in_array($name, array_map(fn ($param) => $param->var instanceof Expr\Variable ? $param->var->name : null, $node->params), true);
+                $captured = (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function'))
+                    && ! in_array($name, array_map(fn ($param) => Node::is($param->var, 'expression.variable') ? $param->var->name : null, $node->params), true);
                 $this->objects[$owner.'#'.$name] = $captured
                     ? ($this->objects[$outerOwner.'#'.$name] ?? $outerOwner.'#'.$name) : $owner.'#'.$name;
             }
-            foreach ($node instanceof Expr\ArrowFunction ? [$node->expr] : ($node->stmts ?? []) as $child) {
-                $this->visit($file, $child, $owner, $class, $local, returned: $node instanceof Expr\ArrowFunction);
+            foreach (Node::is($node, 'expression.arrow-function') ? [$node->expr] : ($node->stmts ?? []) as $child) {
+                $this->visit($file, $child, $owner, $class, $local, returned: Node::is($node, 'expression.arrow-function'));
             }
-            if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+            if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
                 $capturedObjects = [];
                 foreach ($local as $name => $type) {
                     $capturedObjects[] = $outerObjects[$outerOwner.'#'.$name] ?? $outerOwner.'#'.$name;
@@ -165,17 +162,17 @@ final class AttributeAccessCatalogExtractor
 
             return;
         }
-        if ($node instanceof Expr\Assign || $node instanceof Expr\AssignRef || $node instanceof Expr\AssignOp) {
+        if (Node::is($node, 'expression.assign') || Node::is($node, 'expression.assign-ref') || Node::is($node, 'expression.assign-op')) {
             $this->visit($file, $node->expr, $owner, $class, $vars);
-            $this->visit($file, $node->var, $owner, $class, $vars, $node instanceof Expr\AssignOp ? 'read-write' : 'write');
-            if ($node instanceof Expr\AssignRef) {
+            $this->visit($file, $node->var, $owner, $class, $vars, Node::is($node, 'expression.assign-op') ? 'read-write' : 'write');
+            if (Node::is($node, 'expression.assign-ref')) {
                 $vars = [];
                 $this->diagnostics[] = new CatalogDiagnostic('attribute_binding_analysis', 'Reference assignment invalidates source attribute receiver bindings.', max(1, $node->getStartLine()), $owner);
 
                 return;
             }
-            if ($node->var instanceof Expr\Variable && is_string($node->var->name)) {
-                $receiver = $node instanceof Expr\Assign ? $this->receiver($file, $node->expr, $class, $vars) : null;
+            if (Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
+                $receiver = Node::is($node, 'expression.assign') ? $this->receiver($file, $node->expr, $class, $vars) : null;
                 $object = $this->object($node->expr, $owner);
                 unset($vars[$node->var->name]);
                 unset($this->objects[$owner.'#'.$node->var->name]);
@@ -184,12 +181,12 @@ final class AttributeAccessCatalogExtractor
                     $this->objects[$owner.'#'.$node->var->name] = $object ?? $owner.'#new:'.$node->getStartFilePos();
                 }
             }
-            if ($node->var instanceof Expr\PropertyFetch && $node->var->name instanceof Node\Identifier) {
+            if (Node::is($node->var, 'expression.property-fetch') && Node::is($node->var->name, 'identifier')) {
                 $parentObject = $this->object($node->var->var, $owner);
-                $sourceObject = $node instanceof Expr\Assign ? $this->object($node->expr, $owner) : null;
+                $sourceObject = Node::is($node, 'expression.assign') ? $this->object($node->expr, $owner) : null;
                 if ($parentObject !== null && $sourceObject !== null) {
                     $this->objects[$parentObject.'#property:'.$node->var->name->toString()] = $sourceObject;
-                } elseif ($node->var->var instanceof Expr\Variable && is_string($node->var->var->name)) {
+                } elseif (Node::is($node->var->var, 'expression.variable') && is_string($node->var->var->name)) {
                     unset($vars[$node->var->var->name]);
                     $this->diagnostics[] = new CatalogDiagnostic('attribute_binding_analysis', 'Assigned property receiver state is unresolved.', max(1, $node->getStartLine()), $owner);
                 }
@@ -197,7 +194,7 @@ final class AttributeAccessCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\If_ || $node instanceof Stmt\For_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\While_ || $node instanceof Stmt\Do_ || $node instanceof Stmt\Switch_ || $node instanceof Stmt\TryCatch) {
+        if (Node::is($node, 'statement.if') || Node::is($node, 'statement.for') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.while') || Node::is($node, 'statement.do') || Node::is($node, 'statement.switch') || Node::is($node, 'statement.try-catch')) {
             $this->diagnostics[] = new CatalogDiagnostic('attribute_binding_analysis', 'Attribute receiver bindings inside and after control flow require composition.', max(1, $node->getStartLine()), $owner);
             $local = [];
             $this->children($file, $node, $owner, $class, $local);
@@ -205,33 +202,33 @@ final class AttributeAccessCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\Unset_ || $node instanceof Expr\Isset_) {
+        if (Node::is($node, 'statement.unset') || Node::is($node, 'expression.isset')) {
             foreach ($node->vars as $value) {
                 $this->visit($file, $value, $owner, $class, $vars, 'inspect');
-                if ($value instanceof Expr\Variable && is_string($value->name) && $node instanceof Stmt\Unset_) {
+                if (Node::is($value, 'expression.variable') && is_string($value->name) && Node::is($node, 'statement.unset')) {
                     unset($vars[$value->name]);
                 }
             }
 
             return;
         }
-        if ($node instanceof Expr\PreInc || $node instanceof Expr\PostInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostDec) {
+        if (Node::is($node, 'expression.pre-inc') || Node::is($node, 'expression.post-inc') || Node::is($node, 'expression.pre-dec') || Node::is($node, 'expression.post-dec')) {
             $this->visit($file, $node->var, $owner, $class, $vars, 'read-write');
 
             return;
         }
-        if (! $returned && ($node instanceof Expr\PropertyFetch || $node instanceof Expr\NullsafePropertyFetch)) {
+        if (! $returned && (Node::is($node, 'expression.property-fetch') || Node::is($node, 'expression.nullsafe-property-fetch'))) {
             $this->hasProperty = true;
             $receiver = $this->boundedReceiver($this->receiver($file, $node->var, $class, $vars), $node, $owner);
             if ($receiver !== null) {
                 $offset = max(0, $node->getStartFilePos());
-                $name = $node->name instanceof Node\Identifier ? $node->name->toString() : null;
+                $name = Node::is($node->name, 'identifier') ? $node->name->toString() : null;
                 $this->elements[] = new CatalogElement(CatalogElement::identity($file->path, 'attribute-access', 'attribute-access:'.$node->getEndFilePos(), $offset),
                     'attribute access', 'attribute-access', max(1, $node->getStartLine()), max(1, $node->getEndLine()), $offset, $owner,
-                    metadata: ['receiver' => $receiver, 'attribute_key' => $name === null ? null : hash('sha256', $name), 'direction' => $direction, 'nullsafe' => $node instanceof Expr\NullsafePropertyFetch, 'form' => 'property', 'execution_proven' => false]);
+                    metadata: ['receiver' => $receiver, 'attribute_key' => $name === null ? null : hash('sha256', $name), 'direction' => $direction, 'nullsafe' => Node::is($node, 'expression.nullsafe-property-fetch'), 'form' => 'property', 'execution_proven' => false]);
             }
         }
-        $transportReceiver = ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall)
+        $transportReceiver = (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call'))
             ? $this->boundedReceiver($this->receiver($file, $node->var, $class, $vars), $node, $owner) : null;
         $invocation = CatalogSerializationInvocation::extract($file, $node, $returned, $transportReceiver);
         if ($invocation !== null) {
@@ -253,7 +250,7 @@ final class AttributeAccessCatalogExtractor
             $value = $invocation['value'];
             $valid = $invocation['valid'];
             $rootValue = $value;
-            $values = $value instanceof Expr ? [$value] : [];
+            $values = Node::is($value, 'expression') ? [$value] : [];
             $visited = 0;
             while ($values !== []) {
                 if (++$visited > 128) {
@@ -263,7 +260,7 @@ final class AttributeAccessCatalogExtractor
                     return;
                 }
                 $value = array_shift($values);
-                if ($value instanceof Expr\Array_) {
+                if (Node::is($value, 'expression.array')) {
                     foreach ($value->items as $item) {
                         if ($item !== null && ! $item->unpack && ! $item->byRef) {
                             if (count($values) >= 128) {
@@ -304,7 +301,7 @@ final class AttributeAccessCatalogExtractor
 
             return;
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && in_array($form = strtolower($node->name->toString()), ['getattribute', 'getattributevalue', 'setattribute'], true)) {
             $this->hasProperty = true;
             $receiver = $this->boundedReceiver($this->receiver($file, $node->var, $class, $vars), $node, $owner);
@@ -316,7 +313,7 @@ final class AttributeAccessCatalogExtractor
                     $parameter = $arg->name?->toString() ?? (['key', 'value'][$position] ?? 'unknown');
                     $valid = $valid && ! $arg->unpack && in_array($parameter, $form === 'setattribute' ? ['key', 'value'] : ['key'], true) && ! isset($seen[$parameter]);
                     $seen[$parameter] = true;
-                    if ($parameter === 'key' && $arg->value instanceof Scalar\String_) {
+                    if ($parameter === 'key' && Node::is($arg->value, 'scalar.string')) {
                         $key = hash('sha256', $arg->value->value);
                     }
                 }
@@ -324,10 +321,10 @@ final class AttributeAccessCatalogExtractor
                 $this->elements[] = new CatalogElement(CatalogElement::identity($file->path, 'attribute-access', 'attribute-access:'.$node->getEndFilePos(), $offset),
                     'attribute access', 'attribute-access', max(1, $node->getStartLine()), max(1, $node->getEndLine()), $offset, $owner,
                     metadata: ['receiver' => $receiver, 'attribute_key' => $valid ? $key : null, 'direction' => $form === 'setattribute' ? 'write' : 'read',
-                        'nullsafe' => $node instanceof Expr\NullsafeMethodCall, 'form' => $form, 'execution_proven' => false]);
+                        'nullsafe' => Node::is($node, 'expression.nullsafe-method-call'), 'form' => $form, 'execution_proven' => false]);
             }
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()) {
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()) {
             $form = strtolower($node->name->toString());
             $serialization = in_array($form, ['toarray', 'attributestoarray', 'tojson', 'jsonserialize'], true);
             $mutation = in_array($form, CatalogSerializationChanges::METHODS, true);
@@ -347,7 +344,7 @@ final class AttributeAccessCatalogExtractor
                     $this->elements[] = new CatalogElement(CatalogElement::identity($file->path, 'attribute-access', 'attribute-access:'.$node->getEndFilePos(), $offset),
                         'attribute access', 'attribute-access', max(1, $node->getStartLine()), max(1, $node->getEndLine()), $offset, $owner,
                         metadata: ['receiver' => $receiver, 'attribute_key' => null, 'direction' => $valid ? 'read' : 'inspect',
-                            'nullsafe' => $node instanceof Expr\NullsafeMethodCall, 'form' => $form, 'execution_proven' => false,
+                            'nullsafe' => Node::is($node, 'expression.nullsafe-method-call'), 'form' => $form, 'execution_proven' => false,
                             'serialization_steps' => $this->changes[$this->object($node->var, $owner) ?? ''] ?? []]);
                 }
             }
@@ -370,9 +367,9 @@ final class AttributeAccessCatalogExtractor
             }
         }
         $this->children($file, $node, $owner, $class, $vars);
-        if (($node instanceof Expr\FuncCall || $node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall || $node instanceof Expr\StaticCall) && ! $node->isFirstClassCallable() || $node instanceof Expr\New_) {
+        if ((Node::is($node, 'expression.func-call') || Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call') || Node::is($node, 'expression.static-call')) && ! $node->isFirstClassCallable() || Node::is($node, 'expression.new')) {
             foreach ($node->getArgs() as $arg) {
-                if ($arg->value instanceof Expr\Variable && is_string($arg->value->name) && isset($vars[$arg->value->name])) {
+                if (Node::is($arg->value, 'expression.variable') && is_string($arg->value->name) && isset($vars[$arg->value->name])) {
                     $object = $this->object($arg->value, $owner);
                     foreach (array_keys($vars) as $name) {
                         if (($this->objects[$owner.'#'.$name] ?? $owner.'#'.$name) === $object) {
@@ -397,22 +394,22 @@ final class AttributeAccessCatalogExtractor
         return $receiver;
     }
 
-    private function object(Expr $node, string $owner): ?string
+    private function object(Node $node, string $owner): ?string
     {
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             return $this->objects[$owner.'#'.$node->name] ?? $owner.'#'.$node->name;
         }
-        if ($node instanceof Expr\New_) {
+        if (Node::is($node, 'expression.new')) {
             return $owner.'#new:'.$node->getStartFilePos();
         }
-        if ($node instanceof Expr\PropertyFetch && $node->name instanceof Node\Identifier) {
+        if (Node::is($node, 'expression.property-fetch') && Node::is($node->name, 'identifier')) {
             $object = $this->object($node->var, $owner);
 
             $property = $object === null ? null : $object.'#property:'.$node->name->toString();
 
             return $property === null ? null : ($this->objects[$property] ?? $property);
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier')
             && in_array(strtolower($node->name->toString()), CatalogSerializationChanges::METHODS, true)) {
             return $this->object($node->var, $owner);
         }
@@ -425,7 +422,7 @@ final class AttributeAccessCatalogExtractor
     {
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner, $class, $vars);
                 }
             }
@@ -433,27 +430,27 @@ final class AttributeAccessCatalogExtractor
     }
 
     /** @param array<string, string> $vars */
-    private function receiver(FileContext $file, Expr $node, string $class, array $vars): ?string
+    private function receiver(FileContext $file, Node $node, string $class, array $vars): ?string
     {
-        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name && ! $node->isFirstClassCallable() && $node->args === []) {
+        if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && ! $node->isFirstClassCallable() && $node->args === []) {
             $resolved = $file->resolvedName($node->name);
             $namespaced = $node->name->getAttribute('namespacedName');
-            $functions = array_values(array_unique($namespaced instanceof Node\Name ? [$namespaced->toString(), $resolved] : [$resolved]));
+            $functions = array_values(array_unique(Node::is($namespaced, 'name') ? [$namespaced->toString(), $resolved] : [$resolved]));
             if (in_array('response', array_map('strtolower', $functions), true)) {
                 return '@response-factory:'.json_encode($functions, JSON_THROW_ON_ERROR);
             }
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && in_array(strtolower($node->name->toString()), CatalogSerializationChanges::METHODS, true)) {
             return $this->receiver($file, $node->var, $class, $vars);
         }
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             return $vars[$node->name] ?? null;
         }
-        if ($node instanceof Expr\New_ && $node->class instanceof Node\Name) {
+        if (Node::is($node, 'expression.new') && Node::is($node->class, 'name')) {
             return in_array(strtolower($node->class->toString()), ['self', 'static'], true) ? ($class === '' ? null : $class) : $file->resolvedName($node->class);
         }
-        if ($node instanceof Expr\PropertyFetch && $node->name instanceof Node\Identifier && $node->var instanceof Expr\Variable && is_string($node->var->name) && isset($vars[$node->var->name])) {
+        if (Node::is($node, 'expression.property-fetch') && Node::is($node->name, 'identifier') && Node::is($node->var, 'expression.variable') && is_string($node->var->name) && isset($vars[$node->var->name])) {
             return '@property:'.$vars[$node->var->name].'#'.$node->name->toString();
         }
 

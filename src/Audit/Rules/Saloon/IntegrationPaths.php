@@ -4,11 +4,20 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\ClassInspector;
-use PhpParser\Node\Stmt;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 
 final readonly class IntegrationPaths
 {
+    public function __construct(private ?ProjectClassification $classification = null) {}
+
+    public function isIntegrationName(string $name): bool
+    {
+        return str_contains('\\'.ltrim($name, '\\'), '\\Http\\Integrations\\')
+            || $this->classification?->roleOfName($name) === 'infrastructure';
+    }
+
     public function isIntegrationPath(string $path): bool
     {
         return str_starts_with($path, 'app/Http/Integrations/')
@@ -32,10 +41,13 @@ final readonly class IntegrationPaths
 
     public function isForbiddenAdapterPath(string $path): bool
     {
-        return str_starts_with($path, 'app/Http/Controllers/')
-            || str_starts_with($path, 'app/Http/Requests/')
-            || str_starts_with($path, 'app/Http/Resources/')
-            || str_starts_with($path, 'app/Models/');
+        foreach (['controller' => 'app/Http/Controllers/', 'request' => 'app/Http/Requests/', 'resource' => 'app/Http/Resources/', 'model' => 'app/Models/'] as $kind => $prefix) {
+            if ($this->classification?->kindMatches($path, $kind, str_starts_with($path, $prefix)) ?? str_starts_with($path, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function isUseCasePath(string $path): bool
@@ -46,7 +58,7 @@ final readonly class IntegrationPaths
             || str_contains($path, '/Jobs/');
     }
 
-    public function looksLikeIntegrationDto(Stmt\Class_ $class): bool
+    public function looksLikeIntegrationDto(Node $class): bool
     {
         $className = ClassInspector::className($class);
 

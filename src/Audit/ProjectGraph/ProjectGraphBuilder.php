@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
@@ -25,10 +26,6 @@ use GracjanKubicki\ArchitectureKit\Catalog\TestCatalogExtractor;
 use GracjanKubicki\ArchitectureKit\Catalog\ValidationCatalogExtractor;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
 
 final class ProjectGraphBuilder
 {
@@ -112,7 +109,7 @@ final class ProjectGraphBuilder
 
         try {
             $catalogFile = $this->catalog && str_ends_with($file->path, '.blade.php') ? BladeCatalogExtractor::phpSource($file) : $file;
-            $nodes = $catalogFile->ast();
+            $nodes = $catalogFile->syntax();
 
             if ($nodes === null) {
                 $partial = $this->catalog ? (new PhpCatalogExtractor)->extract($catalogFile) : null;
@@ -123,7 +120,7 @@ final class ProjectGraphBuilder
                 }
 
                 return new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => 'Unparseable source.']]) : null,
-                    catalog: $partial);
+                    catalog: $partial, syntaxError: $catalogFile->parseError(), syntaxErrorLine: $catalogFile->parseErrorLine());
             }
 
             $testExtractor = new TestInvocationExtractor;
@@ -233,7 +230,7 @@ final class ProjectGraphBuilder
     {
         return PhpAst::containsAny(
             $nodes,
-            static fn (Node $node): bool => $node instanceof Stmt\ClassLike && $node->name !== null,
+            static fn (Node $node): bool => Node::is($node, 'statement.class-like') && $node->name !== null,
         );
     }
 
@@ -309,17 +306,17 @@ final class ProjectGraphBuilder
         array &$edges,
         array $eloquentRelationNodes,
     ): void {
-        if ($node instanceof Stmt\ClassLike && $node->name !== null) {
+        if (Node::is($node, 'statement.class-like') && $node->name !== null) {
             $source = $this->symbolName($node);
 
             if ($source !== null) {
                 $kind = match (true) {
-                    $node instanceof Stmt\Interface_ => 'interface',
-                    $node instanceof Stmt\Trait_ => 'trait',
-                    $node instanceof Stmt\Enum_ => 'enum',
+                    Node::is($node, 'statement.interface') => 'interface',
+                    Node::is($node, 'statement.trait') => 'trait',
+                    Node::is($node, 'statement.enum') => 'enum',
                     default => 'class',
                 };
-                $hasMethods = ! $node instanceof Stmt\Interface_ || $node->getMethods() !== [];
+                $hasMethods = ! Node::is($node, 'statement.interface') || $node->getMethods() !== [];
                 $symbols[] = new ProjectSymbol(
                     name: $source,
                     path: $file->path,
@@ -339,7 +336,7 @@ final class ProjectGraphBuilder
         foreach ($node->getSubNodeNames() as $name) {
             $child = $node->$name;
 
-            if ($child instanceof Node) {
+            if (Node::is($child, 'node')) {
                 $this->visit($file, $child, $source, $symbols, $edges, $eloquentRelationNodes);
 
                 continue;
@@ -350,7 +347,7 @@ final class ProjectGraphBuilder
             }
 
             foreach ($child as $item) {
-                if ($item instanceof Node) {
+                if (Node::is($item, 'node')) {
                     $this->visit($file, $item, $source, $symbols, $edges, $eloquentRelationNodes);
                 }
             }
@@ -368,53 +365,53 @@ final class ProjectGraphBuilder
         array &$edges,
         array &$eloquentRelationNodes,
     ): void {
-        if ($node instanceof Stmt\Class_) {
+        if (Node::is($node, 'statement.class')) {
             $this->addName($file, $edges, $source, $node->extends, $node->getStartLine(), 'extends', true);
 
             foreach ($node->implements as $name) {
                 $this->addName($file, $edges, $source, $name, $name->getStartLine(), 'implements', true);
             }
-        } elseif ($node instanceof Stmt\Interface_) {
+        } elseif (Node::is($node, 'statement.interface')) {
             foreach ($node->extends as $name) {
                 $this->addName($file, $edges, $source, $name, $name->getStartLine(), 'extends', true);
             }
-        } elseif ($node instanceof Stmt\Enum_) {
+        } elseif (Node::is($node, 'statement.enum')) {
             foreach ($node->implements as $name) {
                 $this->addName($file, $edges, $source, $name, $name->getStartLine(), 'implements', true);
             }
-        } elseif ($node instanceof Stmt\TraitUse) {
+        } elseif (Node::is($node, 'statement.trait-use')) {
             foreach ($node->traits as $name) {
                 $this->addName($file, $edges, $source, $name, $name->getStartLine(), 'trait', true);
             }
-        } elseif ($node instanceof Node\Param) {
+        } elseif (Node::is($node, 'param')) {
             $this->addType($file, $edges, $source, $node->type, $node->getStartLine(), 'parameter');
-        } elseif ($node instanceof Stmt\ClassMethod) {
+        } elseif (Node::is($node, 'statement.class-method')) {
             $this->addType($file, $edges, $source, $node->returnType, $node->getStartLine(), 'return');
-        } elseif ($node instanceof Stmt\Property || $node instanceof Stmt\ClassConst) {
+        } elseif (Node::is($node, 'statement.property') || Node::is($node, 'statement.class-const')) {
             $this->addType($file, $edges, $source, $node->type, $node->getStartLine(), 'property');
-        } elseif ($node instanceof Expr\New_) {
-            $this->addName($file, $edges, $source, $node->class instanceof Name ? $node->class : null, $node->getStartLine(), 'new', true);
-        } elseif ($node instanceof Expr\StaticCall || $node instanceof Expr\StaticPropertyFetch) {
-            $this->addName($file, $edges, $source, $node->class instanceof Name ? $node->class : null, $node->getStartLine(), 'static', true);
-        } elseif ($node instanceof Expr\Instanceof_) {
-            $this->addName($file, $edges, $source, $node->class instanceof Name ? $node->class : null, $node->getStartLine(), 'instanceof', true);
-        } elseif ($node instanceof Stmt\Catch_) {
+        } elseif (Node::is($node, 'expression.new')) {
+            $this->addName($file, $edges, $source, Node::is($node->class, 'name') ? $node->class : null, $node->getStartLine(), 'new', true);
+        } elseif (Node::is($node, 'expression.static-call') || Node::is($node, 'expression.static-property-fetch')) {
+            $this->addName($file, $edges, $source, Node::is($node->class, 'name') ? $node->class : null, $node->getStartLine(), 'static', true);
+        } elseif (Node::is($node, 'expression.instanceof')) {
+            $this->addName($file, $edges, $source, Node::is($node->class, 'name') ? $node->class : null, $node->getStartLine(), 'instanceof', true);
+        } elseif (Node::is($node, 'statement.catch')) {
             foreach ($node->types as $name) {
                 $this->addName($file, $edges, $source, $name, $name->getStartLine(), 'catch', true);
             }
-        } elseif ($node instanceof Node\Attribute) {
+        } elseif (Node::is($node, 'attribute')) {
             $this->addName($file, $edges, $source, $node->name, $node->getStartLine(), 'attribute', true);
-        } elseif ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier && $this->isEloquentRelation($node->name->toString())) {
+        } elseif (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier') && $this->isEloquentRelation($node->name->toString())) {
             foreach ($node->args as $argument) {
-                if (! $argument->value instanceof Expr\ClassConstFetch || ! $argument->value->class instanceof Name) {
+                if (! Node::is($argument->value, 'expression.class-const-fetch') || ! Node::is($argument->value->class, 'name')) {
                     continue;
                 }
 
                 $eloquentRelationNodes[spl_object_id($argument->value)] = true;
                 $this->addName($file, $edges, $source, $argument->value->class, $argument->value->getStartLine(), 'eloquent-relation', false);
             }
-        } elseif ($node instanceof Expr\ClassConstFetch && $node->class instanceof Name) {
-            $constant = strtolower($node->name instanceof Node\Identifier ? $node->name->toString() : '');
+        } elseif (Node::is($node, 'expression.class-const-fetch') && Node::is($node->class, 'name')) {
+            $constant = strtolower(Node::is($node->name, 'identifier') ? $node->name->toString() : '');
 
             if ($constant === 'class') {
                 if (! isset($eloquentRelationNodes[spl_object_id($node)])) {
@@ -431,19 +428,19 @@ final class ProjectGraphBuilder
      */
     private function addType(FileContext $file, array &$edges, string $source, Node|string|null $type, int $line, string $kind): void
     {
-        if ($type instanceof Name) {
+        if (Node::is($type, 'name')) {
             $this->addName($file, $edges, $source, $type, $line, $kind, true);
 
             return;
         }
 
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             $this->addType($file, $edges, $source, $type->type, $line, $kind);
 
             return;
         }
 
-        if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+        if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
             foreach ($type->types as $inner) {
                 $this->addType($file, $edges, $source, $inner, $line, $kind);
             }
@@ -453,7 +450,7 @@ final class ProjectGraphBuilder
     /**
      * @param  array<int, DependencyEdge>  $edges
      */
-    private function addName(FileContext $file, array &$edges, string $source, ?Name $name, int $line, string $kind, bool $strong): void
+    private function addName(FileContext $file, array &$edges, string $source, ?Node $name, int $line, string $kind, bool $strong): void
     {
         if ($name === null || in_array(strtolower($name->toString()), ['self', 'static', 'parent'], true)) {
             return;
@@ -469,7 +466,7 @@ final class ProjectGraphBuilder
         );
     }
 
-    private function symbolName(Stmt\ClassLike $node): ?string
+    private function symbolName(Node $node): ?string
     {
         return isset($node->namespacedName)
             ? ltrim($node->namespacedName->toString(), '\\')

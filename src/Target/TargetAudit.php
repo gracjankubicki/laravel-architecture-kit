@@ -31,7 +31,7 @@ final readonly class TargetAudit
             return ['findings' => [], 'notices' => $facts->configuration->notices, 'complete' => false];
         }
         $files = new FrozenFilesystem($facts->source, $base);
-        $classification = new ProjectClassification($files, $base);
+        $classification = new ProjectClassification($files, $base, $facts->configuration->scope());
         $enabled = array_map(static fn (string $slug): Architecture|string => Architecture::tryFrom($slug) ?? $slug, $facts->configuration->values['enabled'] ?? []);
         $rules = BuiltInRules::all($files, $base, $enabled, $classification);
         $raw = $notices = [];
@@ -48,7 +48,7 @@ final readonly class TargetAudit
                 continue;
             }
             try {
-                if ($file->ast() === null) {
+                if ($file->syntax() === null) {
                     $notices[] = ['path' => $path, 'reason' => 'Current audit source is unparseable.'];
 
                     continue;

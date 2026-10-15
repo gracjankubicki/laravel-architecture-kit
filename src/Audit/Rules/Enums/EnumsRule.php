@@ -4,31 +4,35 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Enums;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class EnumsRule implements AuditRule
+final class EnumsRule implements PortableAuditRule
 {
+    /** @var array<string, true>|null Enum declarations, scoped to this audit's rule instance. */
+    private ?array $enumNames = null;
+
+    private readonly ProjectClassification $classification;
+
     /**
      * @param  array<int, Architecture|string>  $enabled
      */
     public function __construct(
-        private Filesystem $files,
-        private string $basePath,
-        private array $enabled,
-        private ?ProjectClassification $classification = null,
-    ) {}
+        private readonly Filesystem $files,
+        private readonly string $basePath,
+        private readonly array $enabled,
+        ?ProjectClassification $classification = null,
+    ) {
+        $this->classification = $classification ?? new ProjectClassification($files, $basePath);
+    }
 
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -43,7 +47,7 @@ final readonly class EnumsRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -55,7 +59,7 @@ final readonly class EnumsRule implements AuditRule
             $findings[] = $this->finding('warn', $file->path, $line, 'Finite request values should use backed enums and Rule::enum().');
         }
 
-        if (($this->classification?->kindMatches($file->path, 'model', str_starts_with($file->path, 'app/Models/')) ?? str_starts_with($file->path, 'app/Models/'))) {
+        if ($this->classification->kindMatches($file->path, 'model', str_starts_with($file->path, 'app/Models/'))) {
             foreach ($this->modelEnumConstantLines($nodes) as $line) {
                 $findings[] = $this->finding('warn', $file->path, $line, 'Finite model type sets should be backed enums with Eloquent casts.');
             }
@@ -65,7 +69,7 @@ final readonly class EnumsRule implements AuditRule
 
         if (
             in_array(Architecture::ApiResources, $this->enabled, true)
-            && ($this->classification?->kindMatches($file->path, 'resource', str_starts_with($file->path, 'app/Http/Resources/')) ?? str_starts_with($file->path, 'app/Http/Resources/'))
+            && $this->classification->kindMatches($file->path, 'resource', str_starts_with($file->path, 'app/Http/Resources/'))
         ) {
             foreach ($this->rawEnumLikeApiResourceLines($nodes) as $line) {
                 $findings[] = $this->finding(
@@ -134,17 +138,17 @@ final readonly class EnumsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\Property) {
+                if (! Node::is($node, 'statement.property')) {
                     return null;
                 }
 
                 foreach ($node->props as $property) {
-                    if ($property->name->toString() !== 'fillable' || ! $property->default instanceof Node\Expr\Array_) {
+                    if ($property->name->toString() !== 'fillable' || ! Node::is($property->default, 'expression.array')) {
                         continue;
                     }
 
                     foreach ($property->default->items as $item) {
-                        if (! $item instanceof Node\Expr\ArrayItem || ! $item->value instanceof Node\Scalar\String_) {
+                        if (! Node::is($item, 'array-item') || ! Node::is($item->value, 'scalar.string')) {
                             continue;
                         }
 
@@ -191,23 +195,21 @@ final readonly class EnumsRule implements AuditRule
 
     private function enumClassExists(string $class): bool
     {
-        if (! $this->files->isDirectory($this->basePath.'/app')) {
-            return false;
-        }
-
-        foreach ($this->files->allFiles($this->basePath.'/app') as $file) {
-            if ($file->getExtension() !== 'php' || $file->getBasename('.php') !== $class) {
-                continue;
-            }
-
-            $path = $this->relative($file->getPathname());
-
-            if (str_contains($path, '/Enums/') || str_starts_with($path, 'app/Enums/')) {
-                return true;
+        if ($this->enumNames === null) {
+            $this->enumNames = [];
+            foreach ($this->classification->sourcePaths() as $path) {
+                if (! $this->classification->kindMatches($path, 'enum', str_contains($path, '/Enums/'))) {
+                    continue;
+                }
+                foreach ($this->classification->file($path) as $row) {
+                    if ($row['php_kind'] === 'enum') {
+                        $this->enumNames[Str::afterLast($row['name'], '\\')] = true;
+                    }
+                }
             }
         }
 
-        return false;
+        return isset($this->enumNames[$class]);
     }
 
     /**
@@ -217,11 +219,11 @@ final readonly class EnumsRule implements AuditRule
     {
         return PhpAst::containsAny(
             $nodes,
-            fn (Node $node): bool => $node instanceof Node\Expr\ArrayItem
-                && $node->key instanceof Node\Scalar\String_
+            fn (Node $node): bool => Node::is($node, 'array-item')
+                && Node::is($node->key, 'scalar.string')
                 && $node->key->value === $attribute
-                && $node->value instanceof Node\Expr\ClassConstFetch
-                && $node->value->class instanceof Name
+                && Node::is($node->value, 'expression.class-const-fetch')
+                && Node::is($node->value->class, 'name')
                 && $this->shortTypeName($node->value->class->toString()) === $enum
         );
     }
@@ -247,10 +249,10 @@ final readonly class EnumsRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof Node\Expr\StaticCall
-                    && $node->class instanceof Name
+                    Node::is($node, 'expression.static-call')
+                    && Node::is($node->class, 'name')
                     && $node->class->toString() === 'Rule'
-                    && $node->name instanceof Node\Identifier
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'in'
                     && PhpAst::contains($node, fn (Node $child): bool => $this->isEnumSetClassConstFetch($child))
                 ) {
@@ -262,8 +264,8 @@ final readonly class EnumsRule implements AuditRule
 
             private function isEnumSetClassConstFetch(Node $node): bool
             {
-                return $node instanceof Node\Expr\ClassConstFetch
-                    && $node->name instanceof Node\Identifier
+                return Node::is($node, 'expression.class-const-fetch')
+                    && Node::is($node->name, 'identifier')
                     && in_array($node->name->toString(), ['TYPES', 'STATUSES'], true);
             }
         });
@@ -291,7 +293,7 @@ final readonly class EnumsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\ClassConst || ! $node->isPublic()) {
+                if (! Node::is($node, 'statement.class-const') || ! $node->isPublic()) {
                     return null;
                 }
 
@@ -330,7 +332,7 @@ final readonly class EnumsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Node\Expr\ArrayItem || ! $node->key instanceof Node\Scalar\String_) {
+                if (! Node::is($node, 'array-item') || ! Node::is($node->key, 'scalar.string')) {
                     return null;
                 }
 
@@ -359,8 +361,8 @@ final readonly class EnumsRule implements AuditRule
 
             private function isRawEnumLikeValue(Node $node): bool
             {
-                if ($node instanceof Node\Expr\PropertyFetch || $node instanceof Node\Expr\NullsafePropertyFetch) {
-                    if (! $node->name instanceof Node\Identifier) {
+                if (Node::is($node, 'expression.property-fetch') || Node::is($node, 'expression.nullsafe-property-fetch')) {
+                    if (! Node::is($node->name, 'identifier')) {
                         return false;
                     }
 
@@ -375,8 +377,8 @@ final readonly class EnumsRule implements AuditRule
 
             private function endsWithValueProperty(Node $node): bool
             {
-                return ($node instanceof Node\Expr\PropertyFetch || $node instanceof Node\Expr\NullsafePropertyFetch)
-                    && $node->name instanceof Node\Identifier
+                return (Node::is($node, 'expression.property-fetch') || Node::is($node, 'expression.nullsafe-property-fetch'))
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'value';
             }
         });
@@ -387,16 +389,16 @@ final readonly class EnumsRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstClass(array $nodes): ?Stmt\Class_
+    private function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 foreach ($node->stmts as $statement) {
-                    if ($statement instanceof Stmt\Class_) {
+                    if (Node::is($statement, 'statement.class')) {
                         return $statement;
                     }
                 }
@@ -411,11 +413,6 @@ final readonly class EnumsRule implements AuditRule
         $parts = explode('\\', $name);
 
         return $parts[count($parts) - 1];
-    }
-
-    private function relative(string $path): string
-    {
-        return ProjectPath::relative($this->basePath, $path);
     }
 
     private function finding(string $severity, string $path, int $line, string $message): AuditFinding

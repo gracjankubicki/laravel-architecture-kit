@@ -26,6 +26,8 @@ final readonly class ApplicationAuditResult
         public array $notices = [],
         public string $analysisStatus = 'not_run',
         public array $classification = [],
+        /** Set only after standalone input hashes match at both ends of the audit. */
+        public ?string $sourceFingerprint = null,
     ) {}
 
     /**

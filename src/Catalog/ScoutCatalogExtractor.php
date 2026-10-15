@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Callback identity is taken from this exact chain, not a shared receiver type. */
 final class ScoutCatalogExtractor
@@ -38,7 +36,7 @@ final class ScoutCatalogExtractor
         foreach ($php->elements as $element) {
             $this->owners[$element->offset] = $element->id;
         }
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path));
         }
         $sites = [];
@@ -48,7 +46,7 @@ final class ScoutCatalogExtractor
             }
         }
         $state = new CatalogScoutBuilderState($sites, $this->owners);
-        $snapshots = $state->extract($file->ast() ?? []);
+        $snapshots = $state->extract($file->syntax() ?? []);
         foreach ($this->elements as $position => $element) {
             $snapshot = $snapshots[$element->offset][$element->metadata['method'] ?? ''] ?? null;
             if ($element->kind === 'scout-call-site' && $snapshot !== null) {
@@ -73,18 +71,18 @@ final class ScoutCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $owner = $this->owners[$node->getStartFilePos()] ?? $owner;
         }
-        if ($node instanceof Stmt\ClassMethod && in_array($hook = strtolower($node->name->toString()), ['searchableas', 'indexableas'], true)) {
-            $value = count($node->stmts ?? []) === 1 && $node->stmts[0] instanceof Stmt\Return_ ? $node->stmts[0]->expr : null;
-            $selector = $value instanceof Node\Scalar\String_ && preg_match('/\A[a-zA-Z0-9_][a-zA-Z0-9_.:\-]{0,255}\z/D', $value->value) === 1 ? $value->value : null;
+        if (Node::is($node, 'statement.class-method') && in_array($hook = strtolower($node->name->toString()), ['searchableas', 'indexableas'], true)) {
+            $value = count($node->stmts ?? []) === 1 && Node::is($node->stmts[0], 'statement.return') ? $node->stmts[0]->expr : null;
+            $selector = Node::is($value, 'scalar.string') && preg_match('/\A[a-zA-Z0-9_][a-zA-Z0-9_.:\-]{0,255}\z/D', $value->value) === 1 ? $value->value : null;
             $offset = max(0, $node->getStartFilePos());
             $this->elements[] = new CatalogElement(CatalogElement::identity($file->path, 'scout-index-selector', $hook, $offset), 'Scout '.$hook,
                 'scout-index-selector', max(1, $node->getStartLine()), max(1, $node->getEndLine()), $offset, $owner,
                 metadata: ['hook' => $hook, 'selector' => $selector, 'resolved' => $selector !== null]);
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\StaticCall) && $node->name instanceof Node\Identifier
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.static-call')) && Node::is($node->name, 'identifier')
             && isset(self::PARAMETERS[$method = strtolower($node->name->toString())]) && ! $node->isFirstClassCallable()) {
             $valid = count($node->args) <= count(self::PARAMETERS[$method]);
             $seen = [];
@@ -99,14 +97,14 @@ final class ScoutCatalogExtractor
             $indexOverride = null;
             $complete = true;
             $depth = 0;
-            while (($root instanceof Expr\MethodCall || $root instanceof Expr\StaticCall) && $depth++ < 16) {
+            while ((Node::is($root, 'expression.method-call') || Node::is($root, 'expression.static-call')) && $depth++ < 16) {
                 $valid = $valid && ! $root->isFirstClassCallable();
-                $name = $root->name instanceof Node\Identifier ? strtolower($root->name->toString()) : '';
+                $name = Node::is($root->name, 'identifier') ? strtolower($root->name->toString()) : '';
                 if ($name === 'within' && ! $indexSupplied) {
                     $indexSupplied = true;
                     $arg = count($root->args) === 1 ? $root->getArgs()[0] : null;
                     $valid = $valid && $arg !== null && ! $arg->unpack && ($arg->name === null || $arg->name->toString() === 'index');
-                    if ($arg?->value instanceof Node\Scalar\String_ && preg_match('/\A[a-zA-Z0-9_][a-zA-Z0-9_.:\-]{0,255}\z/D', $arg->value->value) === 1) {
+                    if (Node::is($arg?->value, 'scalar.string') && preg_match('/\A[a-zA-Z0-9_][a-zA-Z0-9_.:\-]{0,255}\z/D', $arg->value->value) === 1) {
                         $indexOverride = $arg->value->value;
                     }
                 }
@@ -120,23 +118,23 @@ final class ScoutCatalogExtractor
                             $complete = $complete && ! $arg->unpack;
                         }
                     }
-                    if ($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) {
+                    if (Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) {
                         $target = $this->owners[$value->getStartFilePos()] ?? null;
                         if ($target !== null) {
                             $callbacks[] = ['target' => $target, 'hook' => $name];
                         } else {
                             $complete = false;
                         }
-                    } elseif ($value !== null && ! ($value instanceof Expr\ConstFetch && strtolower($value->name->toString()) === 'null')) {
+                    } elseif ($value !== null && ! (Node::is($value, 'expression.const-fetch') && strtolower($value->name->toString()) === 'null')) {
                         $complete = false;
                     }
                 }
-                if ($root instanceof Expr\StaticCall || $name === 'search') {
+                if (Node::is($root, 'expression.static-call') || $name === 'search') {
                     break;
                 }
                 $root = $root->var;
             }
-            $rootOffset = ($root instanceof Expr\StaticCall || $root instanceof Expr\MethodCall) && $root->name instanceof Node\Identifier
+            $rootOffset = (Node::is($root, 'expression.static-call') || Node::is($root, 'expression.method-call')) && Node::is($root->name, 'identifier')
                 && strtolower($root->name->toString()) === 'search' ? max(0, $root->getStartFilePos()) : null;
             $offset = max(0, $node->getStartFilePos());
             $this->elements[] = new CatalogElement(CatalogElement::identity($file->path, 'scout-call-site', $method, $offset), 'Scout candidate '.$method,
@@ -146,7 +144,7 @@ final class ScoutCatalogExtractor
         }
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner);
                 }
             }

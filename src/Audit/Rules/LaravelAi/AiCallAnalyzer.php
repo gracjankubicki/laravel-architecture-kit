@@ -4,15 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\LaravelAi;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class AiCallAnalyzer
 {
@@ -61,11 +56,11 @@ final readonly class AiCallAnalyzer
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Stmt\ClassLike) {
+                if (Node::is($node, 'statement.class-like')) {
                     $this->state->propertyScopes[] = [];
                 }
 
-                if ($node instanceof Stmt\Property) {
+                if (Node::is($node, 'statement.property')) {
                     $type = $this->typeResolution($node->type);
 
                     foreach ($node->props as $property) {
@@ -73,12 +68,12 @@ final readonly class AiCallAnalyzer
                     }
                 }
 
-                if ($node instanceof Node\FunctionLike) {
+                if (Node::is($node, 'function-like')) {
                     $variables = [];
 
-                    if ($node instanceof Expr\ArrowFunction) {
+                    if (Node::is($node, 'expression.arrow-function')) {
                         $variables = $this->currentVariables();
-                    } elseif ($node instanceof Expr\Closure) {
+                    } elseif (Node::is($node, 'expression.closure')) {
                         foreach ($node->uses as $use) {
                             if (is_string($use->var->name)) {
                                 $variables[$use->var->name] = $this->variable($use->var->name);
@@ -87,11 +82,11 @@ final readonly class AiCallAnalyzer
                     }
 
                     foreach ($node->getParams() as $parameter) {
-                        if ($parameter->var instanceof Expr\Variable && is_string($parameter->var->name)) {
+                        if (Node::is($parameter->var, 'expression.variable') && is_string($parameter->var->name)) {
                             $type = $this->typeResolution($parameter->type);
                             $variables[$parameter->var->name] = $type;
 
-                            if ($node instanceof Stmt\ClassMethod && $parameter->flags !== 0) {
+                            if (Node::is($node, 'statement.class-method') && $parameter->flags !== 0) {
                                 $this->setProperty($parameter->var->name, $type);
                             }
                         }
@@ -100,14 +95,14 @@ final readonly class AiCallAnalyzer
                     $this->state->variableScopes[] = $variables;
                 }
 
-                if ($node instanceof Expr\Assign && $node->var instanceof Expr\Variable && is_string($node->var->name)) {
+                if (Node::is($node, 'expression.assign') && Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
                     $this->setVariable($node->var->name, $this->receiverResolution($node->expr));
                 }
 
-                if ($node instanceof MethodCall) {
+                if (Node::is($node, 'expression.method-call')) {
                     $receiver = $this->receiverResolution($node->var);
 
-                    if ($node->name instanceof Node\Identifier) {
+                    if (Node::is($node->name, 'identifier')) {
                         $method = $node->name->toString();
 
                         if (in_array($method, $this->entryPoints, true)) {
@@ -127,17 +122,17 @@ final readonly class AiCallAnalyzer
                     }
                 }
 
-                if ($node instanceof StaticCall && $node->class instanceof Name) {
+                if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name')) {
                     $class = $this->file->resolvedName($node->class);
                     $receiver = $this->symbols->resolveAgent($class, $this->file);
 
-                    if ($node->name instanceof Node\Identifier && in_array($node->name->toString(), $this->entryPoints, true)) {
+                    if (Node::is($node->name, 'identifier') && in_array($node->name->toString(), $this->entryPoints, true)) {
                         if ($receiver->isAgent()) {
                             $this->state->matches[] = AiCallMatch::confirmed($node, $node->name->toString());
                         } elseif ($receiver->isIncomplete()) {
                             $this->state->matches[] = AiCallMatch::incomplete($node, $receiver->reason ?? 'The Laravel AI class could not be resolved.');
                         }
-                    } elseif (! $node->name instanceof Node\Identifier && ($receiver->isAgent() || $receiver->isIncomplete())) {
+                    } elseif (! Node::is($node->name, 'identifier') && ($receiver->isAgent() || $receiver->isIncomplete())) {
                         $this->state->matches[] = AiCallMatch::incomplete(
                             $node,
                             $receiver->isIncomplete()
@@ -152,49 +147,49 @@ final readonly class AiCallAnalyzer
 
             public function leaveNode(Node $node): null
             {
-                if ($node instanceof Node\FunctionLike) {
+                if (Node::is($node, 'function-like')) {
                     array_pop($this->state->variableScopes);
                 }
 
-                if ($node instanceof Stmt\ClassLike) {
+                if (Node::is($node, 'statement.class-like')) {
                     array_pop($this->state->propertyScopes);
                 }
 
                 return null;
             }
 
-            private function receiverResolution(Expr $expression): AiRelation
+            private function receiverResolution(Node $expression): AiRelation
             {
-                if ($expression instanceof Expr\New_ && $expression->class instanceof Name) {
+                if (Node::is($expression, 'expression.new') && Node::is($expression->class, 'name')) {
                     return $this->symbols->resolveAgent($this->file->resolvedName($expression->class), $this->file);
                 }
 
                 if (
-                    $expression instanceof StaticCall
-                    && $expression->class instanceof Name
-                    && $expression->name instanceof Node\Identifier
+                    Node::is($expression, 'expression.static-call')
+                    && Node::is($expression->class, 'name')
+                    && Node::is($expression->name, 'identifier')
                     && $expression->name->toString() === 'make'
                 ) {
                     return $this->symbols->resolveAgent($this->file->resolvedName($expression->class), $this->file);
                 }
 
-                if ($expression instanceof Expr\Variable && is_string($expression->name)) {
+                if (Node::is($expression, 'expression.variable') && is_string($expression->name)) {
                     return $this->variable($expression->name);
                 }
 
                 if (
-                    $expression instanceof Expr\PropertyFetch
-                    && $expression->var instanceof Expr\Variable
+                    Node::is($expression, 'expression.property-fetch')
+                    && Node::is($expression->var, 'expression.variable')
                     && $expression->var->name === 'this'
-                    && $expression->name instanceof Node\Identifier
+                    && Node::is($expression->name, 'identifier')
                 ) {
                     return $this->property($expression->name->toString());
                 }
 
-                if ($expression instanceof MethodCall) {
+                if (Node::is($expression, 'expression.method-call')) {
                     $receiver = $this->receiverResolution($expression->var);
 
-                    if ($receiver->isAgent() && $expression->name instanceof Node\Identifier) {
+                    if ($receiver->isAgent() && Node::is($expression->name, 'identifier')) {
                         $method = $expression->name->toString();
 
                         if (in_array($method, $this->fluentMethods, true)) {
@@ -211,7 +206,7 @@ final readonly class AiCallAnalyzer
                     return $receiver->isIncomplete() ? $receiver : AiRelation::other();
                 }
 
-                if ($expression instanceof Expr\Ternary) {
+                if (Node::is($expression, 'expression.ternary')) {
                     $if = $expression->if === null ? $this->receiverResolution($expression->cond) : $this->receiverResolution($expression->if);
                     $else = $this->receiverResolution($expression->else);
 
@@ -229,11 +224,11 @@ final readonly class AiCallAnalyzer
 
             private function typeResolution(Node|string|null $type): AiRelation
             {
-                if ($type instanceof Node\NullableType) {
+                if (Node::is($type, 'nullable-type')) {
                     return $this->typeResolution($type->type);
                 }
 
-                if ($type instanceof Node\UnionType) {
+                if (Node::is($type, 'union-type')) {
                     $resolutions = array_map(fn (Node $inner): AiRelation => $this->typeResolution($inner), $type->types);
                     $agents = array_filter($resolutions, fn (AiRelation $resolution): bool => $resolution->isAgent());
                     $incomplete = array_filter($resolutions, fn (AiRelation $resolution): bool => $resolution->isIncomplete());
@@ -249,7 +244,7 @@ final readonly class AiCallAnalyzer
                     return AiRelation::other();
                 }
 
-                if ($type instanceof Node\IntersectionType) {
+                if (Node::is($type, 'intersection-type')) {
                     $incomplete = null;
 
                     foreach ($type->types as $inner) {
@@ -267,7 +262,7 @@ final readonly class AiCallAnalyzer
                     return $incomplete ?? AiRelation::other();
                 }
 
-                return $type instanceof Name
+                return Node::is($type, 'name')
                     ? $this->symbols->resolveAgent($this->file->resolvedName($type), $this->file)
                     : AiRelation::other();
             }
@@ -333,18 +328,18 @@ final readonly class AiCallAnalyzer
 final readonly class AiCallMatch
 {
     private function __construct(
-        public MethodCall|StaticCall $call,
+        public Node $call,
         public bool $confirmed,
         public ?string $method,
         public ?string $reason,
     ) {}
 
-    public static function confirmed(MethodCall|StaticCall $call, string $method): self
+    public static function confirmed(Node $call, string $method): self
     {
         return new self($call, true, $method, null);
     }
 
-    public static function incomplete(MethodCall|StaticCall $call, string $reason): self
+    public static function incomplete(Node $call, string $reason): self
     {
         return new self($call, false, null, $reason);
     }

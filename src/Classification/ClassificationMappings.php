@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Classification;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\ConstantValue as ConstExprEvaluator;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
-use PhpParser\ConstExprEvaluator;
-use PhpParser\Node;
-use PhpParser\Node\Stmt;
-use PhpParser\ParserFactory;
 
 /** Project declarations are data. They never register code, profiles or scan roots. */
 final readonly class ClassificationMappings
@@ -79,21 +79,41 @@ final readonly class ClassificationMappings
             return new self;
         }
         $source = $files->get($absoluteConfig);
+        if (ProjectLayout::read($base)->isPackage()) {
+            $context = RepositoryContext::forRoot($base);
+            $settings = $context === null ? DeclaredConfiguration::readSource($source) : $context->settings;
+            $configuration = $settings['audit']['classification'] ?? [];
+            if (! is_array($configuration)) {
+                throw new InvalidArgumentException('audit.classification must be a static array.');
+            }
+            $placements = $settings['placements'] ?? [];
+            if (! is_array($placements)) {
+                throw new InvalidArgumentException('placements must be a map of architecture paths and namespaces.');
+            }
+            $kinds = ['actions' => 'action', 'services' => 'service', 'query-objects' => 'query', 'data-objects' => 'data', 'value-objects' => 'value-object', 'enums' => 'enum', 'api-resources' => 'resource', 'form-requests' => 'request', 'thin-controllers' => 'controller'];
+            foreach ($placements as $slug => $placement) {
+                if (isset($kinds[$slug])) {
+                    $configuration['roles'][] = ['path' => ProjectLayout::path(is_array($placement) ? ($placement['path'] ?? null) : null), 'kind' => $kinds[$slug]];
+                }
+            }
+
+            return new self($configuration);
+        }
         if (strlen($source) > 100000) {
             if (! DeclaredConfiguration::hasDeclarationKey($source)) {
                 return new self;
             }
             throw new InvalidArgumentException('Classification configuration exceeds 100 KB.');
         }
-        $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($source) ?? [];
+        $ast = PhpAst::parse($source) ?? [];
         $returned = self::configurationNode($ast);
         if ($returned === null) {
             return new self;
         }
         foreach ($returned->items as $item) {
-            if ($item?->key instanceof Node\Scalar\String_ && $item->key->value === 'audit' && $item->value instanceof Node\Expr\Array_) {
+            if (Node::is($item?->key, 'scalar.string') && $item->key->value === 'audit' && Node::is($item->value, 'expression.array')) {
                 foreach ($item->value->items as $setting) {
-                    if ($setting?->key instanceof Node\Scalar\String_ && $setting->key->value === 'classification') {
+                    if (Node::is($setting?->key, 'scalar.string') && $setting->key->value === 'classification') {
                         $config = (new ConstExprEvaluator)->evaluateDirectly($setting->value);
                         if (! is_array($config)) {
                             throw new InvalidArgumentException('audit.classification must be a static array.');
@@ -110,22 +130,22 @@ final readonly class ClassificationMappings
 
     /** @param list<Node> $ast
      */
-    public static function configurationNode(array $ast): ?Node\Expr\Array_
+    public static function configurationNode(array $ast): ?Node
     {
         $returned = null;
         $present = false;
         $audits = 0;
         $declarations = 0;
         foreach ($ast as $statement) {
-            if (! $statement instanceof Stmt\Return_ || ! $statement->expr instanceof Node\Expr\Array_) {
+            if (! Node::is($statement, 'statement.return') || ! Node::is($statement->expr, 'expression.array')) {
                 continue;
             }
             foreach ($statement->expr->items as $item) {
-                if ($item?->key instanceof Node\Scalar\String_ && $item->key->value === 'audit') {
+                if (Node::is($item?->key, 'scalar.string') && $item->key->value === 'audit') {
                     $audits++;
-                    if ($item->value instanceof Node\Expr\Array_) {
+                    if (Node::is($item->value, 'expression.array')) {
                         foreach ($item->value->items as $setting) {
-                            if ($setting?->key instanceof Node\Scalar\String_ && $setting->key->value === 'classification') {
+                            if (Node::is($setting?->key, 'scalar.string') && $setting->key->value === 'classification') {
                                 $present = true;
                                 $returned = $statement;
                                 $declarations++;
@@ -142,12 +162,12 @@ final readonly class ClassificationMappings
             throw new InvalidArgumentException('Duplicate audit or classification configuration entries.');
         }
         foreach ($ast as $statement) {
-            if (($statement !== $returned && ! $statement instanceof Stmt\Declare_ && ! $statement instanceof Stmt\Use_ && ! $statement instanceof Stmt\GroupUse && ! $statement instanceof Stmt\Nop) || ($statement instanceof Stmt\Declare_ && $statement->stmts !== null)) {
+            if (($statement !== $returned && ! Node::is($statement, 'statement.declare') && ! Node::is($statement, 'statement.use') && ! Node::is($statement, 'statement.group-use') && ! Node::is($statement, 'statement.nop')) || (Node::is($statement, 'statement.declare') && $statement->stmts !== null)) {
                 throw new InvalidArgumentException('Classification requires one static returned configuration array.');
             }
         }
 
-        if (! $returned?->expr instanceof Node\Expr\Array_) {
+        if (! Node::is($returned?->expr, 'expression.array')) {
             throw new InvalidArgumentException('Classification requires a returned configuration array.');
         }
 

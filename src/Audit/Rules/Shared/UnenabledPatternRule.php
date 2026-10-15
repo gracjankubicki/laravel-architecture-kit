@@ -6,14 +6,14 @@ namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Shared;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifyContractMap;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify\FortifySourceResolver;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use Illuminate\Filesystem\Filesystem;
 
-final readonly class UnenabledPatternRule implements AuditRule
+final readonly class UnenabledPatternRule implements PortableAuditRule
 {
     /**
      * @param  array<int, Architecture|string>  $enabled

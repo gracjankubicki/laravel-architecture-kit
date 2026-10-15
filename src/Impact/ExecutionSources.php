@@ -58,11 +58,20 @@ final class ExecutionSources
             try {
                 $composer = json_decode(($this->snapshot?->read('composer.json') ?? ($this->snapshot === null ? $this->files->get($this->basePath.'/composer.json') : '')), true, 32, JSON_THROW_ON_ERROR);
                 foreach (['autoload', 'autoload-dev'] as $section) {
-                    foreach ($composer[$section]['psr-4'] ?? [] as $paths) {
-                        foreach ((array) $paths as $path) {
-                            if (is_string($path) && $path !== '' && $this->safe($path)) {
-                                $this->directories[] = rtrim($path, '/');
+                    foreach (['psr-4', 'psr-0'] as $mapping) {
+                        foreach ($composer[$section][$mapping] ?? [] as $paths) {
+                            foreach ((array) $paths as $path) {
+                                if (is_string($path) && $path !== '' && $this->safe($path)) {
+                                    $this->directories[] = rtrim($path, '/');
+                                }
                             }
+                        }
+                    }
+                    foreach ($composer[$section]['classmap'] ?? [] as $path) {
+                        if (is_string($path) && $path !== '' && $this->safe($path) && ! strpbrk($path, '*?[]')) {
+                            $this->directories[] = rtrim($path, '/');
+                        } else {
+                            $this->notice('composer.json', 'Dynamic or unsafe Composer classmap scope is unresolved.');
                         }
                     }
                     foreach ($composer[$section]['files'] ?? [] as $path) {
@@ -248,7 +257,15 @@ final class ExecutionSources
         foreach ($directories ?? $this->directories as $directory) {
             $directory = rtrim($directory, '/');
             $this->states[$directory] = $this->stat($directory);
-            if (! $this->safe($directory) || ! is_dir($this->basePath.'/'.$directory)) {
+            if (! $this->safe($directory)) {
+                continue;
+            }
+            if (is_file($this->basePath.'/'.$directory) && str_ends_with(strtolower($directory), '.php')) {
+                $paths[] = $directory;
+
+                continue;
+            }
+            if (! is_dir($this->basePath.'/'.$directory)) {
                 continue;
             }
             try {

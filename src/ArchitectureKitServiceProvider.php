@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
+use GracjanKubicki\ArchitectureKit\Analysis\EngineSettings;
 use GracjanKubicki\ArchitectureKit\Commands\ArchitectureContextCommand;
 use GracjanKubicki\ArchitectureKit\Commands\AuditCommand;
 use GracjanKubicki\ArchitectureKit\Commands\CacheClearCommand;
 use GracjanKubicki\ArchitectureKit\Commands\DoctorCommand;
+use GracjanKubicki\ArchitectureKit\Commands\EngineCommand;
 use GracjanKubicki\ArchitectureKit\Commands\ExplainCommand;
 use GracjanKubicki\ArchitectureKit\Commands\FileRulesCommand;
 use GracjanKubicki\ArchitectureKit\Commands\GuardCommand;
@@ -35,6 +38,14 @@ class ArchitectureKitServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/architectures.php', 'architectures');
+        $this->app->singleton(AnalysisSession::class, function () {
+            $root = $this->app->basePath();
+            $composer = json_decode((string) file_get_contents($root.'/composer.json'), true, 64, JSON_THROW_ON_ERROR);
+            $settings = EngineSettings::from($this->app['config']->get('architectures', []), $composer, 'config/architectures.php');
+            $home = getenv('ARCHITECTURE_KIT_HOME') ?: getenv('HOME').'/.architecture-kit';
+
+            return $settings->session($home);
+        });
     }
 
     public function boot(): void
@@ -48,6 +59,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
         ], 'architectures-config');
 
         $this->commands([
+            EngineCommand::class,
             ArchitectureContextCommand::class,
             ImpactCommand::class,
             PathCommand::class,

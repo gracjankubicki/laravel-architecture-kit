@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Bounded straight-line identity tracking; escapes and control flow discard alias certainty. */
 final class CatalogScoutBuilderState
@@ -61,14 +59,14 @@ final class CatalogScoutBuilderState
         if (! $this->room()) {
             return;
         }
-        if ($node instanceof Stmt\Expression || $node instanceof Stmt\Return_) {
+        if (Node::is($node, 'statement.expression') || Node::is($node, 'statement.return')) {
             if ($node->expr !== null) {
                 $this->expression($node->expr);
             }
 
             return;
         }
-        if ($node instanceof Stmt\Namespace_ || $node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_) {
+        if (Node::is($node, 'statement.namespace') || Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function')) {
             $savedVariables = $this->variables;
             $savedBuilders = $this->builders;
             $this->variables = $this->builders = [];
@@ -84,17 +82,17 @@ final class CatalogScoutBuilderState
         $this->variables = $this->builders = [];
     }
 
-    private function expression(Expr $node): ?int
+    private function expression(Node $node): ?int
     {
         if (! $this->room()) {
             return null;
         }
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             $id = $this->variables[$node->name] ?? null;
 
             return $id !== null && isset($this->builders[$id]) ? $id : null;
         }
-        if ($node instanceof Expr\Assign && $node->var instanceof Expr\Variable && is_string($node->var->name)) {
+        if (Node::is($node, 'expression.assign') && Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
             $id = $this->expression($node->expr);
             unset($this->variables[$node->var->name]);
             if ($id !== null) {
@@ -103,7 +101,7 @@ final class CatalogScoutBuilderState
 
             return $id;
         }
-        if ($node instanceof Expr\StaticCall && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'search' && ! $node->isFirstClassCallable()) {
+        if (Node::is($node, 'expression.static-call') && Node::is($node->name, 'identifier') && strtolower($node->name->toString()) === 'search' && ! $node->isFirstClassCallable()) {
             $id = max(0, $node->getStartFilePos());
             $site = $this->sites[$id]['search'] ?? null;
             if ($site !== null) {
@@ -114,7 +112,7 @@ final class CatalogScoutBuilderState
 
             return null;
         }
-        if ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()) {
+        if (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()) {
             $id = $this->expression($node->var);
             if ($id === null) {
                 $this->variables = $this->builders = [];
@@ -128,7 +126,7 @@ final class CatalogScoutBuilderState
                     $this->builders[$id]['index_override'] = null;
                     $arg = count($node->args) === 1 ? $node->getArgs()[0] : null;
                     $this->builders[$id]['valid'] = $this->builders[$id]['valid'] && $arg !== null && ! $arg->unpack && ($arg->name === null || $arg->name->toString() === 'index');
-                    if ($arg?->value instanceof Node\Scalar\String_ && preg_match('/\A[a-zA-Z0-9_][a-zA-Z0-9_.:\-]{0,255}\z/D', $arg->value->value) === 1) {
+                    if (Node::is($arg?->value, 'scalar.string') && preg_match('/\A[a-zA-Z0-9_][a-zA-Z0-9_.:\-]{0,255}\z/D', $arg->value->value) === 1) {
                         $this->builders[$id]['index_override'] = $arg->value->value;
                     }
                 }
@@ -136,7 +134,7 @@ final class CatalogScoutBuilderState
                     $this->callback($id, $method, $node);
                 } else {
                     foreach ($node->getArgs() as $argument) {
-                        if (! $argument->value instanceof Node\Scalar && ! $argument->value instanceof Expr\ConstFetch) {
+                        if (! Node::is($argument->value, 'scalar') && ! Node::is($argument->value, 'expression.const-fetch')) {
                             // Nonliteral fluent arguments may run application code before the terminal.
                             $this->builders[$id]['callbacks_resolved'] = false;
                         }
@@ -162,14 +160,14 @@ final class CatalogScoutBuilderState
 
             return null;
         }
-        if (! $node instanceof Node\Scalar && ! $node instanceof Expr\ConstFetch && ! $node instanceof Expr\ClassConstFetch) {
+        if (! Node::is($node, 'scalar') && ! Node::is($node, 'expression.const-fetch') && ! Node::is($node, 'expression.class-const-fetch')) {
             $this->variables = $this->builders = [];
         }
 
         return null;
     }
 
-    private function callback(int $id, string $hook, Expr\MethodCall $call): void
+    private function callback(int $id, string $hook, Node $call): void
     {
         $this->builders[$id]['callbacks'] = array_values(array_filter($this->builders[$id]['callbacks'], fn ($callback) => $callback['hook'] !== $hook));
         $arg = count($call->args) === 1 ? $call->getArgs()[0] : null;
@@ -180,9 +178,9 @@ final class CatalogScoutBuilderState
             return;
         }
         $value = $arg->value;
-        if (($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) && isset($this->owners[$value->getStartFilePos()])) {
+        if ((Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) && isset($this->owners[$value->getStartFilePos()])) {
             $this->builders[$id]['callbacks'][] = ['target' => $this->owners[$value->getStartFilePos()], 'hook' => $hook];
-        } elseif (! ($value instanceof Expr\ConstFetch && strtolower($value->name->toString()) === 'null')) {
+        } elseif (! (Node::is($value, 'expression.const-fetch') && strtolower($value->name->toString()) === 'null')) {
             $this->builders[$id]['callbacks_resolved'] = false;
         }
     }

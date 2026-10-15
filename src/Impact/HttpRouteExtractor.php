@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use Illuminate\Support\Str;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Normalizes source declarations, never registers Laravel routes. */
 final class HttpRouteExtractor
@@ -49,7 +47,7 @@ final class HttpRouteExtractor
         $this->visits = 0;
         $this->limited = false;
         $this->limitReasons = [];
-        $ast = $file->ast();
+        $ast = $file->syntax();
         if ($ast === null) {
             $this->notice(null, 'Unparseable HTTP source.');
         } else {
@@ -57,7 +55,7 @@ final class HttpRouteExtractor
             $count = 0;
             while ($stack !== []) {
                 $node = array_pop($stack);
-                if (! $node instanceof Node) {
+                if (! Node::is($node, 'node')) {
                     continue;
                 }
                 if (++$count > 20000 || ImpactExtractor::sourceLimit(0) !== null) {
@@ -69,11 +67,11 @@ final class HttpRouteExtractor
                 }
                 foreach ($node->getSubNodeNames() as $key) {
                     $value = $node->$key;
-                    if ($value instanceof Node) {
+                    if (Node::is($value, 'node')) {
                         $stack[] = $value;
                     } elseif (is_array($value)) {
                         foreach ($value as $child) {
-                            if ($child instanceof Node) {
+                            if (Node::is($child, 'node')) {
                                 $stack[] = $child;
                             }
                         }
@@ -116,10 +114,10 @@ final class HttpRouteExtractor
 
                 return;
             }
-            if ($node instanceof Stmt\Expression) {
+            if (Node::is($node, 'statement.expression')) {
                 $this->expression($node->expr, $context, $depth, $routers);
-            } elseif ($node instanceof Stmt\Return_ && $node->expr !== null) {
-                if ($this->file->path === 'bootstrap/providers.php' && $node->expr instanceof Expr\Array_) {
+            } elseif (Node::is($node, 'statement.return') && $node->expr !== null) {
+                if ($this->file->path === 'bootstrap/providers.php' && Node::is($node->expr, 'expression.array')) {
                     foreach ($this->value($node->expr) ?? [] as $provider) {
                         if (is_string($provider)) {
                             $this->operations[] = ['kind' => 'provider', 'class' => $provider, 'site' => $this->site($node), 'context' => $context];
@@ -130,41 +128,41 @@ final class HttpRouteExtractor
                 } else {
                     $this->expression($node->expr, $context, $depth, $routers);
                 }
-            } elseif ($node instanceof Stmt\Namespace_) {
+            } elseif (Node::is($node, 'statement.namespace')) {
                 $this->walk($node->stmts, $context, $depth + 1, $routers);
-            } elseif ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_) {
+            } elseif (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function')) {
                 $nested = $context;
-                if ($node instanceof Stmt\Class_ && $node->extends instanceof Node\Name) {
+                if (Node::is($node, 'statement.class') && Node::is($node->extends, 'name')) {
                     $nested['provider'] = in_array($this->file->resolvedName($node->extends), ['Illuminate\\Support\\ServiceProvider', 'Illuminate\\Foundation\\Support\\Providers\\RouteServiceProvider'], true);
                 }
-                if ($this->catalog && $node instanceof Stmt\ClassLike) {
+                if ($this->catalog && Node::is($node, 'statement.class-like')) {
                     $nested['provider'] = true;
                     $nested['provider_owner'] = isset($node->namespacedName) ? $node->namespacedName->toString() : '(anonymous) '.$this->file->path.':'.$node->getStartFilePos();
                 }
-                if ($this->catalog && $node instanceof Stmt\ClassMethod && isset($nested['provider_owner'])) {
+                if ($this->catalog && Node::is($node, 'statement.class-method') && isset($nested['provider_owner'])) {
                     $nested['provider_scope'] = $nested['provider_owner'].'::'.$node->name->toString();
                 }
-                if ($this->catalog && $node instanceof Stmt\Function_) {
+                if ($this->catalog && Node::is($node, 'statement.function')) {
                     $nested['provider_scope'] = isset($node->namespacedName) ? $node->namespacedName->toString() : $node->name->toString();
                 }
                 $nested['possible'] = true;
                 $nested['reasons'][] = 'Provider/function activation is not established by source inspection.';
                 $typed = $routers;
-                foreach ($node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ ? $node->params : [] as $param) {
-                    if ($param->type instanceof Node\Name && $this->file->resolvedName($param->type) === 'Illuminate\\Routing\\Router' && is_string($param->var->name)) {
+                foreach (Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') ? $node->params : [] as $param) {
+                    if (Node::is($param->type, 'name') && $this->file->resolvedName($param->type) === 'Illuminate\\Routing\\Router' && is_string($param->var->name)) {
                         $typed[] = $param->var->name;
                     }
                 }
                 $this->walk($node->stmts ?? [], $nested, $depth + 1, $typed);
-            } elseif ($node instanceof Stmt\If_ || $node instanceof Stmt\ElseIf_ || $node instanceof Stmt\Else_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\For_ || $node instanceof Stmt\While_ || $node instanceof Stmt\Switch_ || $node instanceof Stmt\Case_ || $node instanceof Stmt\TryCatch || $node instanceof Stmt\Catch_ || $node instanceof Stmt\Finally_) {
+            } elseif (Node::is($node, 'statement.if') || Node::is($node, 'statement.else-if') || Node::is($node, 'statement.else') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.for') || Node::is($node, 'statement.while') || Node::is($node, 'statement.switch') || Node::is($node, 'statement.case') || Node::is($node, 'statement.try-catch') || Node::is($node, 'statement.catch') || Node::is($node, 'statement.finally')) {
                 $nested = $context;
                 $nested['possible'] = true;
                 $nested['reasons'][] = 'Conditional or repeated registration is not evaluated.';
                 foreach ($node->getSubNodeNames() as $key) {
                     $value = $node->$key;
                     if (is_array($value)) {
-                        $this->walk(array_values(array_filter($value, fn ($v) => $v instanceof Stmt)), $nested, $depth + 1, $routers);
-                    } elseif ($value instanceof Stmt) {
+                        $this->walk(array_values(array_filter($value, fn ($v) => Node::is($v, 'statement'))), $nested, $depth + 1, $routers);
+                    } elseif (Node::is($value, 'statement')) {
                         $this->walk([$value], $nested, $depth + 1, $routers);
                     }
                 }
@@ -176,7 +174,7 @@ final class HttpRouteExtractor
      * @param  array<string, mixed>  $context
      * @param  list<string>  $routers
      */
-    private function expression(Expr $expr, array $context, int $depth, array $routers): void
+    private function expression(Node $expr, array $context, int $depth, array $routers): void
     {
         if ($depth > 12 || ++$this->visits > 20000 || ImpactExtractor::sourceLimit(0) !== null) {
             $this->limited = true;
@@ -185,12 +183,12 @@ final class HttpRouteExtractor
 
             return;
         }
-        if ($expr instanceof Expr\Ternary || $expr instanceof Expr\BinaryOp\BooleanAnd || $expr instanceof Expr\BinaryOp\BooleanOr || $expr instanceof Expr\BinaryOp\LogicalAnd || $expr instanceof Expr\BinaryOp\LogicalOr || $expr instanceof Expr\BinaryOp\Coalesce) {
+        if (Node::is($expr, 'expression.ternary') || Node::is($expr, 'expression.binary-op.boolean-and') || Node::is($expr, 'expression.binary-op.boolean-or') || Node::is($expr, 'expression.binary-op.logical-and') || Node::is($expr, 'expression.binary-op.logical-or') || Node::is($expr, 'expression.binary-op.coalesce')) {
             $nested = $context;
             $nested['possible'] = true;
             $nested['reasons'][] = 'Conditional expression registration is not evaluated.';
-            $this->notice($expr, 'Conditional expression registration is not evaluated.');
-            if ($expr instanceof Expr\Ternary) {
+            $before = count($this->operations);
+            if (Node::is($expr, 'expression.ternary')) {
                 $this->expression($expr->cond, $context, $depth + 1, $routers);
                 if ($expr->if !== null) {
                     $this->expression($expr->if, $nested, $depth + 1, $routers);
@@ -200,15 +198,18 @@ final class HttpRouteExtractor
                 $this->expression($expr->left, $context, $depth + 1, $routers);
                 $this->expression($expr->right, $nested, $depth + 1, $routers);
             }
+            if (count($this->operations) > $before) {
+                $this->notice($expr, 'Conditional expression registration is not evaluated.');
+            }
 
             return;
         }
-        if ($expr instanceof Expr\Assign) {
+        if (Node::is($expr, 'expression.assign')) {
             $this->expression($expr->expr, $context, $depth + 1, $routers);
 
             return;
         }
-        if ($this->catalog && ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction)) {
+        if ($this->catalog && (Node::is($expr, 'expression.closure') || Node::is($expr, 'expression.arrow-function'))) {
             $nested = $context;
             $nested['provider_scope'] = '(closure) '.$this->file->path.':'.$expr->getStartFilePos();
             $nested['provider'] = $context['provider'] && ! $expr->static;
@@ -218,29 +219,29 @@ final class HttpRouteExtractor
 
             return;
         }
-        if ($this->catalog && $expr instanceof Expr\FuncCall && ($expr->name instanceof Expr\Closure || $expr->name instanceof Expr\ArrowFunction)) {
+        if ($this->catalog && Node::is($expr, 'expression.func-call') && (Node::is($expr->name, 'expression.closure') || Node::is($expr->name, 'expression.arrow-function'))) {
             $this->expression($expr->name, $context, $depth + 1, $routers);
 
             return;
         }
-        if ($this->catalog && $expr instanceof Expr\MethodCall && $this->applicationBuilder($expr)) {
+        if ($this->catalog && Node::is($expr, 'expression.method-call') && $this->applicationBuilder($expr)) {
             $this->providerRegistrations($expr, $context);
         }
         $builder = $expr;
-        while ($builder instanceof Expr\MethodCall) {
-            if ($builder->name instanceof Node\Identifier && $builder->name->toString() === 'withRouting' && $this->applicationBuilder($builder->var)) {
+        while (Node::is($builder, 'expression.method-call')) {
+            if (Node::is($builder->name, 'identifier') && $builder->name->toString() === 'withRouting' && $this->applicationBuilder($builder->var)) {
                 $this->routing($builder, $context, $depth, $routers);
 
                 return;
             }
             $builder = $builder->var;
         }
-        if ($expr instanceof Expr\Include_) {
+        if (Node::is($expr, 'expression.include')) {
             $this->load($expr, $expr->expr, $context);
 
             return;
         }
-        if ($expr instanceof Expr\MethodCall && $expr->name instanceof Node\Identifier) {
+        if (Node::is($expr, 'expression.method-call') && Node::is($expr->name, 'identifier')) {
             if ($expr->name->toString() === 'withRouting' && $this->applicationBuilder($expr->var)) {
                 $this->routing($expr, $context, $depth, $routers);
 
@@ -257,13 +258,13 @@ final class HttpRouteExtractor
                 return;
             }
         }
-        if ($expr instanceof Expr\MethodCall && $expr->name instanceof Node\Identifier && $expr->name->toString() === 'routes' && $this->providerReceiver($expr) && $context['provider']) {
+        if (Node::is($expr, 'expression.method-call') && Node::is($expr->name, 'identifier') && $expr->name->toString() === 'routes' && $this->providerReceiver($expr) && $context['provider']) {
             if ($this->catalog) {
                 $context['provider_candidate'] = true;
                 $context['provider_method'] = 'routes';
             }
             $callback = $this->argument($expr->args, 0, 'routes');
-            if ($callback instanceof Expr\Closure || $callback instanceof Expr\ArrowFunction) {
+            if (Node::is($callback, 'expression.closure') || Node::is($callback, 'expression.arrow-function')) {
                 $this->callbackGroup($callback, $context, $depth, $routers);
             } else {
                 $this->notice($expr, 'Dynamic provider routes callback is unresolved.');
@@ -273,16 +274,16 @@ final class HttpRouteExtractor
         }
         $steps = [];
         $root = $expr;
-        while ($root instanceof Expr\MethodCall && $root->name instanceof Node\Identifier) {
+        while (Node::is($root, 'expression.method-call') && Node::is($root->name, 'identifier')) {
             array_unshift($steps, [$root->name->toString(), $root->args, $root]);
             $root = $root->var;
         }
-        if ($root instanceof Expr\StaticCall && $root->class instanceof Node\Name && $root->name instanceof Node\Identifier && in_array($this->file->resolvedName($root->class), ['Route', 'Illuminate\\Support\\Facades\\Route'], true)) {
+        if (Node::is($root, 'expression.static-call') && Node::is($root->class, 'name') && Node::is($root->name, 'identifier') && in_array($this->file->resolvedName($root->class), ['Route', 'Illuminate\\Support\\Facades\\Route'], true)) {
             array_unshift($steps, [$root->name->toString(), $root->args, $root]);
-        } elseif ($root instanceof Expr\Variable && is_string($root->name) && in_array($root->name, $routers, true)) {
+        } elseif (Node::is($root, 'expression.variable') && is_string($root->name) && in_array($root->name, $routers, true)) {
             // Typed Illuminate Router parameter, not an arbitrary variable named router.
         } else {
-            if ($steps !== [] && $root instanceof Expr\Variable && is_string($root->name) && in_array($root->name, ['router', 'route'], true)) {
+            if ($steps !== [] && Node::is($root, 'expression.variable') && is_string($root->name) && in_array($root->name, ['router', 'route'], true)) {
                 $this->notice($expr, 'Route receiver type is not established.');
             }
 
@@ -291,7 +292,7 @@ final class HttpRouteExtractor
         $action = null;
         foreach ($steps as [$method, $args, $site]) {
             foreach ($args as $arg) {
-                if (! $arg instanceof Node\Arg || $arg->unpack) {
+                if (! Node::is($arg, 'arg') || $arg->unpack) {
                     $this->notice($site, 'Spread or first-class route registration arguments are unresolved.');
 
                     return;
@@ -306,7 +307,7 @@ final class HttpRouteExtractor
                 $action = [$method, $args, $site];
             } elseif ($method === 'group') {
                 $callback = $this->argument($args, 0, 'callback');
-                if ($callback instanceof Expr\Array_ || count($args) > 1) {
+                if (Node::is($callback, 'expression.array') || count($args) > 1) {
                     $attributes = $this->value($callback);
                     if (! is_array($attributes)) {
                         $this->notice($site, 'Dynamic group attributes are unresolved.');
@@ -317,9 +318,9 @@ final class HttpRouteExtractor
                     $callback = $this->argument($args, 1, 'routes');
                 }
                 $context['sites'][] = $this->site($site);
-                if ($callback instanceof Expr\Closure) {
+                if (Node::is($callback, 'expression.closure')) {
                     $this->callbackGroup($callback, $context, $depth, $routers);
-                } elseif ($callback instanceof Expr\ArrowFunction) {
+                } elseif (Node::is($callback, 'expression.arrow-function')) {
                     $this->expression($callback->expr, $context, $depth + 1, $routers);
                 } else {
                     $this->load($site, $callback, $context);
@@ -370,12 +371,12 @@ final class HttpRouteExtractor
     }
 
     /** @param array<string, mixed> $context */
-    private function providerRegistrations(Expr\MethodCall $expr, array $context): void
+    private function providerRegistrations(Node $expr, array $context): void
     {
         $calls = [];
         $cursor = $expr;
-        while ($cursor instanceof Expr\MethodCall) {
-            if (! $cursor->isFirstClassCallable() && $cursor->name instanceof Node\Identifier && $cursor->name->toString() === 'withProviders') {
+        while (Node::is($cursor, 'expression.method-call')) {
+            if (! $cursor->isFirstClassCallable() && Node::is($cursor->name, 'identifier') && $cursor->name->toString() === 'withProviders') {
                 $calls[] = $cursor;
             }
             $cursor = $cursor->var;
@@ -405,21 +406,21 @@ final class HttpRouteExtractor
      * @param  array<string, mixed>  $context
      * @param  list<string>  $routers
      */
-    private function routing(Expr\MethodCall $node, array $context, int $depth, array $routers): void
+    private function routing(Node $node, array $context, int $depth, array $routers): void
     {
         $args = [];
         $positions = ['using', 'web', 'api', 'commands', 'channels', 'pages', 'health', 'apiPrefix', 'then'];
         foreach ($node->args as $i => $arg) {
-            if ($arg instanceof Node\Arg) {
+            if (Node::is($arg, 'arg')) {
                 $args[$arg->name?->toString() ?? ($positions[$i] ?? '')] = $arg->value;
             }
         }
         $using = $args['using'] ?? null;
         $then = $args['then'] ?? null;
-        $usingNull = $using === null || ($using instanceof Expr\ConstFetch && strtolower($using->name->toString()) === 'null');
-        $thenNull = $then === null || ($then instanceof Expr\ConstFetch && strtolower($then->name->toString()) === 'null');
-        $thenCallable = $then instanceof Expr\Closure || $then instanceof Expr\ArrowFunction;
-        $dynamic = (! $usingNull && ! $using instanceof Expr\Closure && ! $using instanceof Expr\ArrowFunction) || (! $thenNull && ! $thenCallable);
+        $usingNull = $using === null || (Node::is($using, 'expression.const-fetch') && strtolower($using->name->toString()) === 'null');
+        $thenNull = $then === null || (Node::is($then, 'expression.const-fetch') && strtolower($then->name->toString()) === 'null');
+        $thenCallable = Node::is($then, 'expression.closure') || Node::is($then, 'expression.arrow-function');
+        $dynamic = (! $usingNull && ! Node::is($using, 'expression.closure') && ! Node::is($using, 'expression.arrow-function')) || (! $thenNull && ! $thenCallable);
         if ($dynamic) {
             $context['possible'] = true;
             $context['reasons'][] = 'Dynamic withRouting using/then callback is unresolved.';
@@ -446,7 +447,7 @@ final class HttpRouteExtractor
             }
         }
         if ((! $usingNull && ! $thenCallable) || $dynamic) {
-            if ($using instanceof Expr\Closure || $using instanceof Expr\ArrowFunction) {
+            if (Node::is($using, 'expression.closure') || Node::is($using, 'expression.arrow-function')) {
                 $this->callbackGroup($using, $context, $depth, $routers);
             }
         }
@@ -461,15 +462,15 @@ final class HttpRouteExtractor
      * @param  array<string, mixed>  $context
      * @param  list<string>  $routers
      */
-    private function callbackGroup(Expr\Closure|Expr\ArrowFunction $callback, array $context, int $depth, array $routers): void
+    private function callbackGroup(Node $callback, array $context, int $depth, array $routers): void
     {
         $context['sites'][] = $this->site($callback);
         foreach ($callback->params as $param) {
-            if ($param->type instanceof Node\Name && $this->file->resolvedName($param->type) === 'Illuminate\\Routing\\Router' && is_string($param->var->name)) {
+            if (Node::is($param->type, 'name') && $this->file->resolvedName($param->type) === 'Illuminate\\Routing\\Router' && is_string($param->var->name)) {
                 $routers[] = $param->var->name;
             }
         }
-        if ($callback instanceof Expr\Closure) {
+        if (Node::is($callback, 'expression.closure')) {
             $this->walk($callback->stmts, $context, $depth + 1, $routers);
         } else {
             $this->expression($callback->expr, $context, $depth + 1, $routers);
@@ -519,7 +520,7 @@ final class HttpRouteExtractor
     }
 
     /**
-     * @param  list<Node\Arg|Node\VariadicPlaceholder>  $args
+     * @param  list<Node>  $args
      * @param  array<string, mixed>  $context
      * @param  list<array<mixed>>  $steps
      */
@@ -538,7 +539,7 @@ final class HttpRouteExtractor
             if (in_array($method, ['only', 'except', 'names', 'parameters', 'shallow'], true)) {
                 $options[$method] = $method === 'shallow' ? (count($arguments) === 0 ? true : $this->value($this->argument($arguments, 0, 'shallow'))) : $this->value($this->argument($arguments, 0, $method));
                 if (in_array($method, ['only', 'except'], true) && count($arguments) > 1) {
-                    $options[$method] = array_map(fn ($arg) => $arg instanceof Node\Arg ? $this->value($arg->value) : null, $arguments);
+                    $options[$method] = array_map(fn ($arg) => Node::is($arg, 'arg') ? $this->value($arg->value) : null, $arguments);
                 }
             }
         }
@@ -600,13 +601,13 @@ final class HttpRouteExtractor
     /** @return list<string> */
     private function callbackTypes(?Node $type): array
     {
-        if ($type instanceof Node\Name) {
+        if (Node::is($type, 'name')) {
             return [$this->file->resolvedName($type)];
         }
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->callbackTypes($type->type);
         }
-        if ($type instanceof Node\UnionType) {
+        if (Node::is($type, 'union-type')) {
             $types = [];
             foreach ($type->types as $part) {
                 array_push($types, ...$this->callbackTypes($part));
@@ -623,10 +624,10 @@ final class HttpRouteExtractor
      * @param  array<string, mixed>  $context
      * @param  array<string, mixed>|null  $handler
      */
-    private function route(Node $site, ?string $uri, ?array $verbs, ?Expr $action, array $context, ?array $handler = null, string $resource = ''): void
+    private function route(Node $site, ?string $uri, ?array $verbs, ?Node $action, array $context, ?array $handler = null, string $resource = ''): void
     {
         $calls = [];
-        if ($action instanceof Expr\Closure || $action instanceof Expr\ArrowFunction) {
+        if (Node::is($action, 'expression.closure') || Node::is($action, 'expression.arrow-function')) {
             $from = '(route) '.$this->file->path.':'.$site->getStartFilePos();
             $facts = (new ImpactExtractor)->extractCallback($this->file, $action, $from);
             $calls = $facts->calls;
@@ -643,7 +644,7 @@ final class HttpRouteExtractor
             if (is_array($value) && count($value) === 2 && is_string($value[0] ?? null) && is_string($value[1] ?? null)) {
                 $handler = ['class' => $value[0], 'method' => $value[1]];
             } elseif (is_string($value)) {
-                $handler = $action instanceof Expr\ClassConstFetch ? ['class' => $value, 'method' => '__invoke'] : ['string' => $value];
+                $handler = Node::is($action, 'expression.class-const-fetch') ? ['class' => $value, 'method' => '__invoke'] : ['string' => $value];
             }
         }
         if ($uri === null || $verbs === null || $handler === null) {
@@ -654,16 +655,16 @@ final class HttpRouteExtractor
         $this->operations[] = ['kind' => 'route', 'site' => $this->site($site), 'context' => $context, 'uri' => $uri, 'verbs' => $verbs, 'handler' => $handler, 'calls' => $calls, 'resource' => $resource];
     }
 
-    private function providerReceiver(Expr\MethodCall $call): bool
+    private function providerReceiver(Node $call): bool
     {
-        return (! $this->catalog || ! $call->isFirstClassCallable()) && ($call->var instanceof Expr\Variable && $call->var->name === 'this'
+        return (! $this->catalog || ! $call->isFirstClassCallable()) && (Node::is($call->var, 'expression.variable') && $call->var->name === 'this'
             || $this->catalog && isset($this->boundThisCalls[$call->getStartFilePos()]));
     }
 
     /**
      * @param  array<string, mixed>  $context
      */
-    private function load(Node $site, ?Expr $expr, array $context): void
+    private function load(Node $site, ?Node $expr, array $context): void
     {
         $this->loadValue($site, $this->value($expr), $context);
     }
@@ -687,11 +688,11 @@ final class HttpRouteExtractor
         $this->operations[] = ['kind' => 'load', 'path' => $path, 'context' => $context, 'site' => $this->site($site)];
     }
 
-    /** @param list<Node\Arg|Node\VariadicPlaceholder> $args */
-    private function argument(array $args, int $position, string $name): ?Expr
+    /** @param list<Node> $args */
+    private function argument(array $args, int $position, string $name): ?Node
     {
         foreach ($args as $i => $arg) {
-            if ($arg instanceof Node\Arg && ! $arg->unpack && ($arg->name?->toString() === $name || ($arg->name === null && $i === $position))) {
+            if (Node::is($arg, 'arg') && ! $arg->unpack && ($arg->name?->toString() === $name || ($arg->name === null && $i === $position))) {
                 return $arg->value;
             }
         }
@@ -699,13 +700,13 @@ final class HttpRouteExtractor
         return null;
     }
 
-    private function applicationBuilder(Expr $expr): bool
+    private function applicationBuilder(Node $expr): bool
     {
-        while ($expr instanceof Expr\MethodCall) {
+        while (Node::is($expr, 'expression.method-call')) {
             $expr = $expr->var;
         }
 
-        return $expr instanceof Expr\StaticCall && $expr->class instanceof Node\Name && $this->file->resolvedName($expr->class) === 'Illuminate\\Foundation\\Application' && $expr->name instanceof Node\Identifier && $expr->name->toString() === 'configure';
+        return Node::is($expr, 'expression.static-call') && Node::is($expr->class, 'name') && $this->file->resolvedName($expr->class) === 'Illuminate\\Foundation\\Application' && Node::is($expr->name, 'identifier') && $expr->name->toString() === 'configure';
     }
 
     /** @param array<string, mixed> $context
@@ -723,32 +724,32 @@ final class HttpRouteExtractor
         return $context;
     }
 
-    private function value(?Expr $expr): mixed
+    private function value(?Node $expr): mixed
     {
-        if ($expr instanceof Node\Scalar\String_ || $expr instanceof Node\Scalar\Int_) {
+        if (Node::is($expr, 'scalar.string') || Node::is($expr, 'scalar.int')) {
             return $expr->value;
         }
-        if ($expr instanceof Expr\ConstFetch) {
+        if (Node::is($expr, 'expression.const-fetch')) {
             return match (strtolower($expr->name->toString())) {
                 'true' => true, 'false' => false, default => null
             };
         }
-        if ($expr instanceof Node\Scalar\MagicConst\Dir) {
+        if (Node::is($expr, 'scalar.magic-const.dir')) {
             return dirname($this->basePath.'/'.$this->file->path);
         }
-        if ($expr instanceof Node\Scalar\MagicConst\File) {
+        if (Node::is($expr, 'scalar.magic-const.file')) {
             return $this->basePath.'/'.$this->file->path;
         }
-        if ($expr instanceof Expr\BinaryOp\Concat) {
+        if (Node::is($expr, 'expression.binary-op.concat')) {
             $left = $this->value($expr->left);
             $right = $this->value($expr->right);
 
             return is_string($left) && is_string($right) ? $left.$right : null;
         }
-        if ($expr instanceof Expr\ClassConstFetch && $expr->class instanceof Node\Name && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class') {
+        if (Node::is($expr, 'expression.class-const-fetch') && Node::is($expr->class, 'name') && Node::is($expr->name, 'identifier') && strtolower($expr->name->toString()) === 'class') {
             return $this->file->resolvedName($expr->class);
         }
-        if ($expr instanceof Expr\Array_) {
+        if (Node::is($expr, 'expression.array')) {
             $result = [];
             foreach ($expr->items as $item) {
                 if ($item === null || $item->unpack) {
@@ -767,7 +768,7 @@ final class HttpRouteExtractor
 
             return $result;
         }
-        if ($expr instanceof Expr\FuncCall && $expr->name instanceof Node\Name) {
+        if (Node::is($expr, 'expression.func-call') && Node::is($expr->name, 'name')) {
             $name = $this->file->resolvedName($expr->name);
             $argument = isset($expr->args[0]) ? $this->value($expr->args[0]->value) : '';
             if (! is_string($argument)) {

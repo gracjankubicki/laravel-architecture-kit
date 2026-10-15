@@ -6,6 +6,10 @@ namespace GracjanKubicki\ArchitectureKit\Scaffolding;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
+use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 
@@ -67,6 +71,9 @@ final readonly class Scaffolder
         }
 
         [$subNamespace, $class] = $this->resolveName($name, $definition['suffix'], $definition['forbidden'], $architecture);
+        $settings = (new ArchitectureConfig(ArchitectureConfigPath::resolve($this->files, $this->basePath), $this->files, $this->catalog))->projectSettings();
+        $placement = ProjectLayout::read($this->basePath)->placement($architecture, $definition['folder'], $definition['namespace'], $settings);
+        $definition = [...$definition, ...$placement];
         $namespace = $definition['namespace'].($subNamespace === '' ? '' : '\\'.str_replace('/', '\\', $subNamespace));
         $relativeDirectory = $definition['folder'].($subNamespace === '' ? '' : '/'.$subNamespace);
         $path = $relativeDirectory.'/'.$class.'.php';
@@ -104,9 +111,26 @@ final readonly class Scaffolder
         $written = [];
 
         foreach ($plan->files as $file) {
+            ProjectLayout::path($file->path);
+            if (! DiscoverySettings::safe($this->basePath, $file->path)) {
+                throw new ScaffoldException('Scaffold destination crosses a symlink or unsafe path: '.$file->path, 'E_SCAFFOLD_UNSAFE_PATH');
+            }
+        }
+
+        foreach ($plan->files as $file) {
             $absolute = $this->basePath.'/'.$file->path;
             $this->files->ensureDirectoryExists(dirname($absolute));
-            $this->files->put($absolute, $file->contents);
+            $stream = @fopen($absolute, 'x');
+            if ($stream === false) {
+                throw new ScaffoldException('Cannot create scaffold file without overwriting: '.$file->path, 'E_SCAFFOLD_FILE_EXISTS');
+            }
+            try {
+                if (fwrite($stream, $file->contents) !== strlen($file->contents)) {
+                    throw new ScaffoldException('Cannot write complete scaffold file: '.$file->path, 'E_SCAFFOLD_WRITE_FAILED');
+                }
+            } finally {
+                fclose($stream);
+            }
             $written[] = $file->path;
         }
 

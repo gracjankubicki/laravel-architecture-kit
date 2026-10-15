@@ -127,10 +127,9 @@ final class ArchitectureTargetTest extends TestCase
         $this->fixture(['classification' => ['roles' => [['path' => 'app/Actions', 'role' => 'domain', 'kind' => 'action']]], 'placements' => []]);
         $this->write('config/architectures.php', '<?php file_put_contents(__DIR__."/executed", "bad"); return env("ARCHITECTURES");');
         $report = $this->report('App\\Actions\\CreateInvoice');
-        $this->assertTrue($report['ok'], json_encode($report));
-        $this->assertSame('requires_check', $report['subject']['status']);
-        $this->assertFalse($report['audit']['complete']);
-        $this->assertSame('possible', $report['subject']['issues'][0]['certainty']);
+        $this->assertFalse($report['ok']);
+        $this->assertSame('E_TARGET_CONFIGURATION', $report['m']);
+        $this->assertStringContainsString('Cannot establish the project PHP target', $report['msg']);
         $this->assertFileDoesNotExist($this->tempPath.'/config/executed');
     }
 

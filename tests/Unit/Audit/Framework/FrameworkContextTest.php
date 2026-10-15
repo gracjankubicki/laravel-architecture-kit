@@ -16,6 +16,29 @@ use PHPUnit\Framework\Attributes\DataProvider;
 
 final class FrameworkContextTest extends TestCase
 {
+    public function test_provider_forks_match_independent_builds_and_do_not_keep_route_failures(): void
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($this->tempPath.'/app/Providers');
+        $files->put($this->tempPath.'/app/Providers/AppServiceProvider.php', '<?php namespace App\\Providers; class AppServiceProvider { public function register() { $this->app->bind(\\App\\Contract::class, \\App\\Service::class); } }');
+        $routes = new RouteMap(context: [
+            'status' => 'known', 'providers' => ['App\\Providers\\AppServiceProvider'],
+            'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => [],
+            'auth' => ['default' => 'reader', 'guards' => ['reader' => ['model' => 'App\\Reader', 'custom' => false], 'writer' => ['model' => 'App\\Writer', 'custom' => false]]],
+        ]);
+        $base = new FrameworkContextBuilder($this->sources($files), $routes);
+        $initial = $base->build();
+        foreach ([['unknown'], ['auth:writer'], ['auth:reader'], []] as $middleware) {
+            $route = new RouteEntry(['GET'], 'example', class: 'App\\Controller', method: 'index', middleware: $middleware);
+            $independent = (new FrameworkContextBuilder($this->sources($files), $routes, $route))->build();
+            $fork = $base->forRoute($this->sources($files), $route)->build();
+            self::assertEquals($independent, $fork);
+        }
+        self::assertEquals($initial, $base->build());
+        self::assertNull($initial->unavailable);
+        self::assertSame([], $initial->routeAuthGuards);
+    }
+
     #[DataProvider('containerFactories')]
     public function test_container_factory_types_are_read_without_executing_the_factory(string $registration, array $expected, ?bool $unknown = null): void
     {

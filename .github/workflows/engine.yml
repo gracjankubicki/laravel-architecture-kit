@@ -1,0 +1,93 @@
+name: analysis engine
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'src/Analysis/**'
+      - 'tests/Unit/Analysis/**'
+      - '.github/workflows/engine.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: macos-arm64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            platform: macos-x64
+            target: x86_64-apple-darwin
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+            target: aarch64-unknown-linux-musl
+          - runner: ubuntu-24.04
+            platform: linux-x64
+            target: x86_64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install native musl linker
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Test and build native executable
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C target-feature=+crt-static -C linker=musl-gcc' || '' }}
+        run: |
+          cargo test --manifest-path engine/Cargo.toml --locked --target '${{ matrix.target }}'
+          cargo build --manifest-path engine/Cargo.toml --locked --release --target '${{ matrix.target }}'
+          mkdir -p build/engine-artifacts
+          cp 'engine/target/${{ matrix.target }}/release/architecture-kit-engine' 'build/engine-artifacts/architecture-kit-engine-${{ matrix.platform }}'
+          'build/engine-artifacts/architecture-kit-engine-${{ matrix.platform }}' --version > 'build/engine-artifacts/architecture-kit-engine-${{ matrix.platform }}.json'
+      - name: Verify static Linux executable
+        if: runner.os == 'Linux'
+        run: |
+          if readelf -l 'build/engine-artifacts/architecture-kit-engine-${{ matrix.platform }}' | grep -q INTERP; then
+            echo 'Linux engine must not require a dynamic libc loader.' >&2
+            exit 1
+          fi
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Verify real PHP adapter and installer against this executable
+        env:
+          ARCHITECTURE_KIT_TEST_ENGINE: ${{ github.workspace }}/build/engine-artifacts/architecture-kit-engine-${{ matrix.platform }}
+        run: php -d memory_limit=1G vendor/bin/phpunit tests/Unit/Analysis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-${{ matrix.platform }}
+          path: build/engine-artifacts/*
+          if-no-files-found: error
+
+  manifest:
+    needs: native
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: engine-*
+          path: build/engine-artifacts
+          merge-multiple: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - run: python3 engine/release-manifest.py build/engine-artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-release-candidate
+          path: build/engine-artifacts/*
+          if-no-files-found: error
+      # This workflow prepares artifacts. Publishing engine-v* and the Composer
+      # release remains a separately authorized operation after all targets pass.

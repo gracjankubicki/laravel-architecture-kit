@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
@@ -76,7 +77,7 @@ final readonly class ProjectGraphLoader
     }
 
     /**
-     * Every file in scope with its stat, without reading any contents.
+     * Every file in scope with its metadata and content fingerprint.
      *
      * Reading a file costs little next to parsing it, but it is the whole cost once
      * parsing is avoided: 1.55s of the 19.5s build on a large application. A cached run
@@ -92,13 +93,20 @@ final readonly class ProjectGraphLoader
             foreach (ComposerCatalogExtractor::FILES as $relative) {
                 $absolute = $this->basePath.'/'.$relative;
                 if ($this->safeSource($relative) && $this->files->isFile($absolute) && ! $this->isExcluded($relative, $exclude)) {
-                    $found[$relative] = [$absolute, GraphCacheSignature::stat((int) $this->files->lastModified($absolute), (int) $this->files->size($absolute))];
+                    $found[$relative] = [$absolute, $this->fileSignature($absolute)];
                 }
             }
         }
 
         foreach ($this->scope->directories as $directory) {
             $absolute = $this->basePath.'/'.$directory;
+            if ($this->files->isFile($absolute) && str_ends_with($directory, '.php')) {
+                if ((! $this->sourceOnly || $this->safeSource($directory)) && ! $this->isExcluded($directory, $exclude)) {
+                    $found[$directory] = [$absolute, $this->fileSignature($absolute)];
+                }
+
+                continue;
+            }
             if ($this->sourceOnly && ! $this->safeSource($directory.'/__graph_source__.php')) {
                 continue;
             }
@@ -128,12 +136,22 @@ final readonly class ProjectGraphLoader
 
                 $found[$path] = [
                     $file->getPathname(),
-                    GraphCacheSignature::stat((int) $file->getMTime(), (int) $file->getSize()),
+                    $this->fileSignature($file->getPathname()),
                 ];
             }
         }
 
         return $found;
+    }
+
+    private function fileSignature(string $absolute): string
+    {
+        $hash = hash_file('sha256', $absolute);
+        if ($hash === false) {
+            throw new \RuntimeException('Cannot fingerprint graph source: '.$absolute);
+        }
+
+        return GraphCacheSignature::stat((int) $this->files->lastModified($absolute), (int) $this->files->size($absolute)).':'.$hash;
     }
 
     private function isRequiredTestFile(string $path): bool
@@ -162,7 +180,7 @@ final readonly class ProjectGraphLoader
 
         foreach ($plan->toParse as $path) {
             $absolute = $plan->files[$path];
-            if ($this->sourceOnly && (! $this->safeSource($path) || ! $this->files->isFile($absolute) || GraphCacheSignature::stat((int) $this->files->lastModified($absolute), (int) $this->files->size($absolute)) !== ($plan->signature->files[$path] ?? null))) {
+            if ($this->sourceOnly && (! $this->safeSource($path) || ! $this->files->isFile($absolute) || $this->fileSignature($absolute) !== ($plan->signature->files[$path] ?? null))) {
                 $entries[$path] = new FileGraphEntry([], [], impact: new ImpactFacts($path, [], [], [['line' => 1, 'reason' => 'Source changed or became unsafe before graph reading.']]),
                     catalog: $this->catalog ? new CatalogFacts($path, diagnostics: [new CatalogDiagnostic('changed_inputs', 'Source changed or became unsafe before graph reading.', 1)]) : null);
 
@@ -207,7 +225,7 @@ final readonly class ProjectGraphLoader
     }
 
     /**
-     * What this run has to parse, decided from stat alone.
+     * What this run has to parse, decided from metadata and content hashes.
      *
      * The audit needs this rather than a finished graph: its rules read the syntax tree
      * of the files they check, so it parses each file once and hands back what that file
@@ -277,7 +295,7 @@ final readonly class ProjectGraphLoader
     private function signatureFor(array $scanned): GraphCacheSignature
     {
         return GraphCacheSignature::create(
-            [PackageFingerprint::current(), $this->classification->mappings->fingerprint(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : []), ...($this->catalog ? ['catalog-v1'] : [])],
+            [PackageFingerprint::current(), AnalysisRuntime::session()->fingerprint(), $this->classification->mappings->fingerprint(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : []), ...($this->catalog ? ['catalog-v1'] : [])],
             array_map(static fn (array $file): string => $file[1], $scanned),
         );
     }

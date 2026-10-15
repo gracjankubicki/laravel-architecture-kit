@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Framework;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceClass;
-use PhpParser\Node\Expr;
 
 /** A bounded value known by the static framework interpreter. */
 final readonly class FrameworkValue
@@ -20,7 +20,7 @@ final readonly class FrameworkValue
         public ?string $type = null,
         public ?string $literal = null,
         public array $items = [],
-        public Expr\Closure|Expr\ArrowFunction|null $callback = null,
+        public ?Node $callback = null,
         public ?SourceClass $callbackSource = null,
         public array $captures = [],
         public ?string $resourceClass = null,
@@ -56,7 +56,7 @@ final readonly class FrameworkValue
      */
     public static function callback(
         SourceClass $source,
-        Expr\Closure|Expr\ArrowFunction $callback,
+        Node $callback,
         array $captures,
         array $parameterTypes = [],
     ): self {

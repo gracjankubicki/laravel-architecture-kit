@@ -25,7 +25,7 @@ final readonly class AuditScope
     /**
      * @param  array<int, string>  $directories
      */
-    public function __construct(array $directories = [self::APPLICATION])
+    public function __construct(array $directories = [self::APPLICATION], private bool $requireApplication = true)
     {
         $normalized = [];
 
@@ -43,7 +43,7 @@ final readonly class AuditScope
 
         // The application directory is not optional: dropping it would silently disable
         // every rule the package exists to enforce.
-        if (! in_array(self::APPLICATION, $normalized, true)) {
+        if ($requireApplication && ! in_array(self::APPLICATION, $normalized, true)) {
             array_unshift($normalized, self::APPLICATION);
         }
 
@@ -55,6 +55,12 @@ final readonly class AuditScope
         return new self;
     }
 
+    /** @param list<string> $paths */
+    public static function package(array $paths): self
+    {
+        return new self($paths, requireApplication: false);
+    }
+
     /**
      * The test directory is added by the missing-test rule rather than by the project,
      * because that rule reads the graph: without test files in it, every class looks
@@ -62,7 +68,7 @@ final readonly class AuditScope
      */
     public function withTests(): self
     {
-        return new self([...$this->directories, self::TESTS]);
+        return new self([...$this->directories, self::TESTS], $this->requireApplication);
     }
 
     public function includesTests(): bool
@@ -73,7 +79,7 @@ final readonly class AuditScope
     public function covers(string $path): bool
     {
         foreach ($this->directories as $directory) {
-            if (str_starts_with($path, $directory.'/')) {
+            if ($path === $directory || str_starts_with($path, $directory.'/')) {
                 return true;
             }
         }

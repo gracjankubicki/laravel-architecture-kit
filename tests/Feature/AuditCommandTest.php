@@ -7,8 +7,8 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
@@ -16,10 +16,30 @@ use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
+use Symfony\Component\Console\Formatter\OutputFormatter;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Process\Process;
 
 class AuditCommandTest extends TestCase
 {
+    public function test_full_agent_report_is_written_without_terminal_formatting(): void
+    {
+        $this->writeConfig([Architecture::ThinControllers, Architecture::Actions]);
+        $this->writeFile('app/Http/Controllers/DocumentController.php', '<?php namespace App\\Http\\Controllers; class DocumentController { public function update($document) { $document->update([]); } }');
+        $formatter = new class extends OutputFormatter
+        {
+            public function format(?string $message): ?string
+            {
+                throw new \RuntimeException('JSON must bypass terminal formatting.');
+            }
+        };
+        $output = new BufferedOutput(formatter: $formatter);
+        Artisan::call('architecture-kit:audit', ['--agent' => true, '--full' => true], $output);
+        $payload = json_decode(trim($output->fetch()), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('audit', $payload['cmd']);
+        self::assertArrayHasKey('analysis', $payload);
+    }
+
     public function test_audit_keeps_the_repeated_project_segment_in_finding_paths(): void
     {
         $files = new Filesystem;
@@ -52,6 +72,7 @@ class AuditCommandTest extends TestCase
             <<<'PHP'
 <?php
 require %s;
+\GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime::activate(new \GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession(new \GracjanKubicki\ArchitectureKit\Analysis\PhpAnalysisEngine, "8.3"));
 $result = (new \GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit(new \Illuminate\Filesystem\Filesystem, %s))->run([], changedOnly: true, useBaseline: false);
 echo $result->scope;
 PHP,
@@ -1584,8 +1605,8 @@ PHP);
         $this->writeFile('app/Actions/Broken.php', '<?php final class Broken {');
 
         $this->artisan('architecture-kit:audit')
-            ->expectsOutputToContain('warn  unparseable-file')
-            ->assertExitCode(0);
+            ->expectsOutputToContain('error unparseable-file')
+            ->assertExitCode(1);
     }
 
     public function test_custom_audit_rule_reports_findings_and_can_be_suppressed(): void
@@ -1959,7 +1980,7 @@ PHP);
     }
 }
 
-final class FixtureAuditRule implements AuditRule
+final class FixtureAuditRule implements PortableAuditRule
 {
     public function supports(string $path, array $enabled): bool
     {
@@ -1976,7 +1997,7 @@ final class FixtureAuditRule implements AuditRule
 
 final class FixtureNotAuditRule {}
 
-final class CountingFixtureAuditRule implements AuditRule
+final class CountingFixtureAuditRule implements PortableAuditRule
 {
     public static int $instances = 0;
 

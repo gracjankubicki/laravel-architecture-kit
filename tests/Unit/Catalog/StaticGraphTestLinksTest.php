@@ -191,7 +191,7 @@ PHP,
             ['PUNITATTRDataProvider("cases")', 'public static function cases($optional = null) {}'],
             ['PUNITATTRDataProvider("missing")', 'public static function cases() {}'],
             ['PUNITATTRDataProvider(payload: "payload-secret")', 'public static function cases() {}'],
-            ['PUNITATTRDataProvider($dynamic)', 'public static function cases() {}'],
+            ['PUNITATTRDataProvider(DYNAMIC_PROVIDER)', 'public static function cases() {}'],
         ] as [$attribute, $provider]) {
             $attribute = str_replace('PUNITATTR', '\PHPUnit\Framework\Attributes\\', $attribute);
             $index = new CatalogIndex($this->facts(['tests/Feature/ReadyTest.php' => 'class ReadyTest extends \PHPUnit\Framework\TestCase { #['.$attribute.'] public function test_ready($value) {} '.$provider.' }']));

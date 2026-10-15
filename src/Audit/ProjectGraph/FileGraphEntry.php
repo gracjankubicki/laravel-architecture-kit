@@ -29,5 +29,7 @@ final readonly class FileGraphEntry
         public array $testInvocations = [],
         public ?ImpactFacts $impact = null,
         public ?CatalogFacts $catalog = null,
+        public ?string $syntaxError = null,
+        public int $syntaxErrorLine = 1,
     ) {}
 }

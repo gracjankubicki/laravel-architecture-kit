@@ -4,23 +4,19 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Traverser as NodeTraverser;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class TransactionSideEffectCheck implements FileCheck
 {
     public function findings(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -49,7 +45,7 @@ final readonly class TransactionSideEffectCheck implements FileCheck
 
                 $callback = $node->args[0]->value ?? null;
 
-                if (! $callback instanceof Node\Expr\Closure && ! $callback instanceof Node\Expr\ArrowFunction) {
+                if (! Node::is($callback, 'expression.closure') && ! Node::is($callback, 'expression.arrow-function')) {
                     return null;
                 }
 
@@ -81,21 +77,21 @@ final readonly class TransactionSideEffectCheck implements FileCheck
 
                     private function isAfterCommitCall(Node $node): bool
                     {
-                        return $node instanceof StaticCall
-                            && $node->class instanceof Name
+                        return Node::is($node, 'expression.static-call')
+                            && Node::is($node->class, 'name')
                             && $this->file->resolvedClassName($node) === 'Illuminate\\Support\\Facades\\DB'
-                            && $node->name instanceof Node\Identifier
+                            && Node::is($node->name, 'identifier')
                             && $node->name->toString() === 'afterCommit';
                     }
 
                     private function isTransactionSideEffect(Node $node): bool
                     {
-                        if ($node instanceof FuncCall && $node->name instanceof Name) {
+                        if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name')) {
                             return in_array($node->name->toString(), ['event', 'dispatch'], true);
                         }
 
-                        if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
-                            $class = $node->class instanceof Name ? $this->file->resolvedClassName($node) : null;
+                        if (Node::is($node, 'expression.static-call') && Node::is($node->name, 'identifier')) {
+                            $class = Node::is($node->class, 'name') ? $this->file->resolvedClassName($node) : null;
                             $method = $node->name->toString();
 
                             if ($class !== null && in_array($class, [
@@ -113,7 +109,7 @@ final readonly class TransactionSideEffectCheck implements FileCheck
                                 && (str_starts_with($class, 'App\\Events\\') || str_starts_with($class, 'App\\Jobs\\'));
                         }
 
-                        if ($node instanceof MethodCall && $node->name instanceof Node\Identifier) {
+                        if (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier')) {
                             return in_array($node->name->toString(), ['notify', 'send', 'sendAsync'], true);
                         }
 
@@ -126,10 +122,10 @@ final readonly class TransactionSideEffectCheck implements FileCheck
 
             private function isDbTransactionCall(Node $node): bool
             {
-                return $node instanceof StaticCall
-                    && $node->class instanceof Name
+                return Node::is($node, 'expression.static-call')
+                    && Node::is($node->class, 'name')
                     && $this->file->resolvedClassName($node) === 'Illuminate\\Support\\Facades\\DB'
-                    && $node->name instanceof Node\Identifier
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'transaction';
             }
         });

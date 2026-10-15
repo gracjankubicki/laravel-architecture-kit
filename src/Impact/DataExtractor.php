@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use Illuminate\Support\Str;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Abstract interpretation of source expressions; descriptors contain no AST or runtime objects. */
 final class DataExtractor
@@ -38,7 +36,7 @@ final class DataExtractor
 
     public function extract(FileContext $file): void
     {
-        $this->walk($file->ast() ?? [], $file, '(file) '.$file->path, '', [], [], 0);
+        $this->walk($file->syntax() ?? [], $file, '(file) '.$file->path, '', [], [], 0);
     }
 
     /** @param list<Node> $nodes
@@ -53,25 +51,25 @@ final class DataExtractor
             if (! $this->room($depth)) {
                 break;
             }
-            if ($node instanceof Stmt\ClassLike) {
+            if (Node::is($node, 'statement.class-like')) {
                 $name = DataCatalog::name($node, $file);
                 foreach ($node->getMethods() as $method) {
                     $local = ['this' => $this->typed($name)];
                     foreach ($node->getProperties() as $property) {
                         foreach ($property->props as $prop) {
-                            if ($property->type instanceof Node\Name) {
+                            if (Node::is($property->type, 'name')) {
                                 $local['this.'.$prop->name->toString()] = $this->typed($file->resolvedName($property->type));
                             }
                         }
                     }
                     foreach ($node->getMethod('__construct')->params ?? [] as $param) {
-                        if ($param->flags !== 0 && $param->type instanceof Node\Name && $param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                        if ($param->flags !== 0 && Node::is($param->type, 'name') && Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
                             $local['this.'.$param->var->name] = $this->typed($file->resolvedName($param->type));
                         }
                     }
                     foreach ($method->params as $param) {
-                        if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
-                            $local[$param->var->name] = $param->type instanceof Node\Name ? $this->typed($file->resolvedName($param->type)) : ['dynamic' => true];
+                        if (Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
+                            $local[$param->var->name] = Node::is($param->type, 'name') ? $this->typed($file->resolvedName($param->type)) : ['dynamic' => true];
                         }
                     }
                     $migration = $this->catalog->inherits($name, 'Illuminate\Database\Migrations\Migration');
@@ -81,25 +79,25 @@ final class DataExtractor
 
                 continue;
             }
-            if ($node instanceof Stmt\Function_) {
+            if (Node::is($node, 'statement.function')) {
                 $this->walk($node->stmts, $file, '(function) '.$file->path.':'.$node->getStartFilePos(), '', [], ['Standalone function reachability is unresolved.'], $depth + 1);
 
                 continue;
             }
-            if ($node instanceof Stmt\Return_) {
+            if (Node::is($node, 'statement.return')) {
                 $returns[] = $this->value($node->expr, $file, $from, $class, $vars, $conditions, $depth + 1);
 
                 continue;
             }
-            if ($node instanceof Stmt\Expression || $node instanceof Expr) {
-                $this->value($node instanceof Stmt\Expression ? $node->expr : $node, $file, $from, $class, $vars, $conditions, $depth + 1);
+            if (Node::is($node, 'statement.expression') || Node::is($node, 'expression')) {
+                $this->value(Node::is($node, 'statement.expression') ? $node->expr : $node, $file, $from, $class, $vars, $conditions, $depth + 1);
 
                 continue;
             }
-            $branch = $node instanceof Stmt\If_ || $node instanceof Stmt\ElseIf_ || $node instanceof Stmt\Else_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\For_ || $node instanceof Stmt\While_ || $node instanceof Stmt\Switch_ || $node instanceof Stmt\Case_ || $node instanceof Stmt\TryCatch || $node instanceof Stmt\Catch_;
+            $branch = Node::is($node, 'statement.if') || Node::is($node, 'statement.else-if') || Node::is($node, 'statement.else') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.for') || Node::is($node, 'statement.while') || Node::is($node, 'statement.switch') || Node::is($node, 'statement.case') || Node::is($node, 'statement.try-catch') || Node::is($node, 'statement.catch');
             foreach ($node->getSubNodeNames() as $key) {
                 $child = $node->$key;
-                $children = $child instanceof Node ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($v) => $v instanceof Node)) : []);
+                $children = Node::is($child, 'node') ? [$child] : (is_array($child) ? array_values(array_filter($child, fn ($v) => Node::is($v, 'node'))) : []);
                 $result = $this->walk($children, $file, $from, $class, $vars, $branch ? [...$conditions, 'Source control-flow condition is not evaluated.'] : $conditions, $depth + 1);
                 if ($branch) {
                     foreach ($result['vars'] as $key => $value) {
@@ -134,26 +132,26 @@ final class DataExtractor
         if ($node === null || ! $this->room($depth)) {
             return null;
         }
-        if ($node instanceof Node\Scalar\String_ || $node instanceof Node\Scalar\Int_ || $node instanceof Expr\ClassConstFetch) {
+        if (Node::is($node, 'scalar.string') || Node::is($node, 'scalar.int') || Node::is($node, 'expression.class-const-fetch')) {
             return DataCatalog::literal($node, $file, $class);
         }
-        if ($node instanceof Expr\ConstFetch) {
+        if (Node::is($node, 'expression.const-fetch')) {
             return strtolower($node->name->toString()) === 'null' ? null : ['dynamic' => true];
         }
-        if ($node instanceof Expr\Variable) {
+        if (Node::is($node, 'expression.variable')) {
             return is_string($node->name) && array_key_exists($node->name, $vars) ? $vars[$node->name] : ['dynamic' => true];
         }
-        if ($node instanceof Expr\Assign) {
+        if (Node::is($node, 'expression.assign')) {
             $value = $this->value($node->expr, $file, $from, $class, $vars, $conditions, $depth + 1);
-            if ($node->var instanceof Expr\Variable && is_string($node->var->name)) {
+            if (Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
                 $vars[$node->var->name] = $value;
-            } elseif ($node->var instanceof Expr\PropertyFetch && $node->var->var instanceof Expr\Variable && is_string($node->var->var->name) && $node->var->name instanceof Node\Identifier) {
+            } elseif (Node::is($node->var, 'expression.property-fetch') && Node::is($node->var->var, 'expression.variable') && is_string($node->var->var->name) && Node::is($node->var->name, 'identifier')) {
                 $vars[$node->var->var->name.'.'.$node->var->name->toString()] = $value;
             }
 
             return $value;
         }
-        if ($node instanceof Expr\Array_) {
+        if (Node::is($node, 'expression.array')) {
             $values = [];
             foreach ($node->items as $item) {
                 if ($item !== null) {
@@ -167,10 +165,10 @@ final class DataExtractor
 
             return $values;
         }
-        if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             // Capture the declaration as a descriptor; creating a callback does not invoke it.
             $captures = $vars;
-            if ($node instanceof Expr\Closure) {
+            if (Node::is($node, 'expression.closure')) {
                 $captures = [];
                 foreach ($node->uses as $use) {
                     if (is_string($use->var->name)) {
@@ -186,8 +184,8 @@ final class DataExtractor
                 }
             }
             foreach ($node->params as $param) {
-                if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
-                    $captures[$param->var->name] = $param->type instanceof Node\Name ? $this->typed($file->resolvedName($param->type)) : ['dynamic' => true];
+                if (Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
+                    $captures[$param->var->name] = Node::is($param->type, 'name') ? $this->typed($file->resolvedName($param->type)) : ['dynamic' => true];
                 }
             }
             $callbackSymbol = '(callback) '.$file->path.':'.$node->getStartFilePos();
@@ -195,14 +193,14 @@ final class DataExtractor
             $previousTrail = $this->trail;
             $this->effectRoot = null;
             $this->trail = [];
-            $this->walk($node instanceof Expr\Closure ? $node->stmts : [$node->expr], $file, $callbackSymbol, $class, $captures, ['Callback must be invoked through a recognized path.'], $depth + 1);
+            $this->walk(Node::is($node, 'expression.closure') ? $node->stmts : [$node->expr], $file, $callbackSymbol, $class, $captures, ['Callback must be invoked through a recognized path.'], $depth + 1);
             $this->effectRoot = $previousRoot;
             $this->trail = $previousTrail;
 
             return ['type' => 'closure', 'node' => $node, 'vars' => $captures, 'path' => $file->path, 'class' => $class];
         }
-        if ($node instanceof Expr\New_) {
-            if ($node->class instanceof Stmt\Class_) {
+        if (Node::is($node, 'expression.new')) {
+            if (Node::is($node->class, 'statement.class')) {
                 $this->walk([$node->class], $file, $from, $class, $vars, $conditions, $depth + 1);
 
                 return null;
@@ -211,14 +209,14 @@ final class DataExtractor
                 $this->value($arg->value, $file, $from, $class, $vars, $conditions, $depth + 1);
             }
 
-            return $node->class instanceof Node\Name ? $this->typed($file->resolvedName($node->class)) : null;
+            return Node::is($node->class, 'name') ? $this->typed($file->resolvedName($node->class)) : null;
         }
-        if ($node instanceof Expr\PropertyFetch || $node instanceof Expr\NullsafePropertyFetch) {
-            if ($node->var instanceof Expr\Variable && is_string($node->var->name) && $node->name instanceof Node\Identifier && isset($vars[$node->var->name.'.'.$node->name->toString()])) {
+        if (Node::is($node, 'expression.property-fetch') || Node::is($node, 'expression.nullsafe-property-fetch')) {
+            if (Node::is($node->var, 'expression.variable') && is_string($node->var->name) && Node::is($node->name, 'identifier') && isset($vars[$node->var->name.'.'.$node->name->toString()])) {
                 return $vars[$node->var->name.'.'.$node->name->toString()];
             }
             $receiver = $this->value($node->var, $file, $from, $class, $vars, $conditions, $depth + 1);
-            if (is_array($receiver) && isset($receiver['model']) && $node->name instanceof Node\Identifier) {
+            if (is_array($receiver) && isset($receiver['model']) && Node::is($node->name, 'identifier')) {
                 $method = $this->catalog->method($receiver['model'], $node->name->toString());
                 if ($method !== null) {
                     $query = $this->invoke($method, $receiver, [], $file, $node, $from, $conditions, $depth + 1);
@@ -234,13 +232,13 @@ final class DataExtractor
 
             return null;
         }
-        if ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall || $node instanceof Expr\StaticCall) {
+        if (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call') || Node::is($node, 'expression.static-call')) {
             if ($node->isFirstClassCallable()) {
                 return null;
             }
-            $method = $node->name instanceof Node\Identifier ? strtolower($node->name->toString()) : null;
+            $method = Node::is($node->name, 'identifier') ? strtolower($node->name->toString()) : null;
             $receiver = null;
-            if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name) {
+            if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name')) {
                 $name = in_array(strtolower($node->class->toString()), ['self', 'static'], true) ? $class : $file->resolvedName($node->class);
                 $receiver = $this->typed($name);
                 if (in_array($name, ['Illuminate\Support\Facades\DB', 'Illuminate\Database\DatabaseManager'], true)) {
@@ -249,14 +247,14 @@ final class DataExtractor
                     $connection = $this->catalog->inherits($class, 'Illuminate\Database\Migrations\Migration') ? $this->catalog->property($class, 'connection') : null;
                     $receiver = ['type' => 'schema', 'connection' => DataCatalog::connection($connection)];
                 }
-            } elseif (! $node instanceof Expr\StaticCall) {
+            } elseif (! Node::is($node, 'expression.static-call')) {
                 $receiver = $this->value($node->var, $file, $from, $class, $vars, $conditions, $depth + 1);
             }
             $args = [];
             foreach ($node->args as $arg) {
                 $args[$arg->name?->toString() ?? count($args)] = $this->value($arg->value, $file, $from, $class, $vars, $conditions, $depth + 1);
             }
-            if ($node instanceof Expr\NullsafeMethodCall) {
+            if (Node::is($node, 'expression.nullsafe-method-call')) {
                 $conditions[] = 'Receiver must be non-null.';
             }
             if ($method === null) {
@@ -269,10 +267,10 @@ final class DataExtractor
             }
             $result = $this->call($receiver, $method, $args, $file, $node, $from, $class, $conditions, $depth + 1);
             $root = $node;
-            while ($root instanceof Expr\MethodCall || $root instanceof Expr\NullsafeMethodCall) {
+            while (Node::is($root, 'expression.method-call') || Node::is($root, 'expression.nullsafe-method-call')) {
                 $root = $root->var;
             }
-            if ($root instanceof Expr\Variable && is_string($root->name) && ($vars[$root->name]['type'] ?? '') === 'query' && (! ($vars[$root->name]['object'] ?? false) || in_array($method, ['setconnection', 'settable'], true)) && is_array($result) && ($result['type'] ?? '') === 'query') {
+            if (Node::is($root, 'expression.variable') && is_string($root->name) && ($vars[$root->name]['type'] ?? '') === 'query' && (! ($vars[$root->name]['object'] ?? false) || in_array($method, ['setconnection', 'settable'], true)) && is_array($result) && ($result['type'] ?? '') === 'query') {
                 $identity = $vars[$root->name]['identity'] ?? null;
                 foreach ($vars as $key => $value) {
                     if (is_array($value) && $identity !== null && ($value['identity'] ?? null) === $identity) {
@@ -284,7 +282,7 @@ final class DataExtractor
 
             return $result;
         }
-        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name && strtolower($node->name->toString()) === 'tap') {
+        if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && strtolower($node->name->toString()) === 'tap') {
             $args = [];
             foreach ($node->args as $arg) {
                 $args[] = $this->value($arg->value, $file, $from, $class, $vars, $conditions, $depth + 1);
@@ -294,8 +292,8 @@ final class DataExtractor
         }
         foreach ($node->getSubNodeNames() as $key) {
             $child = $node->$key;
-            foreach ($child instanceof Node ? [$child] : (is_array($child) ? $child : []) as $value) {
-                if ($value instanceof Node) {
+            foreach (Node::is($child, 'node') ? [$child] : (is_array($child) ? $child : []) as $value) {
+                if (Node::is($value, 'node')) {
                     $this->value($value, $file, $from, $class, $vars, $conditions, $depth + 1);
                 }
             }
@@ -667,21 +665,21 @@ final class DataExtractor
 
             return null;
         }
-        $ownerNode = (new NodeFinder)->findFirst($bodyFile->ast() ?? [], fn ($n) => $n instanceof Stmt\ClassLike && DataCatalog::name($n, $bodyFile) === $method['class']);
-        $found = $ownerNode instanceof Stmt\ClassLike ? $ownerNode->getMethod($method['name']) : null;
+        $ownerNode = (new NodeFinder)->findFirst($bodyFile->syntax() ?? [], fn ($n) => Node::is($n, 'statement.class-like') && DataCatalog::name($n, $bodyFile) === $method['class']);
+        $found = Node::is($ownerNode, 'statement.class-like') ? $ownerNode->getMethod($method['name']) : null;
         $this->trail[] = ['from' => $from, 'to' => $method['symbol'], 'kind' => 'data-source-call', 'path' => $callerFile->path, 'line' => $site->getStartLine(), 'certainty' => 'declared', 'conditions' => $conditions];
         $previousRoot = $this->effectRoot;
         $this->effectRoot ??= $from;
         $local = ['this' => $receiver];
-        if ($found instanceof Stmt\ClassMethod) {
+        if (Node::is($found, 'statement.class-method')) {
             foreach ($found->params as $i => $param) {
-                if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                if (Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
                     $local[$param->var->name] = $args[$param->var->name] ?? $args[$i] ?? null;
                 }
             }
             $result = $this->walk($found->stmts ?? [], $bodyFile, $method['symbol'], $method['class'], $local, $conditions, $depth + 1);
             $value = $result['value'];
-            if ($value === null && (($method['scope'] ?? false) || ($method['legacy_scope'] ?? false)) && isset($found->params[0]) && $found->params[0]->var instanceof Expr\Variable && is_string($found->params[0]->var->name)) {
+            if ($value === null && (($method['scope'] ?? false) || ($method['legacy_scope'] ?? false)) && isset($found->params[0]) && Node::is($found->params[0]->var, 'expression.variable') && is_string($found->params[0]->var->name)) {
                 $value = $result['vars'][$found->params[0]->var->name] ?? null;
             } elseif ($value === null && ($receiver['type'] ?? '') === 'query') {
                 $value = $result['vars']['this'] ?? null;
@@ -722,7 +720,7 @@ final class DataExtractor
             return null;
         }
         $parameter = $node->params[0]->var ?? null;
-        if ($parameter instanceof Expr\Variable && is_string($parameter->name)) {
+        if (Node::is($parameter, 'expression.variable') && is_string($parameter->name)) {
             $vars[$parameter->name] = $receiver;
         }
         $conditions[] = 'Recognized query/callback invocation; callback conditions are not evaluated.';
@@ -730,11 +728,11 @@ final class DataExtractor
         $this->effectRoot ??= $from;
         $callbackSymbol = '(callback) '.$declarationFile->path.':'.$node->getStartFilePos();
         $this->trail[] = ['from' => $from, 'to' => $callbackSymbol, 'kind' => 'data-callback', 'path' => $file->path, 'line' => $site->getStartLine(), 'certainty' => 'possible', 'conditions' => $conditions];
-        if ($node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'expression.arrow-function')) {
             $value = $this->value($node->expr, $declarationFile, $callbackSymbol, $closure['class'], $vars, $conditions, $depth + 1);
         } else {
             $result = $this->walk($node->stmts, $declarationFile, $callbackSymbol, $closure['class'], $vars, $conditions, $depth + 1);
-            $value = $result['value'] ?? ($parameter instanceof Expr\Variable && is_string($parameter->name) ? ($result['vars'][$parameter->name] ?? $receiver) : $receiver);
+            $value = $result['value'] ?? (Node::is($parameter, 'expression.variable') && is_string($parameter->name) ? ($result['vars'][$parameter->name] ?? $receiver) : $receiver);
         }
         if (is_array($value) && ($value['type'] ?? '') === 'query') {
             $value['preparation_paths'] = [...($value['preparation_paths'] ?? []), $this->trail];

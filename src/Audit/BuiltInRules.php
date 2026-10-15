@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\AnalysisFactsCache;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Actions\ActionsRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ApiResources\ApiResourcesRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\CustomEloquentBuilders\CustomEloquentBuildersRule;
@@ -46,11 +47,11 @@ final readonly class BuiltInRules
         if ($classification->roles->mappings->roles === []) {
             return $rule->check($file);
         }
-        if (! in_array($rule::class, [ActionsRule::class, QueryObjectsRule::class, FolderPurityRule::class, ThinControllerRule::class, ServicesRule::class, CustomEloquentBuildersRule::class, DataObjectsRule::class, ValueObjectsRule::class, FormRequestsRule::class, ApiResourcesRule::class, UnenabledPatternRule::class, TestabilityRule::class, InertiaRule::class, EnumsRule::class, PortsAndAdaptersRule::class], true)) {
+        if (! in_array($rule::class, [ActionsRule::class, QueryObjectsRule::class, FolderPurityRule::class, ThinControllerRule::class, ServicesRule::class, CustomEloquentBuildersRule::class, DataObjectsRule::class, ValueObjectsRule::class, FormRequestsRule::class, ApiResourcesRule::class, UnenabledPatternRule::class, TestabilityRule::class, InertiaRule::class, EnumsRule::class, PortsAndAdaptersRule::class, ServiceLocatorRule::class, SaloonRule::class, EloquentLifecycleRule::class], true)) {
             return $rule->check($file);
         }
         $findings = [];
-        foreach ($classification->views($file) as $view) {
+        foreach ($classification->views($file, byRole: $rule instanceof PortsAndAdaptersRule) as $view) {
             $classification->prime($view);
             if ($rule->supports($view->path, $enabled)) {
                 array_push($findings, ...$rule->check($view));
@@ -65,7 +66,7 @@ final readonly class BuiltInRules
      * @param  array<int, Architecture|string>  $enabled
      * @return array<int, AuditRule>
      */
-    public static function all(Filesystem $files, string $basePath, array $enabled, ?ProjectClassification $classification = null): array
+    public static function all(Filesystem $files, string $basePath, array $enabled, ?ProjectClassification $classification = null, ?AnalysisFactsCache $facts = null): array
     {
         return [
             new FolderPurityRule($enabled, $files, $basePath, $classification),
@@ -80,14 +81,14 @@ final readonly class BuiltInRules
             new FortifyRule($files, $basePath),
             new EnumsRule($files, $basePath, $enabled, $classification),
             new ApiResourcesRule($classification),
-            new PortsAndAdaptersRule($files, $basePath, $enabled, $classification?->roles),
+            new PortsAndAdaptersRule($files, $basePath, $enabled, $classification?->roles, $classification),
             new ModernPhp85Rule,
-            new LaravelAiRule($files, $basePath),
+            new LaravelAiRule($files, $basePath, $facts),
             new InertiaRule($classification),
-            new EloquentLifecycleRule($files, $basePath),
+            new EloquentLifecycleRule($files, $basePath, $classification),
             new SaloonRule($classification),
             new RouteLogicRule,
-            new ServiceLocatorRule,
+            new ServiceLocatorRule($classification),
             new TestabilityRule($classification),
             new UnenabledPatternRule($enabled, $files, $basePath, $classification),
         ];

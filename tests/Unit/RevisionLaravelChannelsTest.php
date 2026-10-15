@@ -125,7 +125,7 @@ final class RevisionLaravelChannelsTest extends TestCase
     private function fixture(): array
     {
         return [
-            'composer.json' => '{"autoload":{"psr-4":{"App\\\\":"app/"}}}',
+            'composer.json' => '{"require":{"php":"^8.5"},"autoload":{"psr-4":{"App\\\\":"app/"}}}',
             'bootstrap/app.php' => '<?php use Illuminate\Foundation\Application; return Application::configure(basePath: dirname(__DIR__))->withRouting(web: __DIR__."/../routes/web.php", commands: __DIR__."/../routes/console.php")->withCommands([App\Console\Commands\Task::class]);',
             'bootstrap/providers.php' => '<?php return [App\Providers\Events::class];',
             'routes/web.php' => '<?php use Illuminate\Support\Facades\Route; Route::get("old", function () { App\Work::run(); });',
@@ -142,6 +142,7 @@ final class RevisionLaravelChannelsTest extends TestCase
     /** @param array<string, string> $files */
     private function facts(array $files): RevisionFacts
     {
+        $files += ['composer.json' => '{"type":"project","require":{"php":"^8.5"}}'];
         $source = new SourceSnapshot('git', str_repeat('a', 40), 'hash', $files, [], array_keys($files));
 
         return RevisionFacts::collect($source, RevisionConfiguration::from($source));

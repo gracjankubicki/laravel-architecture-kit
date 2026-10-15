@@ -4,14 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Classification;
 
-use GracjanKubicki\ArchitectureKit\Architecture;
-use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
+use GracjanKubicki\ArchitectureKit\Analysis\ConfigurationReader;
 use InvalidArgumentException;
-use PhpParser\ConstExprEvaluator;
-use PhpParser\Node;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitor\NameResolver;
-use PhpParser\ParserFactory;
 
 /** Declarations opt into data-only configuration, including its other entries. */
 final readonly class DeclaredConfiguration
@@ -25,12 +19,10 @@ final readonly class DeclaredConfiguration
             }
             throw new InvalidArgumentException('Architecture configuration exceeds 100 KB.');
         }
-        $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($source) ?? [];
-        $returned = ClassificationMappings::configurationNode($ast);
-        if ($returned === null) {
+        if (! self::hasDeclarationKey($source)) {
             return null;
         }
-        $config = self::evaluate($ast, $returned);
+        $config = ConfigurationReader::read($source);
         new ClassificationMappings($config['audit']['classification']);
 
         return $config;
@@ -40,56 +32,7 @@ final readonly class DeclaredConfiguration
      * @return array<string, mixed> */
     public static function readSource(string $source): array
     {
-        if (strlen($source) > 100000) {
-            throw new InvalidArgumentException('Architecture configuration exceeds 100 KB.');
-        }
-        $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($source) ?? [];
-        foreach ($ast as $statement) {
-            if (! ($statement instanceof Node\Stmt\Use_ || $statement instanceof Node\Stmt\GroupUse || $statement instanceof Node\Stmt\Nop || $statement instanceof Node\Stmt\Return_ || ($statement instanceof Node\Stmt\Declare_ && $statement->stmts === null))) {
-                throw new InvalidArgumentException('Historical configuration contains executable or conditional statements.');
-            }
-        }
-        $returns = array_values(array_filter($ast, static fn (Node $node): bool => $node instanceof Node\Stmt\Return_));
-        if (count($returns) !== 1 || ! $returns[0]->expr instanceof Node\Expr\Array_) {
-            throw new InvalidArgumentException('Historical configuration requires one top-level literal array return.');
-        }
-
-        return self::evaluate($ast, $returns[0]->expr);
-    }
-
-    /** @param list<Node> $ast
-     * @return array<string, mixed> */
-    private static function evaluate(array $ast, Node\Expr\Array_ $returned): array
-    {
-        $traverser = new NodeTraverser(new NameResolver);
-        $traverser->traverse($ast);
-        $evaluator = new ConstExprEvaluator(static function (Node\Expr $expression): mixed {
-            if ($expression instanceof Node\Expr\ClassConstFetch && $expression->class instanceof Node\Name && $expression->name instanceof Node\Identifier) {
-                $class = $expression->class->toString();
-                $name = $expression->name->toString();
-                if (strtolower($name) === 'class') {
-                    return $class;
-                }
-                // Only package enums can be evaluated, never an application constant.
-                $cases = match ($class) {
-                    Architecture::class => Architecture::cases(),
-                    MissingTestLevel::class => MissingTestLevel::cases(),
-                    default => [],
-                };
-                foreach ($cases as $case) {
-                    if ($case->name === $name) {
-                        return $case;
-                    }
-                }
-            }
-            throw new InvalidArgumentException('Declared configuration must use literal data or Architecture/MissingTestLevel enum cases.');
-        });
-        $config = $evaluator->evaluateDirectly($returned);
-        if (! is_array($config)) {
-            throw new InvalidArgumentException('Declared configuration must return an array.');
-        }
-
-        return $config;
+        return ConfigurationReader::read($source);
     }
 
     /** Token scan avoids building an AST for oversized legacy configuration. */
@@ -134,7 +77,7 @@ final readonly class DeclaredConfiguration
                 continue;
             }
             if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING) {
-                $key = Node\Scalar\String_::fromString($text)->value;
+                $key = ConfigurationReader::literal($text);
                 $nextIndex = $i + 1;
                 $frame = null;
                 foreach (array_reverse($stack) as $level) {
@@ -184,13 +127,16 @@ final readonly class DeclaredConfiguration
                 }
                 if (isset($raw[$end]) && is_array($raw[$end]) && $raw[$end][0] === T_END_HEREDOC) {
                     $literal .= $raw[$end][1];
-                    $nodes = (new ParserFactory)->createForNewestSupportedVersion()->parse('<?php return '.$literal.';') ?? [];
-                    $value = ($nodes[0] ?? null) instanceof Node\Stmt\Return_ ? $nodes[0]->expr : null;
-                    if ($value instanceof Node\Scalar\String_) {
-                        $tokens[] = [T_CONSTANT_ENCAPSED_STRING, var_export($value->value, true), $token[2]];
-                        $i = $end;
+                    try {
+                        $value = ConfigurationReader::read('<?php return ['.$literal.'];')[0] ?? null;
+                        if (is_string($value)) {
+                            $tokens[] = [T_CONSTANT_ENCAPSED_STRING, var_export($value, true), $token[2]];
+                            $i = $end;
 
-                        continue;
+                            continue;
+                        }
+                    } catch (InvalidArgumentException) {
+                        // A dynamic string is not a literal declaration key.
                     }
                 }
             }

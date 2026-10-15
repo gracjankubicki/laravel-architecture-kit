@@ -71,6 +71,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 return ['enabled' => [Architecture::Inertia, Architecture::Fortify]];
 PHP);
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'inertiajs/inertia-laravel' => '^3.0',
                 'laravel/fortify' => '^1.0',

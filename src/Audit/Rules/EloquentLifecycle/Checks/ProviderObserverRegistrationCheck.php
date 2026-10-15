@@ -15,7 +15,7 @@ final readonly class ProviderObserverRegistrationCheck implements FileCheck
 
     public function findings(FileContext $file): array
     {
-        if (! str_starts_with($file->path, 'app/Providers/')) {
+        if (! $this->lifecycle->isProviderPath($file->path)) {
             return [];
         }
 

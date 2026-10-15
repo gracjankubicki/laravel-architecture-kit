@@ -65,7 +65,7 @@ final readonly class CachedGraph
                 ];
             }
 
-            $entries[$path] = ['s' => $symbols, 'e' => $edges, 't' => array_map(fn ($invocation) => $invocation->toArray(), $entry->testInvocations), ...($entry->impact !== null ? ['i' => $entry->impact->toArray()] : []), ...($entry->catalog !== null ? ['g' => $entry->catalog->toArray()] : [])];
+            $entries[$path] = ['s' => $symbols, 'e' => $edges, 't' => array_map(fn ($invocation) => $invocation->toArray(), $entry->testInvocations), 'p' => $entry->syntaxError !== null ? [$entry->syntaxError, $entry->syntaxErrorLine] : null, ...($entry->impact !== null ? ['i' => $entry->impact->toArray()] : []), ...($entry->catalog !== null ? ['g' => $entry->catalog->toArray()] : [])];
         }
 
         return [
@@ -120,9 +120,14 @@ final readonly class CachedGraph
                     $edges[] = new DependencyEdge($from, $to, $path, $line, $kind, $strong);
                 }
 
+                $parse = $entry['p'] ?? null;
+                if ($parse !== null && (! is_array($parse) || ! array_is_list($parse) || count($parse) !== 2 || ! is_string($parse[0]) || $parse[0] === '' || ! is_int($parse[1]) || $parse[1] < 1)) {
+                    return null;
+                }
                 $entries[$path] = new FileGraphEntry($symbols, $edges, array_map(fn ($value) => TestInvocation::fromArray($path, $value), $entry['t']),
                     isset($entry['i']) ? ImpactFacts::fromArray($path, $entry['i']) : null,
-                    isset($entry['g']) ? CatalogFacts::fromArray($path, $entry['g']) : null);
+                    isset($entry['g']) ? CatalogFacts::fromArray($path, $entry['g']) : null,
+                    $parse[0] ?? null, $parse[1] ?? 1);
             }
         } catch (Throwable) {
             // A partially written or hand-edited file is not worth diagnosing: it is

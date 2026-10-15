@@ -4,18 +4,16 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\ValueObjects;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class ValueObjectsRule implements AuditRule
+final readonly class ValueObjectsRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -41,7 +39,7 @@ final readonly class ValueObjectsRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -50,7 +48,7 @@ final readonly class ValueObjectsRule implements AuditRule
         $findings = [];
         $class = $this->firstClass($nodes);
 
-        if ($class instanceof Stmt\Class_) {
+        if (Node::is($class, 'statement.class')) {
             $className = $class->name?->toString();
 
             if (! $class->isFinal()) {
@@ -101,16 +99,16 @@ final readonly class ValueObjectsRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstClass(array $nodes): ?Stmt\Class_
+    private function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 foreach ($node->stmts as $statement) {
-                    if ($statement instanceof Stmt\Class_) {
+                    if (Node::is($statement, 'statement.class')) {
                         return $statement;
                     }
                 }
@@ -123,9 +121,9 @@ final readonly class ValueObjectsRule implements AuditRule
     /**
      * @param  array<int, string>  $expected
      */
-    private function classExtendsAny(Stmt\Class_ $class, array $expected): bool
+    private function classExtendsAny(Node $class, array $expected): bool
     {
-        if (! $class->extends instanceof Name) {
+        if (! Node::is($class->extends, 'name')) {
             return false;
         }
 
@@ -161,7 +159,7 @@ final readonly class ValueObjectsRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof Stmt\ClassMethod
+                    Node::is($node, 'statement.class-method')
                     && $node->isPublic()
                     && str_starts_with($node->name->toString(), 'set')
                 ) {
@@ -197,7 +195,7 @@ final readonly class ValueObjectsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Stmt\ClassMethod) {
+                if (Node::is($node, 'statement.class-method')) {
                     $this->state->method = $node->name->toString();
 
                     return null;
@@ -208,9 +206,9 @@ final readonly class ValueObjectsRule implements AuditRule
                 }
 
                 if (
-                    ($node instanceof Node\Expr\Assign || $node instanceof Node\Expr\AssignOp)
-                    && $node->var instanceof Node\Expr\PropertyFetch
-                    && $node->var->var instanceof Node\Expr\Variable
+                    (Node::is($node, 'expression.assign') || Node::is($node, 'expression.assign-op'))
+                    && Node::is($node->var, 'expression.property-fetch')
+                    && Node::is($node->var->var, 'expression.variable')
                     && $node->var->var->name === 'this'
                 ) {
                     $this->state->lines[] = $node->getStartLine();
@@ -221,7 +219,7 @@ final readonly class ValueObjectsRule implements AuditRule
 
             public function leaveNode(Node $node): null
             {
-                if ($node instanceof Stmt\ClassMethod) {
+                if (Node::is($node, 'statement.class-method')) {
                     $this->state->method = null;
                 }
 

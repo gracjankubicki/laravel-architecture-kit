@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
 
 /** Reads topology and worker limits; unrelated Horizon configuration is omitted. */
 final class HorizonCatalogExtractor
@@ -25,8 +23,8 @@ final class HorizonCatalogExtractor
         if ($file->path !== 'config/horizon.php') {
             return new CatalogFacts($file->path);
         }
-        $returns = array_values(array_filter($file->ast() ?? [], fn ($node) => $node instanceof Stmt\Return_));
-        $config = count($returns) === 1 && $returns[0]->expr instanceof Expr\Array_ ? $this->map($returns[0]->expr) : null;
+        $returns = array_values(array_filter($file->syntax() ?? [], fn ($node) => Node::is($node, 'statement.return')));
+        $config = count($returns) === 1 && Node::is($returns[0]->expr, 'expression.array') ? $this->map($returns[0]->expr) : null;
         if ($config === null) {
             $this->diagnostics[] = new CatalogDiagnostic('horizon_config_analysis', 'Horizon config return is dynamic or ambiguous.', 1);
 
@@ -34,7 +32,7 @@ final class HorizonCatalogExtractor
         }
         $elements = [];
         foreach (['defaults', 'environments'] as $section) {
-            $values = ($config[$section] ?? null) instanceof Expr\Array_ ? $this->map($config[$section]) : null;
+            $values = Node::is(($config[$section] ?? null), 'expression.array') ? $this->map($config[$section]) : null;
             if ($values === null) {
                 $this->diagnostics[] = new CatalogDiagnostic('horizon_config_analysis', 'Horizon '.$section.' declaration is absent or dynamic.', 1);
 
@@ -43,7 +41,7 @@ final class HorizonCatalogExtractor
             $environments = $section === 'defaults' ? ['' => $values] : $values;
             foreach ($environments as $environment => $supervisors) {
                 if ($section === 'environments') {
-                    if (! CatalogHorizonOptions::name($environment, true) || ! $supervisors instanceof Expr\Array_) {
+                    if (! CatalogHorizonOptions::name($environment, true) || ! Node::is($supervisors, 'expression.array')) {
                         $this->diagnostics[] = new CatalogDiagnostic('horizon_config_analysis', 'Horizon environment selector or options are unresolved.', 1);
 
                         continue;
@@ -55,7 +53,7 @@ final class HorizonCatalogExtractor
                         CatalogElement::identity($file->path, 'file', $file->path), metadata: ['environment' => $environment, 'resolved' => $supervisors !== null]);
                 }
                 foreach ($supervisors ?? [] as $name => $definition) {
-                    if (! CatalogHorizonOptions::name($name) || ! $definition instanceof Expr\Array_) {
+                    if (! CatalogHorizonOptions::name($name) || ! Node::is($definition, 'expression.array')) {
                         $this->diagnostics[] = new CatalogDiagnostic('horizon_config_analysis', 'Horizon supervisor definition is unresolved.', 1);
 
                         continue;
@@ -68,16 +66,16 @@ final class HorizonCatalogExtractor
                             continue;
                         }
                         $value = null;
-                        if ($field === 'queue' && $expression instanceof Expr\Array_ && count($expression->items) <= 128) {
+                        if ($field === 'queue' && Node::is($expression, 'expression.array') && count($expression->items) <= 128) {
                             $value = [];
                             foreach ($expression->items as $item) {
-                                if ($item === null || $item->key !== null || $item->unpack || $item->byRef || ! $item->value instanceof Scalar\String_ || ! CatalogHorizonOptions::name($item->value->value)) {
+                                if ($item === null || $item->key !== null || $item->unpack || $item->byRef || ! Node::is($item->value, 'scalar.string') || ! CatalogHorizonOptions::name($item->value->value)) {
                                     $value = null;
                                     break;
                                 }
                                 $value[] = $item->value->value;
                             }
-                        } elseif ($expression instanceof Scalar\String_) {
+                        } elseif (Node::is($expression, 'scalar.string')) {
                             if ($field === 'queue') {
                                 $names = explode(',', $expression->value);
                                 if (count($names) <= 128 && count(array_filter($names, fn ($name) => CatalogHorizonOptions::name($name))) === count($names)) {
@@ -86,10 +84,10 @@ final class HorizonCatalogExtractor
                             } elseif (in_array($field, ['connection', 'balance', 'autoScalingStrategy'], true) && CatalogHorizonOptions::name($expression->value)) {
                                 $value = $expression->value;
                             }
-                        } elseif ($field === 'balance' && $expression instanceof Expr\ConstFetch && strtolower($expression->name->toString()) === 'false') {
+                        } elseif ($field === 'balance' && Node::is($expression, 'expression.const-fetch') && strtolower($expression->name->toString()) === 'false') {
                             $value = false;
                         } elseif (in_array($field, CatalogHorizonOptions::NUMERIC, true)) {
-                            $integer = $expression instanceof Scalar\Int_ ? $expression->value : ($expression instanceof Expr\UnaryMinus && $expression->expr instanceof Scalar\Int_ ? -$expression->expr->value : null);
+                            $integer = Node::is($expression, 'scalar.int') ? $expression->value : (Node::is($expression, 'expression.unary-minus') && Node::is($expression->expr, 'scalar.int') ? -$expression->expr->value : null);
                             if ($integer !== null && $integer >= ($field === 'nice' ? -20 : 0) && $integer <= 2147483647) {
                                 $value = $integer;
                             }
@@ -98,7 +96,7 @@ final class HorizonCatalogExtractor
                         if ($value === null) {
                             $unresolved[] = $field;
                             $this->diagnostics[] = new CatalogDiagnostic('horizon_config_analysis', 'Horizon '.$field.' option is dynamic or unsupported.', max(1, $expression->getStartLine()));
-                            if ($field === 'queue' && $expression instanceof Expr\Array_ && count($expression->items) > 128) {
+                            if ($field === 'queue' && Node::is($expression, 'expression.array') && count($expression->items) > 128) {
                                 $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Horizon queue list exceeds its source budget.', max(1, $expression->getStartLine()));
                             }
                         }
@@ -114,8 +112,8 @@ final class HorizonCatalogExtractor
         return new CatalogFacts($file->path, $elements, [], $this->diagnostics);
     }
 
-    /** @return array<string, Expr>|null */
-    private function map(Expr\Array_ $array): ?array
+    /** @return array<string, Node>|null */
+    private function map(Node $array): ?array
     {
         $result = [];
         foreach ($array->items as $item) {
@@ -124,7 +122,7 @@ final class HorizonCatalogExtractor
 
                 return null;
             }
-            if ($item === null || $item->unpack || $item->byRef || ! $item->key instanceof Scalar\String_) {
+            if ($item === null || $item->unpack || $item->byRef || ! Node::is($item->key, 'scalar.string')) {
                 $this->diagnostics[] = new CatalogDiagnostic('horizon_config_analysis', 'Dynamic Horizon map key or unpacking prevents exact source composition.', max(1, $array->getStartLine()));
 
                 return null;

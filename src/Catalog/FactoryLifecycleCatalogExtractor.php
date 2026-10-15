@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Derived;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Source factory chains retain callback identities, never attribute/state payloads. */
 final class FactoryLifecycleCatalogExtractor
@@ -43,7 +42,7 @@ final class FactoryLifecycleCatalogExtractor
                 $this->owners[$element->offset] = $element;
             }
         }
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path), '');
         }
 
@@ -61,34 +60,34 @@ final class FactoryLifecycleCatalogExtractor
 
             return;
         }
-        if (isset($this->owners[$node->getStartFilePos()]) && ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction)) {
+        if (isset($this->owners[$node->getStartFilePos()]) && (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function'))) {
             $declaration = $this->owners[$node->getStartFilePos()];
             $owner = $declaration->id;
-            if ($node instanceof Stmt\ClassLike) {
+            if (Node::is($node, 'statement.class-like')) {
                 $class = $declaration->name;
             }
         }
-        if ($node instanceof Stmt\ClassMethod && ! $node->isStatic()
-            && count($node->stmts ?? []) === 1 && $node->stmts[0] instanceof Stmt\Return_
-            && ($node->stmts[0]->expr instanceof Expr\MethodCall || $node->stmts[0]->expr instanceof Expr\NullsafeMethodCall || $node->stmts[0]->expr instanceof Expr\Variable)) {
+        if (Node::is($node, 'statement.class-method') && ! $node->isStatic()
+            && count($node->stmts ?? []) === 1 && Node::is($node->stmts[0], 'statement.return')
+            && (Node::is($node->stmts[0]->expr, 'expression.method-call') || Node::is($node->stmts[0]->expr, 'expression.nullsafe-method-call') || Node::is($node->stmts[0]->expr, 'expression.variable'))) {
             $signatureValid = array_filter($node->params, fn ($param) => $param->default === null && ! $param->variadic) === [];
             $this->operation($file, $node->stmts[0]->expr, $owner, $class, configuration: true, signatureValid: $signatureValid, configurationName: strtolower($node->name->toString()));
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier')
             && in_array(strtolower($node->name->toString()), self::TERMINALS, true) && ! $node->isFirstClassCallable()) {
             $this->operation($file, $node, $owner, $class);
         }
         foreach ($node->getSubNodeNames() as $key) {
             $value = $node->$key;
             foreach (is_array($value) ? $value : [$value] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner, $class);
                 }
             }
         }
     }
 
-    private function operation(FileContext $file, Expr\MethodCall|Expr\NullsafeMethodCall|Expr\Variable $site, string $owner, string $class, bool $configuration = false, bool $signatureValid = true, string $configurationName = 'configure', bool $related = false, int $depth = 0): ?string
+    private function operation(FileContext $file, Node $site, string $owner, string $class, bool $configuration = false, bool $signatureValid = true, string $configurationName = 'configure', bool $related = false, int $depth = 0): ?string
     {
         if (++$this->pipelines > 4096 || $depth >= 32) {
             $this->limited = true;
@@ -98,22 +97,22 @@ final class FactoryLifecycleCatalogExtractor
         }
         $chain = [];
         $root = $site;
-        while ($root instanceof Expr\MethodCall || $root instanceof Expr\NullsafeMethodCall) {
-            if (count($chain) >= 64 || ! $root->name instanceof Node\Identifier || $root->isFirstClassCallable()) {
+        while (Node::is($root, 'expression.method-call') || Node::is($root, 'expression.nullsafe-method-call')) {
+            if (count($chain) >= 64 || ! Node::is($root->name, 'identifier') || $root->isFirstClassCallable()) {
                 return null;
             }
             array_unshift($chain, $root);
             $root = $root->var;
         }
         if ($configuration) {
-            if (! $root instanceof Expr\Variable || $root->name !== 'this') {
+            if (! Node::is($root, 'expression.variable') || $root->name !== 'this') {
                 return null;
             }
             $receiver = $class;
             $resolved = $signatureValid;
             $calls = $chain;
         } else {
-            if (! $root instanceof Expr\StaticCall || ! $root->class instanceof Node\Name || ! $root->name instanceof Node\Identifier || $root->isFirstClassCallable()
+            if (! Node::is($root, 'expression.static-call') || ! Node::is($root->class, 'name') || ! Node::is($root->name, 'identifier') || $root->isFirstClassCallable()
                 || ! in_array(strtolower($root->name->toString()), ['new', 'factory'], true)) {
                 return null;
             }
@@ -157,11 +156,11 @@ final class FactoryLifecycleCatalogExtractor
             if (in_array($method, ['has', 'for', 'hasattached'], true)) {
                 $argument = $this->argument($call, 'factory');
                 $name = $this->argument($call, 'relationship', $method === 'hasattached' ? 2 : 1);
-                $literal = $name instanceof Node\Scalar\String_ && preg_match('/\A[a-zA-Z_][a-zA-Z0-9_]{0,255}\z/D', $name->value) === 1 ? $name->value : null;
-                $default = $name === null || $name instanceof Expr\ConstFetch && strtolower($name->name->toString()) === 'null';
+                $literal = Node::is($name, 'scalar.string') && preg_match('/\A[a-zA-Z_][a-zA-Z0-9_]{0,255}\z/D', $name->value) === 1 ? $name->value : null;
+                $default = $name === null || Node::is($name, 'expression.const-fetch') && strtolower($name->name->toString()) === 'null';
                 $target = null;
-                if ($argument instanceof Expr\StaticCall || $argument instanceof Expr\MethodCall) {
-                    $terminal = new Expr\MethodCall($argument, 'create', [], $argument->getAttributes());
+                if (Node::is($argument, 'expression.static-call') || Node::is($argument, 'expression.method-call')) {
+                    $terminal = Derived::node($argument, 'expression.method-call', ['var' => $argument, 'name' => Derived::identifier($argument, 'create'), 'args' => []]);
                     $target = $this->operation($file, $terminal, $owner, $class, related: true, depth: $depth + 1);
                 }
                 if ($target === null || ! $default && $literal === null) {
@@ -172,15 +171,15 @@ final class FactoryLifecycleCatalogExtractor
                 if ($method === 'hasattached') {
                     $pivot = $this->argument($call, 'pivot', 1);
                     // Source callable and sequence pivot forms require their own lifecycle composition.
-                    if ($pivot !== null && ! $pivot instanceof Expr\Array_) {
+                    if ($pivot !== null && ! Node::is($pivot, 'expression.array')) {
                         $resolved = false;
                     }
                 }
             } elseif ($method === 'connection') {
                 $argument = $this->argument($call, 'connection');
-                if ($argument instanceof Node\Scalar\String_ && preg_match('/\A[a-zA-Z0-9_.-]{1,256}\z/D', $argument->value) === 1) {
+                if (Node::is($argument, 'scalar.string') && preg_match('/\A[a-zA-Z0-9_.-]{1,256}\z/D', $argument->value) === 1) {
                     $connection = ['kind' => 'named', 'name' => $argument->value];
-                } elseif ($argument instanceof Expr\ConstFetch && strtolower($argument->name->toString()) === 'null') {
+                } elseif (Node::is($argument, 'expression.const-fetch') && strtolower($argument->name->toString()) === 'null') {
                     $connection = ['kind' => 'model', 'name' => null];
                 } else {
                     $resolved = false;
@@ -193,29 +192,29 @@ final class FactoryLifecycleCatalogExtractor
             } elseif (in_array($method, ['state', 'aftermaking', 'aftercreating'], true)) {
                 $argument = $this->argument($call, $method === 'state' ? 'state' : 'callback');
                 $target = $argument === null ? null : ($this->owners[$argument->getStartFilePos()] ?? null);
-                if (($argument instanceof Expr\Closure || $argument instanceof Expr\ArrowFunction) && $target?->kind === 'closure') {
+                if ((Node::is($argument, 'expression.closure') || Node::is($argument, 'expression.arrow-function')) && $target?->kind === 'closure') {
                     $resolved = $resolved && ($method !== 'state' || ! $argument->static);
                     $callbacks[] = $stepCallbacks[] = ['stage' => $method, 'target' => $target->id, 'line' => max(1, $call->getStartLine()), 'end_line' => max(1, $call->getEndLine())];
-                } elseif ($method !== 'state' || ! $argument instanceof Expr\Array_) {
+                } elseif ($method !== 'state' || ! Node::is($argument, 'expression.array')) {
                     $resolved = false;
                 }
             } elseif ($method === 'count' || $method === 'factory') {
                 $countOverridden = true;
                 $count = $this->argument($call, 'count');
                 $instances = true;
-                if ($count instanceof Node\Scalar\Int_) {
+                if (Node::is($count, 'scalar.int')) {
                     $instances = $count->value > 0;
-                } elseif ($count instanceof Expr\UnaryMinus && $count->expr instanceof Node\Scalar\Int_) {
+                } elseif (Node::is($count, 'expression.unary-minus') && Node::is($count->expr, 'scalar.int')) {
                     $instances = -$count->expr->value > 0;
                 }
                 // HasFactory passes numeric literals through its weakly typed count(int).
                 // Fractions truncate before Factory::make checks whether count is below one.
                 if ($method === 'factory') {
-                    $numeric = $count instanceof Node\Scalar\Float_ || $count instanceof Node\Scalar\String_
+                    $numeric = Node::is($count, 'scalar.float') || Node::is($count, 'scalar.string')
                         ? $count->value : null;
-                    if (($count instanceof Expr\UnaryMinus || $count instanceof Expr\UnaryPlus)
-                        && ($count->expr instanceof Node\Scalar\Int_ || $count->expr instanceof Node\Scalar\Float_)) {
-                        $numeric = $count instanceof Expr\UnaryMinus ? -$count->expr->value : $count->expr->value;
+                    if ((Node::is($count, 'expression.unary-minus') || Node::is($count, 'expression.unary-plus'))
+                        && (Node::is($count->expr, 'scalar.int') || Node::is($count->expr, 'scalar.float'))) {
+                        $numeric = Node::is($count, 'expression.unary-minus') ? -$count->expr->value : $count->expr->value;
                     }
                     if ($numeric !== null && is_numeric($numeric)) {
                         $number = (float) $numeric;
@@ -229,10 +228,10 @@ final class FactoryLifecycleCatalogExtractor
             }
             if (! $configuration && ($call === $site || in_array($method, ['new', 'factory'], true))) {
                 $factoryCount = $method === 'factory' ? $this->argument($call, 'count') : null;
-                $stateParameters = $factoryCount instanceof Expr\Closure || $factoryCount instanceof Expr\ArrowFunction || $factoryCount instanceof Expr\Array_ ? ['count'] : ['state'];
+                $stateParameters = Node::is($factoryCount, 'expression.closure') || Node::is($factoryCount, 'expression.arrow-function') || Node::is($factoryCount, 'expression.array') ? ['count'] : ['state'];
                 foreach ($method === 'factory' ? $stateParameters : ['attributes'] as $parameter) {
                     $argument = $this->argument($call, $parameter, $parameter === 'state' ? 1 : 0);
-                    if ($argument instanceof Expr\Closure || $argument instanceof Expr\ArrowFunction) {
+                    if (Node::is($argument, 'expression.closure') || Node::is($argument, 'expression.arrow-function')) {
                         $resolved = $resolved && ! $argument->static;
                         $target = $this->owners[$argument->getStartFilePos()] ?? null;
                         if ($target?->kind === 'closure') {
@@ -265,7 +264,7 @@ final class FactoryLifecycleCatalogExtractor
         return $id;
     }
 
-    private function argument(Expr\CallLike $call, string $name, int $index = 0): ?Node
+    private function argument(Node $call, string $name, int $index = 0): ?Node
     {
         foreach ($call->getArgs() as $position => $argument) {
             if (! $argument->unpack && ($argument->name?->toString() === $name || $argument->name === null && $position === $index)) {

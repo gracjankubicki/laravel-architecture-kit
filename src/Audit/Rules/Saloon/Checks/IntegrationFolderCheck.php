@@ -4,17 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\ClassInspector;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\IntegrationPaths;
-use PhpParser\Node;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class IntegrationFolderCheck implements FileCheck
 {
@@ -26,7 +23,7 @@ final readonly class IntegrationFolderCheck implements FileCheck
             return [];
         }
 
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
         $class = $nodes === null ? null : ClassInspector::firstClass($nodes);
         $findings = [];
 
@@ -87,7 +84,7 @@ final readonly class IntegrationFolderCheck implements FileCheck
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof StaticCall && $node->class instanceof Name && $node->class->toString() === 'DB') {
+                if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && $node->class->toString() === 'DB') {
                     $this->state->findings[] = new AuditFinding(
                         'error',
                         'folder-purity',
@@ -97,7 +94,7 @@ final readonly class IntegrationFolderCheck implements FileCheck
                     );
                 }
 
-                if ($node instanceof Stmt\UseUse && str_starts_with($node->name->toString(), 'App\\Models\\')) {
+                if (Node::is($node, 'use-item') && str_starts_with($node->name->toString(), 'App\\Models\\')) {
                     $this->state->findings[] = new AuditFinding(
                         'error',
                         'folder-purity',

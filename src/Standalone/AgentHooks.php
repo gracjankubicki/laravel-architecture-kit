@@ -10,7 +10,7 @@ use Throwable;
 /** Client-specific protocol adapters, with no transcript or prompt persistence. */
 final readonly class AgentHooks
 {
-    public function __construct(private string $home, private ?string $profile = null, private ?string $project = null) {}
+    public function __construct(private string $home, private ?string $profile = null, private ?string $project = null, private bool $runtimeRoutes = false) {}
 
     /** @param array<string, mixed> $input
      * @return array<string, mixed>
@@ -40,7 +40,7 @@ final readonly class AgentHooks
             if (! is_string($session) || $session === '') {
                 throw new RuntimeException('Hook session identifier is missing.');
             }
-            $context = new RepositoryContext($root, $this->home, $this->profile);
+            $context = new RepositoryContext($root, $this->home, $this->profile, runtimeRoutes: $this->runtimeRoutes);
             RepositoryContext::activate($context);
             $sessions = new StateStore($context->storage.'/sessions', $context->home);
             $sessionKey = hash('sha256', $client.':'.$session);
@@ -115,12 +115,12 @@ final readonly class AgentHooks
         if (! in_array($client, ['codex', 'claude'], true)) {
             throw new RuntimeException('Supported clients are codex and claude.');
         }
-        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg($binary).' --tool-home '.escapeshellarg($this->home).' --project '.escapeshellarg($root).($this->profile === null ? '' : ' --profile '.escapeshellarg($this->profile)).' hook '.$client;
+        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg($binary).' --tool-home '.escapeshellarg($this->home).' --project '.escapeshellarg($root).($this->profile === null ? '' : ' --profile '.escapeshellarg($this->profile)).($this->runtimeRoutes ? ' --runtime-routes' : '').' hook '.$client;
         $hooks = [];
         foreach (['SessionStart', 'UserPromptSubmit', 'Stop'] as $event) {
-            $hooks[$event] = [['hooks' => [['type' => 'command', 'command' => $command, 'timeout' => 120]]]];
+            $hooks[$event] = [['hooks' => [['type' => 'command', 'command' => $command, 'timeout' => $this->runtimeRoutes ? 300 : 120]]]];
         }
-        $mcp = ['command' => PHP_BINARY, 'args' => [$binary, '--tool-home', $this->home, '--project', $root, ...($this->profile === null ? [] : ['--profile', $this->profile]), 'mcp']];
+        $mcp = ['command' => PHP_BINARY, 'args' => [$binary, '--tool-home', $this->home, '--project', $root, ...($this->profile === null ? [] : ['--profile', $this->profile]), ...($this->runtimeRoutes ? ['--runtime-routes'] : []), 'mcp']];
         $directory = $this->home.'/integrations/'.$client.'/'.hash('sha256', $root);
         $store = new StateStore($directory, $this->home);
         $store->update('hooks', static fn (): array => ['hooks' => $hooks]);

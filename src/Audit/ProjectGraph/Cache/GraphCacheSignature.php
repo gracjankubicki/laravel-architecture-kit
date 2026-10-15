@@ -22,7 +22,7 @@ namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache;
 final readonly class GraphCacheSignature
 {
     /** Bumped when the stored shape changes in a way older entries cannot satisfy. */
-    public const FORMAT = 1;
+    public const FORMAT = 2;
 
     /**
      * @param  string  $fingerprint  Configuration and package state the graph depends on.

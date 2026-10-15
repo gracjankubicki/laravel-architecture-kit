@@ -23,6 +23,9 @@ final class Baseline
         $entries = [];
 
         foreach ($findings as $finding) {
+            if ($finding->rule === 'unparseable-file') {
+                continue;
+            }
             $key = $this->key($finding);
             $entries[$key] ??= [
                 'severity' => $finding->severity,
@@ -59,7 +62,7 @@ final class Baseline
         foreach ($findings as $finding) {
             $key = $this->key($finding);
 
-            if (($entries[$key] ?? 0) > 0) {
+            if ($finding->rule !== 'unparseable-file' && ($entries[$key] ?? 0) > 0) {
                 $entries[$key]--;
                 $suppressed++;
 

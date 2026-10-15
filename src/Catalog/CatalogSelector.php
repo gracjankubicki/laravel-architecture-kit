@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
-use PhpParser\Node;
-use PhpParser\Node\Expr;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 
 /** Bounded literal selector evaluation never executes expressions or retains payload arrays. */
 final class CatalogSelector
@@ -15,10 +14,10 @@ final class CatalogSelector
         if ($depth > 16) {
             return null;
         }
-        if ($node instanceof Node\Scalar\String_) {
+        if (Node::is($node, 'scalar.string')) {
             return strlen($node->value) <= 500 ? $node->value : null;
         }
-        if ($node instanceof Expr\BinaryOp\Concat) {
+        if (Node::is($node, 'expression.binary-op.concat')) {
             $left = self::literal($node->left, $depth + 1);
             $right = self::literal($node->right, $depth + 1);
 

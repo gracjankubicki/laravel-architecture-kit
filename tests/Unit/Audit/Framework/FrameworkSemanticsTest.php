@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Audit\Framework;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkCallResult;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkSemantics;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkValue;
@@ -11,8 +12,6 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\NodeFinder;
 
 final class FrameworkSemanticsTest extends TestCase
 {
@@ -24,7 +23,7 @@ final class FrameworkSemanticsTest extends TestCase
         $graph = (new ProjectGraphLoader($files, $this->tempPath))->load();
         $sources = new SourceIndex($files, $this->tempPath, $graph);
         $source = $sources->get('App\\Probe');
-        $call = (new NodeFinder)->findFirstInstanceOf($source->file->ast(), StaticCall::class);
+        $call = (new NodeFinder)->findFirstOfKind($source->file->syntax(), 'expression.static-call');
         $semantics = new FrameworkSemantics($sources);
 
         $known = $semantics->describe(FrameworkValue::type('Laravel\\Fortify\\Features'), null, 'registration', [], $source, $call);

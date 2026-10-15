@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Stores provider selectors, never OAuth tokens, state, scopes or user data. */
 final class SocialiteCatalogExtractor
@@ -33,7 +31,7 @@ final class SocialiteCatalogExtractor
         foreach ($php->elements as $element) {
             $this->owners[$element->offset] = $element->id;
         }
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path));
         }
 
@@ -51,10 +49,10 @@ final class SocialiteCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $owner = $this->owners[$node->getStartFilePos()] ?? $owner;
         }
-        if ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier && isset(self::PARAMETERS[$method = strtolower($node->name->toString())]) && ! $node->isFirstClassCallable()) {
+        if (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier') && isset(self::PARAMETERS[$method = strtolower($node->name->toString())]) && ! $node->isFirstClassCallable()) {
             $parameters = self::PARAMETERS[$method];
             $valid = count($node->args) === count($parameters);
             $seen = [];
@@ -65,17 +63,17 @@ final class SocialiteCatalogExtractor
             }
             $root = $node->var;
             $depth = 0;
-            while ($root instanceof Expr\MethodCall && $root->name instanceof Node\Identifier && in_array(strtolower($root->name->toString()), CatalogSocialiteResolver::FLUENT, true) && $depth++ < 16) {
+            while (Node::is($root, 'expression.method-call') && Node::is($root->name, 'identifier') && in_array(strtolower($root->name->toString()), CatalogSocialiteResolver::FLUENT, true) && $depth++ < 16) {
                 $valid = $valid && ! $root->isFirstClassCallable();
                 $root = $root->var;
             }
             $driver = null;
             $selectionPresent = false;
-            if (($root instanceof Expr\StaticCall || $root instanceof Expr\MethodCall) && $root->name instanceof Node\Identifier && in_array(strtolower($root->name->toString()), ['driver', 'with'], true)) {
+            if ((Node::is($root, 'expression.static-call') || Node::is($root, 'expression.method-call')) && Node::is($root->name, 'identifier') && in_array(strtolower($root->name->toString()), ['driver', 'with'], true)) {
                 $selectionPresent = true;
                 $arg = count($root->args) === 1 ? $root->getArgs()[0] : null;
                 $valid = $valid && ! $root->isFirstClassCallable() && $arg !== null && ! $arg->unpack && ($arg->name === null || $arg->name->toString() === 'driver');
-                if ($arg?->value instanceof Node\Scalar\String_ && preg_match('/\A[a-zA-Z][a-zA-Z0-9_-]{0,127}\z/D', $arg->value->value) === 1) {
+                if (Node::is($arg?->value, 'scalar.string') && preg_match('/\A[a-zA-Z][a-zA-Z0-9_-]{0,127}\z/D', $arg->value->value) === 1) {
                     $driver = $arg->value->value;
                 }
             }
@@ -86,7 +84,7 @@ final class SocialiteCatalogExtractor
         }
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner);
                 }
             }

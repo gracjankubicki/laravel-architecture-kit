@@ -4,17 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Routes;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\WorkflowSignals;
-use PhpParser\Node;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\NodeVisitorAbstract;
 
 /**
  * Business logic closed inside a route definition.
@@ -24,7 +21,7 @@ use PhpParser\NodeVisitorAbstract;
  * to do with the code. The signals are the ones the controller rule already uses, so a
  * workflow does not become acceptable by moving one file up.
  */
-final readonly class RouteLogicRule implements AuditRule
+final readonly class RouteLogicRule implements PortableAuditRule
 {
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -39,7 +36,7 @@ final readonly class RouteLogicRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -87,17 +84,17 @@ final readonly class RouteLogicRule implements AuditRule
             {
                 // A route closure is the unit of work here, the way a method is in a
                 // controller: a model typed in its signature is the one being written to.
-                if ($node instanceof Node\Expr\Closure || $node instanceof Node\Expr\ArrowFunction) {
+                if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
                     $this->modelVariableScopes[] = $this->scopeFor($node);
 
                     return null;
                 }
 
-                if ($node instanceof MethodCall && $node->name instanceof Node\Identifier) {
+                if (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier')) {
                     $this->inspectMethodCall($node, $node->name->toString());
                 }
 
-                if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
+                if (Node::is($node, 'expression.static-call') && Node::is($node->name, 'identifier')) {
                     $this->inspectStaticCall($node, $node->name->toString());
                 }
 
@@ -106,14 +103,14 @@ final readonly class RouteLogicRule implements AuditRule
 
             public function leaveNode(Node $node): null
             {
-                if ($node instanceof Node\Expr\Closure || $node instanceof Node\Expr\ArrowFunction) {
+                if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
                     array_pop($this->modelVariableScopes);
                 }
 
                 return null;
             }
 
-            private function inspectMethodCall(MethodCall $node, string $method): void
+            private function inspectMethodCall(Node $node, string $method): void
             {
                 if (WorkflowSignals::isValidationCall($method)) {
                     $this->record($node->getStartLine(), 'Route performs inline validation; move the request to a controller with a FormRequest.', 'E_ROUTE_INLINE_VALIDATION');
@@ -124,9 +121,9 @@ final readonly class RouteLogicRule implements AuditRule
                 }
             }
 
-            private function inspectStaticCall(StaticCall $node, string $method): void
+            private function inspectStaticCall(Node $node, string $method): void
             {
-                $class = $node->class instanceof Name ? $this->file->resolvedName($node->class) : null;
+                $class = Node::is($node->class, 'name') ? $this->file->resolvedName($node->class) : null;
 
                 if ($class === null) {
                     return;
@@ -157,13 +154,13 @@ final readonly class RouteLogicRule implements AuditRule
              *
              * @return array<string, true>
              */
-            private function scopeFor(Node\FunctionLike $function): array
+            private function scopeFor(Node $function): array
             {
                 $scope = $this->modelParameters($function);
 
-                if (! $function instanceof Node\Expr\Closure) {
+                if (! Node::is($function, 'expression.closure')) {
                     // An arrow function reads the enclosing scope wholesale.
-                    return $function instanceof Node\Expr\ArrowFunction
+                    return Node::is($function, 'expression.arrow-function')
                         ? [...$this->currentScope(), ...$scope]
                         : $scope;
                 }
@@ -190,13 +187,13 @@ final readonly class RouteLogicRule implements AuditRule
             /**
              * @return array<string, true>
              */
-            private function modelParameters(Node\FunctionLike $function): array
+            private function modelParameters(Node $function): array
             {
                 $parameters = [];
 
                 foreach ($function->getParams() as $parameter) {
                     if (
-                        ! $parameter->type instanceof Name
+                        ! Node::is($parameter->type, 'name')
                         || ! is_string($parameter->var->name)
                         || ! WorkflowSignals::isModelClass($this->file->resolvedName($parameter->type))
                     ) {
@@ -209,9 +206,9 @@ final readonly class RouteLogicRule implements AuditRule
                 return $parameters;
             }
 
-            private function isModelVariable(Node\Expr $receiver): bool
+            private function isModelVariable(Node $receiver): bool
             {
-                if (! $receiver instanceof Node\Expr\Variable || ! is_string($receiver->name)) {
+                if (! Node::is($receiver, 'expression.variable') || ! is_string($receiver->name)) {
                     return false;
                 }
 

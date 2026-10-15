@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Derived;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\DataCatalog;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Source global-scope registrations retain targets and provenance, not predicates. */
 final class CatalogGlobalScopes
@@ -23,7 +22,7 @@ final class CatalogGlobalScopes
             $owners[$element->offset] = $element;
         }
         $result = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassLike::class) as $class) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $class) {
             $name = DataCatalog::name($class, $file);
             $rows = [];
             foreach ($class->attrGroups as $group) {
@@ -33,13 +32,13 @@ final class CatalogGlobalScopes
                     }
                     $arg = $attribute->args[0] ?? null;
                     $valid = count($attribute->args) === 1 && $arg !== null && ! $arg->unpack && ($arg->name === null || $arg->name->toString() === 'classes');
-                    $values = $valid ? ($arg->value instanceof Expr\Array_ ? $arg->value->items : [$arg]) : [null];
+                    $values = $valid ? (Node::is($arg->value, 'expression.array') ? $arg->value->items : [$arg]) : [null];
                     $limited = count($values) > 128;
                     if ($limited) {
                         $values = [null];
                     }
                     foreach ($values as $value) {
-                        $node = $value instanceof Node\ArrayItem ? $value->value : ($value instanceof Node\Arg ? $value->value : null);
+                        $node = Node::is($value, 'array-item') ? $value->value : (Node::is($value, 'arg') ? $value->value : null);
                         $type = $node === null ? null : self::type($node, $file, $name);
                         $rows[] = self::row($type, null, $type, 'attribute', null, $type !== null, $attribute, $limited);
                     }
@@ -48,9 +47,9 @@ final class CatalogGlobalScopes
             foreach ($class->getMethods() as $method) {
                 // Retain local candidates; composition selects only the effective booted method,
                 // which may be a trait alias of a differently named declaration.
-                foreach ((new NodeFinder)->findInstanceOf($method->stmts ?? [], Expr\StaticCall::class) as $call) {
-                    if (! $call->class instanceof Node\Name || ! in_array(strtolower($call->class->toString()), ['static', 'self'], true)
-                        || ! $call->name instanceof Node\Identifier || strtolower($call->name->toString()) !== 'addglobalscope' || $call->isFirstClassCallable()) {
+                foreach ((new NodeFinder)->findOfKind($method->stmts ?? [], 'expression.static-call') as $call) {
+                    if (! Node::is($call->class, 'name') || ! in_array(strtolower($call->class->toString()), ['static', 'self'], true)
+                        || ! Node::is($call->name, 'identifier') || strtolower($call->name->toString()) !== 'addglobalscope' || $call->isFirstClassCallable()) {
                         continue;
                     }
                     $args = self::registrationArguments($call);
@@ -62,26 +61,26 @@ final class CatalogGlobalScopes
                     $value = $args[count($args) - 1]->value ?? null;
                     if (count($args) === 2) {
                         $literal = $args[0]->value;
-                        $key = $literal instanceof Node\Scalar\String_ && preg_match('/\A[a-zA-Z_][a-zA-Z0-9_.-]{0,255}\z/D', $literal->value) === 1 ? $literal->value : null;
+                        $key = Node::is($literal, 'scalar.string') && preg_match('/\A[a-zA-Z_][a-zA-Z0-9_.-]{0,255}\z/D', $literal->value) === 1 ? $literal->value : null;
                         $valid = $valid && $key !== null;
                     }
-                    if ($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) {
+                    if (Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) {
                         $target = $owners[$value->getStartFilePos()]->id ?? null;
                         $first = $value->params[0]->var ?? null;
-                        $valid = $valid && $target !== null && $first instanceof Expr\Variable && is_string($first->name) && CatalogQueryScopes::preservesQuery($value, $first->name, expression: true);
-                    } elseif ($value instanceof Node) {
-                        $type = $value instanceof Expr\New_ && $value->class instanceof Node\Name && $value->getArgs() === []
-                            ? self::type(new Expr\ClassConstFetch($value->class, 'class'), $file, $name) : self::type($value, $file, $name);
+                        $valid = $valid && $target !== null && Node::is($first, 'expression.variable') && is_string($first->name) && CatalogQueryScopes::preservesQuery($value, $first->name, expression: true);
+                    } elseif (Node::is($value, 'node')) {
+                        $type = Node::is($value, 'expression.new') && Node::is($value->class, 'name') && $value->getArgs() === []
+                            ? self::type(Derived::classConstant($value->class, 'class'), $file, $name) : self::type($value, $file, $name);
                         $valid = $valid && $type !== null;
                         // A named implementation must be a Scope instance, not a class-string value.
-                        $valid = $valid && (count($args) === 1 || $value instanceof Expr\New_);
+                        $valid = $valid && (count($args) === 1 || Node::is($value, 'expression.new'));
                         $key ??= $type;
                     } else {
                         $valid = false;
                     }
                     $direct = false;
                     foreach ($method->stmts ?? [] as $stmt) {
-                        $direct = $direct || $stmt instanceof Stmt\Expression && $stmt->expr === $call;
+                        $direct = $direct || Node::is($stmt, 'statement.expression') && $stmt->expr === $call;
                     }
                     $rows[] = self::row($type, $target, $key, 'booted', $owners[$method->getStartFilePos()]->id ?? null, $valid && $direct, $call);
                 }
@@ -95,8 +94,8 @@ final class CatalogGlobalScopes
         return $result;
     }
 
-    /** @return list<Node\Arg>|null */
-    private static function registrationArguments(Expr\StaticCall $call): ?array
+    /** @return list<Node>|null */
+    private static function registrationArguments(Node $call): ?array
     {
         $values = [];
         $named = false;
@@ -114,7 +113,7 @@ final class CatalogGlobalScopes
         if (! isset($values[0])) {
             return null;
         }
-        if (isset($values[1]) && $values[1]->value instanceof Expr\ConstFetch && strtolower($values[1]->value->name->toString()) === 'null') {
+        if (isset($values[1]) && Node::is($values[1]->value, 'expression.const-fetch') && strtolower($values[1]->value->name->toString()) === 'null') {
             unset($values[1]);
         }
         ksort($values);

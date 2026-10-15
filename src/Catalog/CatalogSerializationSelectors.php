@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
 
 /** Serialization selectors preserve hashed keys, not attribute values. */
 final class CatalogSerializationSelectors
@@ -30,23 +27,23 @@ final class CatalogSerializationSelectors
 
                 return;
             }
-            if ($node instanceof Stmt\Property) {
+            if (Node::is($node, 'statement.property')) {
                 foreach ($node->props as $property) {
                     if ($property->name->toString() === 'snakeAttributes') {
-                        $value = $property->default instanceof Expr\ConstFetch ? strtolower($property->default->name->toString()) : null;
+                        $value = Node::is($property->default, 'expression.const-fetch') ? strtolower($property->default->name->toString()) : null;
                         $conventions[max(0, $property->getStartFilePos())] = $node->isStatic() && $node->isPublic() && in_array($value, ['true', 'false'], true) ? $value === 'true' : null;
                     }
                     if (! in_array($property->name->toString(), ['hidden', 'visible', 'appends'], true)) {
                         continue;
                     }
                     $keys = [];
-                    $resolved = ! $node->isStatic() && $property->default instanceof Expr\Array_ && count($property->default->items) <= 128;
-                    if ($property->default instanceof Expr\Array_) {
+                    $resolved = ! $node->isStatic() && Node::is($property->default, 'expression.array') && count($property->default->items) <= 128;
+                    if (Node::is($property->default, 'expression.array')) {
                         if (count($property->default->items) > 128) {
                             $limited = true;
                         } else {
                             foreach ($property->default->items as $item) {
-                                if ($item === null || $item->unpack || ! $item->value instanceof Scalar\String_) {
+                                if ($item === null || $item->unpack || ! Node::is($item->value, 'scalar.string')) {
                                     $resolved = false;
                                 } else {
                                     $keys[] = hash('sha256', $item->value->value);
@@ -57,7 +54,7 @@ final class CatalogSerializationSelectors
                     $properties[max(0, $property->getStartFilePos())] = ['resolved' => $resolved, 'keys' => array_values(array_unique($keys))];
                 }
             }
-            if ($node instanceof Stmt\ClassLike) {
+            if (Node::is($node, 'statement.class-like')) {
                 foreach ($node->attrGroups as $group) {
                     foreach ($group->attrs as $attribute) {
                         if (in_array($file->resolvedName($attribute->name), ['Illuminate\\Database\\Eloquent\\Attributes\\Hidden', 'Illuminate\\Database\\Eloquent\\Attributes\\Visible', 'Illuminate\\Database\\Eloquent\\Attributes\\Appends'], true)) {
@@ -70,16 +67,16 @@ final class CatalogSerializationSelectors
                                 $limited = true;
                             } else {
                                 foreach ($attribute->args as $arg) {
-                                    $resolved = $resolved && ! $arg->unpack && $arg->name === null && ($arg->value instanceof Scalar\String_ || $arg->value instanceof Expr\Array_);
+                                    $resolved = $resolved && ! $arg->unpack && $arg->name === null && (Node::is($arg->value, 'scalar.string') || Node::is($arg->value, 'expression.array'));
                                 }
                                 $first = $attribute->args[0]->value ?? null;
-                                if ($first instanceof Expr\Array_) {
+                                if (Node::is($first, 'expression.array')) {
                                     if (count($first->items) > 128) {
                                         $limited = true;
                                         $resolved = false;
                                     } else {
                                         foreach ($first->items as $item) {
-                                            if ($item === null || $item->unpack || ! $item->value instanceof Scalar\String_) {
+                                            if ($item === null || $item->unpack || ! Node::is($item->value, 'scalar.string')) {
                                                 $resolved = false;
                                             } else {
                                                 $keys[] = hash('sha256', $item->value->value);
@@ -88,7 +85,7 @@ final class CatalogSerializationSelectors
                                     }
                                 } else {
                                     foreach ($attribute->args as $arg) {
-                                        if ($arg->value instanceof Scalar\String_) {
+                                        if (Node::is($arg->value, 'scalar.string')) {
                                             $keys[] = hash('sha256', $arg->value->value);
                                         } else {
                                             $resolved = false;
@@ -104,13 +101,13 @@ final class CatalogSerializationSelectors
             }
             foreach ($node->getSubNodeNames() as $key) {
                 foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                    if ($child instanceof Node) {
+                    if (Node::is($child, 'node')) {
                         $walk($child);
                     }
                 }
             }
         };
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $walk($node);
         }
         // Release the recursive closure's self-reference and captured FileContext/AST.

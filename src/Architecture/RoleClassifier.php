@@ -55,7 +55,7 @@ final readonly class RoleClassifier
 
     private function defaultKind(string $path): ?string
     {
-        $kinds = ['Actions' => 'action', 'Queries' => 'query', 'Controllers' => 'controller', 'Models' => 'model', 'Services' => 'service', 'Jobs' => 'job', 'Listeners' => 'listener', 'Events' => 'event', 'Policies' => 'policy', 'Requests' => 'request', 'Resources' => 'resource', 'Data' => 'data', 'ValueObjects' => 'value-object', 'Enums' => 'enum', 'Exceptions' => 'exception', 'Builders' => 'builder', 'Contracts' => 'port', 'Ports' => 'port', 'Providers' => 'provider'];
+        $kinds = ['Actions' => 'action', 'Queries' => 'query', 'Controllers' => 'controller', 'Models' => 'model', 'Services' => 'service', 'Jobs' => 'job', 'Listeners' => 'listener', 'Events' => 'event', 'Policies' => 'policy', 'Requests' => 'request', 'Resources' => 'resource', 'Data' => 'data', 'Dto' => 'data', 'DTO' => 'data', 'ValueObjects' => 'value-object', 'Enums' => 'enum', 'Exceptions' => 'exception', 'Builders' => 'builder', 'Contracts' => 'port', 'Ports' => 'port', 'Providers' => 'provider'];
         foreach (array_reverse(explode('/', $path)) as $segment) {
             if (isset($kinds[$segment])) {
                 return $kinds[$segment];

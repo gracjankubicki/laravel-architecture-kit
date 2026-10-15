@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Framework;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
-use PhpParser\Node\Expr\ClassConstFetch;
-use PhpParser\Node\Name;
 
 final readonly class GateSemantics
 {
@@ -118,7 +117,7 @@ final readonly class GateSemantics
                     continue;
                 }
                 $argument = $attribute->args[0]->value ?? null;
-                if ($argument instanceof ClassConstFetch && $argument->class instanceof Name) {
+                if (Node::is($argument, 'expression.class-const-fetch') && Node::is($argument->class, 'name')) {
                     return $source->file->resolvedName($argument->class);
                 }
             }

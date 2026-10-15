@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
+use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
 
 class GuardCommand extends Command
@@ -31,7 +32,7 @@ class GuardCommand extends Command
         $agent = new AgentOutput;
 
         if ((bool) $this->option('schema')) {
-            $this->line($this->json($agent->schema('guard')));
+            $this->writeJson($agent->schema('guard'));
 
             return self::SUCCESS;
         }
@@ -45,7 +46,7 @@ class GuardCommand extends Command
             );
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent') || (bool) $this->option('json')) {
-                $this->line($this->json($agent->error('guard', $exception->getMessage())));
+                $this->writeJson($agent->error('guard', $exception->getMessage()));
 
                 return self::FAILURE;
             }
@@ -56,20 +57,20 @@ class GuardCommand extends Command
         }
 
         if ((bool) $this->option('agent')) {
-            $this->line($this->json($agent->guard(
+            $this->writeJson($agent->guard(
                 result: $result,
                 limit: $agent->limit($this->option('limit')),
                 full: (bool) $this->option('full'),
-            )));
+            ));
 
             return $result->ok() ? self::SUCCESS : self::FAILURE;
         }
 
         if ((bool) $this->option('json')) {
-            $this->line(json_encode(
+            $this->output->writeln(json_encode(
                 $result->toArray(),
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-            ) ?: '{}');
+            ) ?: '{}', OutputInterface::OUTPUT_RAW);
 
             return $result->ok() ? self::SUCCESS : self::FAILURE;
         }
@@ -139,9 +140,19 @@ class GuardCommand extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
+    /** @param array<string, mixed> $payload */
+    private function writeJson(array $payload): void
+    {
+        $json = $this->json($payload);
+        unset($payload);
+        $output = $this->output->getOutput();
+        for ($offset = 0, $length = strlen($json); $offset < $length; $offset += 65536) {
+            $output->write(substr($json, $offset, 65536), false, OutputInterface::OUTPUT_RAW);
+        }
+        $output->writeln('', OutputInterface::OUTPUT_RAW);
+    }
+
+    /** @param array<string, mixed> $payload */
     private function json(array $payload): string
     {
         return json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';

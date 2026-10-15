@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
@@ -23,7 +24,7 @@ final readonly class ImpactTestCandidates
         $wanted = [strtolower($symbol) => $symbol];
         $notices = [];
         foreach ($graph->edges as $edge) {
-            if (str_starts_with($edge->path, 'app/') && strcasecmp($edge->to, $symbol) === 0) {
+            if (! (new AuditScope)->isTestPath($edge->path) && strcasecmp($edge->to, $symbol) === 0) {
                 $wanted[strtolower($edge->from)] = $edge->from;
                 if (count($wanted) > 1000) {
                     $notices[] = ['path' => '(project)', 'line' => 1, 'reason' => 'Test candidate intermediary limit (1000) reached.'];
@@ -73,7 +74,7 @@ final readonly class ImpactTestCandidates
                 continue;
             }
             $context = new FileContext($path, $source);
-            if ($context->ast() === null) {
+            if ($context->syntax() === null) {
                 $skipped++;
                 $firstSkipped ??= ['path' => $path, 'line' => 1, 'reason' => 'Unparseable test source.'];
                 unset($context, $source);

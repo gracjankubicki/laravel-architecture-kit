@@ -4,17 +4,15 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\DataOperations;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Local source query identity and prefixes; expanded nodes are transient, never serialized. */
 final class CatalogQueryBindings
 {
-    /** @var array<int, Expr> */
+    /** @var array<int, Node> */
     private array $calls = [];
 
     /** @var list<CatalogDiagnostic> */
@@ -24,21 +22,21 @@ final class CatalogQueryBindings
 
     private bool $limited = false;
 
-    /** @return array{calls: array<int, Expr>, diagnostics: list<CatalogDiagnostic>} */
+    /** @return array{calls: array<int, Node>, diagnostics: list<CatalogDiagnostic>} */
     public function extract(FileContext $file): array
     {
         $this->calls = $this->diagnostics = [];
         $this->visited = 0;
         $this->limited = false;
         $vars = [];
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($node, $vars);
         }
 
         return ['calls' => $this->calls, 'diagnostics' => $this->diagnostics];
     }
 
-    /** @param array<string, array{id: int, value: Expr}> $vars */
+    /** @param array<string, array{id: int, value: Node}> $vars */
     private function visit(Node $node, array &$vars): void
     {
         if ($this->limited) {
@@ -50,14 +48,14 @@ final class CatalogQueryBindings
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $local = [];
             foreach ($node->getSubNodeNames() as $key) {
                 if (! in_array($key, ['stmts', 'expr'], true)) {
                     continue;
                 }
                 foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                    if ($child instanceof Node) {
+                    if (Node::is($child, 'node')) {
                         $this->visit($child, $local);
                     }
                 }
@@ -65,7 +63,7 @@ final class CatalogQueryBindings
 
             return;
         }
-        if ($node instanceof Expr\AssignRef) {
+        if (Node::is($node, 'expression.assign-ref')) {
             $this->children($node, $vars);
             if ($vars !== []) {
                 $this->diagnostics[] = new CatalogDiagnostic('data_binding_analysis', 'Reference assignment invalidates local query identities.', max(1, $node->getStartLine()));
@@ -74,22 +72,22 @@ final class CatalogQueryBindings
 
             return;
         }
-        if ($node instanceof Expr\Assign && $node->var instanceof Expr\Variable && is_string($node->var->name)) {
-            $alias = $node->expr instanceof Expr\Variable && is_string($node->expr->name) ? ($vars[$node->expr->name] ?? null) : null;
+        if (Node::is($node, 'expression.assign') && Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
+            $alias = Node::is($node->expr, 'expression.variable') && is_string($node->expr->name) ? ($vars[$node->expr->name] ?? null) : null;
             $this->visit($node->expr, $vars);
             $value = $this->calls[spl_object_id($node->expr)] ?? $node->expr;
             // A fluent query assignment retains the receiver's object identity.
             // Read its current prefix after visiting the expression, which may mutate it.
             $receiver = $node->expr;
-            while ($receiver instanceof Expr\MethodCall || $receiver instanceof Expr\NullsafeMethodCall) {
+            while (Node::is($receiver, 'expression.method-call') || Node::is($receiver, 'expression.nullsafe-method-call')) {
                 $receiver = $receiver->var;
             }
-            if ($this->queryPrefix($value) && $receiver instanceof Expr\Variable && is_string($receiver->name)) {
+            if ($this->queryPrefix($value) && Node::is($receiver, 'expression.variable') && is_string($receiver->name)) {
                 $alias = $vars[$receiver->name] ?? null;
             }
             if ($alias !== null) {
                 $vars[$node->var->name] = $alias;
-            } elseif ($this->queryPrefix($value)) {
+            } elseif ($value instanceof Node && $this->queryPrefix($value)) {
                 $vars[$node->var->name] = ['id' => $node->getStartFilePos(), 'value' => $value];
             } else {
                 if (isset($vars[$node->var->name])) {
@@ -100,7 +98,7 @@ final class CatalogQueryBindings
 
             return;
         }
-        if ($node instanceof Expr\Assign) {
+        if (Node::is($node, 'expression.assign')) {
             $this->children($node, $vars);
             foreach ($this->escapedQueryNames($node->expr) as $name) {
                 $this->invalidateAlias($name, $vars, $node);
@@ -108,7 +106,7 @@ final class CatalogQueryBindings
 
             return;
         }
-        if ($node instanceof Stmt\If_) {
+        if (Node::is($node, 'statement.if')) {
             $this->visit($node->cond, $vars);
             $entry = $vars;
             $branches = [];
@@ -142,7 +140,7 @@ final class CatalogQueryBindings
 
             return;
         }
-        if ($node instanceof Stmt\For_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\While_ || $node instanceof Stmt\Do_ || $node instanceof Stmt\TryCatch || $node instanceof Stmt\Switch_) {
+        if (Node::is($node, 'statement.for') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.while') || Node::is($node, 'statement.do') || Node::is($node, 'statement.try-catch') || Node::is($node, 'statement.switch')) {
             if ($vars !== []) {
                 $this->diagnostics[] = new CatalogDiagnostic('data_binding_analysis', 'Loop, switch or exception query bindings require control-flow composition.', max(1, $node->getStartLine()));
             }
@@ -152,36 +150,36 @@ final class CatalogQueryBindings
 
             return;
         }
-        if ($node instanceof Stmt\Unset_) {
+        if (Node::is($node, 'statement.unset')) {
             foreach ($node->vars as $var) {
-                if ($var instanceof Expr\Variable && is_string($var->name)) {
+                if (Node::is($var, 'expression.variable') && is_string($var->name)) {
                     unset($vars[$var->name]);
                 }
             }
 
             return;
         }
-        if ($node instanceof Expr\AssignOp || $node instanceof Expr\PreInc || $node instanceof Expr\PostInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostDec) {
+        if (Node::is($node, 'expression.assign-op') || Node::is($node, 'expression.pre-inc') || Node::is($node, 'expression.post-inc') || Node::is($node, 'expression.pre-dec') || Node::is($node, 'expression.post-dec')) {
             $this->children($node, $vars);
-            if ($node->var instanceof Expr\Variable && is_string($node->var->name)) {
+            if (Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
                 unset($vars[$node->var->name]);
             }
 
             return;
         }
-        if ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall || $node instanceof Expr\StaticCall) {
+        if (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call') || Node::is($node, 'expression.static-call')) {
             // Evaluate receivers and argument expressions before recording the outer call.
             $this->children($node, $vars);
             if ($node->isFirstClassCallable()) {
                 return;
             }
-            if (! $node->name instanceof Node\Identifier) {
-                if ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) {
+            if (! Node::is($node->name, 'identifier')) {
+                if (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) {
                     $root = $node->var;
-                    while ($root instanceof Expr\MethodCall || $root instanceof Expr\NullsafeMethodCall) {
+                    while (Node::is($root, 'expression.method-call') || Node::is($root, 'expression.nullsafe-method-call')) {
                         $root = $root->var;
                     }
-                    if ($root instanceof Expr\Variable && is_string($root->name)) {
+                    if (Node::is($root, 'expression.variable') && is_string($root->name)) {
                         $this->invalidateAlias($root->name, $vars, $node);
                     }
                 }
@@ -197,10 +195,10 @@ final class CatalogQueryBindings
             if ($expanded !== null) {
                 $this->calls[spl_object_id($node)] = $expanded;
                 $root = $node;
-                while ($root instanceof Expr\MethodCall || $root instanceof Expr\NullsafeMethodCall) {
+                while (Node::is($root, 'expression.method-call') || Node::is($root, 'expression.nullsafe-method-call')) {
                     $root = $root->var;
                 }
-                if ($root instanceof Expr\Variable && is_string($root->name) && isset($vars[$root->name]) && $this->queryPrefix($expanded)) {
+                if (Node::is($root, 'expression.variable') && is_string($root->name) && isset($vars[$root->name]) && $this->queryPrefix($expanded)) {
                     $identity = $vars[$root->name]['id'];
                     foreach ($vars as &$binding) {
                         if ($binding['id'] === $identity) {
@@ -219,7 +217,7 @@ final class CatalogQueryBindings
             return;
         }
         $this->children($node, $vars);
-        if ($node instanceof Expr\FuncCall && ! $node->isFirstClassCallable() || $node instanceof Expr\New_) {
+        if (Node::is($node, 'expression.func-call') && ! $node->isFirstClassCallable() || Node::is($node, 'expression.new')) {
             foreach ($node->getArgs() as $arg) {
                 foreach ($this->escapedQueryNames($arg->value) as $name) {
                     $this->invalidateAlias($name, $vars, $node);
@@ -229,7 +227,7 @@ final class CatalogQueryBindings
     }
 
     /** @return list<string> */
-    private function escapedQueryNames(Expr $value, int $depth = 0): array
+    private function escapedQueryNames(Node $value, int $depth = 0): array
     {
         if ($this->limited) {
             return [];
@@ -240,10 +238,10 @@ final class CatalogQueryBindings
 
             return [];
         }
-        if ($value instanceof Expr\Variable && is_string($value->name)) {
+        if (Node::is($value, 'expression.variable') && is_string($value->name)) {
             return [$value->name];
         }
-        if ($value instanceof Expr\Array_) {
+        if (Node::is($value, 'expression.array')) {
             $names = [];
             foreach ($value->items as $item) {
                 if ($item !== null) {
@@ -257,7 +255,7 @@ final class CatalogQueryBindings
         return [];
     }
 
-    /** @param array<string, array{id: int, value: Expr}> $vars */
+    /** @param array<string, array{id: int, value: Node}> $vars */
     private function invalidateAlias(string $name, array &$vars, Node $site): void
     {
         $id = $vars[$name]['id'] ?? null;
@@ -271,30 +269,29 @@ final class CatalogQueryBindings
         }
     }
 
-    /** @param array<string, array{id: int, value: Expr}> $vars */
+    /** @param array<string, array{id: int, value: Node}> $vars */
     private function children(Node $node, array &$vars): void
     {
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($child, $vars);
                 }
             }
         }
     }
 
-    /** @param array<string, array{id: int, value: Expr}> $vars */
-    private function expand(Expr $node, array $vars): ?Expr
+    /** @param array<string, array{id: int, value: Node}> $vars */
+    private function expand(Node $node, array $vars): ?Node
     {
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && isset($this->calls[spl_object_id($node->var)])) {
-            $copy = clone $node;
-            $copy->var = $this->calls[spl_object_id($node->var)];
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && isset($this->calls[spl_object_id($node->var)])) {
+            $copy = $node->withFields(['var' => $this->calls[spl_object_id($node->var)]]);
 
             return $this->bounded($copy);
         }
         $chain = [];
         $root = $node;
-        while ($root instanceof Expr\MethodCall || $root instanceof Expr\NullsafeMethodCall) {
+        while (Node::is($root, 'expression.method-call') || Node::is($root, 'expression.nullsafe-method-call')) {
             if (count($chain) >= 64) {
                 $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Bound query chain reached its expansion budget.', max(1, $node->getStartLine()));
 
@@ -303,11 +300,10 @@ final class CatalogQueryBindings
             array_unshift($chain, $root);
             $root = $root->var;
         }
-        if ($root instanceof Expr\Variable && is_string($root->name) && isset($vars[$root->name])) {
+        if (Node::is($root, 'expression.variable') && is_string($root->name) && isset($vars[$root->name])) {
             $root = $vars[$root->name]['value'];
             foreach ($chain as $call) {
-                $copy = clone $call;
-                $copy->var = $root;
+                $copy = $call->withFields(['var' => $root]);
                 $root = $copy;
             }
 
@@ -317,11 +313,11 @@ final class CatalogQueryBindings
         return null;
     }
 
-    private function bounded(Expr $value): ?Expr
+    private function bounded(Node $value): ?Node
     {
         $root = $value;
         $depth = 0;
-        while ($root instanceof Expr\MethodCall || $root instanceof Expr\NullsafeMethodCall) {
+        while (Node::is($root, 'expression.method-call') || Node::is($root, 'expression.nullsafe-method-call')) {
             if (++$depth > 64) {
                 $this->limited = true;
                 $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Accumulated query chain reached its binding budget.', max(1, $value->getStartLine()));
@@ -334,20 +330,20 @@ final class CatalogQueryBindings
         return $value;
     }
 
-    private function queryPrefix(Expr $value): bool
+    private function queryPrefix(Node $value): bool
     {
-        if (! ($value instanceof Expr\StaticCall || $value instanceof Expr\MethodCall || $value instanceof Expr\NullsafeMethodCall) || ! $value->name instanceof Node\Identifier || $value->isFirstClassCallable() || DataOperations::kinds(strtolower($value->name->toString())) !== []) {
+        if (! (Node::is($value, 'expression.static-call') || Node::is($value, 'expression.method-call') || Node::is($value, 'expression.nullsafe-method-call')) || ! Node::is($value->name, 'identifier') || $value->isFirstClassCallable() || DataOperations::kinds(strtolower($value->name->toString())) !== []) {
             return false;
         }
         $root = $value;
         $depth = 0;
-        while ($root instanceof Expr\MethodCall || $root instanceof Expr\NullsafeMethodCall) {
+        while (Node::is($root, 'expression.method-call') || Node::is($root, 'expression.nullsafe-method-call')) {
             if (++$depth > 64) {
                 return false;
             }
             $root = $root->var;
         }
 
-        return $root instanceof Expr\StaticCall && $root->class instanceof Node\Name && $root->name instanceof Node\Identifier && ! $root->isFirstClassCallable();
+        return Node::is($root, 'expression.static-call') && Node::is($root->class, 'name') && Node::is($root->name, 'identifier') && ! $root->isFirstClassCallable();
     }
 }

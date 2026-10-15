@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\DataCatalog;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Deferred literal decoding retains source spans, never generic returned payloads. */
 final class CatalogSourceReturn
@@ -20,10 +18,10 @@ final class CatalogSourceReturn
     {
         $rows = [];
         $hash = hash('sha256', $file->contents);
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassLike::class) as $class) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $class) {
             foreach ($class->getMethods() as $method) {
                 $body = $method->stmts ?? [];
-                if (count($body) !== 1 || ! $body[0] instanceof Stmt\Return_ || $body[0]->expr === null) {
+                if (count($body) !== 1 || ! Node::is($body[0], 'statement.return') || $body[0]->expr === null) {
                     continue;
                 }
                 $visits = 0;
@@ -48,7 +46,7 @@ final class CatalogSourceReturn
 
             return null;
         }
-        if ($node instanceof Node\Scalar\String_) {
+        if (Node::is($node, 'scalar.string')) {
             if ($node->getStartFilePos() < 0 || $node->getEndFilePos() - $node->getStartFilePos() > 100000) {
                 $visits = 1025;
 
@@ -57,10 +55,10 @@ final class CatalogSourceReturn
 
             return ['kind' => 'string', 'start' => $node->getStartFilePos(), 'end' => $node->getEndFilePos()];
         }
-        if ($node instanceof Expr\ConstFetch && strtolower($node->name->toString()) === 'null') {
+        if (Node::is($node, 'expression.const-fetch') && strtolower($node->name->toString()) === 'null') {
             return ['kind' => 'null'];
         }
-        if ($node instanceof Expr\ClassConstFetch && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'class' && $node->class instanceof Node\Name) {
+        if (Node::is($node, 'expression.class-const-fetch') && Node::is($node->name, 'identifier') && strtolower($node->name->toString()) === 'class' && Node::is($node->class, 'name')) {
             $name = DataCatalog::literal($node, $file, $class);
             if (in_array(strtolower($node->class->toString()), ['self', 'static', 'parent'], true) || ! is_string($name) || strlen($name) > 500
                 || preg_match('/\A[a-zA-Z_][a-zA-Z0-9_]*(?:\\\\[a-zA-Z_][a-zA-Z0-9_]*)*\z/D', $name) !== 1) {
@@ -69,13 +67,13 @@ final class CatalogSourceReturn
 
             return ['kind' => 'class', 'name' => $name];
         }
-        if ($node instanceof Expr\BinaryOp\Concat) {
+        if (Node::is($node, 'expression.binary-op.concat')) {
             $left = self::expression($node->left, $file, $class, $visits, $depth + 1);
             $right = self::expression($node->right, $file, $class, $visits, $depth + 1);
 
             return $left === null || $right === null ? null : ['kind' => 'concat', 'left' => $left, 'right' => $right];
         }
-        if ($node instanceof Expr\Array_) {
+        if (Node::is($node, 'expression.array')) {
             if (count($node->items) > 256) {
                 $visits = 1025;
 

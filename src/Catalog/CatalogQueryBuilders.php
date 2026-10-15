@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Derived;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\DataCatalog;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Source builder selectors reuse the sanitized class-selector cache shape. */
 final class CatalogQueryBuilders
@@ -18,7 +17,7 @@ final class CatalogQueryBuilders
     public static function extract(FileContext $file): array
     {
         $result = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassLike::class) as $class) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $class) {
             $name = DataCatalog::name($class, $file);
             $row = ['property' => null, 'attribute' => null, 'method' => null];
             foreach ($class->getProperties() as $property) {
@@ -43,14 +42,14 @@ final class CatalogQueryBuilders
                     continue;
                 }
                 $body = $method->stmts ?? [];
-                $returned = count($body) === 1 && $body[0] instanceof Stmt\Return_ ? $body[0]->expr : null;
-                $valid = $method->isPublic() && ! $method->isStatic() && ! $method->isAbstract() && $returned instanceof Expr\New_ && $returned->class instanceof Node\Name;
+                $returned = count($body) === 1 && Node::is($body[0], 'statement.return') ? $body[0]->expr : null;
+                $valid = $method->isPublic() && ! $method->isStatic() && ! $method->isAbstract() && Node::is($returned, 'expression.new') && Node::is($returned->class, 'name');
                 $arg = $valid ? ($returned->args[0] ?? null) : null;
                 $param = $method->params[0]->var ?? null;
                 $valid = $valid && count($returned->args) === 1 && $arg !== null && $arg->name === null && ! $arg->unpack
-                    && $arg->value instanceof Expr\Variable && $param instanceof Expr\Variable && $arg->value->name === $param->name && count($method->params) === 1;
-                $type = $returned instanceof Expr\New_ && $returned->class instanceof Node\Name
-                    ? self::type(new Expr\ClassConstFetch($returned->class, 'class'), $file, $name) : null;
+                    && Node::is($arg->value, 'expression.variable') && Node::is($param, 'expression.variable') && $arg->value->name === $param->name && count($method->params) === 1;
+                $type = Node::is($returned, 'expression.new') && Node::is($returned->class, 'name')
+                    ? self::type(Derived::classConstant($returned->class, 'class'), $file, $name) : null;
                 $row['method'] = ['type' => $valid ? $type : null, 'resolved' => $valid, 'null_default' => false];
             }
             $result[strtolower($name)] = $row;
@@ -61,7 +60,7 @@ final class CatalogQueryBuilders
 
     private static function type(?Node $node, FileContext $file, string $class): ?string
     {
-        if ($node instanceof Expr\ClassConstFetch && $node->class instanceof Node\Name && in_array(strtolower($node->class->toString()), ['static', 'parent'], true)) {
+        if (Node::is($node, 'expression.class-const-fetch') && Node::is($node->class, 'name') && in_array(strtolower($node->class->toString()), ['static', 'parent'], true)) {
             return null;
         }
         $value = DataCatalog::literal($node, $file, $class);

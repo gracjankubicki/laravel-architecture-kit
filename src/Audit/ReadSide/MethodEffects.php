@@ -9,7 +9,7 @@ final class MethodEffects
     /** @var list<array{kind: string, path: string, line: int, detail: string, reason: string, trace: list<string>}> */
     public array $observations = [];
 
-    /** @var array<string, array{type: string, line: int, path: string}> */
+    /** @var array<string, array{type: string, line: int, path: string, trace: list<string>}> */
     public array $services = [];
 
     public int $totalObservations = 0;

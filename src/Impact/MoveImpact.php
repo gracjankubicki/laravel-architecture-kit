@@ -37,7 +37,7 @@ final class MoveImpact
         $short = $position === false ? $name : substr($name, $position + 1);
         $context = new FileContext('(move target)', '<?php '.($namespace === '' ? '' : 'namespace '.$namespace.'; ').'class '.$short.' {}');
         try {
-            if ($context->ast() === null) {
+            if ($context->syntax() === null) {
                 throw new InvalidArgumentException('The target name is not a valid PHP declaration.');
             }
         } finally {

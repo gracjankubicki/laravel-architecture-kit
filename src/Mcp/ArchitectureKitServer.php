@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Mcp;
 
 use GracjanKubicki\ArchitectureKit\ArchitectureKit;
+use GracjanKubicki\ArchitectureKit\Mcp\Resources\AnalysisEngineResource;
 use GracjanKubicki\ArchitectureKit\Mcp\Resources\ArchitectureGuidelineResource;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureContext;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureGraph;
@@ -67,5 +68,6 @@ class ArchitectureKitServer extends Server
 
     protected array $resources = [
         ArchitectureGuidelineResource::class,
+        AnalysisEngineResource::class,
     ];
 }

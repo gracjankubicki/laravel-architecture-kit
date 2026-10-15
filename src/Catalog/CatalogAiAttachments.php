@@ -4,27 +4,26 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
 
 /** Sanitized attachment facts shared by syntax extraction and existing local value tracking. */
 final class CatalogAiAttachments
 {
     /** @return array{resolved: bool, limited: bool, files: list<array{receiver: string, method: string, valid: bool, offset: int, line: int, end_line: int}>} */
-    public static function extract(FileContext $file, ?Expr $expression): array
+    public static function extract(FileContext $file, ?Node $expression): array
     {
         if ($expression === null) {
             return ['resolved' => true, 'limited' => false, 'files' => []];
         }
-        $items = $expression instanceof Expr\Array_ ? self::attachmentItems($expression) : null;
-        $limited = $expression instanceof Expr\Array_ && count($expression->items) > 128;
+        $items = Node::is($expression, 'expression.array') ? self::attachmentItems($expression) : null;
+        $limited = Node::is($expression, 'expression.array') && count($expression->items) > 128;
         $resolved = $items !== null && ! $limited;
         $files = [];
         foreach ($items ?? [] as $item) {
             $value = $item?->value;
-            if ($item === null || $item->unpack || $item->byRef || ! $value instanceof Expr\StaticCall
-                || ! $value->class instanceof Node\Name || ! $value->name instanceof Node\Identifier || $value->isFirstClassCallable()) {
+            if ($item === null || $item->unpack || $item->byRef || ! Node::is($value, 'expression.static-call')
+                || ! Node::is($value->class, 'name') || ! Node::is($value->name, 'identifier') || $value->isFirstClassCallable()) {
                 $resolved = false;
 
                 continue;
@@ -56,9 +55,9 @@ final class CatalogAiAttachments
     }
 
     /** PHP array construction over literal keys only; values remain unevaluated AST nodes.
-     * @return list<Node\ArrayItem>|null
+     * @return list<Node>|null
      */
-    private static function attachmentItems(Expr\Array_ $array): ?array
+    private static function attachmentItems(Node $array): ?array
     {
         $keyed = array_filter($array->items, fn ($item) => $item?->key !== null) !== [];
         if (count($array->items) > 128 && $keyed) {
@@ -79,22 +78,22 @@ final class CatalogAiAttachments
                 continue;
             }
             $key = $item->key;
-            $negative = $key instanceof Expr\UnaryMinus;
-            if ($key instanceof Expr\UnaryMinus || $key instanceof Expr\UnaryPlus) {
+            $negative = Node::is($key, 'expression.unary-minus');
+            if (Node::is($key, 'expression.unary-minus') || Node::is($key, 'expression.unary-plus')) {
                 $key = $key->expr;
-                if (! $key instanceof Node\Scalar\Int_ && ! $key instanceof Node\Scalar\Float_) {
+                if (! Node::is($key, 'scalar.int') && ! Node::is($key, 'scalar.float')) {
                     return null;
                 }
             }
-            if ($key instanceof Node\Scalar\Int_ || $key instanceof Node\Scalar\Float_) {
+            if (Node::is($key, 'scalar.int') || Node::is($key, 'scalar.float')) {
                 $value = $negative ? -$key->value : $key->value;
                 if (is_float($value) && (! is_finite($value) || $value >= PHP_INT_MAX || $value < PHP_INT_MIN)) {
                     return null;
                 }
                 $normalized = (int) $value;
-            } elseif ($key instanceof Node\Scalar\String_) {
+            } elseif (Node::is($key, 'scalar.string')) {
                 $normalized = $key->value;
-            } elseif ($key instanceof Expr\ConstFetch && in_array(strtolower($key->name->toString()), ['true', 'false', 'null'], true)) {
+            } elseif (Node::is($key, 'expression.const-fetch') && in_array(strtolower($key->name->toString()), ['true', 'false', 'null'], true)) {
                 $normalized = match (strtolower($key->name->toString())) {
                     'true' => 1,
                     'false' => 0,

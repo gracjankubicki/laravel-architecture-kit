@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
+use GracjanKubicki\ArchitectureKit\Audit\AnalysisNotice;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Str;
@@ -12,17 +13,50 @@ use Throwable;
 
 final readonly class RouteMap
 {
+    /** @var array<string, list<RouteEntry>> */
+    private array $entriesByHandler;
+
+    /** @var array<string, array<string, string>> */
+    private array $methodsByClass;
+
     /**
      * @param  array<string, list<string>>  $methods
      * @param  list<RouteEntry>|null  $entries
      * @param  array<string, mixed>|null  $context
+     * @param  list<AnalysisNotice>  $notices
      */
     public function __construct(
         public array $methods = [],
         public ?string $unavailable = null,
         public ?array $entries = null,
         public ?array $context = null,
-    ) {}
+        public array $notices = [],
+    ) {
+        $entriesByHandler = $methodsByClass = [];
+        if ($entries !== null) {
+            foreach ($entries as $entry) {
+                if ($entry->class === null || $entry->method === null) {
+                    continue;
+                }
+                $class = strtolower(ltrim($entry->class, '\\'));
+                $method = strtolower($entry->method);
+                $entriesByHandler[$class.'::'.$method][] = $entry;
+                $methodsByClass[$class][$method] = $entry->method;
+            }
+        } else {
+            foreach ($methods as $callback => $_verbs) {
+                $separator = strpos($callback, '::');
+                if ($separator === false) {
+                    continue;
+                }
+                $class = substr($callback, 0, $separator);
+                $method = substr($callback, $separator + 2);
+                $methodsByClass[$class][strtolower($method)] = $method;
+            }
+        }
+        $this->entriesByHandler = $entriesByHandler;
+        $this->methodsByClass = $methodsByClass;
+    }
 
     /**
      * @param  iterable<Route>  $routes
@@ -58,13 +92,7 @@ final readonly class RouteMap
     /** @return list<RouteEntry> */
     public function entriesFor(string $class, string $method): array
     {
-        return array_values(array_filter(
-            $this->entries ?? [],
-            fn (RouteEntry $entry): bool => $entry->class !== null
-                && $entry->method !== null
-                && strcasecmp($entry->class, ltrim($class, '\\')) === 0
-                && strcasecmp($entry->method, $method) === 0,
-        ));
+        return $this->entriesByHandler[strtolower(ltrim($class, '\\').'::'.$method)] ?? [];
     }
 
     /**
@@ -95,26 +123,7 @@ final readonly class RouteMap
      */
     public function methodsFor(string $class): array
     {
-        $methods = [];
-        if ($this->entries !== null) {
-            foreach ($this->entries as $entry) {
-                if ($entry->class !== null && $entry->method !== null && strcasecmp($entry->class, ltrim($class, '\\')) === 0) {
-                    $methods[strtolower($entry->method)] = $entry->method;
-                }
-            }
-
-            return $methods;
-        }
-
-        $prefix = strtolower(ltrim($class, '\\')).'::';
-        foreach ($this->methods as $callback => $_verbs) {
-            if (str_starts_with($callback, $prefix)) {
-                $method = substr($callback, strlen($prefix));
-                $methods[strtolower($method)] = $method;
-            }
-        }
-
-        return $methods;
+        return $this->methodsByClass[strtolower(ltrim($class, '\\'))] ?? [];
     }
 
     /** @return array<string, mixed> */
@@ -133,6 +142,7 @@ final readonly class RouteMap
                 'auth' => null,
                 'unavailable' => 'Laravel framework context was not supplied with this route map.',
             ],
+            ...($this->notices === [] ? [] : ['analysis_notices' => array_map(fn (AnalysisNotice $notice): array => $notice->toArray(), $this->notices)]),
         ];
     }
 
@@ -150,14 +160,31 @@ final readonly class RouteMap
             $entry = RouteEntry::fromArray($value);
             $entries[] = $entry;
             if ($entry->class !== null && $entry->method !== null) {
-                $key = strtolower($entry->class.'::'.$entry->method);
+                $key = strtolower(ltrim($entry->class, '\\').'::'.$entry->method);
                 $methods[$key] = array_values(array_unique([...($methods[$key] ?? []), ...$entry->verbs]));
                 sort($methods[$key]);
             }
         }
         ksort($methods);
 
-        return new self($methods, entries: $entries, context: ($data['version'] ?? null) >= 2 ? $data['context'] : null);
+        $notices = [];
+        if (isset($data['analysis_notices'])) {
+            if (! is_array($data['analysis_notices']) || ! array_is_list($data['analysis_notices'])) {
+                throw new \UnexpectedValueException('Invalid route analysis notices.');
+            }
+            foreach ($data['analysis_notices'] as $notice) {
+                if (! is_array($notice) || ! is_int($notice['line'] ?? null)
+                    || count(array_filter(['code', 'reason', 'path', 'message'], fn (string $key): bool => is_string($notice[$key] ?? null))) !== 4
+                    || ! is_array($notice['trace'] ?? null) || ! array_is_list($notice['trace'])
+                    || array_filter($notice['trace'], fn (mixed $value): bool => ! is_string($value)) !== []
+                    || (($notice['route'] ?? null) !== null && ! is_array($notice['route']))) {
+                    throw new \UnexpectedValueException('Invalid route analysis notice.');
+                }
+                $notices[] = new AnalysisNotice($notice['code'], $notice['reason'], $notice['path'], $notice['line'], $notice['message'], $notice['trace'], $notice['route'] ?? null);
+            }
+        }
+
+        return new self($methods, entries: $entries, context: ($data['version'] ?? null) >= 2 ? $data['context'] : null, notices: $notices);
     }
 
     public static function fresh(string $basePath): self
@@ -225,6 +252,10 @@ final readonly class RouteMap
             }
         }
         if (array_key_exists('auth', $context) && ! self::validAuthContext($context['auth'])) {
+            return false;
+        }
+        if (isset($context['aliases']) && (! is_array($context['aliases'])
+            || array_filter($context['aliases'], fn (mixed $target, mixed $alias): bool => ! is_string($alias) || ! is_string($target), ARRAY_FILTER_USE_BOTH) !== [])) {
             return false;
         }
 

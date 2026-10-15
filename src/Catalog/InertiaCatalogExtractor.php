@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
 
 /** Local Inertia declarations only; response composition decides when callbacks may run. */
 final class InertiaCatalogExtractor
@@ -36,7 +33,7 @@ final class InertiaCatalogExtractor
             $this->owners[$element->offset] = $element;
             $this->declarations[$element->id] = $element;
         }
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path));
         }
 
@@ -54,12 +51,12 @@ final class InertiaCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $owner = $this->owners[$node->getStartFilePos()]->id ?? $owner;
         }
         $declaration = $this->declarations[$owner] ?? null;
         $class = $declaration === null ? null : ($this->declarations[$declaration->parent ?? ''] ?? null);
-        if ($node instanceof Stmt\Return_ && $node->expr !== null && $declaration?->kind === 'method' && $class?->kind === 'class'
+        if (Node::is($node, 'statement.return') && $node->expr !== null && $declaration?->kind === 'method' && $class?->kind === 'class'
             && in_array($method = strtolower(substr($declaration->name, strrpos($declaration->name, '::') + 2)), ['share', 'shareonce'], true)) {
             $callbacks = [];
             $complete = true;
@@ -69,13 +66,13 @@ final class InertiaCatalogExtractor
             $this->elements[] = new CatalogElement(CatalogElement::identity($file->path, 'inertia-operation', $method, $offset), 'Inertia middleware '.$method, 'inertia-operation',
                 max(1, $node->getStartLine()), max(1, $node->getEndLine()), $offset, $owner,
                 metadata: ['package' => 'inertiajs/inertia-laravel', 'method' => $method, 'form' => 'method', 'receiver' => $class->name, 'functions' => [],
-                    'selector' => null, 'callbacks' => $callbacks, 'resolved' => $node->expr instanceof Expr\Array_, 'callbacks_resolved' => $complete, 'execution_proven' => false]);
+                    'selector' => null, 'callbacks' => $callbacks, 'resolved' => Node::is($node->expr, 'expression.array'), 'callbacks_resolved' => $complete, 'execution_proven' => false]);
             if ($budget > 128) {
                 $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Inertia middleware props exceed their 128-value source budget.', max(1, $node->getStartLine()), $owner);
             }
         }
         $invocation = $this->invocation($file, $node);
-        if ($invocation !== null && $node instanceof Expr\CallLike) {
+        if ($invocation !== null && Node::is($node, 'expression.call-like')) {
             $method = $invocation['method'];
             $parameters = $method === 'render' ? ['component', 'props'] : ['key', 'value'];
             $values = [];
@@ -86,7 +83,7 @@ final class InertiaCatalogExtractor
                 $values[$parameter] = $arg->value;
             }
             $component = $method === 'render' ? ($values['component'] ?? null) : null;
-            $selector = $component instanceof Scalar\String_ && strlen($component->value) <= 256
+            $selector = Node::is($component, 'scalar.string') && strlen($component->value) <= 256
                 && preg_match('/\A[a-zA-Z0-9_\-][a-zA-Z0-9_.\/\-]{0,255}\z/D', $component->value) === 1
                 && ! in_array('..', explode('/', $component->value), true) ? $component->value : null;
             $resolved = $resolved && ($method !== 'render' || $selector !== null);
@@ -108,7 +105,7 @@ final class InertiaCatalogExtractor
         }
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner);
                 }
             }
@@ -118,24 +115,24 @@ final class InertiaCatalogExtractor
     /** @return array{method: string, form: string, functions: list<string>}|null */
     private function invocation(FileContext $file, Node $node): ?array
     {
-        if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && $file->resolvedName($node->class) === 'Inertia\\Inertia' && in_array($method = strtolower($node->name->toString()), ['render', 'share'], true)) {
             return ['method' => $method, 'form' => 'static', 'functions' => []];
         }
-        $helper = $node instanceof Expr\FuncCall ? $node : ($node instanceof Expr\MethodCall ? $node->var : null);
-        if (! $helper instanceof Expr\FuncCall || ! $helper->name instanceof Node\Name || $helper->isFirstClassCallable()
-            || ! $node instanceof Expr\CallLike || $node->isFirstClassCallable()) {
+        $helper = Node::is($node, 'expression.func-call') ? $node : (Node::is($node, 'expression.method-call') ? $node->var : null);
+        if (! Node::is($helper, 'expression.func-call') || ! Node::is($helper->name, 'name') || $helper->isFirstClassCallable()
+            || ! Node::is($node, 'expression.call-like') || $node->isFirstClassCallable()) {
             return null;
         }
         $namespace = $helper->name->getAttribute('namespacedName');
-        $functions = array_values(array_unique($namespace instanceof Node\Name ? [$namespace->toString(), $file->resolvedName($helper->name)] : [$file->resolvedName($helper->name)]));
+        $functions = array_values(array_unique(Node::is($namespace, 'name') ? [$namespace->toString(), $file->resolvedName($helper->name)] : [$file->resolvedName($helper->name)]));
         if (! in_array('inertia', array_map('strtolower', $functions), true)) {
             return null;
         }
-        if ($node instanceof Expr\FuncCall && $node->args !== []) {
+        if (Node::is($node, 'expression.func-call') && $node->args !== []) {
             return ['method' => 'render', 'form' => 'helper', 'functions' => $functions];
         }
-        if ($node instanceof Expr\MethodCall && $helper->args === [] && $node->name instanceof Node\Identifier && in_array($method = strtolower($node->name->toString()), ['render', 'share'], true)) {
+        if (Node::is($node, 'expression.method-call') && $helper->args === [] && Node::is($node->name, 'identifier') && in_array($method = strtolower($node->name->toString()), ['render', 'share'], true)) {
             return ['method' => $method, 'form' => 'helper', 'functions' => $functions];
         }
 
@@ -143,14 +140,14 @@ final class InertiaCatalogExtractor
     }
 
     /** @param list<array{target: string, mode: string, line: int, end_line: int}> $callbacks */
-    private function callbacks(FileContext $file, Expr $value, string $mode, array &$callbacks, bool &$complete, int &$budget): void
+    private function callbacks(FileContext $file, Node $value, string $mode, array &$callbacks, bool &$complete, int &$budget): void
     {
         if (++$budget > 128) {
             $complete = false;
 
             return;
         }
-        if ($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) {
+        if (Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) {
             $target = $this->owners[$value->getStartFilePos()] ?? null;
             if ($target?->kind === 'closure') {
                 $callbacks[] = ['target' => $target->id, 'mode' => $mode, 'line' => max(1, $value->getStartLine()), 'end_line' => max(1, $value->getEndLine())];
@@ -160,7 +157,7 @@ final class InertiaCatalogExtractor
 
             return;
         }
-        if ($value instanceof Expr\Array_) {
+        if (Node::is($value, 'expression.array')) {
             foreach ($value->items as $item) {
                 if ($item === null || $item->unpack || $item->byRef) {
                     $complete = false;
@@ -175,8 +172,8 @@ final class InertiaCatalogExtractor
 
             return;
         }
-        if ($value instanceof Expr\StaticCall && $value->class instanceof Node\Name && $file->resolvedName($value->class) === 'Inertia\\Inertia'
-            && $value->name instanceof Node\Identifier && ! $value->isFirstClassCallable()
+        if (Node::is($value, 'expression.static-call') && Node::is($value->class, 'name') && $file->resolvedName($value->class) === 'Inertia\\Inertia'
+            && Node::is($value->name, 'identifier') && ! $value->isFirstClassCallable()
             && in_array($wrapper = strtolower($value->name->toString()), ['optional', 'defer', 'once', 'always', 'merge', 'deepmerge'], true)) {
             $parameters = in_array($wrapper, ['optional', 'defer'], true) ? ['callback', 'group', 'rescue'] : ['value'];
             $selected = null;
@@ -198,7 +195,7 @@ final class InertiaCatalogExtractor
 
             return;
         }
-        if (! $value instanceof Scalar && ! $value instanceof Expr\ConstFetch && ! $value instanceof Expr\ClassConstFetch) {
+        if (! Node::is($value, 'scalar') && ! Node::is($value, 'expression.const-fetch') && ! Node::is($value, 'expression.class-const-fetch')) {
             $complete = false;
         }
     }

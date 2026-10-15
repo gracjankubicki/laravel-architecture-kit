@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\AnalysisFactsCache;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
@@ -18,7 +19,7 @@ final class CacheClearCommand extends Command
         {--path= : Directory to clear, for the case where the configured location has already changed}
         {--agent : Output token-efficient JSON for AI agents}';
 
-    protected $description = 'Remove the stored project graph so the next command rebuilds it.';
+    protected $description = 'Remove stored graph and standalone analysis facts so the next command rebuilds them.';
 
     public function handle(Filesystem $files): int
     {
@@ -26,6 +27,9 @@ final class CacheClearCommand extends Command
 
         $cache = $this->cache($files);
         $removed = $cache->clear();
+        if (($context = RepositoryContext::current()) !== null && ! $this->option('path')) {
+            $removed += AnalysisFactsCache::clear($context->storage.'/cache/analysis', $context->home);
+        }
         $directory = $cache->absoluteDirectory();
 
         if ((bool) $this->option('agent')) {
@@ -35,8 +39,8 @@ final class CacheClearCommand extends Command
         }
 
         $this->components->info($removed === 0
-            ? 'No stored project graph to remove.'
-            : $removed.' stored project '.($removed === 1 ? 'graph' : 'graphs').' removed.');
+            ? 'No stored cache entries to remove.'
+            : $removed.' stored cache '.($removed === 1 ? 'entry' : 'entries').' removed.');
 
         return self::SUCCESS;
     }

@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\ModernPhp85;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 
-final readonly class ModernPhp85Rule implements AuditRule
+final readonly class ModernPhp85Rule implements PortableAuditRule
 {
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -27,7 +25,7 @@ final readonly class ModernPhp85Rule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -52,14 +50,14 @@ final readonly class ModernPhp85Rule implements AuditRule
     private function hasStrictTypesDeclare(array $nodes): bool
     {
         foreach ($nodes as $node) {
-            if (! $node instanceof Stmt\Declare_) {
+            if (! Node::is($node, 'statement.declare')) {
                 continue;
             }
 
             foreach ($node->declares as $declare) {
                 if (
                     $declare->key->toString() === 'strict_types'
-                    && $declare->value instanceof Node\Scalar\Int_
+                    && Node::is($declare->value, 'scalar.int')
                     && $declare->value->value === 1
                 ) {
                     return true;
@@ -82,7 +80,7 @@ final readonly class ModernPhp85Rule implements AuditRule
             $method = $this->classMethod($class, 'toArray');
 
             if (
-                $method instanceof Stmt\ClassMethod
+                Node::is($method, 'statement.class-method')
                 && $method->isPublic()
                 && ! $this->classMethodHasAttribute($method, 'Override')
             ) {
@@ -98,23 +96,23 @@ final readonly class ModernPhp85Rule implements AuditRule
 
     /**
      * @param  array<int, Node>  $nodes
-     * @return array<int, Stmt\Class_>
+     * @return array<int, Node>
      */
     private function resourceOverrideCandidateClasses(array $nodes): array
     {
         $classes = [];
 
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_ && $this->classExtendsAny($node, ['JsonResource', 'ResourceCollection'])) {
+            if (Node::is($node, 'statement.class') && $this->classExtendsAny($node, ['JsonResource', 'ResourceCollection'])) {
                 $classes[] = $node;
             }
 
-            if (! $node instanceof Stmt\Namespace_) {
+            if (! Node::is($node, 'statement.namespace')) {
                 continue;
             }
 
             foreach ($node->stmts as $statement) {
-                if ($statement instanceof Stmt\Class_ && $this->classExtendsAny($statement, ['JsonResource', 'ResourceCollection'])) {
+                if (Node::is($statement, 'statement.class') && $this->classExtendsAny($statement, ['JsonResource', 'ResourceCollection'])) {
                     $classes[] = $statement;
                 }
             }
@@ -126,9 +124,9 @@ final readonly class ModernPhp85Rule implements AuditRule
     /**
      * @param  array<int, string>  $expected
      */
-    private function classExtendsAny(Stmt\Class_ $class, array $expected): bool
+    private function classExtendsAny(Node $class, array $expected): bool
     {
-        if (! $class->extends instanceof Name) {
+        if (! Node::is($class->extends, 'name')) {
             return false;
         }
 
@@ -143,7 +141,7 @@ final readonly class ModernPhp85Rule implements AuditRule
         return false;
     }
 
-    private function classMethod(Stmt\Class_ $class, string $method): ?Stmt\ClassMethod
+    private function classMethod(Node $class, string $method): ?Node
     {
         foreach ($class->getMethods() as $classMethod) {
             if ($classMethod->name->toString() === $method) {
@@ -154,7 +152,7 @@ final readonly class ModernPhp85Rule implements AuditRule
         return null;
     }
 
-    private function classMethodHasAttribute(Stmt\ClassMethod $method, string $attribute): bool
+    private function classMethodHasAttribute(Node $method, string $attribute): bool
     {
         foreach ($method->attrGroups as $attributeGroup) {
             foreach ($attributeGroup->attrs as $attr) {

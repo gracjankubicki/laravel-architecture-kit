@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\NodeFinder;
 
 /** Source configuration chains only; does not load Pest or inspect runtime registrations. */
 final class PestHookCatalogExtractor
@@ -19,7 +18,7 @@ final class PestHookCatalogExtractor
         foreach ($php->elements as $element) {
             $owners[$element->offset] = $element;
         }
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Expr\MethodCall::class) as $call) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'expression.method-call') as $call) {
             $offset = $call->getStartFilePos();
             if (! isset($chains[$offset]) || $call->getEndFilePos() > $chains[$offset]->getEndFilePos()) {
                 $chains[$offset] = $call;
@@ -32,16 +31,16 @@ final class PestHookCatalogExtractor
             }
             $root = $outer;
             $calls = [];
-            while ($root instanceof Expr\MethodCall && count($calls) < 128) {
+            while (Node::is($root, 'expression.method-call') && count($calls) < 128) {
                 $calls[] = $root;
                 $root = $root->var;
             }
-            if ($root instanceof Expr\MethodCall) {
+            if (Node::is($root, 'expression.method-call')) {
                 $diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Pest configuration chain exceeded its source depth budget.', $outer->getStartLine(), limitReason: 'structure');
 
                 continue;
             }
-            if (! $root instanceof Expr\FuncCall || ! $root->name instanceof Node\Name || $root->isFirstClassCallable()) {
+            if (! Node::is($root, 'expression.func-call') || ! Node::is($root->name, 'name') || $root->isFirstClassCallable()) {
                 continue;
             }
             $api = strtolower($file->resolvedName($root->name));
@@ -58,7 +57,7 @@ final class PestHookCatalogExtractor
             $targets = [$api === 'pest' && basename($file->path) === 'Pest.php' ? dirname($file->path) : $file->path];
             $hooks = [];
             foreach (array_reverse($calls) as $position => $call) {
-                $method = $call->name instanceof Node\Identifier ? strtolower($call->name->toString()) : '';
+                $method = Node::is($call->name, 'identifier') ? strtolower($call->name->toString()) : '';
                 if ($call->isFirstClassCallable() || ! in_array($method, ['in', 'extend', 'extends', 'use', 'uses', 'group', 'beforeeach', 'beforeall', 'aftereach', 'afterall'], true)) {
                     $valid = false;
 
@@ -92,7 +91,7 @@ final class PestHookCatalogExtractor
                 } elseif (in_array($method, ['beforeeach', 'beforeall', 'aftereach', 'afterall'], true)) {
                     $argument = $call->getArgs()[0] ?? null;
                     $callback = $argument !== null && ! $argument->unpack && ! $argument->byRef && ($argument->name === null || $argument->name->toString() === 'hook')
-                        && count($call->args) === 1 && ($argument->value instanceof Expr\Closure || $argument->value instanceof Expr\ArrowFunction)
+                        && count($call->args) === 1 && (Node::is($argument->value, 'expression.closure') || Node::is($argument->value, 'expression.arrow-function'))
                         ? ($owners[$argument->value->getStartFilePos()] ?? null) : null;
                     $hooks[$method] = [$call, $callback];
                 }
@@ -119,12 +118,12 @@ final class PestHookCatalogExtractor
         return new CatalogFacts($file->path, $elements, $relations, $diagnostics);
     }
 
-    private function stringArgument(Node\Arg $argument, bool $allowClass): bool
+    private function stringArgument(Node $argument, bool $allowClass): bool
     {
         return ! $argument->unpack && ! $argument->byRef && $argument->name === null
-            && ($argument->value instanceof Node\Scalar\String_
-                || $allowClass && $argument->value instanceof Expr\ClassConstFetch
-                && $argument->value->class instanceof Node\Name && $argument->value->name instanceof Node\Identifier
+            && (Node::is($argument->value, 'scalar.string')
+                || $allowClass && Node::is($argument->value, 'expression.class-const-fetch')
+                && Node::is($argument->value->class, 'name') && Node::is($argument->value->name, 'identifier')
                 && strtolower($argument->value->name->toString()) === 'class');
     }
 }

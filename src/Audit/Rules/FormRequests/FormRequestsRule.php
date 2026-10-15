@@ -4,16 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\FormRequests;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
 
-final readonly class FormRequestsRule implements AuditRule
+final readonly class FormRequestsRule implements PortableAuditRule
 {
     /**
      * @param  array<int, Architecture|string>  $enabled
@@ -34,7 +32,7 @@ final readonly class FormRequestsRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -43,7 +41,7 @@ final readonly class FormRequestsRule implements AuditRule
         $findings = [];
         $class = $this->firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return [];
         }
 
@@ -62,14 +60,14 @@ final readonly class FormRequestsRule implements AuditRule
 
         $dataMethod = $this->classMethod($class, 'data');
 
-        if ($dataMethod instanceof Stmt\ClassMethod) {
+        if (Node::is($dataMethod, 'statement.class-method')) {
             $findings[] = $this->finding('error', $file->path, $dataMethod->getStartLine(), 'Do not define data() on FormRequests; use toData().');
         }
 
         foreach (['authorize', 'rules'] as $method) {
             $classMethod = $this->classMethod($class, $method);
 
-            if ($classMethod instanceof Stmt\ClassMethod && $classMethod->isPublic() && $this->classMethodHasAttribute($classMethod, 'Override')) {
+            if (Node::is($classMethod, 'statement.class-method') && $classMethod->isPublic() && $this->classMethodHasAttribute($classMethod, 'Override')) {
                 $findings[] = $this->finding(
                     'error',
                     $file->path,
@@ -84,8 +82,8 @@ final readonly class FormRequestsRule implements AuditRule
 
         if (
             in_array(Architecture::DataObjects, $this->enabled, true)
-            && ! $toDataMethod instanceof Stmt\ClassMethod
-            && $rulesMethod instanceof Stmt\ClassMethod
+            && ! Node::is($toDataMethod, 'statement.class-method')
+            && Node::is($rulesMethod, 'statement.class-method')
         ) {
             $findings[] = $this->finding('error', $file->path, $rulesMethod->getStartLine(), 'Data Objects are enabled; FormRequest should expose toData().');
         }
@@ -96,16 +94,16 @@ final readonly class FormRequestsRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstClass(array $nodes): ?Stmt\Class_
+    private function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 foreach ($node->stmts as $statement) {
-                    if ($statement instanceof Stmt\Class_) {
+                    if (Node::is($statement, 'statement.class')) {
                         return $statement;
                     }
                 }
@@ -118,9 +116,9 @@ final readonly class FormRequestsRule implements AuditRule
     /**
      * @param  array<int, string>  $expected
      */
-    private function classExtendsAny(Stmt\Class_ $class, array $expected): bool
+    private function classExtendsAny(Node $class, array $expected): bool
     {
-        if (! $class->extends instanceof Name) {
+        if (! Node::is($class->extends, 'name')) {
             return false;
         }
 
@@ -135,7 +133,7 @@ final readonly class FormRequestsRule implements AuditRule
         return false;
     }
 
-    private function classMethod(Stmt\Class_ $class, string $method): ?Stmt\ClassMethod
+    private function classMethod(Node $class, string $method): ?Node
     {
         foreach ($class->getMethods() as $classMethod) {
             if ($classMethod->name->toString() === $method) {
@@ -146,7 +144,7 @@ final readonly class FormRequestsRule implements AuditRule
         return null;
     }
 
-    private function classMethodHasAttribute(Stmt\ClassMethod $method, string $attribute): bool
+    private function classMethodHasAttribute(Node $method, string $attribute): bool
     {
         foreach ($method->attrGroups as $attributeGroup) {
             foreach ($attributeGroup->attrs as $attr) {

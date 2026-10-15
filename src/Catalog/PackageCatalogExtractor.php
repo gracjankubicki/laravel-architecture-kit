@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
 
 /** Package-local source facts share the current AST; package presence is checked later. */
 final class PackageCatalogExtractor
@@ -32,7 +29,7 @@ final class PackageCatalogExtractor
         foreach ($php->elements as $element) {
             $this->owners[$element->offset] = $element;
         }
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path));
         }
 
@@ -50,10 +47,10 @@ final class PackageCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $owner = $this->owners[$node->getStartFilePos()]->id ?? $owner;
         }
-        if ($node instanceof Stmt\Property) {
+        if (Node::is($node, 'statement.property')) {
             foreach ($node->props as $property) {
                 if (! in_array($property->name->toString(), ['tools', 'resources', 'prompts'], true)) {
                     continue;
@@ -63,14 +60,14 @@ final class PackageCatalogExtractor
                 $toolSearchKey = false;
                 $hasGroup = false;
                 $unknownKey = false;
-                if ($property->default instanceof Expr\Array_ && count($property->default->items) > 128) {
+                if (Node::is($property->default, 'expression.array') && count($property->default->items) > 128) {
                     $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'MCP member list exceeds the 128-entry source budget.', max(1, $property->getStartLine()), $owner);
                 }
-                $resolved = ! $node->isStatic() && ! $node->isPrivate() && $property->default instanceof Expr\Array_ && count($property->default->items) <= 128;
-                foreach ($property->default instanceof Expr\Array_ && count($property->default->items) <= 128 ? $property->default->items : [] as $item) {
+                $resolved = ! $node->isStatic() && ! $node->isPrivate() && Node::is($property->default, 'expression.array') && count($property->default->items) <= 128;
+                foreach (Node::is($property->default, 'expression.array') && count($property->default->items) <= 128 ? $property->default->items : [] as $item) {
                     $searchKey = $item !== null && $item->key !== null && $this->type($file, $item->key) === 'Laravel\\Mcp\\Server\\Tools\\ToolSearch';
-                    $unknownKey = $unknownKey || $item !== null && $item->key !== null && ! $item->key instanceof Scalar\String_ && ! $item->key instanceof Scalar\Int_ && $this->type($file, $item->key) === null;
-                    if ($searchKey && $property->name->toString() === 'tools' && $item->value instanceof Expr\Array_) {
+                    $unknownKey = $unknownKey || $item !== null && $item->key !== null && ! Node::is($item->key, 'scalar.string') && ! Node::is($item->key, 'scalar.int') && $this->type($file, $item->key) === null;
+                    if ($searchKey && $property->name->toString() === 'tools' && Node::is($item->value, 'expression.array')) {
                         $resolved = $resolved && ! $hasGroup && ! $item->unpack && ! $item->byRef && count($item->value->items) <= 128;
                         $hasGroup = true;
                         if (count($item->value->items) > 128) {
@@ -99,12 +96,12 @@ final class PackageCatalogExtractor
                 $this->operation($file, $property, $owner, 'members', $property->name->toString(), $selector, $targets, $resolved && ! ($hasGroup && ($toolSearchKey || $unknownKey)), $groupedTargets);
             }
         }
-        if ($node instanceof Node\Attribute && in_array($name = $file->resolvedName($node->name), ['Laravel\\Mcp\\Server\\Attributes\\Name', 'Laravel\\Mcp\\Server\\Attributes\\Description'], true)) {
+        if (Node::is($node, 'attribute') && in_array($name = $file->resolvedName($node->name), ['Laravel\\Mcp\\Server\\Attributes\\Name', 'Laravel\\Mcp\\Server\\Attributes\\Description'], true)) {
             $value = null;
             $resolved = count($node->args) === 1;
             foreach ($node->args as $arg) {
-                $resolved = $resolved && ! $arg->unpack && ($arg->name === null || $arg->name->toString() === 'value') && $arg->value instanceof Scalar\String_;
-                if ($arg->value instanceof Scalar\String_) {
+                $resolved = $resolved && ! $arg->unpack && ($arg->name === null || $arg->name->toString() === 'value') && Node::is($arg->value, 'scalar.string');
+                if (Node::is($arg->value, 'scalar.string')) {
                     $value = $arg->value->value;
                 }
             }
@@ -119,7 +116,7 @@ final class PackageCatalogExtractor
                 $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'MCP attribute value exceeds the source descriptor budget.', max(1, $node->getStartLine()), $owner);
             }
         }
-        if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && $file->resolvedName($node->class) === 'Laravel\\Mcp\\Facades\\Mcp' && in_array($method = strtolower($node->name->toString()), ['web', 'local'], true)) {
             $selector = null;
             $targets = [];
@@ -135,7 +132,7 @@ final class PackageCatalogExtractor
                     if ($target !== null) {
                         $targets[] = $target;
                     }
-                } elseif ($arg->value instanceof Scalar\String_ && preg_match('/\A[\/a-zA-Z0-9_.:\-]{1,256}\z/D', $arg->value->value) === 1) {
+                } elseif (Node::is($arg->value, 'scalar.string') && preg_match('/\A[\/a-zA-Z0-9_.:\-]{1,256}\z/D', $arg->value->value) === 1) {
                     $selector = $arg->value->value;
                 } else {
                     $resolved = false;
@@ -145,23 +142,23 @@ final class PackageCatalogExtractor
         }
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner);
                 }
             }
         }
     }
 
-    private function type(FileContext $file, Expr $node): ?string
+    private function type(FileContext $file, Node $node): ?string
     {
-        if ($node instanceof Scalar\String_) {
+        if (Node::is($node, 'scalar.string')) {
             $name = ltrim($node->value, '\\');
 
             return strlen($name) <= 1000 && preg_match('/\A[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*(?:\\\\[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*)*\z/D', $name) === 1 ? $name : null;
         }
-        $class = $node instanceof Expr\ClassConstFetch && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'class' ? $node->class : null;
+        $class = Node::is($node, 'expression.class-const-fetch') && Node::is($node->name, 'identifier') && strtolower($node->name->toString()) === 'class' ? $node->class : null;
 
-        return $class instanceof Node\Name && strlen($name = $file->resolvedName($class)) <= 1000 ? $name : null;
+        return Node::is($class, 'name') && strlen($name = $file->resolvedName($class)) <= 1000 ? $name : null;
     }
 
     /** @param list<string> $targets

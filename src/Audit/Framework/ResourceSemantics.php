@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Framework;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
 
 final readonly class ResourceSemantics
 {
@@ -76,7 +75,7 @@ final readonly class ResourceSemantics
                     continue;
                 }
                 $value = $prop->default;
-                if ($value instanceof Expr\ClassConstFetch && $value->class instanceof Node\Name && $value->name instanceof Node\Identifier && strtolower($value->name->toString()) === 'class') {
+                if (Node::is($value, 'expression.class-const-fetch') && Node::is($value->class, 'name') && Node::is($value->name, 'identifier') && strtolower($value->name->toString()) === 'class') {
                     return $source->file->resolvedName($value->class);
                 }
             }
@@ -90,6 +89,6 @@ final readonly class ResourceSemantics
      */
     private function callbacks(array $arguments): array
     {
-        return array_values(array_filter($arguments, fn (?FrameworkValue $value): bool => $value?->callback instanceof Expr\Closure || $value?->callback instanceof Expr\ArrowFunction));
+        return array_values(array_filter($arguments, fn (?FrameworkValue $value): bool => Node::is($value?->callback, 'expression.closure') || Node::is($value?->callback, 'expression.arrow-function')));
     }
 }

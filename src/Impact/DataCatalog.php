@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use Illuminate\Support\Str;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Source metadata only. No model construction, reflection or database configuration. */
 final class DataCatalog
@@ -22,13 +20,13 @@ final class DataCatalog
 
     public function collect(FileContext $file): void
     {
-        $ast = $file->ast();
+        $ast = $file->syntax();
         if ($ast === null) {
             $this->notices[] = ['path' => $file->path, 'line' => 1, 'reason' => 'Unparseable DATA source.'];
 
             return;
         }
-        foreach ((new NodeFinder)->findInstanceOf($ast, Stmt\ClassLike::class) as $node) {
+        foreach ((new NodeFinder)->findOfKind($ast, 'statement.class-like') as $node) {
             $name = self::name($node, $file);
             $meta = ['name' => $name, 'path' => $file->path, 'line' => $node->getStartLine(), 'parents' => [], 'properties' => [], 'methods' => []];
             foreach ($node->attrGroups as $group) {
@@ -38,7 +36,7 @@ final class DataCatalog
                     }
                 }
             }
-            if ($node instanceof Stmt\Class_ && $node->extends !== null) {
+            if (Node::is($node, 'statement.class') && $node->extends !== null) {
                 $meta['parents'][] = $file->resolvedName($node->extends);
             }
             foreach ($node->getTraitUses() as $use) {
@@ -60,24 +58,24 @@ final class DataCatalog
                 if (str_starts_with($key, 'scope') && strlen($key) > 5) {
                     $meta['methods'][$key]['legacy_scope'] = true;
                 }
-                if ($method->returnType instanceof Node\Name) {
+                if (Node::is($method->returnType, 'name')) {
                     $meta['methods'][$key]['return_class'] = $file->resolvedName($method->returnType);
                 }
                 $returnReceivers = [];
                 foreach ($method->stmts ?? [] as $statement) {
-                    if (! $statement instanceof Stmt\Return_) {
+                    if (! Node::is($statement, 'statement.return')) {
                         continue;
                     }
                     $expression = $statement->expr;
-                    while ($expression instanceof Expr\MethodCall || $expression instanceof Expr\NullsafeMethodCall) {
+                    while (Node::is($expression, 'expression.method-call') || Node::is($expression, 'expression.nullsafe-method-call')) {
                         $expression = $expression->var;
                     }
-                    if (($expression instanceof Expr\StaticCall || $expression instanceof Expr\New_) && $expression->class instanceof Node\Name) {
+                    if ((Node::is($expression, 'expression.static-call') || Node::is($expression, 'expression.new')) && Node::is($expression->class, 'name')) {
                         $returnReceivers[] = $file->resolvedName($expression->class);
                     }
                 }
                 $meta['methods'][$key]['return_receivers'] = $returnReceivers;
-                if (count($method->stmts ?? []) === 1 && $method->stmts[0] instanceof Stmt\Return_) {
+                if (count($method->stmts ?? []) === 1 && Node::is($method->stmts[0], 'statement.return')) {
                     $meta['methods'][$key]['literal_return'] = self::literal($method->stmts[0]->expr, $file, $name);
                 }
                 foreach ($method->attrGroups as $group) {
@@ -88,8 +86,8 @@ final class DataCatalog
                     }
                 }
                 if ($key === 'neweloquentbuilder') {
-                    $news = (new NodeFinder)->findInstanceOf($method->stmts ?? [], Expr\New_::class);
-                    $meta['builder'] = count($news) === 1 && $news[0]->class instanceof Node\Name ? $file->resolvedName($news[0]->class) : null;
+                    $news = (new NodeFinder)->findOfKind($method->stmts ?? [], 'expression.new');
+                    $meta['builder'] = count($news) === 1 && Node::is($news[0]->class, 'name') ? $file->resolvedName($news[0]->class) : null;
                 }
             }
             $key = strtolower($name);
@@ -102,14 +100,14 @@ final class DataCatalog
         }
     }
 
-    public static function name(Stmt\ClassLike $node, FileContext $file): string
+    public static function name(Node $node, FileContext $file): string
     {
         return isset($node->namespacedName) ? $node->namespacedName->toString() : '(anonymous) '.$file->path.':'.$node->getStartFilePos();
     }
 
     public static function literal(?Node $node, FileContext $file, string $class): mixed
     {
-        if ($node instanceof Expr\Array_) {
+        if (Node::is($node, 'expression.array')) {
             $items = [];
             foreach ($node->items as $item) {
                 if ($item === null || $item->unpack) {
@@ -125,13 +123,13 @@ final class DataCatalog
 
             return $items;
         }
-        if ($node instanceof Node\Scalar\String_ || $node instanceof Node\Scalar\Int_) {
+        if (Node::is($node, 'scalar.string') || Node::is($node, 'scalar.int')) {
             return $node->value;
         }
-        if ($node instanceof Expr\ClassConstFetch && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'class') {
+        if (Node::is($node, 'expression.class-const-fetch') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && strtolower($node->name->toString()) === 'class') {
             return in_array(strtolower($node->class->toString()), ['self', 'static'], true) ? $class : $file->resolvedName($node->class);
         }
-        if ($node instanceof Expr\ConstFetch && strtolower($node->name->toString()) === 'null') {
+        if (Node::is($node, 'expression.const-fetch') && strtolower($node->name->toString()) === 'null') {
             return null;
         }
 

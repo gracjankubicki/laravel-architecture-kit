@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Revision;
 
 use BackedEnum;
-use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationMappings;
 use GracjanKubicki\ArchitectureKit\Classification\DeclaredConfiguration;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use InvalidArgumentException;
 use Throwable;
 
@@ -18,16 +18,27 @@ final readonly class RevisionConfiguration
 {
     /** @param array<string, mixed>|null $values
      * @param list<array{code: string, path: string, message: string}> $notices */
-    private function __construct(public ?array $values, public string $fingerprint, public array $notices, public string $origin) {}
+    private function __construct(public ?array $values, public string $fingerprint, public array $notices, public string $origin, private ?AuditScope $sourceScope = null) {}
 
     public static function from(SourceSnapshot $source): self
     {
         $path = 'config/architectures.php';
         $contents = $source->files[$path] ?? null;
-        if ($contents === null && ! in_array($path, $source->paths, true)) {
-            return new self(['enabled' => array_column(Architecture::defaultSelection(), 'value')], hash('sha256', 'package-default'), [], 'package-default');
-        }
         try {
+            $composerSource = $source->files['composer.json'] ?? null;
+            if ($composerSource === null && in_array('composer.json', $source->paths, true)) {
+                throw new InvalidArgumentException('Historical Composer declarations are present but unavailable.');
+            }
+            $composer = $composerSource === null ? [] : json_decode($composerSource, true, 64, JSON_THROW_ON_ERROR);
+            if (! is_array($composer)) {
+                throw new InvalidArgumentException('Historical Composer declarations must contain an object.');
+            }
+            $layout = ProjectLayout::snapshot($composer, in_array('artisan', $source->paths, true));
+            if ($contents === null && ! in_array($path, $source->paths, true)) {
+                $defaults = ['enabled' => array_column($layout->defaultSelection(), 'value')];
+
+                return new self($defaults, hash('sha256', serialize([$defaults, $composer])), [], 'package-default', self::sourceScope($defaults, $layout));
+            }
             if ($contents === null) {
                 throw new InvalidArgumentException('Historical configuration is present but unavailable.');
             }
@@ -58,7 +69,7 @@ final readonly class RevisionConfiguration
             }
             CustomRuleSet::fromConfig($values['rules'] ?? []);
 
-            return new self($values, hash('sha256', serialize($values)), [], $source->state.':'.$source->revision);
+            return new self($values, hash('sha256', serialize([$values, $composer])), [], $source->state.':'.$source->revision, self::sourceScope($values, $layout));
         } catch (Throwable $error) {
             return new self(null, hash('sha256', $contents ?? 'unavailable'), [
                 ['code' => 'E_REVISION_CONFIGURATION', 'path' => $path, 'message' => 'Historical configuration unresolved: '.$error->getMessage()],
@@ -71,8 +82,18 @@ final readonly class RevisionConfiguration
         if ($this->values === null) {
             return null;
         }
-        $audit = $this->values['audit'] ?? [];
-        $scope = new AuditScope(['app', ...($audit['paths'] ?? [])]);
+
+        return $this->sourceScope;
+    }
+
+    /** @param array<string, mixed> $values */
+    private static function sourceScope(array $values, ProjectLayout $layout): AuditScope
+    {
+        $audit = $values['audit'] ?? [];
+        $paths = $audit['paths'] ?? [];
+        $scope = $layout->isPackage()
+            ? AuditScope::package($paths === [] ? $layout->sources() : $paths)
+            : new AuditScope(['app', ...$paths]);
 
         return in_array($audit['missing_test'] ?? 'off', ['warn', 'error'], true) ? $scope->withTests() : $scope;
     }

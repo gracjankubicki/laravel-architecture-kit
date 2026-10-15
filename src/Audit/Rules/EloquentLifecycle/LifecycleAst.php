@@ -4,24 +4,21 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\ClassInspector;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node;
-use PhpParser\Node\Expr\BinaryOp;
-use PhpParser\Node\Expr\BooleanNot;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\PropertyFetch;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Name;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class LifecycleAst
+final class LifecycleAst
 {
+    private readonly ProjectClassification $classification;
+
+    /** @var array<string, bool>|null Model declarations for this audit only. */
+    private ?array $observedModels = null;
+
     /**
      * @var array<int, string>
      */
@@ -45,9 +42,17 @@ final readonly class LifecycleAst
     ];
 
     public function __construct(
-        private Filesystem $files,
-        private string $basePath,
-    ) {}
+        private readonly Filesystem $files,
+        private readonly string $basePath,
+        ?ProjectClassification $classification = null,
+    ) {
+        $this->classification = $classification ?? new ProjectClassification($files, $basePath);
+    }
+
+    public function isProviderPath(string $path): bool
+    {
+        return $this->classification->kindMatches($path, 'provider', str_starts_with($path, 'app/Providers/'));
+    }
 
     public function isObserverPath(string $path): bool
     {
@@ -61,7 +66,7 @@ final readonly class LifecycleAst
             || str_contains($path, '/Lifecycle/');
     }
 
-    public function looksLikeLifecycleHandler(string $className, Stmt\Class_ $class): bool
+    public function looksLikeLifecycleHandler(string $className, Node $class): bool
     {
         if (
             str_ends_with($className, 'Data')
@@ -83,18 +88,18 @@ final readonly class LifecycleAst
 
         $handleMethods = array_filter(
             $class->getMethods(),
-            fn (Stmt\ClassMethod $method): bool => $method->isPublic() && $method->name->toString() === 'handle',
+            fn (Node $method): bool => $method->isPublic() && $method->name->toString() === 'handle',
         );
 
         return count($handleMethods) === 1;
     }
 
     /**
-     * @return array<int, Stmt\ClassMethod>
+     * @return array<int, Node>
      */
     public function lifecycleMethods(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -103,7 +108,7 @@ final readonly class LifecycleAst
         $state = new class
         {
             /**
-             * @var array<int, Stmt\ClassMethod>
+             * @var array<int, Node>
              */
             public array $methods = [];
         };
@@ -115,7 +120,7 @@ final readonly class LifecycleAst
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof Stmt\ClassMethod
+                    Node::is($node, 'statement.class-method')
                     && $node->isPublic()
                     && in_array($node->name->toString(), [...LifecycleAst::BEFORE_METHODS, ...LifecycleAst::AFTER_METHODS], true)
                 ) {
@@ -129,7 +134,7 @@ final readonly class LifecycleAst
         return $state->methods;
     }
 
-    public function isSingleNamedEventDispatch(Stmt\ClassMethod $method): bool
+    public function isSingleNamedEventDispatch(Node $method): bool
     {
         if (count($method->stmts ?? []) !== 1) {
             return false;
@@ -137,58 +142,58 @@ final readonly class LifecycleAst
 
         $statement = $method->stmts[0];
 
-        if (! $statement instanceof Stmt\Expression) {
+        if (! Node::is($statement, 'statement.expression')) {
             return false;
         }
 
         $expr = $statement->expr;
 
         if (
-            $expr instanceof Node\Expr\FuncCall
-            && $expr->name instanceof Name
+            Node::is($expr, 'expression.func-call')
+            && Node::is($expr->name, 'name')
             && $expr->name->toString() === 'event'
-            && ($expr->args[0]->value ?? null) instanceof Node\Expr\New_
+            && Node::is(($expr->args[0]->value ?? null), 'expression.new')
         ) {
             return true;
         }
 
         if (
-            ! $expr instanceof StaticCall
-            || ! $expr->class instanceof Name
-            || ! $expr->name instanceof Node\Identifier
+            ! Node::is($expr, 'expression.static-call')
+            || ! Node::is($expr->class, 'name')
+            || ! Node::is($expr->name, 'identifier')
             || $expr->name->toString() !== 'dispatch'
         ) {
             return false;
         }
 
         $resolved = $expr->class->getAttribute('resolvedName');
-        $class = $resolved instanceof Name ? $resolved->toString() : $expr->class->toString();
+        $class = Node::is($resolved, 'name') ? $resolved->toString() : $expr->class->toString();
 
         return str_starts_with($class, 'App\\Events\\');
     }
 
     public function isTechnicalLifecycleCondition(Node $condition): bool
     {
-        if ($condition instanceof BooleanNot) {
+        if (Node::is($condition, 'expression.boolean-not')) {
             return $this->isTechnicalLifecycleCondition($condition->expr);
         }
 
-        if ($condition instanceof BinaryOp\BooleanAnd || $condition instanceof BinaryOp\BooleanOr) {
+        if (Node::is($condition, 'expression.binary-op.boolean-and') || Node::is($condition, 'expression.binary-op.boolean-or')) {
             return $this->isTechnicalLifecycleCondition($condition->left)
                 && $this->isTechnicalLifecycleCondition($condition->right);
         }
 
         if (
-            $condition instanceof BinaryOp\Identical
-            || $condition instanceof BinaryOp\NotIdentical
-            || $condition instanceof BinaryOp\Equal
-            || $condition instanceof BinaryOp\NotEqual
+            Node::is($condition, 'expression.binary-op.identical')
+            || Node::is($condition, 'expression.binary-op.not-identical')
+            || Node::is($condition, 'expression.binary-op.equal')
+            || Node::is($condition, 'expression.binary-op.not-equal')
         ) {
-            if ($condition->left instanceof Node\Expr\ConstFetch && strtolower($condition->left->name->toString()) === 'null') {
+            if (Node::is($condition->left, 'expression.const-fetch') && strtolower($condition->left->name->toString()) === 'null') {
                 return $this->isNullComparable($condition->right);
             }
 
-            if ($condition->right instanceof Node\Expr\ConstFetch && strtolower($condition->right->name->toString()) === 'null') {
+            if (Node::is($condition->right, 'expression.const-fetch') && strtolower($condition->right->name->toString()) === 'null') {
                 return $this->isNullComparable($condition->left);
             }
 
@@ -196,19 +201,19 @@ final readonly class LifecycleAst
                 && $this->isTechnicalLifecycleCondition($condition->right);
         }
 
-        if ($condition instanceof MethodCall && $condition->name instanceof Node\Identifier) {
+        if (Node::is($condition, 'expression.method-call') && Node::is($condition->name, 'identifier')) {
             return in_array($condition->name->toString(), ['isDirty', 'wasChanged', 'getDirty', 'getChanges'], true);
         }
 
-        if ($condition instanceof PropertyFetch && $condition->name instanceof Node\Identifier) {
+        if (Node::is($condition, 'expression.property-fetch') && Node::is($condition->name, 'identifier')) {
             return $condition->name->toString() === 'wasRecentlyCreated';
         }
 
-        if ($condition instanceof Node\Expr\ConstFetch) {
+        if (Node::is($condition, 'expression.const-fetch')) {
             return in_array(strtolower($condition->name->toString()), ['true', 'false', 'null'], true);
         }
 
-        if ($condition instanceof Scalar) {
+        if (Node::is($condition, 'scalar')) {
             return false;
         }
 
@@ -217,7 +222,7 @@ final readonly class LifecycleAst
 
     public function afterCommitObserverLine(FileContext $file): ?int
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return null;
@@ -225,7 +230,7 @@ final readonly class LifecycleAst
 
         $class = ClassInspector::firstClass($nodes);
 
-        if (! $class instanceof Stmt\Class_) {
+        if (! Node::is($class, 'statement.class')) {
             return null;
         }
 
@@ -238,14 +243,14 @@ final readonly class LifecycleAst
         }
 
         foreach ($class->stmts as $statement) {
-            if (! $statement instanceof Stmt\Property) {
+            if (! Node::is($statement, 'statement.property')) {
                 continue;
             }
 
             foreach ($statement->props as $property) {
                 if (
                     $property->name->toString() === 'afterCommit'
-                    && $property->default instanceof Node\Expr\ConstFetch
+                    && Node::is($property->default, 'expression.const-fetch')
                     && strtolower($property->default->name->toString()) === 'true'
                 ) {
                     return $property->getStartLine();
@@ -259,7 +264,7 @@ final readonly class LifecycleAst
     /**
      * @return array<int, int>
      */
-    public function significantCalls(Stmt\ClassMethod $method): array
+    public function significantCalls(Node $method): array
     {
         $ignored = [
             'getKey',
@@ -294,11 +299,11 @@ final readonly class LifecycleAst
             {
                 $name = null;
 
-                if (($node instanceof MethodCall || $node instanceof StaticCall) && $node->name instanceof Node\Identifier) {
+                if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.static-call')) && Node::is($node->name, 'identifier')) {
                     $name = $node->name->toString();
                 }
 
-                if ($node instanceof Node\Expr\FuncCall && $node->name instanceof Name) {
+                if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name')) {
                     $name = $node->name->toString();
                 }
 
@@ -318,7 +323,7 @@ final readonly class LifecycleAst
      */
     public function observerRegistrations(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -339,13 +344,13 @@ final readonly class LifecycleAst
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof StaticCall
-                    && $node->class instanceof Name
-                    && $node->name instanceof Node\Identifier
+                    Node::is($node, 'expression.static-call')
+                    && Node::is($node->class, 'name')
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'observe'
                 ) {
                     $this->state->registrations[] = [
-                        'model' => $this->shortName($node->class),
+                        'model' => $this->resolvedName($node->class),
                         'line' => $node->getStartLine(),
                     ];
                 }
@@ -353,11 +358,11 @@ final readonly class LifecycleAst
                 return null;
             }
 
-            private function shortName(Name $name): string
+            private function resolvedName(Node $name): string
             {
-                $parts = $name->getParts();
+                $resolved = $name->getAttribute('resolvedName');
 
-                return $parts[count($parts) - 1];
+                return Node::is($resolved, 'name') ? $resolved->toString() : $name->toString();
             }
         });
 
@@ -366,40 +371,51 @@ final readonly class LifecycleAst
 
     public function modelHasObservedBy(string $model): bool
     {
-        $path = $this->basePath.'/app/Models/'.$model.'.php';
-
-        if (! $this->files->exists($path)) {
-            return false;
-        }
-
-        $nodes = PhpAst::parse($this->files->get($path));
-
-        if ($nodes === null) {
-            return false;
-        }
-
-        $class = ClassInspector::firstClass($nodes);
-
-        if (! $class instanceof Stmt\Class_) {
-            return false;
-        }
-
-        foreach ($class->attrGroups as $attributeGroup) {
-            foreach ($attributeGroup->attrs as $attribute) {
-                $name = $attribute->name->toString();
-
-                if ($name === 'ObservedBy' || str_ends_with($name, '\\ObservedBy')) {
-                    return true;
+        if ($this->observedModels === null) {
+            $this->observedModels = [];
+            foreach ($this->classification->sourcePaths() as $path) {
+                if (! $this->classification->kindMatches($path, 'model', str_starts_with($path, 'app/Models/'))) {
+                    continue;
                 }
+                $state = new class
+                {
+                    /** @var array<string, bool> */
+                    public array $models = [];
+                };
+                $nodes = PhpAst::parse($this->files->get($this->basePath.'/'.$path));
+                PhpAst::traverse($nodes ?? [], new class($state) extends NodeVisitorAbstract
+                {
+                    public function __construct(private object $state) {}
+
+                    public function enterNode(Node $node): null
+                    {
+                        if (! Node::is($node, 'statement.class') || $node->name === null) {
+                            return null;
+                        }
+                        $name = isset($node->namespacedName) ? $node->namespacedName->toString() : $node->name->toString();
+                        $observed = false;
+                        foreach ($node->attrGroups as $group) {
+                            foreach ($group->attrs as $attribute) {
+                                $resolved = $attribute->name->getAttribute('resolvedName');
+                                $attributeName = Node::is($resolved, 'name') ? $resolved->toString() : $attribute->name->toString();
+                                $observed = $observed || $attributeName === 'Illuminate\\Database\\Eloquent\\Attributes\\ObservedBy' || $attributeName === 'ObservedBy';
+                            }
+                        }
+                        $this->state->models[strtolower($name)] = $observed;
+
+                        return null;
+                    }
+                });
+                $this->observedModels += $state->models;
             }
         }
 
-        return false;
+        return $this->observedModels[strtolower(ltrim($model, '\\'))] ?? false;
     }
 
     public function firstQuietSaveLine(FileContext $file): ?int
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return null;
@@ -421,16 +437,16 @@ final readonly class LifecycleAst
                 }
 
                 if (
-                    $node instanceof MethodCall
-                    && $node->name instanceof Node\Identifier
+                    Node::is($node, 'expression.method-call')
+                    && Node::is($node->name, 'identifier')
                     && in_array($node->name->toString(), ['saveQuietly', 'updateQuietly', 'deleteQuietly'], true)
                 ) {
                     $this->state->line = $node->getStartLine();
                 }
 
                 if (
-                    $node instanceof StaticCall
-                    && $node->name instanceof Node\Identifier
+                    Node::is($node, 'expression.static-call')
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'withoutEvents'
                 ) {
                     $this->state->line = $node->getStartLine();
@@ -445,7 +461,7 @@ final readonly class LifecycleAst
 
     public function containsTraitDeclaration(FileContext $file): bool
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return false;
@@ -453,13 +469,13 @@ final readonly class LifecycleAst
 
         return PhpAst::containsAny(
             $nodes,
-            fn (Node $node): bool => $node instanceof Stmt\Trait_,
+            fn (Node $node): bool => Node::is($node, 'statement.trait'),
         );
     }
 
     public function inlineModelEventLine(FileContext $file): ?int
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return null;
@@ -478,10 +494,10 @@ final readonly class LifecycleAst
             {
                 if (
                     $this->state->line === null
-                    && $node instanceof StaticCall
-                    && $node->class instanceof Name
+                    && Node::is($node, 'expression.static-call')
+                    && Node::is($node->class, 'name')
                     && $node->class->toString() === 'static'
-                    && $node->name instanceof Node\Identifier
+                    && Node::is($node->name, 'identifier')
                     && in_array($node->name->toString(), [...LifecycleAst::BEFORE_METHODS, ...LifecycleAst::AFTER_METHODS], true)
                 ) {
                     $this->state->line = $node->getStartLine();
@@ -496,8 +512,8 @@ final readonly class LifecycleAst
 
     private function isNullComparable(Node $node): bool
     {
-        return $node instanceof Variable
-            || $node instanceof PropertyFetch
-            || $node instanceof MethodCall;
+        return Node::is($node, 'expression.variable')
+            || Node::is($node, 'expression.property-fetch')
+            || Node::is($node, 'expression.method-call');
     }
 }

@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Attribute metadata retains attribute names and callback identities only. */
 final class CatalogAttributes
@@ -21,7 +19,7 @@ final class CatalogAttributes
     public static function extract(FileContext $file): array
     {
         $rows = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassMethod::class) as $method) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-method') as $method) {
             $name = $method->name->toString();
             if (preg_match('/\A(get|set)([a-zA-Z_][a-zA-Z0-9_]{0,127})Attribute\z/iD', $name, $match) === 1) {
                 $rows[max(0, $method->getStartFilePos())] = ['attribute' => Str::snake($match[2]), 'style' => 'legacy', 'roles' => [strtolower($match[1]) === 'get' ? 'accessor' : 'mutator'], 'get' => null, 'set' => null, 'resolved' => true];
@@ -31,21 +29,21 @@ final class CatalogAttributes
             if (preg_match('/\A[a-zA-Z_][a-zA-Z0-9_]{0,127}\z/D', $name) !== 1) {
                 continue;
             }
-            $type = $method->returnType instanceof Node\NullableType ? $method->returnType->type : $method->returnType;
-            if (! $type instanceof Node\Name || strcasecmp($file->resolvedName($type), self::TYPE) !== 0) {
+            $type = Node::is($method->returnType, 'nullable-type') ? $method->returnType->type : $method->returnType;
+            if (! Node::is($type, 'name') || strcasecmp($file->resolvedName($type), self::TYPE) !== 0) {
                 continue;
             }
             $body = $method->stmts ?? [];
-            $root = count($body) === 1 && $body[0] instanceof Stmt\Return_ ? $body[0]->expr : null;
+            $root = count($body) === 1 && Node::is($body[0], 'statement.return') ? $body[0]->expr : null;
             $supported = true;
-            while ($root instanceof Expr\MethodCall) {
-                $supported = $supported && $root->name instanceof Node\Identifier && in_array(strtolower($root->name->toString()), ['shouldcache', 'withoutobjectcaching'], true) && ! $root->isFirstClassCallable();
+            while (Node::is($root, 'expression.method-call')) {
+                $supported = $supported && Node::is($root->name, 'identifier') && in_array(strtolower($root->name->toString()), ['shouldcache', 'withoutobjectcaching'], true) && ! $root->isFirstClassCallable();
                 $root = $root->var;
             }
             $row = ['attribute' => Str::snake($name), 'style' => 'attribute', 'roles' => [], 'get' => null, 'set' => null, 'resolved' => $supported];
-            $factory = $root instanceof Expr\New_ && $root->class instanceof Node\Name && strcasecmp($file->resolvedName($root->class), self::TYPE) === 0 ? 'make'
-                : ($root instanceof Expr\StaticCall && $root->class instanceof Node\Name && strcasecmp($file->resolvedName($root->class), self::TYPE) === 0 && $root->name instanceof Node\Identifier && ! $root->isFirstClassCallable() ? strtolower($root->name->toString()) : null);
-            if (! ($root instanceof Expr\StaticCall || $root instanceof Expr\New_) || ! in_array($factory, ['make', 'get', 'set'], true)) {
+            $factory = Node::is($root, 'expression.new') && Node::is($root->class, 'name') && strcasecmp($file->resolvedName($root->class), self::TYPE) === 0 ? 'make'
+                : (Node::is($root, 'expression.static-call') && Node::is($root->class, 'name') && strcasecmp($file->resolvedName($root->class), self::TYPE) === 0 && Node::is($root->name, 'identifier') && ! $root->isFirstClassCallable() ? strtolower($root->name->toString()) : null);
+            if (! (Node::is($root, 'expression.static-call') || Node::is($root, 'expression.new')) || ! in_array($factory, ['make', 'get', 'set'], true)) {
                 $row['resolved'] = false;
             } else {
                 foreach ($root->getArgs() as $argument) {
@@ -58,7 +56,7 @@ final class CatalogAttributes
                         continue;
                     }
                     $argument = self::argument($root, $factory === 'make' ? $position : 0, $direction);
-                    if ($argument === null || $argument instanceof Expr\ConstFetch && strtolower($argument->name->toString()) === 'null') {
+                    if ($argument === null || Node::is($argument, 'expression.const-fetch') && strtolower($argument->name->toString()) === 'null') {
                         if ($factory !== 'make') {
                             $row['resolved'] = false;
                         }
@@ -66,7 +64,7 @@ final class CatalogAttributes
                         continue;
                     }
                     $row['roles'][] = $direction === 'get' ? 'accessor' : 'mutator';
-                    if ($argument instanceof Expr\Closure || $argument instanceof Expr\ArrowFunction) {
+                    if (Node::is($argument, 'expression.closure') || Node::is($argument, 'expression.arrow-function')) {
                         $offset = max(0, $argument->getStartFilePos());
                         $row[$direction] = CatalogElement::identity($file->path, 'closure', '(closure) '.$file->path.':'.$offset, $offset);
                     } else {
@@ -80,7 +78,7 @@ final class CatalogAttributes
         return $rows;
     }
 
-    private static function argument(Expr\StaticCall|Expr\New_ $call, int $position, string $name): ?Node
+    private static function argument(Node $call, int $position, string $name): ?Node
     {
         foreach ($call->getArgs() as $index => $arg) {
             if (! $arg->unpack && ($arg->name?->toString() === $name || $arg->name === null && $index === $position)) {

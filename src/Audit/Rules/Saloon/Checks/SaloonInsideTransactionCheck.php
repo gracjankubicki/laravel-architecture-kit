@@ -4,21 +4,18 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class SaloonInsideTransactionCheck implements FileCheck
 {
     public function findings(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -44,7 +41,7 @@ final readonly class SaloonInsideTransactionCheck implements FileCheck
 
                 $callback = $node->args[0]->value ?? null;
 
-                if (! $callback instanceof Node\Expr\Closure && ! $callback instanceof Node\Expr\ArrowFunction) {
+                if (! Node::is($callback, 'expression.closure') && ! Node::is($callback, 'expression.arrow-function')) {
                     return null;
                 }
 
@@ -55,8 +52,8 @@ final readonly class SaloonInsideTransactionCheck implements FileCheck
                     public function enterNode(Node $node): null
                     {
                         if (
-                            $node instanceof MethodCall
-                            && $node->name instanceof Node\Identifier
+                            Node::is($node, 'expression.method-call')
+                            && Node::is($node->name, 'identifier')
                             && in_array($node->name->toString(), ['send', 'sendAsync'], true)
                         ) {
                             $this->state->lines[] = $node->getStartLine();
@@ -71,10 +68,10 @@ final readonly class SaloonInsideTransactionCheck implements FileCheck
 
             private function isDbTransactionCall(Node $node): bool
             {
-                return $node instanceof StaticCall
-                    && $node->class instanceof Name
+                return Node::is($node, 'expression.static-call')
+                    && Node::is($node->class, 'name')
                     && $node->class->toString() === 'DB'
-                    && $node->name instanceof Node\Identifier
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'transaction';
             }
         });

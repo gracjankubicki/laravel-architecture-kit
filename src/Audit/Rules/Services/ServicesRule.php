@@ -5,19 +5,16 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Services;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class ServicesRule implements AuditRule
+final readonly class ServicesRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -35,7 +32,7 @@ final readonly class ServicesRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -83,17 +80,17 @@ final readonly class ServicesRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstClass(array $nodes): ?Stmt\Class_
+    private function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 $class = $this->firstClass($node->stmts);
 
-                if ($class instanceof Stmt\Class_) {
+                if (Node::is($class, 'statement.class')) {
                     return $class;
                 }
             }
@@ -122,7 +119,7 @@ final readonly class ServicesRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\UseUse) {
+                if (! Node::is($node, 'use-item')) {
                     return null;
                 }
 
@@ -196,7 +193,7 @@ final readonly class ServicesRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\ClassMethod) {
+                if (! Node::is($node, 'statement.class-method')) {
                     return null;
                 }
 
@@ -243,7 +240,7 @@ final readonly class ServicesRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Stmt\ClassMethod && $node->isPublic() && $node->isStatic()) {
+                if (Node::is($node, 'statement.class-method') && $node->isPublic() && $node->isStatic()) {
                     $this->state->lines[] = $node->getStartLine();
                 }
 
@@ -275,11 +272,11 @@ final readonly class ServicesRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof FuncCall
-                    && $node->name instanceof Name
+                    Node::is($node, 'expression.func-call')
+                    && Node::is($node->name, 'name')
                     && $node->name->toString() === 'app'
                     && isset($node->args[0])
-                    && $node->args[0]->value instanceof Node\Expr\ClassConstFetch
+                    && Node::is($node->args[0]->value, 'expression.class-const-fetch')
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }
@@ -326,15 +323,15 @@ final readonly class ServicesRule implements AuditRule
             return [$type];
         }
 
-        if ($type instanceof Name || $type instanceof Node\Identifier) {
+        if (Node::is($type, 'name') || Node::is($type, 'identifier')) {
             return [$type->toString()];
         }
 
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->typeNames($type->type);
         }
 
-        if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+        if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
             $names = [];
 
             foreach ($type->types as $innerType) {

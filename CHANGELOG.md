@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+- Add interchangeable Mago/Rust and PHP analysis engines backed by a neutral syntax model across audits, catalogs, graph and impact queries, revisions, public API and AI task control. Default to Mago for existing and new configurations; require an explicit PHP choice instead of automatic fallback.
+- Derive analysis PHP versions from project settings and Composer, report engine and configuration origin through CLI and MCP, retain immutable task beginnings across engine changes, and include engine/source identities in analysis caches.
+- Block verification on syntax errors without baseline or inline suppression, retain analysis of other files, and distinguish unsupported valid syntax from project syntax errors. Preserve legacy PhpParser custom rules under explicit PHP and check portable-rule declarations before construction under Mago.
+- Support architecture guidance, scaffolding, audits and task control in plain PHP and Laravel Composer packages using their own source roots, namespaces and placements. Require explicit selection for ambiguous generation locations.
+- Apply package classification and configured source roots to port boundaries and companion implementations, enum casts, integration imports, service locators and observer registration checks. Resolve model namespaces and aliased ObservedBy attributes without loading the inspected package.
+- Share neutral syntax vocabulary strings and traversal order across engines to reduce retained Mago syntax memory. Give service-dependency warnings the actual service call witness instead of an unrelated first observation.
+- Add a versioned engine installer with integrity checks and native build workflows for macOS/Linux ARM64/x64, including static Linux executables. Binary publication and user installation remain separate release operations.
+
+- Preserve the parent PHP memory limit in both standalone runtime-route drivers, disable coverage collection in the route child, and overlap fresh registration with independent source checks before awaiting the full endpoint context.
+
+- Write full audit/guard JSON without terminal formatting or whole-report newline copies, preserve full MCP text/structured responses through incremental JSON serialization, and transfer worker facts in bounded chunks. Release full MCP responses and allocator pages between requests, and restored graph contributions before full-audit replacements, to avoid memory-dependent serial fallback.
+
+- Reuse parser grammars without retaining source tokens or error stacks, share bounded analysis facts and declaration indexes, reuse successful root method lookups within each source index, and parallelize large full standalone audits with tool-only workers and serial fallback. Preserve distinct route witnesses through compact worker transport and index handler registrations once per route map.
+- Persist bounded hashed analysis facts outside repositories, invalidate them using content and configuration/tool identities, and keep corrupt or unwritable caches as misses. Reject modified tool sources in running standalone processes.
+- Reuse verified audit freshness in task checks and keep long audits outside task-state locks. Preserve reserved beginnings, explicit skips and conservative decisions when concurrent checks replace task state.
+
+- Preserve the invoked executable in exported MCP and hook commands so Composer-installed tools retain their autoloader.
+- Feed source-only standalone controller checks from bounded HTTP source discovery, including declared project directories. Retain known routes and explicit unresolved/limit notices without executing application PHP.
+- Add explicit `--runtime-routes` for fresh application route snapshots in an isolated PHP process or existing Docker Compose container, including exported MCP and hooks. Keep default source-only analysis and custom-rule execution permissions separate.
+- Release graph construction inputs before endpoint analysis and retain final suppression source text only for annotated files, without raising analysis or PHP memory limits.
+
+- Index enum names and mirror-implementation file counts once per audit rule instance, avoiding repeated application-directory scans while preserving ambiguous matches and fresh subsequent audits.
+- Keep unavailable route handlers as explicit analysis notices with their route witnesses, preventing a missing or external controller from silently passing task verification.
+- Match fully qualified runtime route handlers consistently; reuse bounded endpoint source syntax and handler analysis without merging route witnesses or middleware contexts.
+- Recognize observed class aliases and standard request, abort, authentication and redirect operations; preserve project overrides, session writes and unresolved dependency calls.
+
 All notable changes to `gracjankubicki/laravel-architecture-kit` will be documented in this file.
 
 ## v0.8.0 - 2026-10-14

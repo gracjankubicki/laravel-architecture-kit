@@ -20,7 +20,7 @@ final readonly class LifecycleFolderPurityCheck implements FileCheck
             return [];
         }
 
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
         $class = $nodes === null ? null : ClassInspector::firstClass($nodes);
         $className = $class === null ? basename($file->path, '.php') : (ClassInspector::className($class) ?? basename($file->path, '.php'));
 

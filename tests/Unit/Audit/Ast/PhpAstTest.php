@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Audit\Ast;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
-use PhpParser\Node;
 use PHPUnit\Framework\TestCase;
 
 final class PhpAstTest extends TestCase
@@ -15,7 +15,7 @@ final class PhpAstTest extends TestCase
         $nodes = PhpAst::parse('<?php function first() {} enum Status: string { case Draft = "draft"; }');
 
         $this->assertNotNull($nodes);
-        $this->assertTrue(PhpAst::containsAny($nodes, fn (Node $node): bool => $node instanceof Node\Stmt\Enum_));
+        $this->assertTrue(PhpAst::containsAny($nodes, fn (Node $node): bool => Node::is($node, 'statement.enum')));
     }
 
     public function test_it_reports_no_match_without_visiting_a_matching_node(): void
@@ -23,7 +23,7 @@ final class PhpAstTest extends TestCase
         $nodes = PhpAst::parse('<?php function first() {}');
 
         $this->assertNotNull($nodes);
-        $this->assertFalse(PhpAst::containsAny($nodes, fn (Node $node): bool => $node instanceof Node\Stmt\Enum_));
+        $this->assertFalse(PhpAst::containsAny($nodes, fn (Node $node): bool => Node::is($node, 'statement.enum')));
     }
 
     public function test_an_empty_node_list_never_matches(): void
@@ -40,7 +40,7 @@ final class PhpAstTest extends TestCase
         $found = PhpAst::containsAny($nodes, function (Node $node) use (&$visited): bool {
             $visited++;
 
-            return $node instanceof Node\Stmt\Enum_;
+            return Node::is($node, 'statement.enum');
         });
 
         $this->assertTrue($found);
@@ -52,6 +52,6 @@ final class PhpAstTest extends TestCase
         $nodes = PhpAst::parse('<?php enum Status: string { case Draft = "draft"; }');
 
         $this->assertNotNull($nodes);
-        $this->assertTrue(PhpAst::contains($nodes[0], fn (Node $node): bool => $node instanceof Node\Stmt\Enum_));
+        $this->assertTrue(PhpAst::contains($nodes[0], fn (Node $node): bool => Node::is($node, 'statement.enum')));
     }
 }

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\PublicApi;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
+use GracjanKubicki\ArchitectureKit\Analysis\SnapshotAnalysis;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Text as Standard;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\MethodSignature;
 use GracjanKubicki\ArchitectureKit\Revision\SourceSnapshot;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
-use PhpParser\Node;
-use PhpParser\Node\Stmt;
-use PhpParser\PrettyPrinter\Standard;
 
 /** Declaration facts only; includes internal facts for exposure and internal-change reports. */
 final class PhpContracts
@@ -28,8 +29,11 @@ final class PhpContracts
 
     private DeclarationBudget $budget;
 
+    public readonly AnalysisSession $analysis;
+
     public function __construct(SourceSnapshot $snapshot, AutoloadSurface $surface)
     {
+        $this->analysis = SnapshotAnalysis::session($snapshot);
         $this->printer = new Standard;
         $this->budget = new DeclarationBudget;
         foreach (array_keys($surface->files) as $path) {
@@ -43,8 +47,8 @@ final class PhpContracts
 
                 continue;
             }
-            $file = new FileContext($path, $source);
-            $nodes = $file->ast();
+            $file = new FileContext($path, $source, analysis: $this->analysis);
+            $nodes = $file->syntax();
             if ($nodes === null) {
                 $this->notice($path, 'PHP parse failed: '.$file->parseError());
 
@@ -64,9 +68,9 @@ final class PhpContracts
             if (! $this->claim($file->path)) {
                 return;
             }
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 $this->collect($node->stmts, $file, $surface, $conditional);
-            } elseif ($node instanceof Stmt\ClassLike && $node->name !== null) {
+            } elseif (Node::is($node, 'statement.class-like') && $node->name !== null) {
                 $name = isset($node->namespacedName) ? $node->namespacedName->toString() : $node->name->toString();
                 if ($surface->allowsClass($file->path, $name)) {
                     $key = strtolower($name);
@@ -79,15 +83,15 @@ final class PhpContracts
                 } else {
                     $this->notice($file->path, 'Class does not match its declared autoload path: '.$name);
                 }
-            } elseif ($node instanceof Stmt\Function_ && $surface->allowsStandalone($file->path)) {
+            } elseif (Node::is($node, 'statement.function') && $surface->allowsStandalone($file->path)) {
                 $name = isset($node->namespacedName) ? $node->namespacedName->toString() : $node->name->toString();
-                $method = new Stmt\ClassMethod($node->name, ['params' => $node->params, 'returnType' => $node->returnType, 'byRef' => $node->byRef]);
+                $method = $node;
                 $this->addStandalone('function:'.strtolower($name), [
                     'kind' => 'function', 'name' => $name, 'internal' => self::internal($node),
                     'signature' => MethodSignature::extract($method), 'body' => $this->hash($node->stmts),
                     'conditional' => $conditional, 'source' => $this->source($node, $file),
                 ], $file);
-            } elseif ($node instanceof Stmt\Const_ && $surface->allowsStandalone($file->path)) {
+            } elseif (Node::is($node, 'statement.const') && $surface->allowsStandalone($file->path)) {
                 foreach ($node->consts as $constant) {
                     if (! $this->claim($file->path)) {
                         break;
@@ -99,9 +103,9 @@ final class PhpContracts
                         'source' => $this->source($node, $file),
                     ], $file);
                 }
-            } elseif ($node instanceof Stmt\Expression && $node->expr instanceof Node\Expr\FuncCall && $node->expr->name instanceof Node\Name && strtolower($file->resolvedName($node->expr->name)) === 'define' && $surface->allowsStandalone($file->path)) {
+            } elseif (Node::is($node, 'statement.expression') && Node::is($node->expr, 'expression.func-call') && Node::is($node->expr->name, 'name') && strtolower($file->resolvedName($node->expr->name)) === 'define' && $surface->allowsStandalone($file->path)) {
                 $args = $node->expr->getArgs();
-                if (isset($args[0], $args[1]) && $args[0]->value instanceof Node\Scalar\String_) {
+                if (isset($args[0], $args[1]) && Node::is($args[0]->value, 'scalar.string')) {
                     $name = $args[0]->value->value;
                     $this->addStandalone('constant:'.$name, ['kind' => 'constant', 'name' => $name,
                         'internal' => self::internal($node), 'value' => $this->printer->prettyPrintExpr($args[1]->value),
@@ -109,46 +113,46 @@ final class PhpContracts
                 } else {
                     $this->notice($file->path, 'Dynamic define() constant declaration.');
                 }
-            } elseif (! $node instanceof Stmt\Use_ && ! $node instanceof Stmt\GroupUse && ! $node instanceof Stmt\Nop) {
+            } elseif (! Node::is($node, 'statement.use') && ! Node::is($node, 'statement.group-use') && ! Node::is($node, 'statement.nop')) {
                 foreach ($node->getSubNodeNames() as $property) {
                     $child = $node->$property;
                     if (is_array($child)) {
-                        $nested = array_values(array_filter($child, static fn ($value): bool => $value instanceof Node));
+                        $nested = array_values(array_filter($child, static fn ($value): bool => Node::is($value, 'node')));
                         $this->collect($nested, $file, $surface, true);
-                    } elseif ($child instanceof Node) {
+                    } elseif (Node::is($child, 'node')) {
                         $this->collect([$child], $file, $surface, true);
                     }
                 }
             }
-            if ($conditional && ($node instanceof Stmt\ClassLike || $node instanceof Stmt\Function_ || $node instanceof Stmt\Const_)) {
+            if ($conditional && (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.function') || Node::is($node, 'statement.const'))) {
                 $this->notice($file->path, 'Conditional or nested declaration requires runtime registration inspection.');
             }
         }
     }
 
     /** @return array<string, mixed> */
-    private function classContract(Stmt\ClassLike $node, string $name, FileContext $file, bool $conditional): array
+    private function classContract(Node $node, string $name, FileContext $file, bool $conditional): array
     {
-        $parent = $node instanceof Stmt\Class_ && $node->extends !== null ? $file->resolvedName($node->extends) : null;
-        $interfaces = $node instanceof Stmt\Interface_ ? $node->extends : ($node instanceof Stmt\Class_ || $node instanceof Stmt\Enum_ ? $node->implements : []);
+        $parent = Node::is($node, 'statement.class') && $node->extends !== null ? $file->resolvedName($node->extends) : null;
+        $interfaces = Node::is($node, 'statement.interface') ? $node->extends : (Node::is($node, 'statement.class') || Node::is($node, 'statement.enum') ? $node->implements : []);
         $contract = ['name' => $name, 'kind' => match (true) {
-            $node instanceof Stmt\Interface_ => 'interface', $node instanceof Stmt\Trait_ => 'trait',
-            $node instanceof Stmt\Enum_ => 'enum', default => 'class',
+            Node::is($node, 'statement.interface') => 'interface', Node::is($node, 'statement.trait') => 'trait',
+            Node::is($node, 'statement.enum') => 'enum', default => 'class',
         }, 'internal' => self::internal($node), 'conditional' => $conditional, 'ambiguous' => false,
             'parent' => $parent, 'interfaces' => array_map($file->resolvedName(...), $interfaces),
-            'abstract' => $node instanceof Stmt\Class_ && $node->isAbstract(),
-            'final' => $node instanceof Stmt\Enum_ || ($node instanceof Stmt\Class_ && $node->isFinal()),
-            'readonly' => $node instanceof Stmt\Class_ && $node->isReadonly(),
-            'backing_type' => $node instanceof Stmt\Enum_ ? $node->scalarType?->toString() : null,
+            'abstract' => Node::is($node, 'statement.class') && $node->isAbstract(),
+            'final' => Node::is($node, 'statement.enum') || (Node::is($node, 'statement.class') && $node->isFinal()),
+            'readonly' => Node::is($node, 'statement.class') && $node->isReadonly(),
+            'backing_type' => Node::is($node, 'statement.enum') ? $node->scalarType?->toString() : null,
             'members' => [], 'traits' => [], 'adaptations' => [], 'source' => $this->source($node, $file)];
         foreach ($node->stmts as $member) {
             if (! $this->claim($file->path)) {
                 break;
             }
-            if ($member instanceof Stmt\ClassMethod) {
+            if (Node::is($member, 'statement.class-method')) {
                 $signature = MethodSignature::extract($member, $name, $parent);
                 // Interface declarations are abstract even without the keyword.
-                $signature['abstract'] = $signature['abstract'] || $node instanceof Stmt\Interface_;
+                $signature['abstract'] = $signature['abstract'] || Node::is($node, 'statement.interface');
                 $contract['members']['method:'.strtolower($member->name->toString())] = [
                     'kind' => 'method', 'name' => $member->name->toString(), 'signature' => $signature,
                     'visibility' => $signature['visibility'], 'internal' => self::internal($member),
@@ -161,14 +165,14 @@ final class PhpContracts
                     if ($param->flags !== 0 && is_string($param->var->name)) {
                         $contract['members']['property:'.$param->var->name] = [
                             'kind' => 'property', 'name' => $param->var->name,
-                            'visibility' => ($param->flags & Stmt\Class_::MODIFIER_PRIVATE) !== 0 ? 'private' : (($param->flags & Stmt\Class_::MODIFIER_PROTECTED) !== 0 ? 'protected' : 'public'),
+                            'visibility' => ($param->flags & Node::MODIFIER_PRIVATE) !== 0 ? 'private' : (($param->flags & Node::MODIFIER_PROTECTED) !== 0 ? 'protected' : 'public'),
                             'internal' => self::internal($param), 'type' => $this->type($param->type, $name, $parent),
-                            'readonly' => ($param->flags & Stmt\Class_::MODIFIER_READONLY) !== 0 || $contract['readonly'],
+                            'readonly' => ($param->flags & Node::MODIFIER_READONLY) !== 0 || $contract['readonly'],
                             'static' => false, 'default' => null, 'promoted' => true, 'source' => $this->source($param, $file),
                         ];
                     }
                 }
-            } elseif ($member instanceof Stmt\Property) {
+            } elseif (Node::is($member, 'statement.property')) {
                 foreach ($member->props as $prop) {
                     if (! $this->claim($file->path)) {
                         break;
@@ -185,7 +189,7 @@ final class PhpContracts
                         $this->notice($file->path, 'Property hooks require behavioural inspection: '.$name.'::$'.$prop->name);
                     }
                 }
-            } elseif ($member instanceof Stmt\ClassConst) {
+            } elseif (Node::is($member, 'statement.class-const')) {
                 foreach ($member->consts as $constant) {
                     if (! $this->claim($file->path)) {
                         break;
@@ -197,11 +201,11 @@ final class PhpContracts
                         'source' => $this->source($member, $file),
                     ];
                 }
-            } elseif ($member instanceof Stmt\EnumCase) {
+            } elseif (Node::is($member, 'statement.enum-case')) {
                 $contract['members']['case:'.$member->name->toString()] = ['kind' => 'case', 'name' => $member->name->toString(),
                     'visibility' => 'public', 'internal' => self::internal($member),
                     'value' => $member->expr === null ? null : $this->printer->prettyPrintExpr($member->expr), 'source' => $this->source($member, $file)];
-            } elseif ($member instanceof Stmt\TraitUse) {
+            } elseif (Node::is($member, 'statement.trait-use')) {
                 foreach ($member->traits as $trait) {
                     if (! $this->claim($file->path)) {
                         break;
@@ -213,10 +217,10 @@ final class PhpContracts
                         break;
                     }
                     $contract['adaptations'][] = ['trait' => $adaptation->trait === null ? null : $file->resolvedName($adaptation->trait),
-                        'method' => $adaptation->method->toString(), 'kind' => $adaptation instanceof Stmt\TraitUseAdaptation\Alias ? 'alias' : 'precedence',
-                        'alias' => $adaptation instanceof Stmt\TraitUseAdaptation\Alias ? $adaptation->newName?->toString() : null,
-                        'modifier' => $adaptation instanceof Stmt\TraitUseAdaptation\Alias ? $adaptation->newModifier : null,
-                        'instead_of' => $adaptation instanceof Stmt\TraitUseAdaptation\Precedence ? array_map($file->resolvedName(...), $adaptation->insteadof) : []];
+                        'method' => $adaptation->method->toString(), 'kind' => Node::is($adaptation, 'statement.trait-use-adaptation.alias') ? 'alias' : 'precedence',
+                        'alias' => Node::is($adaptation, 'statement.trait-use-adaptation.alias') ? $adaptation->newName?->toString() : null,
+                        'modifier' => Node::is($adaptation, 'statement.trait-use-adaptation.alias') ? $adaptation->newModifier : null,
+                        'instead_of' => Node::is($adaptation, 'statement.trait-use-adaptation.precedence') ? array_map($file->resolvedName(...), $adaptation->insteadof) : []];
                 }
             }
         }
@@ -225,9 +229,9 @@ final class PhpContracts
         return $contract;
     }
 
-    private function type(Node\ComplexType|Node\Identifier|Node\Name|null $type, string $class, ?string $parent): ?string
+    private function type(?Node $type, string $class, ?string $parent): ?string
     {
-        return MethodSignature::extract(new Stmt\ClassMethod('type', ['returnType' => $type]), $class, $parent)['return_type'];
+        return MethodSignature::type($type, $class, $parent);
     }
 
     /** @param array<Node> $nodes */
@@ -241,7 +245,7 @@ final class PhpContracts
         return preg_match('/@internal\b/', $node->getDocComment()?->getText() ?? '') === 1;
     }
 
-    private static function visibility(Stmt\Property|Stmt\ClassConst $node): string
+    private static function visibility(Node $node): string
     {
         return $node->isPrivate() ? 'private' : ($node->isProtected() ? 'protected' : 'public');
     }

@@ -5,21 +5,31 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphBuildPlan;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\AnalysisFactsCache;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerAnalysisResult;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerAuditPool;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerReadAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceRouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\ProjectGraph\UnknownRoleRule;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\InlineIgnores;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestReachability;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
+use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
+use GracjanKubicki\ArchitectureKit\Standalone\RuntimeRouteMap;
+use GracjanKubicki\ArchitectureKit\Standalone\SourceFingerprint;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
@@ -36,11 +46,11 @@ final class ApplicationAudit
      *
      * Source size alone is a poor predictor because cost follows node density, not
      * byte count: measured across 3244 real files and synthetic extremes, the ratio
-     * spans 1.5x for a file dominated by one long string up to 685x for a dense
+     * spans 1.5x for a file dominated by one long string up to 703x for a dense
      * array of short literals. When a file fits even at that upper bound there is no
      * need to inspect it further.
      */
-    private const AST_MEMORY_PER_SOURCE_BYTE_CEILING = 700;
+    private const AST_MEMORY_PER_SOURCE_BYTE_CEILING = 800;
 
     /**
      * Upper bound of tokenizer memory per source byte. Counting tokens allocates too,
@@ -96,12 +106,26 @@ final class ApplicationAudit
         array $cacheConfiguration = [],
         ?RouteMap $routes = null,
     ): ApplicationAuditResult {
+        $pendingRoutes = null;
+        $sourceHash = null;
+        $configurationHash = null;
+        // Cache off disables persistence, not sharing facts already proven in this run.
+        $facts = new AnalysisFactsCache('', '', null);
         if (($context = RepositoryContext::forRoot($this->basePath)) !== null) {
+            $sourceHash = SourceFingerprint::current($this->basePath, $context->settings);
+            $configurationHash = $context->fingerprint();
+            if (($context->settings['audit']['cache'] ?? true) !== false) {
+                $facts = new AnalysisFactsCache($context->storage.'/cache/analysis', $context->home,
+                    $configurationHash.':'.$sourceHash.':'.PHP_VERSION_ID);
+            }
             if ($updateBaseline) {
                 $context->assertWrite();
             }
             if (! $context->execute && ($customRules instanceof CustomRuleSet ? $customRules->knownRuleClasses() : $customRules) !== []) {
                 throw new RuntimeException('Custom PHP rules require --allow-execution; they are not silently skipped.');
+            }
+            if ($routes === null && $context->runtimeRoutes) {
+                $pendingRoutes = RuntimeRouteMap::start($context);
             }
         }
 
@@ -120,17 +144,18 @@ final class ApplicationAudit
         $customRuleSet = $customRules instanceof CustomRuleSet
             ? $customRules
             : CustomRuleSet::fromGlobal($customRules);
-        $customAuditRules = (new RuleRegistry($customRuleSet->rulesFor($enabled)))->customRules();
+        $customAuditRules = (new RuleRegistry($customRuleSet->rulesFor($enabled), AnalysisRuntime::session()->engine))->customRules();
         $knownRules = $this->knownRules($customRuleSet);
-        $classification = new ProjectClassification($this->files, $this->basePath);
+        $classification = new ProjectClassification($this->files, $this->basePath, $auditScope);
         $declaredClassification = $classification->roles->mappings->roles !== [] || $classification->roles->mappings->modules !== [] || $classification->roles->mappings->unknownLevel !== 'off';
-        if ($declaredClassification && $routes === null) {
+        $sourceRoutes = RepositoryContext::forRoot($this->basePath)?->execute === false;
+        if ($declaredClassification && $routes === null && $pendingRoutes === null && ! $sourceRoutes) {
             $routes = new RouteMap(unavailable: 'Declared classification analysis does not boot the application. Supply an explicit RouteMap for endpoint read analysis.');
         }
-        $rules = array_merge($this->builtInRules($enabled, $classification), $customAuditRules);
+        $rules = array_merge(BuiltInRules::all($this->files, $this->basePath, $enabled, $classification, $facts), $customAuditRules);
         $changedFocusAvailable = $changedOnly && str_starts_with($scopeLabel, 'changed application files');
         $focusPathSet = array_fill_keys($focusPaths, true);
-        $focusFiles = [];
+        $inlineSources = [];
 
         $memoryLimitBytes = $this->configuredMemoryLimitBytes();
         $processedFiles = 0;
@@ -143,8 +168,18 @@ final class ApplicationAudit
         // Decided from stat alone, before a single file is opened. Without a cache every
         // path lands in `toParse`, which is the behaviour this loop always had.
         $plan = $loader->plan($exclude);
+        if (! $changedFocusAvailable && $plan->reusable !== []) {
+            // A full audit parses every file for its rules anyway. Do not retain
+            // the previous graph alongside the new worker contributions.
+            $plan = new GraphBuildPlan($plan->signature, $plan->files, array_keys($plan->files), [], $plan->cacheStatus);
+            gc_mem_caches();
+        }
         $changed = array_fill_keys($plan->toParse, true);
         $entries = $plan->reusable;
+
+        $parallel = $context !== null && ! $changedOnly && $customAuditRules === [] && $this->onParse === null
+            && $this->memoryUsage === null && $this->memoryLimitBytes === null && $this->memoryBudgetRatio === 0.8 && count($plan->files) >= 400;
+        $batch = $parallel ? FileAuditPool::collect($context, $plan->files, $enabled, $auditScope, $facts) : null;
 
         foreach (array_keys($plan->files) as $path) {
             $inFocus = ! $changedFocusAvailable || isset($focusPathSet[$path]);
@@ -153,12 +188,31 @@ final class ApplicationAudit
             // knows it. `guard --changed` edits a handful of files, so the rest of a
             // large project is restored rather than parsed.
             if (! $inFocus && ! isset($changed[$path])) {
+                $entry = $entries[$path];
+                if ($entry->syntaxError !== null) {
+                    $findingsByPath[$path] = [$this->finding('error', 'unparseable-file', $path, $entry->syntaxErrorLine, 'PHP file could not be parsed by Architecture Kit audit: '.$entry->syntaxError)];
+                    $inlineSources[$path] = '';
+                }
+
                 continue;
             }
 
             $absolute = $plan->absolutePath($path);
 
             if ($absolute === null) {
+                continue;
+            }
+
+            if ($batch !== null) {
+                $contribution = $batch[$path];
+                $entries[$path] = $contribution->entry;
+                $findingsByPath[$path] = $contribution->findings;
+                $inlineSources[$path] = $contribution->inlineSource;
+                $classification->restore($path, $contribution->classification);
+                unset($batch[$path]);
+                $processedFiles++;
+                $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
+
                 continue;
             }
 
@@ -174,6 +228,7 @@ final class ApplicationAudit
                     $findingsByPath[$file->path] = $parseFindings;
                 } else {
                     $classification->prime($file);
+                    $this->rememberFunctionFacts($file, $facts);
                     $fileFindings = [];
 
                     foreach ($rules as $rule) {
@@ -185,9 +240,13 @@ final class ApplicationAudit
                     $findingsByPath[$file->path] = $fileFindings;
                 }
 
-                $focusFiles[$file->path] = $file;
+                $inlineSources[$file->path] = $this->suppressionSource($file->contents);
             }
 
+            if (! $inFocus) {
+                $findingsByPath[$file->path] = $this->unparseableFileFindings($file);
+                $inlineSources[$file->path] = $this->suppressionSource($file->contents);
+            }
             $entries[$path] = $graphBuilder->collect($file);
 
             $processedFiles++;
@@ -195,9 +254,25 @@ final class ApplicationAudit
         }
 
         $graph = $loader->compose($graphBuilder, $plan, $entries);
+        $cacheStatus = $plan->cacheStatus;
+        // Endpoint analysis needs the final graph, not its retained build inputs.
+        unset($entries, $plan, $graphBuilder, $changed, $file, $rules, $rule, $customAuditRules, $batch, $contribution);
+        gc_mem_caches();
         // A cache hit can skip the loop entirely, so without this the run would never
         // check its budget on the path where the whole graph arrives at once.
         $this->assertMemoryBudget($memoryLimitBytes, $processedFiles);
+
+        $routes ??= $pendingRoutes?->finish();
+        unset($pendingRoutes);
+        // Snapshot decoding leaves temporary arrays alongside the retained graph.
+        // Release their allocator pages before deciding whether workers fit.
+        gc_mem_caches();
+
+        $hasSourceController = (bool) array_filter($graph->symbols, fn ($symbol): bool => $symbol->kind === 'class'
+            && $classification->kindMatches($symbol->path, 'controller', str_starts_with($symbol->path, 'app/Http/Controllers/')));
+        if ($sourceRoutes && $routes === null && ($hasSourceController || ($missingTestLevel->isEnabled() && (new TestReachability($this->files, $this->basePath))->needsRoutes($graph)))) {
+            $routes = (new SourceRouteMap($this->files, $this->basePath))->build($graph, $exclude);
+        }
 
         $reachability = null;
         if ($missingTestLevel->isEnabled()) {
@@ -211,14 +286,26 @@ final class ApplicationAudit
         foreach ([...(new ProjectRuleSet($missingTestLevel, $reachability))->rules(), new UnknownRoleRule($loader->classification->mappings->unknownLevel)] as $rule) {
             foreach ($rule->check($graph, $enabled, $changedFocusAvailable ? $focusPaths : null) as $finding) {
                 $findingsByPath[$finding->path][] = $finding;
-                $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)), $this->onParse);
+                $inlineSources[$finding->path] ??= $this->suppressionSource($this->files->get($this->absolute($finding->path)));
             }
         }
 
         $endpointInputs = $changedFocusAvailable
             ? $this->changedApplicationFiles($baseRef, new AuditScope([...$auditScope->directories, 'routes', 'bootstrap', 'config']), includeDeleted: true)
             : null;
-        $controllerAnalysis = (new ControllerReadAudit($this->files, $this->basePath, $classification))->analyze($graph, $enabled, $endpointInputs, $routes);
+        $controllerAudit = new ControllerReadAudit($this->files, $this->basePath, $classification, $facts);
+        if ($parallel && $endpointInputs === null && $routes !== null) {
+            $controllers = $controllerAudit->controllers($graph);
+            // Only controller membership is needed now. Release file-rule rows before
+            // receiving endpoint results, preserving the computed membership on fallback.
+            unset($controllerAudit, $classification);
+            gc_mem_caches();
+            $controllerAudit = new ControllerReadAudit($this->files, $this->basePath, facts: $facts);
+            $controllerAnalysis = ControllerAuditPool::collect($context, $controllerAudit, $graph, $enabled, $routes, $facts, $controllers)
+                ?? $controllerAudit->analyzePartition($graph, $enabled, $routes, $controllers, $controllers, true, true);
+        } else {
+            $controllerAnalysis = $controllerAudit->analyze($graph, $enabled, $endpointInputs, $routes);
+        }
         $analysisStatus = $controllerAnalysis->status;
         $suggestions = $controllerAnalysis->suggestions;
         $notices = $controllerAnalysis->notices;
@@ -226,11 +313,20 @@ final class ApplicationAudit
             $findingsByPath[$finding->path][] = $finding;
             // An unchanged controller may be affected by an edited dependency.
             // Keep inline and baseline suppression on the same shared path.
-            $focusFiles[$finding->path] ??= new FileContext($finding->path, $this->files->get($this->absolute($finding->path)), $this->onParse);
+            $inlineSources[$finding->path] ??= $this->suppressionSource($this->files->get($this->absolute($finding->path)));
         }
 
-        foreach ($focusFiles as $path => $file) {
-            $inlineResult = (new InlineIgnores)->apply($path, $file->contents, $findingsByPath[$path] ?? [], $knownRules);
+        // Invalid syntax is missing analysis, never an accepted architecture debt.
+        foreach ($findingsByPath as $fileFindings) {
+            foreach ($fileFindings as $finding) {
+                if ($finding->rule === 'unparseable-file') {
+                    $analysisStatus = ControllerAnalysisResult::INCOMPLETE;
+                    $notices[] = new AnalysisNotice('A_SYNTAX_ERROR', 'syntax_error', $finding->path, $finding->line, $finding->message);
+                }
+            }
+        }
+        foreach ($inlineSources as $path => $contents) {
+            $inlineResult = (new InlineIgnores)->apply($path, $contents, $findingsByPath[$path] ?? [], $knownRules);
             $suppressedInline += $inlineResult->inline;
             array_push($findings, ...$inlineResult->findings);
         }
@@ -255,17 +351,70 @@ final class ApplicationAudit
                 <=> [$right->severityRank(), $right->path, $right->line, $right->rule];
         });
 
+        if ($context !== null) {
+            if ($sourceHash !== SourceFingerprint::current($this->basePath, $context->settings) || $configurationHash !== $context->fingerprint()) {
+                throw new RuntimeException('Inputs changed during audit. Retry without refreshing the task beginning.');
+            }
+            $facts->save();
+        }
+
         return new ApplicationAuditResult(
             scope: $scopeLabel,
             findings: $findings,
             suppressedInline: $suppressedInline,
             suppressedBaseline: $suppressedBaseline,
-            cacheStatus: $plan->cacheStatus,
+            cacheStatus: $cacheStatus,
             suggestions: $suggestions,
             notices: $notices,
             analysisStatus: $analysisStatus,
             classification: $declaredClassification ? ClassificationReport::graph($loader->classification, $graph) : [],
+            sourceFingerprint: $sourceHash,
         );
+    }
+
+    /** Only annotated files need source text for the final suppression pass. */
+    private function suppressionSource(string $contents): string
+    {
+        return str_contains($contents, '@architecture-kit-ignore') ? $contents : '';
+    }
+
+    /** Shared serial/worker operation. Each file is parsed once for checks and graph.
+     * @param  list<Architecture|string>  $enabled
+     * @param  list<AuditRule>  $rules
+     */
+    public function collectFile(FileContext $file, array $enabled, array $rules, ProjectClassification $classification, AuditScope $scope, ?AnalysisFactsCache $facts = null): AuditedFile
+    {
+        $limit = $this->configuredMemoryLimitBytes();
+        $this->assertMemoryBudget($limit, 0);
+        $this->assertAstHeadroom($limit, $file);
+        $findings = $this->unparseableFileFindings($file);
+        if ($findings === []) {
+            $classification->prime($file);
+            $this->rememberFunctionFacts($file, $facts);
+            foreach ($rules as $rule) {
+                if ($this->appliesTo($rule, $file->path, $scope) && $rule->supports($file->path, $enabled)) {
+                    array_push($findings, ...BuiltInRules::check($rule, $file, $enabled, $classification));
+                }
+            }
+        }
+        $inline = $this->suppressionSource($file->contents);
+        $entry = (new ProjectGraphBuilder(roles: $classification->roles))->collect($file);
+        $this->assertMemoryBudget($limit, 1);
+
+        // Invalid syntax has no declarations, but still has the same file fallback.
+        if ($findings !== [] && $file->syntax() === null) {
+            $classification->prime($file);
+        }
+
+        return new AuditedFile($entry, $findings, $inline, $classification->file($file->path));
+    }
+
+    private function rememberFunctionFacts(FileContext $file, ?AnalysisFactsCache $facts): void
+    {
+        if ($facts !== null && DiscoverySettings::safe($this->basePath, $file->path)
+            && (new NodeFinder)->findFirstOfKind($file->syntax() ?? [], 'statement.function') === null) {
+            $facts->rememberNoFunctions($this->basePath.'/'.$file->path);
+        }
     }
 
     /**
@@ -275,23 +424,19 @@ final class ApplicationAudit
      */
     private function withoutDuplicateAdvice(array $suggestions, array $findings): array
     {
-        return array_values(array_filter($suggestions, function (AuditSuggestion $suggestion) use ($findings): bool {
-            foreach ($findings as $finding) {
-                if ($suggestion->code === 'S_MOVE_READ_TO_QUERY_OBJECT'
-                    && $finding->code === 'W_THIN_CONTROLLER_READ_SERVICE'
-                    && $finding->path === $suggestion->path) {
-                    return false;
-                }
-                if ($finding->path !== $suggestion->path || $finding->line !== $suggestion->line) {
-                    continue;
-                }
-                if ($suggestion->code === 'S_MOVE_WRITE_TO_ACTION' && str_starts_with((string) $finding->code, 'E_THIN_CONTROLLER')) {
-                    return false;
-                }
+        $readPaths = [];
+        $writeLines = [];
+        foreach ($findings as $finding) {
+            if ($finding->code === 'W_THIN_CONTROLLER_READ_SERVICE') {
+                $readPaths[$finding->path] = true;
             }
+            if (str_starts_with((string) $finding->code, 'E_THIN_CONTROLLER')) {
+                $writeLines[$finding->path][$finding->line] = true;
+            }
+        }
 
-            return true;
-        }));
+        return array_values(array_filter($suggestions, static fn (AuditSuggestion $suggestion): bool => ! ($suggestion->code === 'S_MOVE_READ_TO_QUERY_OBJECT' && isset($readPaths[$suggestion->path]))
+            && ! ($suggestion->code === 'S_MOVE_WRITE_TO_ACTION' && isset($writeLines[$suggestion->path][$suggestion->line]))));
     }
 
     /**
@@ -344,17 +489,8 @@ final class ApplicationAudit
         }
 
         return [
-            $this->finding('warn', 'unparseable-file', $file->path, 1, 'PHP file could not be parsed by Architecture Kit AST audit: '.$file->parseError()),
+            $this->finding('error', 'unparseable-file', $file->path, $file->parseErrorLine(), 'PHP file could not be parsed by Architecture Kit audit: '.$file->parseError()),
         ];
-    }
-
-    /**
-     * @param  array<int, Architecture|string>  $enabled
-     * @return array<int, AuditRule>
-     */
-    private function builtInRules(array $enabled, ?ProjectClassification $classification = null): array
-    {
-        return BuiltInRules::all($this->files, $this->basePath, $enabled, $classification);
     }
 
     /**
@@ -421,6 +557,12 @@ final class ApplicationAudit
         foreach ($scope->directories as $directory) {
             $absolute = $this->basePath.'/'.$directory;
 
+            if ($this->files->isFile($absolute) && str_ends_with($directory, '.php')) {
+                $paths[] = $directory;
+
+                continue;
+            }
+
             if (! $this->files->isDirectory($absolute)) {
                 continue;
             }
@@ -434,7 +576,7 @@ final class ApplicationAudit
             ));
         }
 
-        return [$changedOnly ? 'all application files (changed scope unavailable)' : 'all application files', $paths];
+        return [$changedOnly ? 'all application files (changed scope unavailable)' : 'all application files', array_values(array_unique($paths))];
     }
 
     /**

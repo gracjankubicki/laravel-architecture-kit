@@ -4,30 +4,27 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Arg;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
 
 /** Argument names and types only; request bodies and retry payloads are never retained. */
 final class CatalogSaloonOperations
 {
-    public static function poolMemberArray(Expr\Array_ $array): bool
+    public static function poolMemberArray(Node $array): bool
     {
         $items = ImpactExtractor::callableArrayItems($array);
 
-        return count($array->items) <= 128 && ! (($items[1] ?? null)?->value instanceof Scalar\String_);
+        return count($array->items) <= 128 && ! (Node::is(($items[1] ?? null)?->value, 'scalar.string'));
     }
 
     public const POOL_SETTERS = ['setrequests' => ['requests', null], 'withresponsehandler' => ['callable', 'response'],
         'withexceptionhandler' => ['callable', 'exception'], 'setconcurrency' => ['concurrency', 'concurrency']];
 
     /** A source shape candidate; cross-file ancestry is checked during composition. */
-    public static function poolConstructor(FileContext $file, Expr\New_ $node): bool
+    public static function poolConstructor(FileContext $file, Node $node): bool
     {
-        if (! $node->class instanceof Node\Name) {
+        if (! Node::is($node->class, 'name')) {
             return false;
         }
         if (strcasecmp($file->resolvedName($node->class), 'Saloon\Http\Pool') === 0) {
@@ -35,7 +32,7 @@ final class CatalogSaloonOperations
         }
 
         return count($node->args) <= 5 && array_filter($node->getArgs(), fn ($arg, $position) => ($arg->name?->toString() ?? ($position === 1 ? 'requests' : '')) === 'requests'
-                && ($arg->value instanceof Expr\Array_ || $arg->value instanceof Expr\Variable || $arg->value instanceof Expr\Closure || $arg->value instanceof Expr\ArrowFunction), ARRAY_FILTER_USE_BOTH) !== [];
+                && (Node::is($arg->value, 'expression.array') || Node::is($arg->value, 'expression.variable') || Node::is($arg->value, 'expression.closure') || Node::is($arg->value, 'expression.arrow-function')), ARRAY_FILTER_USE_BOTH) !== [];
     }
 
     public const PARAMETERS = [
@@ -45,7 +42,7 @@ final class CatalogSaloonOperations
         'creatependingrequest' => ['request', 'mockClient'],
     ];
 
-    /** @param list<Arg> $arguments
+    /** @param list<Node> $arguments
      * @return array{valid: bool, request: ?int}
      */
     public static function arguments(string $method, array $arguments): array
@@ -72,7 +69,7 @@ final class CatalogSaloonOperations
         return ['valid' => $valid, 'request' => $request];
     }
 
-    /** @param list<Arg> $arguments */
+    /** @param list<Node> $arguments */
     public static function requestSideArguments(string $method, array $arguments): bool
     {
         if (! in_array($method, ['send', 'sendasync', 'creatependingrequest'], true) || count($arguments) > 1) {
@@ -82,8 +79,8 @@ final class CatalogSaloonOperations
             if ($argument->unpack || $argument->byRef || $argument->name !== null && $argument->name->toString() !== 'mockClient') {
                 return false;
             }
-            if ($argument->value instanceof Scalar || $argument->value instanceof Expr\Array_
-                || $argument->value instanceof Expr\ConstFetch && strtolower($argument->value->name->toString()) !== 'null') {
+            if (Node::is($argument->value, 'scalar') || Node::is($argument->value, 'expression.array')
+                || Node::is($argument->value, 'expression.const-fetch') && strtolower($argument->value->name->toString()) !== 'null') {
                 return false;
             }
         }

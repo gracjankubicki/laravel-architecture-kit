@@ -4,33 +4,37 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\PortsAndAdapters;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
+use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\IntegrationPaths;
+use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node;
-use PhpParser\Node\Expr\ClassConstFetch;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
-use SplFileInfo;
 
-final readonly class PortsAndAdaptersRule implements AuditRule
+final class PortsAndAdaptersRule implements PortableAuditRule
 {
-    private RoleClassifier $roles;
+    private readonly RoleClassifier $roles;
+
+    private readonly ProjectClassification $classification;
+
+    /** @var array<string, int>|null File-name counts for this audit, preserving ambiguous matches. */
+    private ?array $fileNames = null;
 
     public function __construct(
-        private Filesystem $files,
-        private string $basePath,
+        private readonly Filesystem $files,
+        private readonly string $basePath,
         /** @var array<int, Architecture|string> */
-        private array $enabled,
+        private readonly array $enabled,
         ?RoleClassifier $roles = null,
+        ?ProjectClassification $classification = null,
     ) {
-        $this->roles = $roles ?? new RoleClassifier;
+        $this->classification = $classification ?? new ProjectClassification($files, $basePath);
+        $this->roles = $roles ?? $this->classification->roles;
     }
 
     /**
@@ -39,8 +43,8 @@ final readonly class PortsAndAdaptersRule implements AuditRule
     public function supports(string $path, array $enabled): bool
     {
         return in_array(Architecture::PortsAndAdapters, $enabled, true)
-            && str_starts_with($path, 'app/')
-            && ! str_starts_with($path, 'app/Providers/');
+            && $this->classification->ownsSource($path)
+            && array_filter($this->classification->file($path), static fn (array $row): bool => $row['role'] !== 'composition') !== [];
     }
 
     /**
@@ -48,7 +52,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -58,13 +62,13 @@ final readonly class PortsAndAdaptersRule implements AuditRule
         $interface = $this->firstInterface($nodes);
         $class = $this->firstClass($nodes);
 
-        if ($interface instanceof Stmt\Interface_ && $this->looksLikeApplicationPort($file->path, $interface)) {
+        if (Node::is($interface, 'statement.interface') && $this->looksLikeApplicationPort($file->path, $interface)) {
             foreach ($this->portInterfaceFindings($file, $nodes, $interface) as $finding) {
                 $findings[] = $finding;
             }
         }
 
-        if ($interface instanceof Stmt\Interface_ && $this->isRepositoryInterface($file->path, $interface)) {
+        if (Node::is($interface, 'statement.interface') && $this->isRepositoryInterface($file->path, $interface)) {
             $findings[] = $this->finding(
                 'warn',
                 $file->path,
@@ -73,7 +77,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
             );
         }
 
-        if ($class instanceof Stmt\Class_ && $this->isEloquentRepositoryWrapper($file->path, $class)) {
+        if (Node::is($class, 'statement.class') && $this->isEloquentRepositoryWrapper($file->path, $class)) {
             $findings[] = $this->finding(
                 'warn',
                 $file->path,
@@ -97,17 +101,17 @@ final readonly class PortsAndAdaptersRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstInterface(array $nodes): ?Stmt\Interface_
+    private function firstInterface(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Interface_) {
+            if (Node::is($node, 'statement.interface')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 $interface = $this->firstInterface($node->stmts);
 
-                if ($interface instanceof Stmt\Interface_) {
+                if (Node::is($interface, 'statement.interface')) {
                     return $interface;
                 }
             }
@@ -119,17 +123,17 @@ final readonly class PortsAndAdaptersRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstClass(array $nodes): ?Stmt\Class_
+    private function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 $class = $this->firstClass($node->stmts);
 
-                if ($class instanceof Stmt\Class_) {
+                if (Node::is($class, 'statement.class')) {
                     return $class;
                 }
             }
@@ -138,7 +142,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
         return null;
     }
 
-    private function looksLikeApplicationPort(string $path, Stmt\Interface_ $interface): bool
+    private function looksLikeApplicationPort(string $path, Node $interface): bool
     {
         $name = isset($interface->namespacedName) ? $interface->namespacedName->toString() : $interface->name->toString();
 
@@ -149,7 +153,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
      * @param  array<int, Node>  $nodes
      * @return array<int, AuditFinding>
      */
-    private function portInterfaceFindings(FileContext $file, array $nodes, Stmt\Interface_ $interface): array
+    private function portInterfaceFindings(FileContext $file, array $nodes, Node $interface): array
     {
         $findings = [];
 
@@ -178,14 +182,14 @@ final readonly class PortsAndAdaptersRule implements AuditRule
         return $findings;
     }
 
-    private function hasBoundaryPhpDoc(Stmt\Interface_ $interface): bool
+    private function hasBoundaryPhpDoc(Node $interface): bool
     {
         $doc = $interface->getDocComment()?->getText() ?? '';
 
         return preg_match('/provider|infrastructure|package|legacy|runtime|testability|AI|OCR|SDK|API/i', $doc) === 1;
     }
 
-    private function hasMirrorImplementation(Stmt\Interface_ $interface): bool
+    private function hasMirrorImplementation(Node $interface): bool
     {
         $name = $interface->name->toString();
 
@@ -199,16 +203,15 @@ final readonly class PortsAndAdaptersRule implements AuditRule
             return false;
         }
 
-        $matches = [];
-
-        if ($this->files->isDirectory($this->basePath.'/app')) {
-            $matches = array_values(array_filter(
-                $this->files->allFiles($this->basePath.'/app'),
-                fn (SplFileInfo $file): bool => $file->getFilename() === $implementation.'.php',
-            ));
+        if ($this->fileNames === null) {
+            $this->fileNames = [];
+            foreach ($this->classification->sourcePaths() as $path) {
+                $name = basename($path);
+                $this->fileNames[$name] = ($this->fileNames[$name] ?? 0) + 1;
+            }
         }
 
-        return count($matches) === 1;
+        return ($this->fileNames[$implementation.'.php'] ?? 0) === 1;
     }
 
     /**
@@ -226,19 +229,19 @@ final readonly class PortsAndAdaptersRule implements AuditRule
             public array $lines = [];
         };
 
-        PhpAst::traverse($nodes, new class($state) extends NodeVisitorAbstract
+        PhpAst::traverse($nodes, new class($state, new IntegrationPaths($this->classification)) extends NodeVisitorAbstract
         {
-            public function __construct(private object $state) {}
+            public function __construct(private object $state, private IntegrationPaths $paths) {}
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Stmt\UseUse) {
+                if (Node::is($node, 'use-item')) {
                     $this->state->uses[$node->alias?->toString() ?? $this->shortName($node->name->toString())] = $node->name->toString();
 
                     return null;
                 }
 
-                if (! $node instanceof Stmt\ClassMethod) {
+                if (! Node::is($node, 'statement.class-method')) {
                     return null;
                 }
 
@@ -271,7 +274,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
                         || str_starts_with($resolved, 'OpenAI\\')
                         || str_starts_with($resolved, 'Laravel\\Ai\\')
                         || (
-                            str_starts_with($resolved, 'App\\Http\\Integrations\\')
+                            $this->paths->isIntegrationName($resolved)
                             && str_contains($resolved, '\\Dto\\')
                         )
                     ) {
@@ -295,15 +298,15 @@ final readonly class PortsAndAdaptersRule implements AuditRule
                     return [$type];
                 }
 
-                if ($type instanceof Name || $type instanceof Node\Identifier) {
+                if (Node::is($type, 'name') || Node::is($type, 'identifier')) {
                     return [$type->toString()];
                 }
 
-                if ($type instanceof Node\NullableType) {
+                if (Node::is($type, 'nullable-type')) {
                     return $this->typeNames($type->type);
                 }
 
-                if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+                if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
                     $names = [];
 
                     foreach ($type->types as $innerType) {
@@ -345,17 +348,17 @@ final readonly class PortsAndAdaptersRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\ClassMethod) {
+                if (! Node::is($node, 'statement.class-method')) {
                     return null;
                 }
 
                 foreach ($node->params as $parameter) {
-                    if ($parameter->type instanceof Node\Identifier && $parameter->type->toString() === 'array') {
+                    if (Node::is($parameter->type, 'identifier') && $parameter->type->toString() === 'array') {
                         $this->state->lines[] = $parameter->getStartLine();
                     }
                 }
 
-                if ($node->returnType instanceof Node\Identifier && $node->returnType->toString() === 'array') {
+                if (Node::is($node->returnType, 'identifier') && $node->returnType->toString() === 'array') {
                     $this->state->lines[] = $node->getStartLine();
                 }
 
@@ -385,12 +388,12 @@ final readonly class PortsAndAdaptersRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof FuncCall
-                    && $node->name instanceof Name
+                    Node::is($node, 'expression.func-call')
+                    && Node::is($node->name, 'name')
                     && in_array($node->name->toString(), ['app', 'resolve'], true)
                     && isset($node->args[0])
-                    && $node->args[0]->value instanceof ClassConstFetch
-                    && $node->args[0]->value->class instanceof Name
+                    && Node::is($node->args[0]->value, 'expression.class-const-fetch')
+                    && Node::is($node->args[0]->value->class, 'name')
                     && $this->looksLikePortName($node->args[0]->value->class->toString())
                 ) {
                     $this->state->lines[] = $node->getStartLine();
@@ -418,7 +421,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
         return array_values(array_unique($state->lines));
     }
 
-    private function isRepositoryInterface(string $path, Stmt\Interface_ $interface): bool
+    private function isRepositoryInterface(string $path, Node $interface): bool
     {
         $name = $interface->name->toString();
 
@@ -426,7 +429,7 @@ final readonly class PortsAndAdaptersRule implements AuditRule
             && (str_ends_with($name, 'RepositoryInterface') || str_ends_with($name, 'Repository'));
     }
 
-    private function isEloquentRepositoryWrapper(string $path, Stmt\Class_ $class): bool
+    private function isEloquentRepositoryWrapper(string $path, Node $class): bool
     {
         $name = $class->name?->toString() ?? '';
 

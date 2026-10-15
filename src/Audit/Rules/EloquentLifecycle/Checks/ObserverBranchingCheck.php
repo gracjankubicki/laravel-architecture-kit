@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\LifecycleAst;
-use PhpParser\Node;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class ObserverBranchingCheck implements FileCheck
 {
@@ -23,7 +22,7 @@ final readonly class ObserverBranchingCheck implements FileCheck
             return [];
         }
 
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -47,7 +46,7 @@ final readonly class ObserverBranchingCheck implements FileCheck
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\ClassMethod) {
+                if (! Node::is($node, 'statement.class-method')) {
                     return null;
                 }
 
@@ -64,7 +63,7 @@ final readonly class ObserverBranchingCheck implements FileCheck
 
             private function inspectLifecycleStatement(Node $node): void
             {
-                if ($node instanceof Stmt\If_) {
+                if (Node::is($node, 'statement.if')) {
                     if (! $this->lifecycle->isTechnicalLifecycleCondition($node->cond)) {
                         $this->state->findings[] = new AuditFinding(
                             'error',
@@ -74,7 +73,7 @@ final readonly class ObserverBranchingCheck implements FileCheck
                             'Business branching does not belong in observer methods; move the condition to a lifecycle handler or named listener.',
                         );
                     }
-                } elseif ($node instanceof Stmt\Foreach_ || $node instanceof Stmt\While_ || $node instanceof Stmt\Switch_) {
+                } elseif (Node::is($node, 'statement.foreach') || Node::is($node, 'statement.while') || Node::is($node, 'statement.switch')) {
                     $this->state->findings[] = new AuditFinding(
                         'warn',
                         'eloquent-lifecycle',
@@ -82,7 +81,7 @@ final readonly class ObserverBranchingCheck implements FileCheck
                         $node->getStartLine(),
                         'Observer methods should not orchestrate loops or switch logic; move branching rules to a lifecycle handler or named listener.',
                     );
-                } elseif ($node instanceof Stmt\Expression && $node->expr instanceof Node\Expr\Match_) {
+                } elseif (Node::is($node, 'statement.expression') && Node::is($node->expr, 'expression.match')) {
                     $this->state->findings[] = new AuditFinding(
                         'warn',
                         'eloquent-lifecycle',

@@ -4,23 +4,13 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\EloquentLifecycle\LifecycleAst;
-use PhpParser\Node;
-use PhpParser\Node\Expr\ArrayDimFetch;
-use PhpParser\Node\Expr\Assign;
-use PhpParser\Node\Expr\AssignOp;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\PropertyFetch;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class BeforeObserverMethodsCheck implements FileCheck
 {
@@ -48,7 +38,7 @@ final readonly class BeforeObserverMethodsCheck implements FileCheck
     /**
      * @return array<int, AuditFinding>
      */
-    private function beforeObserverMethodFindings(string $path, Stmt\ClassMethod $method): array
+    private function beforeObserverMethodFindings(string $path, Node $method): array
     {
         $state = new class
         {
@@ -63,7 +53,7 @@ final readonly class BeforeObserverMethodsCheck implements FileCheck
             public function __construct(
                 private string $path,
                 private object $state,
-                private Stmt\ClassMethod $method,
+                private Node $method,
             ) {}
 
             public function enterNode(Node $node): null
@@ -72,7 +62,7 @@ final readonly class BeforeObserverMethodsCheck implements FileCheck
                     $this->state->findings[] = $this->finding($node, 'error', 'Before-save observers must not use facades; delegate to one lifecycle handler or move side effects outside lifecycle.');
                 }
 
-                if ($node instanceof FuncCall && $node->name instanceof Name && $node->name->toString() === 'app') {
+                if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && $node->name->toString() === 'app') {
                     $this->state->findings[] = $this->finding($node, 'error', 'Before-save observers must not resolve collaborators with app(); inject one lifecycle handler.');
                 }
 
@@ -105,39 +95,39 @@ final readonly class BeforeObserverMethodsCheck implements FileCheck
 
             private function isForbiddenFacadeCall(Node $node): bool
             {
-                return $node instanceof StaticCall
-                    && $node->class instanceof Name
+                return Node::is($node, 'expression.static-call')
+                    && Node::is($node->class, 'name')
                     && in_array($node->class->toString(), ['DB', 'Http', 'Mail', 'Notification', 'Cache', 'Log', 'Auth'], true);
             }
 
             private function isDispatchCall(Node $node): bool
             {
-                if ($node instanceof FuncCall && $node->name instanceof Name) {
+                if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name')) {
                     return in_array($node->name->toString(), ['event', 'dispatch'], true);
                 }
 
-                return $node instanceof StaticCall
-                    && $node->name instanceof Node\Identifier
+                return Node::is($node, 'expression.static-call')
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'dispatch';
             }
 
             private function isModelWriteCall(Node $node): bool
             {
-                return $node instanceof MethodCall
-                    && $node->name instanceof Node\Identifier
+                return Node::is($node, 'expression.method-call')
+                    && Node::is($node->name, 'identifier')
                     && in_array($node->name->toString(), ['save', 'update', 'delete'], true);
             }
 
             private function isModelCreationOrQueryCall(Node $node): bool
             {
-                return $node instanceof StaticCall
-                    && $node->name instanceof Node\Identifier
+                return Node::is($node, 'expression.static-call')
+                    && Node::is($node->name, 'identifier')
                     && in_array($node->name->toString(), ['create', 'query'], true);
             }
 
             private function mutatesLifecycleParameter(Node $node): bool
             {
-                if (! $node instanceof Assign && ! $node instanceof AssignOp\Coalesce) {
+                if (! Node::is($node, 'expression.assign') && ! Node::is($node, 'expression.assign-op.coalesce')) {
                     return false;
                 }
 
@@ -150,7 +140,7 @@ final readonly class BeforeObserverMethodsCheck implements FileCheck
             {
                 $parameter = $this->method->params[0] ?? null;
 
-                if (! $parameter instanceof Node\Param || ! $parameter->var instanceof Variable || ! is_string($parameter->var->name)) {
+                if (! Node::is($parameter, 'param') || ! Node::is($parameter->var, 'expression.variable') || ! is_string($parameter->var->name)) {
                     return null;
                 }
 
@@ -159,8 +149,8 @@ final readonly class BeforeObserverMethodsCheck implements FileCheck
 
             private function isParameterMemberFetch(Node $node, string $parameter): bool
             {
-                if ($node instanceof PropertyFetch || $node instanceof ArrayDimFetch) {
-                    return $node->var instanceof Variable && $node->var->name === $parameter;
+                if (Node::is($node, 'expression.property-fetch') || Node::is($node, 'expression.array-dim-fetch')) {
+                    return Node::is($node->var, 'expression.variable') && $node->var->name === $parameter;
                 }
 
                 return false;

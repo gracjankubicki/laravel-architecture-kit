@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
 use BackedEnum;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
+use GracjanKubicki\ArchitectureKit\Analysis\EngineSettings;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
 use GracjanKubicki\ArchitectureKit\Classification\DeclaredConfiguration;
 use Illuminate\Filesystem\Filesystem;
@@ -14,6 +16,8 @@ use RuntimeException;
 final class RepositoryContext
 {
     private static ?self $current = null;
+
+    private ?AnalysisSession $analysis = null;
 
     public readonly string $id;
 
@@ -25,6 +29,8 @@ final class RepositoryContext
 
     private readonly string $sourceHash;
 
+    private readonly string $packageHash;
+
     /** @var array<string, mixed> */
     public readonly array $settings;
 
@@ -34,10 +40,12 @@ final class RepositoryContext
         public readonly ?string $profile = null,
         public readonly bool $execute = false,
         public readonly bool $write = false,
+        public readonly bool $runtimeRoutes = false,
     ) {
         if (realpath($rootPath) !== $rootPath || ! is_file($rootPath.'/composer.json')) {
             throw new RuntimeException('Select a canonical project directory containing composer.json.');
         }
+        $this->packageHash = PackageFingerprint::current();
         Runner::externalHome($home, $rootPath);
         $this->id = hash('sha256', $rootPath);
         $homePath = realpath($home);
@@ -94,6 +102,20 @@ final class RepositoryContext
         }
     }
 
+    public function analysis(): AnalysisSession
+    {
+        if ($this->analysis === null) {
+            $composer = json_decode((string) file_get_contents($this->rootPath.'/composer.json'), true, 64, JSON_THROW_ON_ERROR);
+            if (! is_array($composer)) {
+                throw new RuntimeException('Composer declarations must contain an object.');
+            }
+            $settings = EngineSettings::from($this->settings, $composer, $this->configSource);
+            $this->analysis = $settings->session($this->home);
+        }
+
+        return $this->analysis;
+    }
+
     public static function activate(?self $context): void
     {
         self::$current = $context;
@@ -131,13 +153,19 @@ final class RepositoryContext
 
     public function fingerprint(): string
     {
-        return hash('sha256', serialize([$this->settings, $this->currentConfigurationHash(), $this->profile, $this->execute,
-            PackageFingerprint::current()]));
+        // A running MCP retains loaded PHP classes. New files on disk cannot be
+        // treated as the version it is executing, even if a new cache key exists.
+        if ($this->packageHash !== PackageFingerprint::of(dirname(__DIR__))) {
+            throw new RuntimeException('Tool sources changed during this process. Restart the tool; the previous task comparison remains invalid.');
+        }
+
+        return hash('sha256', serialize([$this->settings, $this->currentConfigurationHash(), $this->profile, $this->execute, $this->runtimeRoutes,
+            $this->packageHash, $this->analysis()->fingerprint(), hash_file('sha256', $this->rootPath.'/composer.json')]));
     }
 
     private function currentConfigurationHash(): string
     {
-        $fresh = new self($this->rootPath, $this->home, $this->profile, $this->execute, $this->write);
+        $fresh = new self($this->rootPath, $this->home, $this->profile, $this->execute, $this->write, $this->runtimeRoutes);
         if ($fresh->configSource !== $this->configSource || $fresh->sourceHash !== $this->sourceHash) {
             throw new RuntimeException('Selected configuration changed during this process. Restart with the current settings; the previous task comparison remains invalid.');
         }

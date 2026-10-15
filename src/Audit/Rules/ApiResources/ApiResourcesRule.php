@@ -4,18 +4,16 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\ApiResources;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class ApiResourcesRule implements AuditRule
+final readonly class ApiResourcesRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -33,7 +31,7 @@ final readonly class ApiResourcesRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -75,9 +73,9 @@ final readonly class ApiResourcesRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof StaticCall
-                    && $node->class instanceof Node\Name
-                    && $node->name instanceof Node\Identifier
+                    Node::is($node, 'expression.static-call')
+                    && Node::is($node->class, 'name')
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'query'
                     && $this->isProjectModel($node->class)
                 ) {
@@ -87,7 +85,7 @@ final readonly class ApiResourcesRule implements AuditRule
                     ];
                 }
 
-                if (! $node instanceof MethodCall || ! $node->name instanceof Node\Identifier) {
+                if (! Node::is($node, 'expression.method-call') || ! Node::is($node->name, 'identifier')) {
                     return null;
                 }
 
@@ -117,28 +115,28 @@ final readonly class ApiResourcesRule implements AuditRule
                 return null;
             }
 
-            private function isProjectModel(Node\Name $name): bool
+            private function isProjectModel(Node $name): bool
             {
                 $class = $this->file->resolvedName($name);
 
                 return str_starts_with($class, 'App\\Models\\');
             }
 
-            private function isModelQueryCall(Node\Expr $receiver): bool
+            private function isModelQueryCall(Node $receiver): bool
             {
-                return $receiver instanceof StaticCall
-                    && $receiver->name instanceof Node\Identifier
+                return Node::is($receiver, 'expression.static-call')
+                    && Node::is($receiver->name, 'identifier')
                     && $receiver->name->toString() === 'query'
-                    && $receiver->class instanceof Node\Name
+                    && Node::is($receiver->class, 'name')
                     && $this->isProjectModel($receiver->class);
             }
 
-            private function isResourceReceiver(Node\Expr $receiver): bool
+            private function isResourceReceiver(Node $receiver): bool
             {
-                return $receiver instanceof Node\Expr\PropertyFetch
-                    && $receiver->var instanceof Node\Expr\Variable
+                return Node::is($receiver, 'expression.property-fetch')
+                    && Node::is($receiver->var, 'expression.variable')
                     && $receiver->var->name === 'this'
-                    && $receiver->name instanceof Node\Identifier
+                    && Node::is($receiver->name, 'identifier')
                     && $receiver->name->toString() === 'resource';
             }
         });

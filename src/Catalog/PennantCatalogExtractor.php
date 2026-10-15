@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
 
 final class PennantCatalogExtractor
 {
@@ -31,7 +28,7 @@ final class PennantCatalogExtractor
         foreach ($php->elements as $element) {
             $this->owners[$element->offset] = $element;
         }
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path));
         }
 
@@ -49,20 +46,20 @@ final class PennantCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $owner = $this->owners[$node->getStartFilePos()]->id ?? $owner;
         }
-        if (($node instanceof Expr\StaticCall || $node instanceof Expr\MethodCall) && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if ((Node::is($node, 'expression.static-call') || Node::is($node, 'expression.method-call')) && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && in_array($method = strtolower($node->name->toString()), ['define', ...CatalogPennantOperations::READS, ...CatalogPennantOperations::WRITES], true)) {
             $chain = [];
             $root = $node;
-            while ($root instanceof Expr\MethodCall && count($chain) < 8) {
+            while (Node::is($root, 'expression.method-call') && count($chain) < 8) {
                 if ($root !== $node) {
                     $chain[] = $root;
                 }
                 $root = $root->var;
             }
-            if ($root instanceof Expr\StaticCall && $root->class instanceof Node\Name && $file->resolvedName($root->class) === 'Laravel\\Pennant\\Feature') {
+            if (Node::is($root, 'expression.static-call') && Node::is($root->class, 'name') && $file->resolvedName($root->class) === 'Laravel\\Pennant\\Feature') {
                 if ($root !== $node) {
                     $chain[] = $root;
                 }
@@ -71,11 +68,11 @@ final class PennantCatalogExtractor
                 $valid = ! $root->isFirstClassCallable();
                 $storeSelected = false;
                 foreach (array_reverse($chain) as $link) {
-                    $name = $link->name instanceof Node\Identifier ? strtolower($link->name->toString()) : '';
+                    $name = Node::is($link->name, 'identifier') ? strtolower($link->name->toString()) : '';
                     $valid = $valid && ! $link->isFirstClassCallable() && in_array($name, ['store', 'driver', 'for', 'globally'], true);
                     $arg = count($link->args) === 1 ? $link->getArgs()[0] : null;
                     if (in_array($name, ['store', 'driver'], true)) {
-                        $store = $arg?->value instanceof Scalar\String_ && CatalogPennantOperations::name($arg->value->value) ? $arg->value->value : null;
+                        $store = Node::is($arg?->value, 'scalar.string') && CatalogPennantOperations::name($arg->value->value) ? $arg->value->value : null;
                         $valid = $valid && ! $storeSelected && ! $scope && $arg !== null && ! $arg->unpack && $store !== null;
                         $storeSelected = true;
                     } elseif ($name === 'for') {
@@ -99,24 +96,24 @@ final class PennantCatalogExtractor
                     $values[$name] = $arg->value;
                 }
                 $selector = $values[$parameters[0]] ?? null;
-                $valid = $valid && (! in_array($method, ['define', 'value', 'active', 'inactive', 'when', 'unless'], true) || ! $selector instanceof Expr\Array_)
+                $valid = $valid && (! in_array($method, ['define', 'value', 'active', 'inactive', 'when', 'unless'], true) || ! Node::is($selector, 'expression.array'))
                     && (! in_array($method, ['when', 'unless'], true) || isset($values[$parameters[1]]));
                 $features = [];
-                $selectors = $selector instanceof Expr\Array_ && count($selector->items) <= 128 ? $selector->items : [$selector];
-                if ($selector instanceof Expr\Array_ && count($selector->items) > 128) {
+                $selectors = Node::is($selector, 'expression.array') && count($selector->items) <= 128 ? $selector->items : [$selector];
+                if (Node::is($selector, 'expression.array') && count($selector->items) > 128) {
                     $selectors = [];
                     $valid = false;
                     $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Pennant feature selection exceeds its 128-entry source budget.', max(1, $node->getStartLine()), $owner);
                 }
                 foreach ($selectors as $item) {
-                    if ($item instanceof Node\ArrayItem && ($item->unpack || $item->byRef)) {
+                    if (Node::is($item, 'array-item') && ($item->unpack || $item->byRef)) {
                         $valid = false;
 
                         continue;
                     }
-                    $value = $item instanceof Node\ArrayItem ? $item->value : $item;
-                    $class = $value instanceof Expr\ClassConstFetch && $value->class instanceof Node\Name && $value->name instanceof Node\Identifier && strtolower($value->name->toString()) === 'class';
-                    $name = $value instanceof Scalar\String_ ? $value->value : ($class ? $file->resolvedName($value->class) : null);
+                    $value = Node::is($item, 'array-item') ? $item->value : $item;
+                    $class = Node::is($value, 'expression.class-const-fetch') && Node::is($value->class, 'name') && Node::is($value->name, 'identifier') && strtolower($value->name->toString()) === 'class';
+                    $name = Node::is($value, 'scalar.string') ? $value->value : ($class ? $file->resolvedName($value->class) : null);
                     $valid = $valid && $name !== null && CatalogPennantOperations::name($name);
                     if ($name !== null && CatalogPennantOperations::name($name)) {
                         $features[] = ['name' => $name, 'class' => $class];
@@ -128,21 +125,21 @@ final class PennantCatalogExtractor
                 foreach (['resolver', 'whenActive', 'whenInactive'] as $parameter) {
                     $value = $values[$parameter] ?? null;
                     if (in_array($method, ['when', 'unless'], true) && $value !== null && $parameter !== 'resolver'
-                        && ! $value instanceof Expr\Closure && ! $value instanceof Expr\ArrowFunction
-                        && ! ($parameter === $parameters[2] && $value instanceof Expr\ConstFetch && strtolower($value->name->toString()) === 'null')) {
+                        && ! Node::is($value, 'expression.closure') && ! Node::is($value, 'expression.arrow-function')
+                        && ! ($parameter === $parameters[2] && Node::is($value, 'expression.const-fetch') && strtolower($value->name->toString()) === 'null')) {
                         $valid = false;
                     }
-                    if ($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) {
+                    if (Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) {
                         $id = $this->owners[$value->getStartFilePos()]->id ?? null;
                         if ($id !== null) {
                             $callbacks[] = ['target' => $id, 'condition' => ['resolver' => 'resolver', 'whenActive' => 'active', 'whenInactive' => 'inactive'][$parameter]];
                         } else {
                             $complete = false;
                         }
-                    } elseif ($parameter === 'resolver' && $value instanceof Expr\ClassConstFetch && $value->class instanceof Node\Name && $value->name instanceof Node\Identifier && strtolower($value->name->toString()) === 'class'
+                    } elseif ($parameter === 'resolver' && Node::is($value, 'expression.class-const-fetch') && Node::is($value->class, 'name') && Node::is($value->name, 'identifier') && strtolower($value->name->toString()) === 'class'
                         && CatalogPennantOperations::name($type = $file->resolvedName($value->class))) {
                         // A class-string supplied as the second argument is a constant value, not a class resolver.
-                    } elseif ($value !== null && ! $value instanceof Scalar && ! ($value instanceof Expr\ConstFetch && in_array(strtolower($value->name->toString()), ['true', 'false', 'null'], true))) {
+                    } elseif ($value !== null && ! Node::is($value, 'scalar') && ! (Node::is($value, 'expression.const-fetch') && in_array(strtolower($value->name->toString()), ['true', 'false', 'null'], true))) {
                         $complete = false;
                     }
                 }
@@ -155,7 +152,7 @@ final class PennantCatalogExtractor
         }
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner);
                 }
             }

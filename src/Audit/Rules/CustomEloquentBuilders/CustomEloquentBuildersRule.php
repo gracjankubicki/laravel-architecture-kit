@@ -4,21 +4,16 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\CustomEloquentBuilders;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class CustomEloquentBuildersRule implements AuditRule
+final readonly class CustomEloquentBuildersRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -36,7 +31,7 @@ final readonly class CustomEloquentBuildersRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -45,7 +40,7 @@ final readonly class CustomEloquentBuildersRule implements AuditRule
         $findings = [];
         $class = $this->firstClass($nodes);
 
-        if ($class instanceof Stmt\Class_) {
+        if (Node::is($class, 'statement.class')) {
             $className = $class->name?->toString();
 
             if (! $class->isFinal()) {
@@ -75,16 +70,16 @@ final readonly class CustomEloquentBuildersRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstClass(array $nodes): ?Stmt\Class_
+    private function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 foreach ($node->stmts as $statement) {
-                    if ($statement instanceof Stmt\Class_) {
+                    if (Node::is($statement, 'statement.class')) {
                         return $statement;
                     }
                 }
@@ -97,9 +92,9 @@ final readonly class CustomEloquentBuildersRule implements AuditRule
     /**
      * @param  array<int, string>  $expected
      */
-    private function classExtendsAny(Stmt\Class_ $class, array $expected): bool
+    private function classExtendsAny(Node $class, array $expected): bool
     {
-        if (! $class->extends instanceof Name) {
+        if (! Node::is($class->extends, 'name')) {
             return false;
         }
 
@@ -134,7 +129,7 @@ final readonly class CustomEloquentBuildersRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\UseUse) {
+                if (! Node::is($node, 'use-item')) {
                     return null;
                 }
 
@@ -185,15 +180,15 @@ final readonly class CustomEloquentBuildersRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof FuncCall && $node->name instanceof Name && in_array($node->name->toString(), ['event', 'dispatch'], true)) {
+                if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && in_array($node->name->toString(), ['event', 'dispatch'], true)) {
                     $this->state->calls[] = [
                         'line' => $node->getStartLine(),
                         'message' => 'Custom Eloquent Builders must not dispatch events or jobs.',
                     ];
                 }
 
-                if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
-                    $class = $node->class instanceof Name ? $node->class->toString() : null;
+                if (Node::is($node, 'expression.static-call') && Node::is($node->name, 'identifier')) {
+                    $class = Node::is($node->class, 'name') ? $node->class->toString() : null;
                     $method = $node->name->toString();
 
                     if ($class === 'DB' && $method === 'transaction') {
@@ -219,8 +214,8 @@ final readonly class CustomEloquentBuildersRule implements AuditRule
                 }
 
                 if (
-                    $node instanceof MethodCall
-                    && $node->name instanceof Node\Identifier
+                    Node::is($node, 'expression.method-call')
+                    && Node::is($node->name, 'identifier')
                     && in_array($node->name->toString(), ['create', 'update', 'delete', 'forceDelete', 'restore', 'save', 'insert', 'upsert'], true)
                 ) {
                     $this->state->calls[] = [

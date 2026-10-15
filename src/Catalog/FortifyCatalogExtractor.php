@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
 
 /** Source registration descriptors omit request values and never resolve the runtime container. */
 final class FortifyCatalogExtractor
@@ -32,7 +29,7 @@ final class FortifyCatalogExtractor
         foreach ($php->elements as $element) {
             $this->owners[$element->offset] = $element;
         }
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path));
         }
 
@@ -50,32 +47,32 @@ final class FortifyCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $owner = $this->owners[$node->getStartFilePos()]->id ?? $owner;
         }
-        if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && $file->resolvedName($node->class) === 'Laravel\\Fortify\\Fortify' && CatalogFortifyRegistrations::supported($method = strtolower($node->name->toString()))) {
             $isView = isset(CatalogFortifyRegistrations::VIEWS[$method]);
             $arg = count($node->args) === 1 ? $node->getArgs()[0] : null;
             $value = $arg?->value;
             $valid = $arg !== null && ! $arg->unpack && ($arg->name === null || $arg->name->toString() === ($isView ? 'view' : 'callback'));
             $target = $value === null || $isView ? null : $this->type($file, $value);
-            $callback = $value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction ? ($this->owners[$value->getStartFilePos()]->id ?? null) : null;
-            $view = $isView && $value instanceof Scalar\String_ && preg_match('/\A[a-zA-Z0-9_][a-zA-Z0-9_.\/:\-]{0,255}\z/D', $value->value) === 1 ? $value->value : null;
+            $callback = Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function') ? ($this->owners[$value->getStartFilePos()]->id ?? null) : null;
+            $view = $isView && Node::is($value, 'scalar.string') && preg_match('/\A[a-zA-Z0-9_][a-zA-Z0-9_.\/:\-]{0,255}\z/D', $value->value) === 1 ? $value->value : null;
             $pipeline = [];
             $pipelineResolved = true;
             if (in_array($method, ['authenticatethrough', 'loginthrough'], true)) {
-                $returned = $value instanceof Expr\ArrowFunction ? $value->expr
-                    : ($value instanceof Expr\Closure && count($value->stmts) === 1 && $value->stmts[0] instanceof Stmt\Return_ ? $value->stmts[0]->expr : null);
-                $pipelineResolved = $returned instanceof Expr\Array_ && count($returned->items) <= 128;
-                foreach ($returned instanceof Expr\Array_ && count($returned->items) <= 128 ? $returned->items : [] as $item) {
+                $returned = Node::is($value, 'expression.arrow-function') ? $value->expr
+                    : (Node::is($value, 'expression.closure') && count($value->stmts) === 1 && Node::is($value->stmts[0], 'statement.return') ? $value->stmts[0]->expr : null);
+                $pipelineResolved = Node::is($returned, 'expression.array') && count($returned->items) <= 128;
+                foreach (Node::is($returned, 'expression.array') && count($returned->items) <= 128 ? $returned->items : [] as $item) {
                     $type = $item !== null && ! $item->unpack && ! $item->byRef ? $this->type($file, $item->value) : null;
                     $pipelineResolved = $pipelineResolved && $type !== null;
                     if ($type !== null) {
                         $pipeline[] = $type;
                     }
                 }
-                if ($returned instanceof Expr\Array_ && count($returned->items) > 128) {
+                if (Node::is($returned, 'expression.array') && count($returned->items) > 128) {
                     $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Fortify pipeline exceeds its 128-step source budget.', max(1, $node->getStartLine()), $owner);
                 }
             }
@@ -88,17 +85,17 @@ final class FortifyCatalogExtractor
         }
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner);
                 }
             }
         }
     }
 
-    private function type(FileContext $file, Expr $value): ?string
+    private function type(FileContext $file, Node $value): ?string
     {
-        $name = $value instanceof Scalar\String_ ? ltrim($value->value, '\\')
-            : ($value instanceof Expr\ClassConstFetch && $value->class instanceof Node\Name && $value->name instanceof Node\Identifier && strtolower($value->name->toString()) === 'class'
+        $name = Node::is($value, 'scalar.string') ? ltrim($value->value, '\\')
+            : (Node::is($value, 'expression.class-const-fetch') && Node::is($value->class, 'name') && Node::is($value->name, 'identifier') && strtolower($value->name->toString()) === 'class'
                 ? $file->resolvedName($value->class) : null);
 
         return $name !== null && strlen($name) <= 1000 && ! in_array(strtolower($name), ['self', 'static', 'parent'], true)

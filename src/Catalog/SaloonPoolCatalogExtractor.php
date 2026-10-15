@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Pool member class selectors share the existing AST; constructor payloads are omitted. */
 final class SaloonPoolCatalogExtractor
@@ -36,7 +34,7 @@ final class SaloonPoolCatalogExtractor
                 $this->owners[$element->offset] = $element->id;
             }
         }
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, CatalogElement::identity($file->path, 'file', $file->path));
         }
 
@@ -54,21 +52,21 @@ final class SaloonPoolCatalogExtractor
 
             return;
         }
-        if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $owner = $this->owners[$node->getStartFilePos()] ?? $owner;
             $conditional = false;
         }
-        $conditional = $conditional || $node instanceof Stmt\If_ || $node instanceof Stmt\ElseIf_ || $node instanceof Stmt\Else_
-            || $node instanceof Stmt\Switch_ || $node instanceof Stmt\For_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\While_
-            || $node instanceof Stmt\Do_ || $node instanceof Stmt\TryCatch || $node instanceof Expr\Ternary
-            || $node instanceof Expr\BinaryOp\BooleanAnd || $node instanceof Expr\BinaryOp\BooleanOr
-            || $node instanceof Expr\BinaryOp\LogicalAnd || $node instanceof Expr\BinaryOp\LogicalOr || $node instanceof Expr\BinaryOp\Coalesce
-            || $node instanceof Expr\NullsafeMethodCall;
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier && in_array(strtolower($node->name->toString()), ['pool', ...array_keys(CatalogSaloonOperations::POOL_SETTERS)], true) && ! $node->isFirstClassCallable()
-            || $node instanceof Expr\New_ && CatalogSaloonOperations::poolConstructor($file, $node)) {
+        $conditional = $conditional || Node::is($node, 'statement.if') || Node::is($node, 'statement.else-if') || Node::is($node, 'statement.else')
+            || Node::is($node, 'statement.switch') || Node::is($node, 'statement.for') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.while')
+            || Node::is($node, 'statement.do') || Node::is($node, 'statement.try-catch') || Node::is($node, 'expression.ternary')
+            || Node::is($node, 'expression.binary-op.boolean-and') || Node::is($node, 'expression.binary-op.boolean-or')
+            || Node::is($node, 'expression.binary-op.logical-and') || Node::is($node, 'expression.binary-op.logical-or') || Node::is($node, 'expression.binary-op.coalesce')
+            || Node::is($node, 'expression.nullsafe-method-call');
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier') && in_array(strtolower($node->name->toString()), ['pool', ...array_keys(CatalogSaloonOperations::POOL_SETTERS)], true) && ! $node->isFirstClassCallable()
+            || Node::is($node, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $node)) {
             $arguments = [];
             $this->promiseSites = [];
-            $constructor = $node instanceof Expr\New_;
+            $constructor = Node::is($node, 'expression.new');
             $form = $constructor ? 'new' : strtolower($node->name->toString());
             $setter = CatalogSaloonOperations::POOL_SETTERS[$form] ?? null;
             $names = $setter !== null ? [$setter[0]] : [...($constructor ? ['connector'] : []), 'requests', 'concurrency', 'responseHandler', 'exceptionHandler'];
@@ -89,15 +87,15 @@ final class SaloonPoolCatalogExtractor
                 $callbacks[$kind] = ['id' => $callback['id'], 'resolved' => $callback['resolved']];
             }
             $requests = $arguments['requests'] ?? null;
-            $factory = $requests instanceof Expr\Closure || $requests instanceof Expr\ArrowFunction ? ($this->owners[$requests->getStartFilePos()] ?? null) : null;
+            $factory = Node::is($requests, 'expression.closure') || Node::is($requests, 'expression.arrow-function') ? ($this->owners[$requests->getStartFilePos()] ?? null) : null;
             $generator = false;
             $targets = [];
             $resolved = $requests === null;
-            if ($requests instanceof Expr\Array_) {
+            if (Node::is($requests, 'expression.array')) {
                 [$targets, $resolved] = $this->objects($file, $requests);
-            } elseif ($requests instanceof Expr\ArrowFunction) {
+            } elseif (Node::is($requests, 'expression.arrow-function')) {
                 [$generator, $complete] = $this->generator($requests, $owner);
-                if ($requests->expr instanceof Expr\Yield_) {
+                if (Node::is($requests->expr, 'expression.yield')) {
                     $type = $this->object($file, $requests->expr->value);
                     $targets = $type === null ? [] : [$type];
                     $resolved = $complete && $type !== null;
@@ -105,25 +103,25 @@ final class SaloonPoolCatalogExtractor
                     [$targets, $resolved] = $this->objects($file, $requests->expr);
                     $resolved = $resolved && $complete && ! $generator;
                 }
-            } elseif ($requests instanceof Expr\Closure) {
+            } elseif (Node::is($requests, 'expression.closure')) {
                 [$generator, $resolved] = $this->generator($requests, $owner);
                 $returned = false;
                 foreach ($requests->stmts as $statement) {
-                    if ($statement instanceof Stmt\Return_) {
+                    if (Node::is($statement, 'statement.return')) {
                         if (! $generator) {
                             [$members, $complete] = $this->objects($file, $statement->expr);
                             $targets = [...$targets, ...$members];
                             $resolved = $resolved && $complete && ! $returned;
                         }
                         $returned = true;
-                    } elseif ($statement instanceof Stmt\Expression && $statement->expr instanceof Expr\Yield_) {
+                    } elseif (Node::is($statement, 'statement.expression') && Node::is($statement->expr, 'expression.yield')) {
                         $generator = true;
                         $type = $this->object($file, $statement->expr->value);
                         $resolved = $resolved && $type !== null;
                         if ($type !== null) {
                             $targets[] = $type;
                         }
-                    } elseif (! $statement instanceof Stmt\Nop) {
+                    } elseif (! Node::is($statement, 'statement.nop')) {
                         // Unmodeled statements can change the returned members or yield conditionally.
                         $resolved = false;
                     }
@@ -145,7 +143,7 @@ final class SaloonPoolCatalogExtractor
         }
         foreach ($node->getSubNodeNames() as $key) {
             foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner, $conditional);
                 }
             }
@@ -155,11 +153,11 @@ final class SaloonPoolCatalogExtractor
     /** @return array{id: ?string, resolved: bool, valid: bool} */
     private function callback(?Node $value, string $kind, bool $required): array
     {
-        if ($value === null || ! $required && $kind !== 'concurrency' && $value instanceof Expr\ConstFetch && strtolower($value->name->toString()) === 'null'
-            || $kind === 'concurrency' && $value instanceof Node\Scalar\Int_) {
+        if ($value === null || ! $required && $kind !== 'concurrency' && Node::is($value, 'expression.const-fetch') && strtolower($value->name->toString()) === 'null'
+            || $kind === 'concurrency' && Node::is($value, 'scalar.int')) {
             return ['id' => null, 'resolved' => true, 'valid' => true];
         }
-        if ($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) {
+        if (Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) {
             $id = $this->owners[$value->getStartFilePos()] ?? null;
             [$generator, $complete] = $this->generator($value, $id ?? '');
             if ($generator || ! $complete) {
@@ -169,8 +167,8 @@ final class SaloonPoolCatalogExtractor
 
             return ['id' => $id, 'resolved' => $id !== null, 'valid' => true];
         }
-        $invalid = $value instanceof Node\Scalar && ! $value instanceof Node\Scalar\String_
-            || $value instanceof Expr\ConstFetch && in_array(strtolower($value->name->toString()), ['null', 'true', 'false'], true);
+        $invalid = Node::is($value, 'scalar') && ! Node::is($value, 'scalar.string')
+            || Node::is($value, 'expression.const-fetch') && in_array(strtolower($value->name->toString()), ['null', 'true', 'false'], true);
 
         return ['id' => null, 'resolved' => false, 'valid' => ! $invalid];
     }
@@ -178,12 +176,12 @@ final class SaloonPoolCatalogExtractor
     /** @return array{list<string>, bool} */
     private function objects(FileContext $file, ?Node $node): array
     {
-        if ($node instanceof Expr\Array_ && count($node->items) > 128) {
+        if (Node::is($node, 'expression.array') && count($node->items) > 128) {
             $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Saloon pool member list exceeds 128 source candidates.', max(1, $node->getStartLine()), limitReason: 'structure');
 
             return [[], false];
         }
-        if (! $node instanceof Expr\Array_) {
+        if (! Node::is($node, 'expression.array')) {
             return [[], false];
         }
         if (! CatalogSaloonOperations::poolMemberArray($node)) {
@@ -206,9 +204,9 @@ final class SaloonPoolCatalogExtractor
     /** Detect yields in this callable, excluding nested callable/class bodies.
      * @return array{bool, bool}
      */
-    private function generator(Expr\Closure|Expr\ArrowFunction $callable, string $owner): array
+    private function generator(Node $callable, string $owner): array
     {
-        $pending = $callable instanceof Expr\ArrowFunction ? [$callable->expr] : $callable->stmts;
+        $pending = Node::is($callable, 'expression.arrow-function') ? [$callable->expr] : $callable->stmts;
         $generator = false;
         $visited = 0;
         while ($pending !== []) {
@@ -219,15 +217,15 @@ final class SaloonPoolCatalogExtractor
                 // Unknown generator status must never allow immediate callback execution.
                 return [true, false];
             }
-            if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction || $node instanceof Stmt\ClassLike || $node instanceof Stmt\Function_) {
+            if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function') || Node::is($node, 'statement.class-like') || Node::is($node, 'statement.function')) {
                 continue;
             }
-            if ($node instanceof Expr\Yield_ || $node instanceof Expr\YieldFrom) {
+            if (Node::is($node, 'expression.yield') || Node::is($node, 'expression.yield-from')) {
                 $generator = true;
             }
             foreach ($node->getSubNodeNames() as $key) {
                 foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                    if ($child instanceof Node) {
+                    if (Node::is($child, 'node')) {
                         $pending[] = $child;
                     }
                 }
@@ -239,7 +237,7 @@ final class SaloonPoolCatalogExtractor
 
     private function object(FileContext $file, ?Node $node): ?string
     {
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier')
             && strcasecmp($node->name->toString(), 'sendAsync') === 0 && ! $node->isFirstClassCallable()) {
             if (count($this->promiseSites) < 128) {
                 $this->promiseSites[] = ['offset' => max(0, $node->getStartFilePos()), 'end_offset' => max(0, $node->getEndFilePos())];
@@ -247,7 +245,7 @@ final class SaloonPoolCatalogExtractor
 
             return null;
         }
-        if (! $node instanceof Expr\New_ || ! $node->class instanceof Node\Name || in_array(strtolower($node->class->toString()), ['self', 'static', 'parent'], true)) {
+        if (! Node::is($node, 'expression.new') || ! Node::is($node->class, 'name') || in_array(strtolower($node->class->toString()), ['self', 'static', 'parent'], true)) {
             return null;
         }
         $type = $file->resolvedName($node->class);

@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Derived;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Returned rule candidates retain source evidence without recording validation data. */
 final class ValidationCatalogExtractor
@@ -47,19 +46,19 @@ final class ValidationCatalogExtractor
                 }
             }
         }
-        foreach ((new NodeFinder)->find($file->ast() ?? [], fn ($node) => $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) as $method) {
-            if (! $method instanceof Stmt\ClassMethod && ! $method instanceof Stmt\Function_ && ! $method instanceof Expr\Closure && ! $method instanceof Expr\ArrowFunction) {
+        foreach ((new NodeFinder)->find($file->syntax() ?? [], fn ($node) => Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) as $method) {
+            if (! Node::is($method, 'statement.class-method') && ! Node::is($method, 'statement.function') && ! Node::is($method, 'expression.closure') && ! Node::is($method, 'expression.arrow-function')) {
                 continue;
             }
             $element = $methods[$method->getStartFilePos()] ?? null;
             if ($element !== null) {
-                $nodes = $method instanceof Expr\ArrowFunction ? [new Stmt\Return_($method->expr, $method->expr->getAttributes())] : ($method->stmts ?? []);
+                $nodes = Node::is($method, 'expression.arrow-function') ? [Derived::returnValue($method->expr)] : ($method->stmts ?? []);
                 $vars = [];
                 foreach ($method->params as $parameterIndex => $param) {
-                    if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                    if (Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
                         $vars[$param->var->name] = ['parameter_index' => $parameterIndex];
                     }
-                    if ($param->var instanceof Expr\Variable && is_string($param->var->name) && $param->type !== null) {
+                    if (Node::is($param->var, 'expression.variable') && is_string($param->var->name) && $param->type !== null) {
                         $types = $this->parameterTypes($file, $param->type, $element->id, 0);
                         if (count($types) > 128) {
                             $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Validation parameter exceeds its 128 type alternative budget.', max(1, $param->getStartLine()), $element->id);
@@ -70,16 +69,16 @@ final class ValidationCatalogExtractor
                         }
                     }
                 }
-                $generator = (new NodeFinder)->findFirst($nodes, fn ($node) => $node instanceof Expr\Yield_ || $node instanceof Expr\YieldFrom) !== null;
+                $generator = (new NodeFinder)->findFirst($nodes, fn ($node) => Node::is($node, 'expression.yield') || Node::is($node, 'expression.yield-from')) !== null;
                 $this->returns($file, $nodes, $element->id, vars: $vars, extractRules: $element->kind === 'method' && str_ends_with(strtolower($element->name), '::rules'), recordReturns: ! $generator);
-                if (! $method instanceof Expr\ArrowFunction && $method->stmts !== null
-                    && ! $generator && ($method->returnType === null || $method->returnType instanceof Node\Identifier && strtolower($method->returnType->toString()) === 'void')
-                    && count(array_filter($nodes, fn ($node) => ! $node instanceof Stmt\Nop && ! ($node instanceof Stmt\Expression && ! $node->expr instanceof Expr\Throw_ && ! $node->expr instanceof Expr\Exit_))) === 0) {
+                if (! Node::is($method, 'expression.arrow-function') && $method->stmts !== null
+                    && ! $generator && ($method->returnType === null || Node::is($method->returnType, 'identifier') && strtolower($method->returnType->toString()) === 'void')
+                    && count(array_filter($nodes, fn ($node) => ! Node::is($node, 'statement.nop') && ! (Node::is($node, 'statement.expression') && ! Node::is($node->expr, 'expression.throw') && ! Node::is($node->expr, 'expression.exit')))) === 0) {
                     $this->relations[] = new CatalogRelation($element->id, 'value:null', 'returns-null', max(1, $method->getEndLine()), max(1, $method->getEndLine()), 'conditional', ['return_origin' => 'implicit']);
                 }
             }
         }
-        $this->returns($file, $file->ast() ?? [], CatalogElement::identity($file->path, 'file', $file->path), extractRules: false);
+        $this->returns($file, $file->syntax() ?? [], CatalogElement::identity($file->path, 'file', $file->path), extractRules: false);
 
         return new CatalogFacts($file->path, elements: $this->elements, relations: $this->relations, diagnostics: $this->diagnostics);
     }
@@ -94,16 +93,16 @@ final class ValidationCatalogExtractor
             if (! $this->budget($node, $id, $depth)) {
                 return [];
             }
-            if ($node instanceof Stmt\Return_) {
+            if (Node::is($node, 'statement.return')) {
                 if ($recordReturns) {
                     $return = $node->expr;
                     $bindings = $vars;
                     if ($return !== null) {
                         [$return, $bindings] = $this->boundValue($return, $vars, $id, $depth + 1);
                     }
-                    if ($return === null || $return instanceof Expr\ConstFetch && strtolower($return->name->toString()) === 'null') {
+                    if ($return === null || Node::is($return, 'expression.const-fetch') && strtolower($return->name->toString()) === 'null') {
                         $this->relations[] = new CatalogRelation($id, 'value:null', 'returns-null', max(1, $node->getStartLine()), max(1, $node->getEndLine()), 'conditional', ['offset' => max(0, $node->getStartFilePos())]);
-                    } elseif ($return instanceof Expr\Variable && is_string($return->name) && isset($bindings[$return->name]['parameter_index'])) {
+                    } elseif (Node::is($return, 'expression.variable') && is_string($return->name) && isset($bindings[$return->name]['parameter_index'])) {
                         $index = $bindings[$return->name]['parameter_index'];
                         $this->relations[] = new CatalogRelation($id, 'value:parameter:'.$index, 'returns-parameter', max(1, $node->getStartLine()), max(1, $node->getEndLine()), 'conditional', ['parameter_index' => $index, 'offset' => max(0, $node->getStartFilePos())]);
                     }
@@ -117,37 +116,37 @@ final class ValidationCatalogExtractor
 
                 continue;
             }
-            if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction || $node instanceof Stmt\ClassLike || $node instanceof Stmt\Function_ || $node instanceof Stmt\ClassMethod) {
+            if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function') || Node::is($node, 'statement.class-like') || Node::is($node, 'statement.function') || Node::is($node, 'statement.class-method')) {
                 continue;
             }
-            if ($node instanceof Stmt\Expression || $node instanceof Expr) {
-                $expr = $node instanceof Stmt\Expression ? $node->expr : $node;
+            if (Node::is($node, 'statement.expression') || Node::is($node, 'expression')) {
+                $expr = Node::is($node, 'statement.expression') ? $node->expr : $node;
                 $this->standalone($file, $expr, $id, $vars, $depth + 1);
                 $this->invalidate($expr, $vars, $id, $depth + 1);
-                if ($expr instanceof Expr\Assign && $expr->var instanceof Expr\Variable && is_string($expr->var->name)) {
+                if (Node::is($expr, 'expression.assign') && Node::is($expr->var, 'expression.variable') && is_string($expr->var->name)) {
                     $vars[$expr->var->name] = ['node' => $expr->expr, 'vars' => $vars];
                 }
 
                 continue;
             }
-            if ($node instanceof Stmt\Unset_) {
+            if (Node::is($node, 'statement.unset')) {
                 foreach ($node->vars as $target) {
                     $this->invalidateTarget($target, $vars);
                 }
 
                 continue;
             }
-            if ($node instanceof Stmt\Foreach_) {
+            if (Node::is($node, 'statement.foreach')) {
                 foreach ([$node->keyVar, $node->valueVar] as $target) {
                     if ($target !== null) {
                         $this->invalidateTarget($target, $vars);
                     }
                 }
             }
-            $branch = $node instanceof Stmt\If_ || $node instanceof Stmt\ElseIf_ || $node instanceof Stmt\Else_ || $node instanceof Stmt\TryCatch || $node instanceof Stmt\Catch_ || $node instanceof Stmt\Switch_ || $node instanceof Stmt\Case_ || $node instanceof Stmt\For_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\While_;
+            $branch = Node::is($node, 'statement.if') || Node::is($node, 'statement.else-if') || Node::is($node, 'statement.else') || Node::is($node, 'statement.try-catch') || Node::is($node, 'statement.catch') || Node::is($node, 'statement.switch') || Node::is($node, 'statement.case') || Node::is($node, 'statement.for') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.while');
             foreach ($node->getSubNodeNames() as $key) {
                 $value = $node->$key;
-                $children = array_values(array_filter(is_array($value) ? $value : [$value], fn ($child) => $child instanceof Node));
+                $children = array_values(array_filter(is_array($value) ? $value : [$value], fn ($child) => Node::is($child, 'node')));
                 $changed = $this->returns($file, $children, $id, $depth + 1, $vars, $extractRules, $recordReturns);
                 if ($branch) {
                     foreach ($changed as $var => $binding) {
@@ -170,7 +169,7 @@ final class ValidationCatalogExtractor
         if (! $this->budget($node, $id, $depth)) {
             return;
         }
-        if ($node instanceof Expr\Array_) {
+        if (Node::is($node, 'expression.array')) {
             foreach ($node->items as $item) {
                 if ($item !== null) {
                     $this->value($file, $item->value, $id, $depth + 1, $vars);
@@ -179,57 +178,57 @@ final class ValidationCatalogExtractor
 
             return;
         }
-        if ($node instanceof Expr\Ternary) {
+        if (Node::is($node, 'expression.ternary')) {
             $this->value($file, $node->if ?? $node->cond, $id, $depth + 1, $vars);
             $this->value($file, $node->else, $id, $depth + 1, $vars);
 
             return;
         }
-        if ($node instanceof Expr\BinaryOp\Coalesce) {
+        if (Node::is($node, 'expression.binary-op.coalesce')) {
             $this->value($file, $node->left, $id, $depth + 1, $vars);
             $this->value($file, $node->right, $id, $depth + 1, $vars);
 
             return;
         }
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             $binding = $vars[$node->name] ?? null;
-            if (is_array($binding) && ($binding['node'] ?? null) instanceof Expr && is_array($binding['vars'] ?? null)) {
+            if (is_array($binding) && Node::is(($binding['node'] ?? null), 'expression') && is_array($binding['vars'] ?? null)) {
                 $this->value($file, $binding['node'], $id, $depth + 1, $binding['vars']);
 
                 return;
             }
         }
-        if ($node instanceof Expr\New_ && $node->class instanceof Node\Name) {
+        if (Node::is($node, 'expression.new') && Node::is($node->class, 'name')) {
             $this->relations[] = new CatalogRelation($id, 'php:'.$file->resolvedName($node->class), 'returned-rule-candidate', max(1, $node->getStartLine()), max(1, $node->getEndLine()), 'conditional');
 
             return;
         }
-        if ($node instanceof Expr\New_ && $node->class instanceof Stmt\Class_) {
+        if (Node::is($node, 'expression.new') && Node::is($node->class, 'statement.class')) {
             $name = '(anonymous) '.$file->path.':'.$node->class->getStartFilePos();
             $this->relations[] = new CatalogRelation($id, 'php:'.$name, 'returned-rule-candidate', max(1, $node->getStartLine()), max(1, $node->getEndLine()), 'conditional');
 
             return;
         }
-        if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && $file->resolvedName($node->class) === 'Illuminate\Validation\Rule'
             && in_array(strtolower($node->name->toString()), ['when', 'unless', 'foreach'], true)) {
             $this->frameworkRules($file, $node, $id, $depth + 1, $vars);
 
             return;
         }
-        if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && $file->resolvedName($node->class) === 'Illuminate\\Validation\\Rule' && CatalogRuleFactories::type(strtolower($node->name->toString())) !== null) {
             $this->standardRule($file, $node, $id, $depth + 1, $vars);
 
             return;
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $this->fluentRule($file, $node, $id, $depth + 1, $vars)) {
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && $this->fluentRule($file, $node, $id, $depth + 1, $vars)) {
             return;
         }
         $receiver = null;
         $method = '__invoke';
         $factoryCall = ['creator' => $this->owners[$id] ?? '', 'form' => 'function', 'binding' => null];
-        if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()) {
+        if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()) {
             $binding = strtolower($node->class->toString());
             $factoryCall['form'] = 'static';
             $factoryCall['binding'] = in_array($binding, ['self', 'static', 'parent'], true) ? $binding : null;
@@ -239,14 +238,14 @@ final class ValidationCatalogExtractor
                 default => $file->resolvedName($node->class),
             };
             $method = $node->name->toString();
-        } elseif (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()) {
+        } elseif ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()) {
             $receiver = $this->receiverType($file, $node->var, $id, $vars, $depth + 1);
             $method = $node->name->toString();
             $factoryCall['form'] = 'instance';
-        } elseif ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name && ! $node->isFirstClassCallable()) {
+        } elseif (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && ! $node->isFirstClassCallable()) {
             $resolved = $file->resolvedName($node->name);
             $namespaced = $node->name->getAttribute('namespacedName');
-            $names = array_values(array_unique($namespaced instanceof Node\Name ? [$namespaced->toString(), $resolved] : [$resolved]));
+            $names = array_values(array_unique(Node::is($namespaced, 'name') ? [$namespaced->toString(), $resolved] : [$resolved]));
             $receiver = '@function:'.json_encode($names, JSON_THROW_ON_ERROR);
         }
         if ($receiver !== null) {
@@ -255,31 +254,31 @@ final class ValidationCatalogExtractor
 
             return;
         }
-        if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
             $name = '(closure) '.$file->path.':'.$node->getStartFilePos();
             $target = CatalogElement::identity($file->path, 'closure', $name, max(0, $node->getStartFilePos()));
             $this->relations[] = new CatalogRelation($id, $target, 'returned-rule-callback', max(1, $node->getStartLine()), max(1, $node->getEndLine()), 'conditional');
 
             return;
         }
-        if ($node instanceof Node\Scalar\String_ || $node instanceof Node\Scalar\Int_ || $node instanceof Expr\ConstFetch) {
+        if (Node::is($node, 'scalar.string') || Node::is($node, 'scalar.int') || Node::is($node, 'expression.const-fetch')) {
             return;
         }
         $this->diagnostics[] = new CatalogDiagnostic('validation_rules_dynamic', 'Returned validation rules require source inspection; dynamic values are not evaluated.', max(1, $node->getStartLine()), $id);
     }
 
     /** @param array<string, mixed> $vars */
-    private function fluentRule(FileContext $file, Expr $node, string $owner, int $depth, array $vars): bool
+    private function fluentRule(FileContext $file, Node $node, string $owner, int $depth, array $vars): bool
     {
         $modifiers = [];
         $current = $node;
-        while ($current instanceof Expr\MethodCall || $current instanceof Expr\NullsafeMethodCall || $current instanceof Expr\Variable && is_string($current->name)) {
+        while (Node::is($current, 'expression.method-call') || Node::is($current, 'expression.nullsafe-method-call') || Node::is($current, 'expression.variable') && is_string($current->name)) {
             if (! $this->budget($current, $owner, ++$depth)) {
                 return true;
             }
-            if ($current instanceof Expr\Variable) {
+            if (Node::is($current, 'expression.variable')) {
                 $binding = $vars[$current->name] ?? null;
-                if (! is_array($binding) || ! ($binding['node'] ?? null) instanceof Expr || ! is_array($binding['vars'] ?? null)) {
+                if (! is_array($binding) || ! Node::is(($binding['node'] ?? null), 'expression') || ! is_array($binding['vars'] ?? null)) {
                     return false;
                 }
                 $current = $binding['node'];
@@ -287,13 +286,13 @@ final class ValidationCatalogExtractor
 
                 continue;
             }
-            if ($current->isFirstClassCallable() || ! $current->name instanceof Node\Identifier) {
+            if ($current->isFirstClassCallable() || ! Node::is($current->name, 'identifier')) {
                 return false;
             }
             $modifiers[] = ['node' => $current, 'vars' => $vars];
             $current = $current->var;
         }
-        if (! $current instanceof Expr\StaticCall || ! $current->class instanceof Node\Name || ! $current->name instanceof Node\Identifier || $current->isFirstClassCallable()
+        if (! Node::is($current, 'expression.static-call') || ! Node::is($current->class, 'name') || ! Node::is($current->name, 'identifier') || $current->isFirstClassCallable()
             || $file->resolvedName($current->class) !== 'Illuminate\\Validation\\Rule') {
             return false;
         }
@@ -370,7 +369,7 @@ final class ValidationCatalogExtractor
     /** Conditionable returns the selected callback result, falling back to the receiver only for null.
      * @param  array<string, mixed>  $vars
      */
-    private function conditionableRule(FileContext $file, Expr\MethodCall|Expr\NullsafeMethodCall $node, string $owner, int $depth, array $vars, string $factory): void
+    private function conditionableRule(FileContext $file, Node $node, string $owner, int $depth, array $vars, string $factory): void
     {
         $args = [];
         $names = ['value', 'callback', 'default'];
@@ -397,18 +396,18 @@ final class ValidationCatalogExtractor
         }
         if ($value === null) {
             $known = false;
-        } elseif ($value instanceof Expr\ConstFetch && in_array(strtolower($value->name->toString()), ['true', 'false', 'null'], true)) {
+        } elseif (Node::is($value, 'expression.const-fetch') && in_array(strtolower($value->name->toString()), ['true', 'false', 'null'], true)) {
             $known = strtolower($value->name->toString()) === 'true';
-        } elseif ($value instanceof Node\Scalar\Int_ || $value instanceof Node\Scalar\Float_ || $value instanceof Node\Scalar\String_) {
+        } elseif (Node::is($value, 'scalar.int') || Node::is($value, 'scalar.float') || Node::is($value, 'scalar.string')) {
             $known = (bool) $value->value;
         }
         if ($known !== null && $method === 'unless') {
             $known = ! $known;
         }
         $start = count($this->relations);
-        if ($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) {
+        if (Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) {
             $this->builderCallback($file, $value, $owner, $factory, $method, 'condition');
-        } elseif ($value instanceof Expr\CallLike && $value->isFirstClassCallable()) {
+        } elseif (Node::is($value, 'expression.call-like') && $value->isFirstClassCallable()) {
             $this->builderCallable($file, $value, $owner, $valueVars, $depth + 1, 'condition');
         }
         foreach (['callback', 'default'] as $branch) {
@@ -420,7 +419,7 @@ final class ValidationCatalogExtractor
             if ($callback !== null) {
                 [$callback, $callbackVars] = $this->boundValue($callback, $vars, $owner, $depth + 1);
             }
-            if ($callback === null || $callback instanceof Expr\ConstFetch && strtolower($callback->name->toString()) === 'null') {
+            if ($callback === null || Node::is($callback, 'expression.const-fetch') && strtolower($callback->name->toString()) === 'null') {
                 if ($branch === 'callback') {
                     $this->diagnostics[] = new CatalogDiagnostic('validation_rules_dynamic', 'Selected Conditionable callback is null; successful rule construction is not inferred.', max(1, $node->getStartLine()), $owner);
 
@@ -430,7 +429,7 @@ final class ValidationCatalogExtractor
 
                 continue;
             }
-            if ($callback instanceof Expr\CallLike && $callback->isFirstClassCallable()) {
+            if (Node::is($callback, 'expression.call-like') && $callback->isFirstClassCallable()) {
                 $descriptor = $this->builderCallable($file, $callback, $owner, $callbackVars, $depth + 1, $branch);
                 if ($descriptor !== null) {
                     $fallbackStart = count($this->relations);
@@ -444,14 +443,14 @@ final class ValidationCatalogExtractor
 
                 continue;
             }
-            if (! $callback instanceof Expr\Closure && ! $callback instanceof Expr\ArrowFunction) {
+            if (! Node::is($callback, 'expression.closure') && ! Node::is($callback, 'expression.arrow-function')) {
                 $this->diagnostics[] = new CatalogDiagnostic('validation_rules_dynamic', 'Conditionable callback requires source callable resolution; its rule result is not inferred.', max(1, $callback->getStartLine()), $owner);
 
                 continue;
             }
             $this->builderCallback($file, $callback, $owner, $factory, $method, $branch);
-            $bindings = $callback instanceof Expr\ArrowFunction ? $callbackVars : [];
-            if ($callback instanceof Expr\Closure) {
+            $bindings = Node::is($callback, 'expression.arrow-function') ? $callbackVars : [];
+            if (Node::is($callback, 'expression.closure')) {
                 foreach ($callback->uses as $use) {
                     if (! $use->byRef && is_string($use->var->name) && isset($callbackVars[$use->var->name])) {
                         $bindings[$use->var->name] = $callbackVars[$use->var->name];
@@ -459,22 +458,22 @@ final class ValidationCatalogExtractor
                 }
             }
             $param = $callback->params[0] ?? null;
-            if ($param !== null && $param->var instanceof Expr\Variable && is_string($param->var->name)) {
+            if ($param !== null && Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
                 $bindings[$param->var->name] = ['node' => $node->var, 'vars' => $vars];
             }
-            if ($callback instanceof Expr\ArrowFunction) {
+            if (Node::is($callback, 'expression.arrow-function')) {
                 $returns = [$callback->expr];
                 $this->value($file, $callback->expr, $owner, $depth + 1, $bindings);
             } else {
                 $this->returns($file, $callback->stmts, $owner, $depth + 1, $bindings);
                 $returns = $this->callbackReturns($callback->stmts, $owner, $depth + 1);
                 $last = $callback->stmts[array_key_last($callback->stmts)] ?? null;
-                if (! $last instanceof Stmt\Return_ && ! ($last instanceof Stmt\Expression && $last->expr instanceof Expr\Throw_)) {
+                if (! Node::is($last, 'statement.return') && ! (Node::is($last, 'statement.expression') && Node::is($last->expr, 'expression.throw'))) {
                     $this->value($file, $node->var, $owner, $depth + 1, $vars);
                 }
             }
             foreach ($returns as $return) {
-                if ($return === null || $return instanceof Expr\ConstFetch && strtolower($return->name->toString()) === 'null') {
+                if ($return === null || Node::is($return, 'expression.const-fetch') && strtolower($return->name->toString()) === 'null') {
                     $this->value($file, $node->var, $owner, $depth + 1, $vars);
                 }
             }
@@ -489,7 +488,7 @@ final class ValidationCatalogExtractor
     /** @param array<string, mixed> $vars
      * @return array<string, mixed>|null
      */
-    private function builderCallable(FileContext $file, Expr\CallLike $callback, string $owner, array $vars, int $depth, string $branch): ?array
+    private function builderCallable(FileContext $file, Node $callback, string $owner, array $vars, int $depth, string $branch): ?array
     {
         $start = count($this->relations);
         $this->conditionCallable($file, $callback, $owner, $vars, $depth + 1);
@@ -510,16 +509,16 @@ final class ValidationCatalogExtractor
 
     /** Preserve the bindings captured when a local value was assigned.
      * @param  array<string, mixed>  $vars
-     * @return array{Expr, array<string, mixed>}
+     * @return array{Node, array<string, mixed>}
      */
-    private function boundValue(Expr $value, array $vars, string $owner, int $depth): array
+    private function boundValue(Node $value, array $vars, string $owner, int $depth): array
     {
-        while ($value instanceof Expr\Variable && is_string($value->name)) {
+        while (Node::is($value, 'expression.variable') && is_string($value->name)) {
             if (! $this->budget($value, $owner, ++$depth)) {
                 break;
             }
             $binding = $vars[$value->name] ?? null;
-            if (! is_array($binding) || ! ($binding['node'] ?? null) instanceof Expr || ! is_array($binding['vars'] ?? null)) {
+            if (! is_array($binding) || ! Node::is(($binding['node'] ?? null), 'expression') || ! is_array($binding['vars'] ?? null)) {
                 break;
             }
             $value = $binding['node'];
@@ -530,7 +529,7 @@ final class ValidationCatalogExtractor
     }
 
     /** @param list<Node> $nodes
-     * @return list<Expr|null>
+     * @return list<Node|null>
      */
     private function callbackReturns(array $nodes, string $owner, int $depth): array
     {
@@ -539,12 +538,12 @@ final class ValidationCatalogExtractor
             if (! $this->budget($node, $owner, $depth)) {
                 break;
             }
-            if ($node instanceof Stmt\Return_) {
+            if (Node::is($node, 'statement.return')) {
                 $returns[] = $node->expr;
-            } elseif (! $node instanceof Expr\Closure && ! $node instanceof Expr\ArrowFunction && ! $node instanceof Stmt\Function_ && ! $node instanceof Stmt\ClassLike) {
+            } elseif (! Node::is($node, 'expression.closure') && ! Node::is($node, 'expression.arrow-function') && ! Node::is($node, 'statement.function') && ! Node::is($node, 'statement.class-like')) {
                 foreach ($node->getSubNodeNames() as $key) {
                     $value = $node->$key;
-                    $children = array_values(array_filter(is_array($value) ? $value : [$value], fn ($item) => $item instanceof Node));
+                    $children = array_values(array_filter(is_array($value) ? $value : [$value], fn ($item) => Node::is($item, 'node')));
                     $returns = [...$returns, ...$this->callbackReturns($children, $owner, $depth + 1)];
                 }
             }
@@ -553,7 +552,7 @@ final class ValidationCatalogExtractor
         return $returns;
     }
 
-    private function builderCallback(FileContext $file, Expr\Closure|Expr\ArrowFunction $callback, string $owner, string $factory, string $method, string $branch): void
+    private function builderCallback(FileContext $file, Node $callback, string $owner, string $factory, string $method, string $branch): void
     {
         $name = '(closure) '.$file->path.':'.$callback->getStartFilePos();
         $target = CatalogElement::identity($file->path, 'closure', $name, max(0, $callback->getStartFilePos()));
@@ -564,7 +563,7 @@ final class ValidationCatalogExtractor
     /** Nested constraints are consumed by the outer rule's validator, not by construction.
      * @param  array<string, mixed>  $vars
      */
-    private function nestedRuleModifier(FileContext $file, Expr\MethodCall|Expr\NullsafeMethodCall $node, string $owner, array $vars, int $depth, string $factory, string $method): void
+    private function nestedRuleModifier(FileContext $file, Node $node, string $owner, array $vars, int $depth, string $factory, string $method): void
     {
         $found = false;
         foreach ($node->getArgs() as $position => $arg) {
@@ -591,45 +590,45 @@ final class ValidationCatalogExtractor
     }
 
     /** @param array<string, mixed> $vars */
-    private function queryCallback(FileContext $file, Expr\MethodCall|Expr\NullsafeMethodCall $node, string $owner, array $vars, int $depth, string $method): void
+    private function queryCallback(FileContext $file, Node $node, string $owner, array $vars, int $depth, string $method): void
     {
         foreach ($node->getArgs() as $position => $arg) {
             if ($arg->name?->toString() !== ($method === 'where' ? 'column' : 'callback') && ! ($arg->name === null && $position === 0)) {
                 continue;
             }
             $value = $arg->value;
-            while ($value instanceof Expr\Variable && is_string($value->name)) {
+            while (Node::is($value, 'expression.variable') && is_string($value->name)) {
                 if (! $this->budget($value, $owner, ++$depth)) {
                     return;
                 }
                 $binding = $vars[$value->name] ?? null;
-                if (! is_array($binding) || ! ($binding['node'] ?? null) instanceof Expr || ! is_array($binding['vars'] ?? null)) {
+                if (! is_array($binding) || ! Node::is(($binding['node'] ?? null), 'expression') || ! is_array($binding['vars'] ?? null)) {
                     break;
                 }
                 $value = $binding['node'];
                 $vars = $binding['vars'];
             }
-            if ($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) {
+            if (Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) {
                 $name = '(closure) '.$file->path.':'.$value->getStartFilePos();
                 $target = CatalogElement::identity($file->path, 'closure', $name, max(0, $value->getStartFilePos()));
                 $this->relations[] = new CatalogRelation($owner, $target, 'returned-rule-query-callback', max(1, $value->getStartLine()), max(1, $value->getEndLine()), 'conditional');
-            } elseif ($value instanceof Expr\CallLike && $value->isFirstClassCallable()) {
+            } elseif (Node::is($value, 'expression.call-like') && $value->isFirstClassCallable()) {
                 $start = count($this->relations);
                 $this->conditionCallable($file, $value, $owner, $vars, $depth + 1);
                 if (isset($this->relations[$start])) {
                     $row = $this->relations[$start];
                     $this->relations[$start] = new CatalogRelation($row->from, $row->to, 'returned-rule-query-callable', $row->line, $row->endLine, $row->resolution, $row->metadata);
                 }
-            } elseif ($method === 'using' || ! $value instanceof Node\Scalar\String_) {
+            } elseif ($method === 'using' || ! Node::is($value, 'scalar.string')) {
                 $this->diagnostics[] = new CatalogDiagnostic('validation_rules_dynamic', 'Rule database callback is dynamic or unresolved.', max(1, $value->getStartLine()), $owner);
             }
         }
     }
 
     /** @param array<string, mixed> $vars */
-    private function standardRule(FileContext $file, Expr\StaticCall $node, string $owner, int $depth, array $vars): ?string
+    private function standardRule(FileContext $file, Node $node, string $owner, int $depth, array $vars): ?string
     {
-        $method = strtolower($node->name instanceof Node\Identifier ? $node->name->toString() : '');
+        $method = strtolower(Node::is($node->name, 'identifier') ? $node->name->toString() : '');
         $type = CatalogRuleFactories::type($method);
         if ($type === null) {
             return null;
@@ -674,7 +673,7 @@ final class ValidationCatalogExtractor
         if ($method === 'enum') {
             foreach ($node->getArgs() as $position => $arg) {
                 if ($arg->name?->toString() === 'type' || $arg->name === null && $position === 0) {
-                    if ($arg->value instanceof Expr\ClassConstFetch && $arg->value->class instanceof Node\Name && $arg->value->name instanceof Node\Identifier && strtolower($arg->value->name->toString()) === 'class') {
+                    if (Node::is($arg->value, 'expression.class-const-fetch') && Node::is($arg->value->class, 'name') && Node::is($arg->value->name, 'identifier') && strtolower($arg->value->name->toString()) === 'class') {
                         $this->relations[] = new CatalogRelation($id, 'php:'.$file->resolvedName($arg->value->class), 'type-reference', max(1, $arg->getStartLine()), max(1, $arg->getEndLine()));
                     } else {
                         $this->diagnostics[] = new CatalogDiagnostic('validation_rules_dynamic', 'Enum rule type is not a source class selector.', max(1, $arg->getStartLine()), $id);
@@ -687,9 +686,9 @@ final class ValidationCatalogExtractor
     }
 
     /** @param array<string, mixed> $vars */
-    private function frameworkRules(FileContext $file, Expr\StaticCall $node, string $owner, int $depth, array $vars): void
+    private function frameworkRules(FileContext $file, Node $node, string $owner, int $depth, array $vars): void
     {
-        $method = strtolower($node->name instanceof Node\Identifier ? $node->name->toString() : '');
+        $method = strtolower(Node::is($node->name, 'identifier') ? $node->name->toString() : '');
         $conditionOnly = in_array($method, CatalogRuleFactories::CONDITIONS, true);
         $names = $method === 'foreach' || $conditionOnly ? ['callback'] : ['condition', 'rules', 'defaultRules'];
         $args = [];
@@ -710,27 +709,27 @@ final class ValidationCatalogExtractor
         foreach ($args as $branch => $value) {
             $branchVars = $vars;
             $bindingDepth = $depth;
-            while ($value instanceof Expr\Variable && is_string($value->name)) {
+            while (Node::is($value, 'expression.variable') && is_string($value->name)) {
                 if (! $this->budget($value, $owner, ++$bindingDepth)) {
                     continue 2;
                 }
                 $binding = $branchVars[$value->name] ?? null;
-                if (! is_array($binding) || ! ($binding['node'] ?? null) instanceof Expr || ! is_array($binding['vars'] ?? null)) {
+                if (! is_array($binding) || ! Node::is(($binding['node'] ?? null), 'expression') || ! is_array($binding['vars'] ?? null)) {
                     break;
                 }
                 $value = $binding['node'];
                 $branchVars = $binding['vars'];
             }
             $start = count($this->relations);
-            if (($branch === 'condition' || $conditionOnly) && $value instanceof Expr\CallLike && $value->isFirstClassCallable()) {
+            if (($branch === 'condition' || $conditionOnly) && Node::is($value, 'expression.call-like') && $value->isFirstClassCallable()) {
                 $this->conditionCallable($file, $value, $owner, $branchVars, $depth + 1);
-            } elseif ($value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction) {
+            } elseif (Node::is($value, 'expression.closure') || Node::is($value, 'expression.arrow-function')) {
                 $name = '(closure) '.$file->path.':'.$value->getStartFilePos();
                 $target = CatalogElement::identity($file->path, 'closure', $name, max(0, $value->getStartFilePos()));
                 $this->relations[] = new CatalogRelation($owner, $target, $branch === 'condition' || $conditionOnly ? 'returned-rule-condition' : 'returned-rule-expander', max(1, $value->getStartLine()), max(1, $value->getEndLine()), 'conditional');
                 $this->owners[$target] = $this->owners[$owner] ?? '';
                 if ($branch !== 'condition' && ! $conditionOnly) {
-                    if ($value instanceof Expr\ArrowFunction) {
+                    if (Node::is($value, 'expression.arrow-function')) {
                         $this->value($file, $value->expr, $target, $depth + 1, $branchVars);
                     } else {
                         $this->returns($file, $value->stmts, $target, $depth + 1, $branchVars);
@@ -738,7 +737,7 @@ final class ValidationCatalogExtractor
                 }
             } elseif ($branch !== 'condition' && $method !== 'foreach' && ! $conditionOnly) {
                 $this->value($file, $value, $owner, $depth + 1, $branchVars);
-            } elseif ($method === 'foreach' || ! $value instanceof Expr\ConstFetch) {
+            } elseif ($method === 'foreach' || ! Node::is($value, 'expression.const-fetch')) {
                 $this->diagnostics[] = new CatalogDiagnostic('validation_rules_dynamic', 'Conditional rule callback or condition requires source inspection.', max(1, $value->getStartLine()), $owner);
             }
             for ($i = $start; $i < count($this->relations); $i++) {
@@ -750,18 +749,18 @@ final class ValidationCatalogExtractor
     }
 
     /** @param array<string, mixed> $vars */
-    private function conditionCallable(FileContext $file, Expr\CallLike $node, string $owner, array $vars, int $depth): void
+    private function conditionCallable(FileContext $file, Node $node, string $owner, array $vars, int $depth): void
     {
         $receiver = null;
         $method = '__invoke';
         $exact = true;
         $call = ['creator' => $this->owners[$owner] ?? '', 'form' => 'function', 'binding' => null];
-        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+        if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name')) {
             $resolved = $file->resolvedName($node->name);
             $namespaced = $node->name->getAttribute('namespacedName');
-            $names = array_values(array_unique($namespaced instanceof Node\Name ? [$namespaced->toString(), $resolved] : [$resolved]));
+            $names = array_values(array_unique(Node::is($namespaced, 'name') ? [$namespaced->toString(), $resolved] : [$resolved]));
             $receiver = '@function:'.json_encode($names, JSON_THROW_ON_ERROR);
-        } elseif ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier) {
+        } elseif (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier')) {
             $method = $node->name->toString();
             $call['form'] = 'static';
             $binding = strtolower($node->class->toString());
@@ -772,11 +771,11 @@ final class ValidationCatalogExtractor
                 default => $file->resolvedName($node->class),
             };
             $exact = $call['binding'] !== 'static';
-        } elseif ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier) {
+        } elseif (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier')) {
             $receiver = $this->receiverType($file, $node->var, $owner, $vars, $depth + 1);
             $method = $node->name->toString();
             $call['form'] = 'instance';
-            $exact = $node->var instanceof Expr\New_;
+            $exact = Node::is($node->var, 'expression.new');
         }
         if ($receiver === null) {
             $this->diagnostics[] = new CatalogDiagnostic('validation_rules_dynamic', 'First-class rule condition has an unresolved source receiver.', max(1, $node->getStartLine()), $owner);
@@ -790,22 +789,22 @@ final class ValidationCatalogExtractor
     /** @param array<string, mixed> $vars */
     private function standalone(FileContext $file, Node $node, string $owner, array $vars, int $depth): void
     {
-        if (! $this->budget($node, $owner, $depth) || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction || $node instanceof Stmt\ClassLike) {
+        if (! $this->budget($node, $owner, $depth) || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function') || Node::is($node, 'statement.class-like')) {
             return;
         }
         $operation = null;
         $helpers = [];
         $receiverType = null;
         $rulesPosition = 1;
-        if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && $file->resolvedName($node->class) === 'Illuminate\\Support\\Facades\\Validator' && in_array(strtolower($node->name->toString()), ['make', 'validate'], true)) {
             $operation = strtolower($node->name->toString());
-        } elseif ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name && ! $node->isFirstClassCallable() && $file->resolvedName($node->name) === 'validator') {
+        } elseif (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && ! $node->isFirstClassCallable() && $file->resolvedName($node->name) === 'validator') {
             $operation = 'helper';
             $namespaced = $node->name->getAttribute('namespacedName');
-            $helpers = $namespaced instanceof Node\Name ? [$namespaced->toString(), 'validator'] : ['validator'];
+            $helpers = Node::is($namespaced, 'name') ? [$namespaced->toString(), 'validator'] : ['validator'];
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable() && in_array(strtolower($node->name->toString()), ['make', 'validate', 'validatewithbag'], true)) {
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable() && in_array(strtolower($node->name->toString()), ['make', 'validate', 'validatewithbag'], true)) {
             $receiverType = $this->receiverType($file, $node->var, $owner, $vars, $depth + 1);
             if ($receiverType !== null) {
                 $method = strtolower($node->name->toString());
@@ -813,7 +812,7 @@ final class ValidationCatalogExtractor
                 $rulesPosition = $method === 'validate' ? 0 : 1;
             }
         }
-        if ($operation !== null && $node instanceof Expr\CallLike) {
+        if ($operation !== null && Node::is($node, 'expression.call-like')) {
             $rules = null;
             foreach ($node->getArgs() as $position => $arg) {
                 if ($arg->name?->toString() === 'rules' || $arg->name === null && $position === $rulesPosition) {
@@ -847,12 +846,12 @@ final class ValidationCatalogExtractor
         foreach ($node->getSubNodeNames() as $key) {
             $value = $node->$key;
             foreach (is_array($value) ? $value : [$value] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->standalone($file, $child, $owner, $vars, $depth + 1);
                 }
             }
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && in_array(strtolower($node->name->toString()), ['passes', 'fails', 'validate', 'validatewithbag', 'validated', 'safe'], true)) {
             $origin = $this->validatorOrigin($node->var, $owner, $vars, $depth + 1);
             if ($origin !== null) {
@@ -868,16 +867,16 @@ final class ValidationCatalogExtractor
         if (! $this->budget($node, $owner, $depth)) {
             return null;
         }
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             $binding = $vars[$node->name] ?? null;
-            if (is_array($binding) && ($binding['node'] ?? null) instanceof Expr && is_array($binding['vars'] ?? null)) {
+            if (is_array($binding) && Node::is(($binding['node'] ?? null), 'expression') && is_array($binding['vars'] ?? null)) {
                 return $this->validatorOrigin($binding['node'], $owner, $binding['vars'], $depth + 1);
             }
 
             return null;
         }
 
-        return $node instanceof Expr\CallLike ? ($this->sites[$node->getStartFilePos()] ?? null) : null;
+        return Node::is($node, 'expression.call-like') ? ($this->sites[$node->getStartFilePos()] ?? null) : null;
     }
 
     /** @return list<string> */
@@ -886,7 +885,7 @@ final class ValidationCatalogExtractor
         if (! $this->budget($type, $owner, $depth)) {
             return [];
         }
-        if ($type instanceof Node\Name) {
+        if (Node::is($type, 'name')) {
             $class = $this->owners[$owner] ?? '';
 
             return [match (strtolower($type->toString())) {
@@ -895,10 +894,10 @@ final class ValidationCatalogExtractor
                 default => $file->resolvedName($type),
             }];
         }
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->parameterTypes($file, $type->type, $owner, $depth + 1);
         }
-        if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+        if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
             $types = [];
             foreach ($type->types as $part) {
                 array_push($types, ...$this->parameterTypes($file, $part, $owner, $depth + 1));
@@ -911,20 +910,20 @@ final class ValidationCatalogExtractor
     }
 
     /** @param array<string, mixed> $vars */
-    private function receiverType(FileContext $file, Expr $node, string $owner, array $vars, int $depth): ?string
+    private function receiverType(FileContext $file, Node $node, string $owner, array $vars, int $depth): ?string
     {
         if (! $this->budget($node, $owner, $depth)) {
             return null;
         }
-        if ($node instanceof Expr\New_ && $node->class instanceof Node\Name) {
+        if (Node::is($node, 'expression.new') && Node::is($node->class, 'name')) {
             return $file->resolvedName($node->class);
         }
-        if (($node instanceof Expr\PropertyFetch || $node instanceof Expr\NullsafePropertyFetch) && $node->name instanceof Node\Identifier) {
+        if ((Node::is($node, 'expression.property-fetch') || Node::is($node, 'expression.nullsafe-property-fetch')) && Node::is($node->name, 'identifier')) {
             $type = $this->receiverType($file, $node->var, $owner, $vars, $depth + 1);
 
             return $type === null ? null : '@property:'.$type.'#'.$node->name->toString();
         }
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             if ($node->name === 'this') {
                 return $this->owners[$owner] ?? null;
             }
@@ -932,7 +931,7 @@ final class ValidationCatalogExtractor
             if (is_array($binding) && is_string($binding['type'] ?? null)) {
                 return $binding['type'];
             }
-            if (is_array($binding) && ($binding['node'] ?? null) instanceof Expr && is_array($binding['vars'] ?? null)) {
+            if (is_array($binding) && Node::is(($binding['node'] ?? null), 'expression') && is_array($binding['vars'] ?? null)) {
                 return $this->receiverType($file, $binding['node'], $owner, $binding['vars'], $depth + 1);
             }
         }
@@ -948,31 +947,31 @@ final class ValidationCatalogExtractor
 
             return;
         }
-        if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction || $node instanceof Stmt\ClassLike) {
+        if (Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function') || Node::is($node, 'statement.class-like')) {
             return;
         }
-        if ($node instanceof Expr\AssignRef && ($this->validatorOrigin($node->var, $id, $vars, $depth + 1) !== null
+        if (Node::is($node, 'expression.assign-ref') && ($this->validatorOrigin($node->var, $id, $vars, $depth + 1) !== null
             || $this->validatorOrigin($node->expr, $id, $vars, $depth + 1) !== null)) {
             $vars = array_fill_keys(array_keys($vars), null);
             $this->diagnostics[] = new CatalogDiagnostic('validator_instance_mutated', 'A validator participates in a reference assignment; later rules require source inspection.', max(1, $node->getStartLine()), $id);
         }
-        if ($node instanceof Expr\AssignOp || $node instanceof Expr\AssignRef || $node instanceof Expr\Assign && $node->var instanceof Expr\ArrayDimFetch) {
+        if (Node::is($node, 'expression.assign-op') || Node::is($node, 'expression.assign-ref') || Node::is($node, 'expression.assign') && Node::is($node->var, 'expression.array-dim-fetch')) {
             $this->invalidateTarget($node->var, $vars);
-            if ($node instanceof Expr\AssignRef) {
+            if (Node::is($node, 'expression.assign-ref')) {
                 $this->invalidateTarget($node->expr, $vars);
             }
         }
-        if ($node instanceof Expr\PreInc || $node instanceof Expr\PostInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostDec) {
+        if (Node::is($node, 'expression.pre-inc') || Node::is($node, 'expression.post-inc') || Node::is($node, 'expression.pre-dec') || Node::is($node, 'expression.post-dec')) {
             $this->invalidateTarget($node->var, $vars);
         }
-        if (($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) && ! $node->isFirstClassCallable()
-            && (! $node->name instanceof Node\Identifier || ! in_array(strtolower($node->name->toString()), ['passes', 'fails', 'validate', 'validatewithbag', 'validated', 'safe'], true))
+        if ((Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) && ! $node->isFirstClassCallable()
+            && (! Node::is($node->name, 'identifier') || ! in_array(strtolower($node->name->toString()), ['passes', 'fails', 'validate', 'validatewithbag', 'validated', 'safe'], true))
             && $this->validatorOrigin($node->var, $id, $vars, $depth + 1) !== null) {
             // Keep invalidated keys so enclosing branches invalidate their snapshots too.
             $vars = array_fill_keys(array_keys($vars), null);
             $this->diagnostics[] = new CatalogDiagnostic('validator_instance_mutated', 'A validator method may change its rules or instance; later validation requires source inspection.', max(1, $node->getStartLine()), $id);
         }
-        if ($node instanceof Expr\CallLike && ! $node->isFirstClassCallable()) {
+        if (Node::is($node, 'expression.call-like') && ! $node->isFirstClassCallable()) {
             foreach ($node->getArgs() as $arg) {
                 if ($this->validatorOrigin($arg->value, $id, $vars, $depth + 1) !== null) {
                     $vars = array_fill_keys(array_keys($vars), null);
@@ -984,7 +983,7 @@ final class ValidationCatalogExtractor
         foreach ($node->getSubNodeNames() as $key) {
             $value = $node->$key;
             foreach (is_array($value) ? $value : [$value] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->invalidate($child, $vars, $id, $depth + 1);
                 }
             }
@@ -992,12 +991,12 @@ final class ValidationCatalogExtractor
     }
 
     /** @param array<string, mixed> $vars */
-    private function invalidateTarget(Expr $target, array &$vars): void
+    private function invalidateTarget(Node $target, array &$vars): void
     {
-        while ($target instanceof Expr\ArrayDimFetch) {
+        while (Node::is($target, 'expression.array-dim-fetch')) {
             $target = $target->var;
         }
-        if ($target instanceof Expr\Variable && is_string($target->name)) {
+        if (Node::is($target, 'expression.variable') && is_string($target->name)) {
             $vars[$target->name] = null;
         }
     }

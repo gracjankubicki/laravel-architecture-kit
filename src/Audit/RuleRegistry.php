@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
+use GracjanKubicki\ArchitectureKit\Analysis\EngineDescriptor;
 use InvalidArgumentException;
 
 final class RuleRegistry
@@ -13,7 +14,25 @@ final class RuleRegistry
      */
     public function __construct(
         private readonly array $customRules = [],
-    ) {}
+        ?EngineDescriptor $engine = null,
+    ) {
+        if ($engine?->engine === 'mago') {
+            foreach ($customRules as $rule) {
+                if (is_string($rule)) {
+                    if (! class_exists($rule)) {
+                        throw new InvalidArgumentException("Architecture Kit audit rule [{$rule}] does not exist.");
+                    }
+                    if (! is_a($rule, AuditRule::class, true)) {
+                        throw new InvalidArgumentException("Architecture Kit audit rule [{$rule}] must implement ".AuditRule::class.'.');
+                    }
+                }
+                if (! ($rule instanceof PortableAuditRule || is_string($rule) && is_a($rule, PortableAuditRule::class, true))) {
+                    $name = is_string($rule) ? $rule : $rule::class;
+                    throw new InvalidArgumentException('Custom rule ['.$name.'] requires the PHP engine. Select PHP explicitly or migrate to PortableAuditRule and FileContext::syntax before using Mago.');
+                }
+            }
+        }
+    }
 
     /**
      * @return array<int, AuditRule>

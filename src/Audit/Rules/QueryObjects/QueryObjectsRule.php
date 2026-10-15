@@ -5,20 +5,16 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\QueryObjects;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class QueryObjectsRule implements AuditRule
+final readonly class QueryObjectsRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -36,7 +32,7 @@ final readonly class QueryObjectsRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -105,7 +101,7 @@ final readonly class QueryObjectsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\UseUse) {
+                if (! Node::is($node, 'use-item')) {
                     return null;
                 }
 
@@ -166,7 +162,7 @@ final readonly class QueryObjectsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\ClassMethod || $node->name->toString() !== 'handle') {
+                if (! Node::is($node, 'statement.class-method') || $node->name->toString() !== 'handle') {
                     return null;
                 }
 
@@ -213,8 +209,8 @@ final readonly class QueryObjectsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
-                    $class = $node->class instanceof Name ? $node->class->toString() : null;
+                if (Node::is($node, 'expression.static-call') && Node::is($node->name, 'identifier')) {
+                    $class = Node::is($node->class, 'name') ? $node->class->toString() : null;
                     $method = $node->name->toString();
 
                     if ($class === 'DB' && $method === 'transaction') {
@@ -240,8 +236,8 @@ final readonly class QueryObjectsRule implements AuditRule
                 }
 
                 if (
-                    $node instanceof MethodCall
-                    && $node->name instanceof Node\Identifier
+                    Node::is($node, 'expression.method-call')
+                    && Node::is($node->name, 'identifier')
                     && in_array($node->name->toString(), ['update', 'delete'], true)
                 ) {
                     $this->state->calls[] = [
@@ -273,7 +269,7 @@ final readonly class QueryObjectsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if (! $node instanceof Stmt\ClassMethod || ! $node->isPrivate()) {
+                if (! Node::is($node, 'statement.class-method') || ! $node->isPrivate()) {
                     return null;
                 }
 
@@ -289,15 +285,15 @@ final readonly class QueryObjectsRule implements AuditRule
 
             private function isQueryStaticCall(Node $node): bool
             {
-                return $node instanceof StaticCall
-                    && $node->name instanceof Node\Identifier
+                return Node::is($node, 'expression.static-call')
+                    && Node::is($node->name, 'identifier')
                     && $node->name->toString() === 'query';
             }
 
             private function isWhereMethodCall(Node $node): bool
             {
-                return $node instanceof MethodCall
-                    && $node->name instanceof Node\Identifier
+                return Node::is($node, 'expression.method-call')
+                    && Node::is($node->name, 'identifier')
                     && in_array($node->name->toString(), ['where', 'whereIn'], true);
             }
         });
@@ -340,15 +336,15 @@ final readonly class QueryObjectsRule implements AuditRule
             return [$type];
         }
 
-        if ($type instanceof Name || $type instanceof Node\Identifier) {
+        if (Node::is($type, 'name') || Node::is($type, 'identifier')) {
             return [$type->toString()];
         }
 
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->typeNames($type->type);
         }
 
-        if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+        if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
             $names = [];
 
             foreach ($type->types as $innerType) {

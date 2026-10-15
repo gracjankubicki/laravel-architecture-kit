@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Fortify;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node;
-use PhpParser\NodeFinder;
 
 /** Bounded source lookup for Fortify contracts. It never autoloads application code. */
 final class FortifySourceResolver
 {
-    /** @var array<string, array{name: string, file: FileContext, node: Node\Stmt\ClassLike}|null> */
+    /** @var array<string, array{name: string, file: FileContext, node: Node}|null> */
     private array $classes = [];
 
     private int $sourceBytes = 0;
@@ -75,7 +75,7 @@ final class FortifySourceResolver
     }
 
     /**
-     * @param  array{name: string, file: FileContext, node: Node\Stmt\ClassLike}  $source
+     * @param  array{name: string, file: FileContext, node: Node}  $source
      */
     private function implementsContract(array $source, string $contract, int $depth = 0): bool
     {
@@ -84,9 +84,9 @@ final class FortifySourceResolver
         }
 
         $interfaces = match (true) {
-            $source['node'] instanceof Node\Stmt\Class_ => $source['node']->implements,
-            $source['node'] instanceof Node\Stmt\Enum_ => $source['node']->implements,
-            $source['node'] instanceof Node\Stmt\Interface_ => $source['node']->extends,
+            Node::is($source['node'], 'statement.class') => $source['node']->implements,
+            Node::is($source['node'], 'statement.enum') => $source['node']->implements,
+            Node::is($source['node'], 'statement.interface') => $source['node']->extends,
             default => [],
         };
 
@@ -103,7 +103,7 @@ final class FortifySourceResolver
             }
         }
 
-        if ($source['node'] instanceof Node\Stmt\Class_ && $source['node']->extends !== null) {
+        if (Node::is($source['node'], 'statement.class') && $source['node']->extends !== null) {
             $parent = $this->source($source['file']->resolvedName($source['node']->extends));
 
             return $parent !== null && $this->implementsContract($parent, $contract, $depth + 1);
@@ -113,7 +113,7 @@ final class FortifySourceResolver
     }
 
     /**
-     * @param  array{name: string, file: FileContext, node: Node\Stmt\ClassLike}  $source
+     * @param  array{name: string, file: FileContext, node: Node}  $source
      * @return 'public'|'non_public'|'missing'
      */
     private function methodStatus(array $source, string $method, int $depth = 0): string
@@ -127,7 +127,7 @@ final class FortifySourceResolver
             return $classMethod->isPublic() ? 'public' : 'non_public';
         }
 
-        $traitUses = $source['node'] instanceof Node\Stmt\Class_ || $source['node'] instanceof Node\Stmt\Trait_
+        $traitUses = Node::is($source['node'], 'statement.class') || Node::is($source['node'], 'statement.trait')
             ? $source['node']->getTraitUses()
             : [];
 
@@ -149,7 +149,7 @@ final class FortifySourceResolver
             }
         }
 
-        if ($source['node'] instanceof Node\Stmt\Class_ && $source['node']->extends !== null) {
+        if (Node::is($source['node'], 'statement.class') && $source['node']->extends !== null) {
             $parent = $this->source($source['file']->resolvedName($source['node']->extends));
             if ($parent !== null) {
                 return $this->methodStatus($parent, $method, $depth + 1);
@@ -160,7 +160,7 @@ final class FortifySourceResolver
     }
 
     /**
-     * @return array{name: string, file: FileContext, node: Node\Stmt\ClassLike}|null
+     * @return array{name: string, file: FileContext, node: Node}|null
      */
     private function source(string $class): ?array
     {
@@ -199,13 +199,13 @@ final class FortifySourceResolver
     }
 
     /**
-     * @return list<array{name: string, file: FileContext, node: Node\Stmt\ClassLike}>
+     * @return list<array{name: string, file: FileContext, node: Node}>
      */
     private function classesIn(FileContext $file): array
     {
         $classes = [];
 
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Node\Stmt\ClassLike::class) as $node) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $node) {
             if (! isset($node->namespacedName)) {
                 continue;
             }

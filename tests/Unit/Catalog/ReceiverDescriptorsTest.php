@@ -88,7 +88,7 @@ $extractor = new \GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 $facts = $extractor->extract(new \GracjanKubicki\ArchitectureKit\Audit\FileContext('app/Probe.php', $source), true);
 echo json_encode(['calls' => count($facts->calls), 'bytes' => strlen(json_encode($facts->toArray(), JSON_THROW_ON_ERROR)) + strlen(json_encode($extractor->descriptorReceivers(), JSON_THROW_ON_ERROR)), 'notices' => $facts->notices, 'peak' => memory_get_peak_usage(true)], JSON_THROW_ON_ERROR);
 PHP;
-        $process = new Process([PHP_BINARY, '-d', 'memory_limit=64M', '-r', $code, dirname(__DIR__, 3).'/vendor/autoload.php', (string) $length, $properties ? 'properties' : 'methods']);
+        $process = new Process([PHP_BINARY, '-d', 'memory_limit=64M', '-r', $code, dirname(__DIR__, 2).'/bootstrap.php', (string) $length, $properties ? 'properties' : 'methods']);
         $process->run();
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
         $result = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);

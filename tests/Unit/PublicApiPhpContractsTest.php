@@ -116,7 +116,7 @@ PHP;
 
     private function catalog(string $source, string $loading = 'files'): PhpContracts
     {
-        $files = ['composer.json' => json_encode(['autoload' => [$loading => ['api.php']]], JSON_THROW_ON_ERROR), 'api.php' => $source];
+        $files = ['composer.json' => json_encode(['require' => ['php' => '^8.5'], 'autoload' => [$loading => ['api.php']]], JSON_THROW_ON_ERROR), 'api.php' => $source];
         $snapshot = new SourceSnapshot('git', 'abc', 'hash', $files, [], array_keys($files));
 
         return new PhpContracts($snapshot, new AutoloadSurface($snapshot));

@@ -4,17 +4,15 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Shared;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class TestabilityRule implements AuditRule
+final readonly class TestabilityRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -36,7 +34,7 @@ final readonly class TestabilityRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -74,7 +72,7 @@ final readonly class TestabilityRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    ! $node instanceof Stmt\ClassMethod
+                    ! Node::is($node, 'statement.class-method')
                     || ! $node->isPrivate()
                     || ! $node->isStatic()
                     || ! PhpAst::contains($node, fn (Node $child): bool => $this->isCollaboratorNewReturn($child))
@@ -89,13 +87,13 @@ final readonly class TestabilityRule implements AuditRule
 
             private function isCollaboratorNewReturn(Node $node): bool
             {
-                if (! $node instanceof Stmt\Return_ || ! $node->expr instanceof Node\Expr\New_) {
+                if (! Node::is($node, 'statement.return') || ! Node::is($node->expr, 'expression.new')) {
                     return false;
                 }
 
                 $class = $node->expr->class;
 
-                return $class instanceof Name
+                return Node::is($class, 'name')
                     && ! in_array($class->toString(), ['self', 'static', 'parent'], true);
             }
         });

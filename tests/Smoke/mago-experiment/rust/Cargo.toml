@@ -1,0 +1,15 @@
+[package]
+name = "architecture-parser-experiment"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+mago-syntax = "=1.57.0"
+mago-span = "=1.57.0"
+mago-allocator = "=1.57.0"
+mago-database = "=1.57.0"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3

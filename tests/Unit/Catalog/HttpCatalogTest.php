@@ -361,15 +361,15 @@ final class HttpCatalogTest extends TestCase
 
     public function test_framework_does_not_activate_nonpublic_or_abstract_provider_boot(): void
     {
-        foreach (['private function boot() { $this->loadRoutesFrom(__DIR__."/../routes/selected.php"); }', 'abstract public function boot();'] as $method) {
+        foreach (['private function boot() { $this->loadRoutesFrom(__DIR__."/../routes/selected.php"); }' => 'http_provider_method_inaccessible', 'abstract public function boot();' => 'http_provider_uninstantiable'] as $method => $diagnostic) {
             $index = $this->index([
                 'bootstrap/providers.php' => 'return [App\\Provider::class];',
-                'app/Provider.php' => 'namespace App; class Provider extends \\Illuminate\\Support\\ServiceProvider { '.$method.' }',
+                'app/Provider.php' => 'namespace App; '.(str_starts_with($method, 'abstract') ? 'abstract ' : '').'class Provider extends \\Illuminate\\Support\\ServiceProvider { '.$method.' }',
                 'routes/selected.php' => '\\Illuminate\\Support\\Facades\\Route::get("selected", fn () => 1);',
             ]);
             $registered = array_filter($this->routes($index), fn ($row) => in_array('bootstrap/providers.php', array_column($row['metadata']['registration'], 'path'), true));
             $this->assertSame([], $registered);
-            $this->assertContains('http_provider_method_inaccessible', array_column($index->diagnostics, 'code'));
+            $this->assertContains($diagnostic, array_column($index->diagnostics, 'code'));
         }
     }
 

@@ -96,7 +96,7 @@ final class PublicApiContractChangesTest extends TestCase
     /** @return array<string, array<string, mixed>> */
     private function entries(string $source): array
     {
-        $files = ['composer.json' => '{"autoload":{"files":["api.php"]}}', 'api.php' => $source];
+        $files = ['composer.json' => '{"require":{"php":"^8.5"},"autoload":{"files":["api.php"]}}', 'api.php' => $source];
         $snapshot = new SourceSnapshot('git', 'abc', 'hash', $files, [], array_keys($files));
 
         return (new EffectiveApi(new PhpContracts($snapshot, new AutoloadSurface($snapshot))))->entries;

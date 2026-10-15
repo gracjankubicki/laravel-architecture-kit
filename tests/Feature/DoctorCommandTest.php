@@ -29,6 +29,7 @@ class DoctorCommandTest extends TestCase
             <<<'PHP'
 <?php
 require %s;
+\GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime::activate(new \GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession(new \GracjanKubicki\ArchitectureKit\Analysis\PhpAnalysisEngine, "8.3"));
 $doctor = new \GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor(new \GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig(%s), new \GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources(%s, %s), new \Illuminate\Filesystem\Filesystem, %s);
 $result = $doctor->run();
 $warnings = array_filter($result->checks, static fn (object $check): bool => $check->area === 'runtime' && $check->path === 'git' && $check->status === 'warning');
@@ -194,6 +195,7 @@ PHP,
     public function test_it_passes_for_modern_php_85_when_project_requires_php_85(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'php' => '^8.5',
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
@@ -220,6 +222,7 @@ PHP,
     public function test_it_warns_when_laravel_ai_is_installed_but_architecture_is_disabled(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'laravel/ai' => '^0.8',
@@ -363,6 +366,7 @@ PHP,
     public function test_it_blocks_dev_only_architecture_kit_placement(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require-dev' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
             ],
@@ -391,6 +395,7 @@ PHP,
     public function test_it_fails_when_saloon_v3_is_allowed(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'saloonphp/saloon' => '^3.0',
@@ -410,6 +415,7 @@ PHP,
     public function test_it_passes_for_saloon_when_required_packages_are_installed(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'saloonphp/saloon' => '^4.0',
@@ -803,6 +809,7 @@ PHP);
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'laravel/ai' => $constraint,

@@ -22,7 +22,9 @@ abstract class TestCase extends Orchestra
         $this->app->setBasePath($this->tempPath);
         (new Filesystem)->ensureDirectoryExists($this->tempPath.'/config');
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
+                'php' => '^8.3',
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
             ],
         ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));

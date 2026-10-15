@@ -4,21 +4,16 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\DataObjects;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class DataObjectsRule implements AuditRule
+final readonly class DataObjectsRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -36,7 +31,7 @@ final readonly class DataObjectsRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -45,7 +40,7 @@ final readonly class DataObjectsRule implements AuditRule
         $findings = [];
         $class = $this->firstClass($nodes);
 
-        $isEloquentModel = $class instanceof Stmt\Class_ && $this->classExtendsEloquentModel($file, $class);
+        $isEloquentModel = Node::is($class, 'statement.class') && $this->classExtendsEloquentModel($file, $class);
 
         if ($isEloquentModel) {
             $findings[] = $this->finding('error', $file->path, $class->getStartLine(), 'Data Objects must not extend Eloquent Model.');
@@ -65,16 +60,16 @@ final readonly class DataObjectsRule implements AuditRule
     /**
      * @param  array<int, Node>  $nodes
      */
-    private function firstClass(array $nodes): ?Stmt\Class_
+    private function firstClass(array $nodes): ?Node
     {
         foreach ($nodes as $node) {
-            if ($node instanceof Stmt\Class_) {
+            if (Node::is($node, 'statement.class')) {
                 return $node;
             }
 
-            if ($node instanceof Stmt\Namespace_) {
+            if (Node::is($node, 'statement.namespace')) {
                 foreach ($node->stmts as $statement) {
-                    if ($statement instanceof Stmt\Class_) {
+                    if (Node::is($statement, 'statement.class')) {
                         return $statement;
                     }
                 }
@@ -84,9 +79,9 @@ final readonly class DataObjectsRule implements AuditRule
         return null;
     }
 
-    private function classExtendsEloquentModel(FileContext $file, Stmt\Class_ $class): bool
+    private function classExtendsEloquentModel(FileContext $file, Node $class): bool
     {
-        if (! $class->extends instanceof Name) {
+        if (! Node::is($class->extends, 'name')) {
             return false;
         }
 
@@ -117,7 +112,7 @@ final readonly class DataObjectsRule implements AuditRule
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof Stmt\ClassMethod
+                    Node::is($node, 'statement.class-method')
                     && $node->isPublic()
                     && str_starts_with($node->name->toString(), 'set')
                 ) {
@@ -155,15 +150,15 @@ final readonly class DataObjectsRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof FuncCall && $node->name instanceof Name && in_array($node->name->toString(), ['event', 'dispatch'], true)) {
+                if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && in_array($node->name->toString(), ['event', 'dispatch'], true)) {
                     $this->state->calls[] = [
                         'line' => $node->getStartLine(),
                         'message' => 'Data Objects must not dispatch workflow side effects.',
                     ];
                 }
 
-                if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
-                    $class = $node->class instanceof Name ? $this->file->resolvedName($node->class) : null;
+                if (Node::is($node, 'expression.static-call') && Node::is($node->name, 'identifier')) {
+                    $class = Node::is($node->class, 'name') ? $this->file->resolvedName($node->class) : null;
                     $method = $node->name->toString();
 
                     if (in_array($class, [
@@ -203,8 +198,8 @@ final readonly class DataObjectsRule implements AuditRule
                 }
 
                 if (
-                    $node instanceof MethodCall
-                    && $node->name instanceof Node\Identifier
+                    Node::is($node, 'expression.method-call')
+                    && Node::is($node->name, 'identifier')
                     && $this->isEloquentModel
                     && in_array($node->name->toString(), ['create', 'update', 'delete', 'forceDelete', 'restore', 'save', 'insert', 'upsert'], true)
                 ) {

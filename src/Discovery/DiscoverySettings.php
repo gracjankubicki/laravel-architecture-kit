@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Discovery;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\ConstantValue as ConstExprEvaluator;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
-use PhpParser\ConstExprEvaluator;
-use PhpParser\Node;
-use PhpParser\Node\Stmt;
 
 /** Read analysis settings without requiring project PHP or resolving project classes. */
 final readonly class DiscoverySettings
@@ -56,19 +56,19 @@ final readonly class DiscoverySettings
                 throw new InvalidArgumentException('Analysis configuration exceeds 100 KB.');
             }
             $sourceFile = new FileContext($path, $files->get($absoluteConfig), $onParse, newestSyntax: true);
-            $ast = $sourceFile->ast();
+            $ast = $sourceFile->syntax();
             if ($ast === null) {
                 throw new InvalidArgumentException('Analysis configuration could not be parsed: '.$sourceFile->parseError());
             }
-            if (count($ast) === 1 && $ast[0] instanceof Stmt\Namespace_) {
+            if (count($ast) === 1 && Node::is($ast[0], 'statement.namespace')) {
                 $ast = $ast[0]->stmts;
             }
             $returned = false;
             foreach ($ast as $node) {
-                if ($node instanceof Stmt\Declare_ || $node instanceof Stmt\Use_ || $node instanceof Stmt\Nop) {
+                if (Node::is($node, 'statement.declare') || Node::is($node, 'statement.use') || Node::is($node, 'statement.nop')) {
                     continue;
                 }
-                if (! $node instanceof Stmt\Return_ || ! $node->expr instanceof Node\Expr\Array_ || $returned) {
+                if (! Node::is($node, 'statement.return') || ! Node::is($node->expr, 'expression.array') || $returned) {
                     throw new InvalidArgumentException('Use a static returned array for source-only analysis configuration.');
                 }
                 $returned = true;
@@ -98,9 +98,6 @@ final readonly class DiscoverySettings
                 throw new InvalidArgumentException('Analysis scope contains an unsafe directory.');
             }
         }
-        if (in_array($audit['missing_test'] ?? 'off', ['warn', 'error'], true)) {
-            $paths[] = 'tests';
-        }
         $cache = $audit['cache'] ?? true;
         if (! is_bool($cache) && ! is_string($cache)) {
             throw new InvalidArgumentException('audit.cache must be a boolean or project-relative path.');
@@ -110,7 +107,20 @@ final readonly class DiscoverySettings
             throw new InvalidArgumentException('Analysis cache contains an unsafe path.');
         }
 
-        return new self(new AuditScope(['app', ...$paths]), $exclude, $cache === false ? null : new ProjectGraphCache($files, $base, $cachePath), ['discovery-source-only-v1', hash('sha256', serialize($audit))], $stat, $sourceFile);
+        $layout = ProjectLayout::read($base);
+        $scope = $layout->isPackage()
+            ? AuditScope::package($paths === [] ? $layout->sources() : $paths)
+            : new AuditScope(['app', ...$paths]);
+        foreach ($scope->directories as $directory) {
+            if (! self::safe($base, $directory)) {
+                throw new InvalidArgumentException('Analysis scope contains an unsafe directory.');
+            }
+        }
+        if (in_array($audit['missing_test'] ?? 'off', ['warn', 'error'], true)) {
+            $scope = $scope->withTests();
+        }
+
+        return new self($scope, $exclude, $cache === false ? null : new ProjectGraphCache($files, $base, $cachePath), ['discovery-source-only-v2', hash('sha256', serialize([$audit, $layout->composer]))], $stat, $sourceFile);
     }
 
     /** @return list<int> */

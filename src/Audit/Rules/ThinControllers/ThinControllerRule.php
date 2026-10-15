@@ -4,21 +4,17 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\ThinControllers;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Shared\WorkflowSignals;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class ThinControllerRule implements AuditRule
+final readonly class ThinControllerRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -36,7 +32,7 @@ final readonly class ThinControllerRule implements AuditRule
      */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -77,13 +73,13 @@ final readonly class ThinControllerRule implements AuditRule
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof Stmt\ClassMethod) {
+                if (Node::is($node, 'statement.class-method')) {
                     $this->modelParameterScopes[] = $this->modelParameters($node);
 
                     return null;
                 }
 
-                if ($node instanceof MethodCall && $node->name instanceof Node\Identifier) {
+                if (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier')) {
                     $method = $node->name->toString();
 
                     if (WorkflowSignals::isValidationCall($method)) {
@@ -111,8 +107,8 @@ final readonly class ThinControllerRule implements AuditRule
                     }
                 }
 
-                if ($node instanceof StaticCall && $node->name instanceof Node\Identifier) {
-                    $class = $node->class instanceof Name ? $this->file->resolvedName($node->class) : null;
+                if (Node::is($node, 'expression.static-call') && Node::is($node->name, 'identifier')) {
+                    $class = Node::is($node->class, 'name') ? $this->file->resolvedName($node->class) : null;
                     $method = $node->name->toString();
 
                     if ($class !== null && WorkflowSignals::isTransactionCall($class, $method)) {
@@ -145,7 +141,7 @@ final readonly class ThinControllerRule implements AuditRule
 
             public function leaveNode(Node $node): null
             {
-                if ($node instanceof Stmt\ClassMethod) {
+                if (Node::is($node, 'statement.class-method')) {
                     array_pop($this->modelParameterScopes);
                 }
 
@@ -153,13 +149,13 @@ final readonly class ThinControllerRule implements AuditRule
             }
 
             /** @return array<string, true> */
-            private function modelParameters(Stmt\ClassMethod $method): array
+            private function modelParameters(Node $method): array
             {
                 $parameters = [];
 
                 foreach ($method->params as $parameter) {
                     if (
-                        ! $parameter->type instanceof Name
+                        ! Node::is($parameter->type, 'name')
                         || ! is_string($parameter->var->name)
                         || ! str_starts_with($this->file->resolvedName($parameter->type), 'App\\Models\\')
                     ) {
@@ -172,9 +168,9 @@ final readonly class ThinControllerRule implements AuditRule
                 return $parameters;
             }
 
-            private function isModelParameter(Node\Expr $receiver): bool
+            private function isModelParameter(Node $receiver): bool
             {
-                if (! $receiver instanceof Node\Expr\Variable || ! is_string($receiver->name)) {
+                if (! Node::is($receiver, 'expression.variable') || ! is_string($receiver->name)) {
                     return false;
                 }
 

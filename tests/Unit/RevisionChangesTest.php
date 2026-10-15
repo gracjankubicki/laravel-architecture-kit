@@ -154,7 +154,7 @@ final class RevisionChangesTest extends TestCase
     /** @param array<string, string> $files */
     private function facts(array $files): RevisionFacts
     {
-        $source = new SourceSnapshot('git', str_repeat('a', 40), 'hash', $files, [], array_keys($files));
+        $source = new SourceSnapshot('git', str_repeat('a', 40), 'hash', ['composer.json' => '{"type":"project","require":{"php":"^8.5"}}', ...$files], [], array_values(array_unique(['composer.json', ...array_keys($files)])));
 
         return RevisionFacts::collect($source, RevisionConfiguration::from($source));
     }

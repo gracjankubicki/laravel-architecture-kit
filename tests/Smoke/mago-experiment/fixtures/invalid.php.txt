@@ -1,0 +1,2 @@
+<?php
+class Broken { function missing( {

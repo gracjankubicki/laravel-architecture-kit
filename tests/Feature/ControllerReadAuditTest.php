@@ -8,7 +8,12 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerAuditPool;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\ControllerReadAudit;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteEntry;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -16,6 +21,173 @@ use Symfony\Component\Process\Process;
 
 final class ControllerReadAuditTest extends TestCase
 {
+    public function test_partitions_preserve_complete_and_incomplete_reports_and_each_route_witness(): void
+    {
+        $this->fixture('return 1;');
+        $this->write('app/Http/Controllers/OtherController.php', '<?php namespace App\\Http\\Controllers; class OtherController { public function show() { \\Illuminate\\Support\\Facades\\DB::table("invoices")->delete(); } }');
+        $enabled = [Architecture::ThinControllers, Architecture::Actions];
+        $files = new Filesystem;
+        $context = ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => []];
+        foreach ([false, true] as $incomplete) {
+            if ($incomplete) {
+                $this->write('app/Http/Controllers/PlanningController.php', '<?php namespace App\\Http\\Controllers; class PlanningController { public function show() { return \\Vendor\\Unknown::handle(); } }');
+            }
+            $entries = [
+                new RouteEntry(['GET'], 'known', class: 'App\\Http\\Controllers\\PlanningController', method: 'show'),
+                new RouteEntry(['GET'], 'write-a', class: 'App\\Http\\Controllers\\OtherController', method: 'show'),
+                new RouteEntry(['GET'], 'write-b', class: 'App\\Http\\Controllers\\OtherController', method: 'show'),
+            ];
+            if ($incomplete) {
+                $entries[] = new RouteEntry(['GET'], 'missing', class: 'Vendor\\MissingController', method: 'show');
+            }
+            $routes = new RouteMap(entries: $entries, context: $context);
+            $graph = (new ProjectGraphLoader($files, $this->tempPath))->load();
+            $audit = new ControllerReadAudit($files, $this->tempPath);
+            $controllers = $audit->controllers($graph);
+            self::assertCount(2, $controllers);
+            $serial = $audit->analyze($graph, $enabled, null, $routes);
+            $parts = [
+                $audit->analyzePartition($graph, $enabled, $routes, $controllers, [$controllers[0]], true, false),
+                $audit->analyzePartition($graph, $enabled, $routes, $controllers, [$controllers[1]], false, true),
+            ];
+            self::assertSame($incomplete ? 'incomplete' : 'complete', $serial->status);
+            self::assertEquals($serial, $audit->mergePartitions($parts));
+            $this->write('config/architectures.php', '<?php return ["enabled"=>["thin-controllers","actions"],"analysis"=>["engine"=>"php"]];');
+            $home = $this->tempPath.'-worker-home';
+            try {
+                $repo = new RepositoryContext(realpath($this->tempPath), $home);
+                $parallel = ControllerAuditPool::collect($repo, $audit, $graph, $enabled, $routes, null);
+                self::assertNotNull($parallel);
+                self::assertEquals($serial, $parallel);
+            } finally {
+                $files->deleteDirectory($home);
+            }
+            $writes = array_values(array_filter($serial->suggestions, fn ($suggestion) => $suggestion->code === 'S_MOVE_WRITE_TO_ACTION'));
+            self::assertSame(['write-a', 'write-b'], array_column(array_column($writes, 'route'), 'uri'));
+        }
+    }
+
+    public function test_explicit_snapshot_reports_missing_and_external_handlers_with_route_witnesses(): void
+    {
+        $this->fixture();
+        $map = new RouteMap(entries: [
+            new RouteEntry(['GET'], 'known', class: 'App\\Http\\Controllers\\PlanningController', method: 'show'),
+            new RouteEntry(['GET'], 'missing', class: '\\App\\Http\\Controllers\\MissingController', method: 'index'),
+            new RouteEntry(['GET'], 'external', class: 'Vendor\\ExternalController', method: 'index'),
+        ]);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: RouteMap::fromSnapshot($map->snapshot()));
+        self::assertSame('incomplete', $result->analysisStatus);
+        $missing = array_values(array_filter($result->notices, fn ($notice) => $notice->code === 'A_SOURCE_UNAVAILABLE' && str_contains($notice->message, 'no controller source')));
+        self::assertCount(2, $missing);
+        self::assertSame(['missing', 'external'], array_column(array_map(fn ($notice) => $notice->route, $missing), 'uri'));
+    }
+
+    public function test_repeated_handler_keeps_each_witness_and_separates_auth_middleware(): void
+    {
+        $this->fixture();
+        $this->write('app/Models/Reader.php', '<?php namespace App\\Models; class Reader extends \\Illuminate\\Database\\Eloquent\\Model { public function getKey() { return 1; } }');
+        $this->write('app/Models/Writer.php', '<?php namespace App\\Models; class Writer extends \\Illuminate\\Database\\Eloquent\\Model { public function getKey() { return $this->save(); } }');
+        $this->write('app/Http/Controllers/PlanningController.php', '<?php namespace App\\Http\\Controllers; class PlanningController { public function show(\\Illuminate\\Http\\Request $request) { return $request->user()?->getKey(); } }');
+        $entries = [
+            new RouteEntry(['GET'], 'read', class: 'App\\Http\\Controllers\\PlanningController', method: 'show', middleware: ['auth:reader']),
+            new RouteEntry(['GET'], 'write-a', class: 'App\\Http\\Controllers\\PlanningController', method: 'show', middleware: ['auth:writer']),
+            new RouteEntry(['GET'], 'write-b', class: 'App\\Http\\Controllers\\PlanningController', method: 'show', middleware: ['auth:writer']),
+        ];
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers, Architecture::Actions], changedOnly: false, routes: new RouteMap(entries: $entries,
+            context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => [], 'auth' => ['default' => 'reader', 'guards' => ['reader' => ['model' => 'App\\Models\\Reader', 'custom' => false], 'writer' => ['model' => 'App\\Models\\Writer', 'custom' => false]]]],
+        ));
+        self::assertSame([], $result->notices);
+        $writes = array_values(array_filter($result->suggestions, fn ($s) => $s->code === 'S_MOVE_WRITE_TO_ACTION'));
+        self::assertSame(['write-a', 'write-b'], array_column(array_column($writes, 'route'), 'uri'));
+    }
+
+    #[DataProvider('observedAliases')]
+    public function test_observed_aliases_keep_project_implementations_and_missing_targets_visible(string $target, bool $write, bool $unknown): void
+    {
+        $this->fixture();
+        $this->write('app/CustomApp.php', '<?php namespace App; class CustomApp { public static function runningUnitTests() { \\App\\Models\\Invoice::query()->delete(); } }');
+        $this->write('app/Http/Controllers/PlanningController.php', '<?php namespace App\\Http\\Controllers; use App; class PlanningController { public function show() { return App::runningUnitTests(); } }');
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers, Architecture::Actions], changedOnly: false, routes: new RouteMap(
+            ['app\\http\\controllers\\planningcontroller::show' => ['GET']],
+            context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => [], 'aliases' => ['App' => $target]],
+        ));
+        self::assertSame($unknown, $result->notices !== []);
+        self::assertSame($write, in_array('S_MOVE_WRITE_TO_ACTION', array_column($result->suggestions, 'code'), true));
+    }
+
+    public static function observedAliases(): iterable
+    {
+        yield 'standard facade' => ['Illuminate\\Support\\Facades\\App', false, false];
+        yield 'project implementation' => ['App\\CustomApp', true, false];
+        yield 'external implementation' => ['External\\CustomApp', false, true];
+    }
+
+    public function test_auth_helpers_use_the_observed_guard_and_dynamic_guard_stays_unknown(): void
+    {
+        $this->fixture();
+        $body = 'return auth()->user()?->getKey();';
+        foreach ([$body, 'return auth($guard)->user()?->getKey();'] as $index => $source) {
+            $this->write('app/Http/Controllers/PlanningController.php', '<?php namespace App\\Http\\Controllers; class PlanningController { public function show($guard) { '.$source.' } }');
+            $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: new RouteMap(
+                ['app\\http\\controllers\\planningcontroller::show' => ['GET']],
+                context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => [], 'auth' => ['default' => 'web', 'guards' => ['web' => ['model' => 'App\\Models\\Invoice', 'custom' => false]]]],
+            ));
+            self::assertSame($index === 1, $result->notices !== [], json_encode(array_map(fn ($n) => $n->toArray(), $result->notices)));
+        }
+    }
+
+    public function test_redirect_flash_remains_a_write(): void
+    {
+        $this->fixture('return redirect()->back()->withErrors(["name" => "Required"]);');
+        self::assertContains('S_MOVE_WRITE_TO_ACTION', array_column($this->audit(), 'code'));
+    }
+
+    public function test_request_token_and_abort_are_known_but_argument_writes_are_preserved(): void
+    {
+        $this->fixture('return $invoice->getKey();');
+        $this->write('app/Http/Controllers/PlanningController.php', <<<'PHP'
+<?php
+namespace App\Http\Controllers;
+use Illuminate\Http\Request;
+use App\Models\Invoice;
+final class PlanningController {
+    public function show(Request $request, Invoice $invoice) {
+        $request->bearerToken();
+        $request->get('name');
+        abort_if($request->has('blocked'), 403);
+        abort_unless($request->filled('name'), 403);
+        abort(403, $invoice->save());
+        return redirect()->back();
+    }
+}
+PHP);
+        $items = $this->audit();
+        self::assertNotContains('A_CALL_UNRESOLVED', array_column($items, 'code'));
+        self::assertContains('S_MOVE_WRITE_TO_ACTION', array_column($items, 'code'));
+    }
+
+    public function test_request_overrides_and_namespaced_abort_are_inspected_before_framework_semantics(): void
+    {
+        $this->fixture('return $invoice->getKey();');
+        $this->write('app/Http/Controllers/PlanningController.php', <<<'PHP'
+<?php
+namespace App\Http\Controllers;
+function abort($code) { \App\Models\Invoice::query()->delete(); }
+class Request extends \Illuminate\Http\Request {
+    public function bearerToken() { \App\Models\Invoice::query()->update([]); }
+}
+final class PlanningController {
+    public function show(Request $request) {
+        $request->bearerToken();
+        abort(403);
+    }
+}
+PHP);
+        $items = $this->audit();
+        self::assertContains('S_MOVE_WRITE_TO_ACTION', array_column($items, 'code'));
+        self::assertNotContains('A_CALL_UNRESOLVED', array_column($items, 'code'));
+    }
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -359,7 +531,30 @@ PHP);
         $this->fixture('return $this->fetch();', 'private function fetch() { Invoice::create([]); }');
         $finding = $this->audit(['GET', 'HEAD', 'POST'])[0];
         $this->assertSame('W_THIN_CONTROLLER_SERVICE_DEPENDENCY', $finding->code);
-        $this->assertStringContainsString('ViewService::fetch', $finding->message);
+        $this->assertStringContainsString('PlanningController::show -> App\\Services\\ViewService::load', $finding->message);
+    }
+
+    public function test_service_dependency_has_its_own_call_witness_before_unrelated_unknowns(): void
+    {
+        $this->fixture('return 1;');
+        $this->write('app/Http/Controllers/PlanningController.php', <<<'PHP'
+<?php
+namespace App\Http\Controllers;
+class PlanningController {
+    public function show(\App\Services\ViewService $service, \App\Models\Invoice $invoice) {
+        $this->unrelated();
+        return $service->load($invoice);
+    }
+    private function unrelated() { \Vendor\Unknown::handle(); }
+}
+PHP);
+        $findings = $this->audit(['POST']);
+        $dependency = array_values(array_filter($findings, static fn ($finding): bool => $finding->code === 'W_THIN_CONTROLLER_SERVICE_DEPENDENCY'));
+        self::assertCount(1, $dependency);
+        self::assertSame(6, $dependency[0]->line);
+        self::assertStringEndsWith('PlanningController::show -> App\\Services\\ViewService::load', $dependency[0]->message);
+        self::assertStringNotContainsString('unrelated', $dependency[0]->message);
+        self::assertContains('A_CALL_UNRESOLVED', array_column($findings, 'code'));
     }
 
     public function test_constructor_dependency_is_associated_with_actual_endpoint_usage(): void

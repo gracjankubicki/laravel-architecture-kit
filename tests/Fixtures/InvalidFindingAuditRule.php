@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Tests\Fixtures;
 
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 
-final class InvalidFindingAuditRule implements AuditRule
+final class InvalidFindingAuditRule implements PortableAuditRule
 {
     public function supports(string $path, array $enabled): bool
     {

@@ -4,24 +4,22 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Identifies source calls without resolving or invoking a response factory. */
 final class CatalogSerializationInvocation
 {
-    /** @return array{value: Expr|null, valid: bool, functions: list<string>, types: list<string>, form: string, receiver?: string, method?: string}|null */
+    /** @return array{value: Node|null, valid: bool, functions: list<string>, types: list<string>, form: string, receiver?: string, method?: string}|null */
     public static function extract(FileContext $file, Node $node, bool $returned = false, ?string $receiver = null): ?array
     {
-        if ($node instanceof Stmt\Return_ && $node->expr !== null || $returned && $node instanceof Expr) {
-            return ['value' => $node instanceof Stmt\Return_ ? $node->expr : $node, 'valid' => true, 'functions' => [],
+        if (Node::is($node, 'statement.return') && $node->expr !== null || $returned && Node::is($node, 'expression')) {
+            return ['value' => Node::is($node, 'statement.return') ? $node->expr : $node, 'valid' => true, 'functions' => [],
                 'types' => ['Illuminate\\Routing\\Router', 'Illuminate\\Http\\Response', 'Illuminate\\Http\\JsonResponse'], 'form' => 'http_return'];
         }
         $functions = $types = $parameters = [];
         $form = 'http_json';
-        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name && ! $node->isFirstClassCallable()) {
+        if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && ! $node->isFirstClassCallable()) {
             $functions = self::functions($file, $node->name);
             if (in_array('json_encode', array_map('strtolower', $functions), true)) {
                 $parameters = ['value', 'flags', 'depth'];
@@ -30,20 +28,20 @@ final class CatalogSerializationInvocation
                 $parameters = ['content', 'status', 'headers'];
                 $types = ['Illuminate\\Http\\Response', 'Illuminate\\Routing\\ResponseFactory', 'Illuminate\\Contracts\\Routing\\ResponseFactory'];
             }
-        } elseif ($node instanceof Expr\MethodCall && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
-            && $node->var instanceof Expr\FuncCall && $node->var->name instanceof Node\Name && ! $node->var->isFirstClassCallable() && $node->var->args === []) {
+        } elseif (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
+            && Node::is($node->var, 'expression.func-call') && Node::is($node->var->name, 'name') && ! $node->var->isFirstClassCallable() && $node->var->args === []) {
             $functions = self::functions($file, $node->var->name);
             if (in_array('response', array_map('strtolower', $functions), true)) {
                 $method = strtolower($node->name->toString());
                 $parameters = $method === 'json' ? ['data', 'status', 'headers', 'options'] : ($method === 'make' ? ['content', 'status', 'headers'] : []);
                 $types = [$method === 'json' ? 'Illuminate\\Http\\JsonResponse' : 'Illuminate\\Http\\Response', 'Illuminate\\Routing\\ResponseFactory', 'Illuminate\\Contracts\\Routing\\ResponseFactory'];
             }
-        } elseif ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()
+        } elseif (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()
             && $file->resolvedName($node->class) === 'Illuminate\\Support\\Facades\\Response') {
             $method = strtolower($node->name->toString());
             $parameters = $method === 'json' ? ['data', 'status', 'headers', 'options'] : ($method === 'make' ? ['content', 'status', 'headers'] : []);
             $types = [$method === 'json' ? 'Illuminate\\Http\\JsonResponse' : 'Illuminate\\Http\\Response', 'Illuminate\\Routing\\ResponseFactory', 'Illuminate\\Support\\Facades\\Response', 'Illuminate\\Contracts\\Routing\\ResponseFactory'];
-        } elseif ($node instanceof Expr\New_ && $node->class instanceof Node\Name) {
+        } elseif (Node::is($node, 'expression.new') && Node::is($node->class, 'name')) {
             $type = $file->resolvedName($node->class);
             if ($type === 'Illuminate\\Http\\JsonResponse') {
                 $parameters = ['data', 'status', 'headers', 'options', 'json'];
@@ -54,8 +52,8 @@ final class CatalogSerializationInvocation
             }
         }
         $instance = false;
-        if ($parameters === [] && $receiver !== null && ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall)
-            && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()) {
+        if ($parameters === [] && $receiver !== null && (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call'))
+            && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()) {
             $method = strtolower($node->name->toString());
             $parameters = match ($method) {
                 'json' => ['data', 'status', 'headers', 'options'],
@@ -72,7 +70,7 @@ final class CatalogSerializationInvocation
                 $functions = is_array($decoded) ? array_values(array_filter($decoded, 'is_string')) : [];
             }
         }
-        if ($parameters === [] || ! $node instanceof Expr\CallLike) {
+        if ($parameters === [] || ! Node::is($node, 'expression.call-like')) {
             return null;
         }
         $valid = count($node->getArgs()) >= 1 && count($node->getArgs()) <= count($parameters);
@@ -87,7 +85,7 @@ final class CatalogSerializationInvocation
             }
             if ($parameter === 'json') {
                 // Pre-encoded JSON bypasses JsonResponse::setData.
-                $valid = $valid && $arg->value instanceof Expr\ConstFetch && strtolower($arg->value->name->toString()) === 'false';
+                $valid = $valid && Node::is($arg->value, 'expression.const-fetch') && strtolower($arg->value->name->toString()) === 'false';
             }
         }
 
@@ -101,10 +99,10 @@ final class CatalogSerializationInvocation
     }
 
     /** @return list<string> */
-    private static function functions(FileContext $file, Node\Name $name): array
+    private static function functions(FileContext $file, Node $name): array
     {
         $namespace = $name->getAttribute('namespacedName');
 
-        return array_values(array_unique($namespace instanceof Node\Name ? [$namespace->toString(), $file->resolvedName($name)] : [$file->resolvedName($name)]));
+        return array_values(array_unique(Node::is($namespace, 'name') ? [$namespace->toString(), $file->resolvedName($name)] : [$file->resolvedName($name)]));
     }
 }

@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\PublicApi;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Text as Standard;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Revision\SourceSnapshot;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Console\Parser;
 use Illuminate\Support\Str;
-use PhpParser\Node;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
-use PhpParser\PrettyPrinter\Standard;
 
 /** Laravel declarations and MCP schemas are read, never registered or invoked. */
 final class FrameworkContracts
@@ -40,13 +39,13 @@ final class FrameworkContracts
 
                 continue;
             }
-            $file = new FileContext($path, $snapshot->files[$path]);
-            $nodes = $file->ast();
+            $file = new FileContext($path, $snapshot->files[$path], analysis: $php->analysis);
+            $nodes = $file->syntax();
             if ($nodes === null) {
                 continue;
             }
-            $this->markRegistrationContext($nodes);
-            foreach ($finder->findInstanceOf($nodes, Stmt\ClassLike::class) as $class) {
+            $nodes = $this->markRegistrationContext($nodes);
+            foreach ($finder->findOfKind($nodes, 'statement.class-like') as $class) {
                 if ($class->name === null) {
                     continue;
                 }
@@ -76,13 +75,13 @@ final class FrameworkContracts
                     }
                 }
             }
-            foreach ($finder->findInstanceOf($nodes, Node\Expr\MethodCall::class) as $call) {
-                if ($call->name instanceof Node\Identifier && in_array($call->name->toString(), ['publishes', 'publishesMigrations'], true) && $call->var instanceof Node\Expr\Variable && $call->var->name === 'this') {
+            foreach ($finder->findOfKind($nodes, 'expression.method-call') as $call) {
+                if (Node::is($call->name, 'identifier') && in_array($call->name->toString(), ['publishes', 'publishesMigrations'], true) && Node::is($call->var, 'expression.variable') && $call->var->name === 'this') {
                     $this->publish($call, $file);
                 }
             }
-            foreach ($finder->findInstanceOf($nodes, Node\Expr\StaticCall::class) as $call) {
-                if (! $call->class instanceof Node\Name || ! $call->name instanceof Node\Identifier) {
+            foreach ($finder->findOfKind($nodes, 'expression.static-call') as $call) {
+                if (! Node::is($call->class, 'name') || ! Node::is($call->name, 'identifier')) {
                     continue;
                 }
                 $class = strtolower($file->resolvedName($call->class));
@@ -99,8 +98,8 @@ final class FrameworkContracts
                     $this->eventExpression($args[0]->value, $file, $call, $args[1]->value ?? null);
                 }
             }
-            foreach ($finder->findInstanceOf($nodes, Node\Expr\FuncCall::class) as $call) {
-                if ($call->name instanceof Node\Name && strtolower($file->resolvedName($call->name)) === 'event' && isset($call->getArgs()[0])) {
+            foreach ($finder->findOfKind($nodes, 'expression.func-call') as $call) {
+                if (Node::is($call->name, 'name') && strtolower($file->resolvedName($call->name)) === 'event' && isset($call->getArgs()[0])) {
                     $this->eventExpression($call->getArgs()[0]->value, $file, $call, $call->getArgs()[1]->value ?? null);
                 }
             }
@@ -110,35 +109,42 @@ final class FrameworkContracts
         ksort($this->entries);
     }
 
-    /** @param array<Node> $nodes */
-    private function markRegistrationContext(array $nodes, bool $nested = false): void
+    /** @param array<Node> $nodes
+     * @return list<Node> */
+    private function markRegistrationContext(array $nodes, bool $nested = false): array
     {
+        $result = [];
         foreach ($nodes as $node) {
-            $node->setAttribute('api_nested_registration', $nested);
-            $childNested = $nested || ! ($node instanceof Stmt\Namespace_ || $node instanceof Stmt\Declare_ || $node instanceof Stmt\Expression);
-            // Calls inherit their enclosing statement's context; their arguments cannot register eagerly.
-            foreach ($node->getSubNodeNames() as $property) {
-                $child = $node->$property;
+            $childNested = $nested || ! (Node::is($node, 'statement.namespace') || Node::is($node, 'statement.declare') || Node::is($node, 'statement.expression'));
+            $fields = $node->fields();
+            foreach ($fields as $property => $child) {
                 if ($child instanceof Node) {
-                    $this->markRegistrationContext([$child], $childNested);
+                    $fields[$property] = $this->markRegistrationContext([$child], $childNested)[0];
                 } elseif (is_array($child)) {
-                    $this->markRegistrationContext(array_values(array_filter($child, static fn ($value): bool => $value instanceof Node)), $childNested);
+                    foreach ($child as $key => $item) {
+                        if ($item instanceof Node) {
+                            $fields[$property][$key] = $this->markRegistrationContext([$item], $childNested)[0];
+                        }
+                    }
                 }
             }
+            $result[] = $node->withFields($fields)->withAttribute('apiNestedRegistration', $nested);
         }
+
+        return $result;
     }
 
     /** @return array<string, mixed>|null */
-    private function returnArray(Stmt\ClassMethod $method, FileContext $file, int $depth = 0): ?array
+    private function returnArray(Node $method, FileContext $file, int $depth = 0): ?array
     {
-        $returns = (new NodeFinder)->findInstanceOf($method->stmts ?? [], Stmt\Return_::class);
+        $returns = (new NodeFinder)->findOfKind($method->stmts ?? [], 'statement.return');
         if ($depth > 16 || count($returns) !== 1 || ! in_array($returns[0], $method->stmts ?? [], true)) {
             $this->notice($file, 'Conditional schema or schema helper depth limit.');
 
             return null;
         }
         $expression = $returns[0]->expr;
-        if ($expression instanceof Node\Expr\StaticCall && $expression->class instanceof Node\Name && $expression->name instanceof Node\Identifier) {
+        if (Node::is($expression, 'expression.static-call') && Node::is($expression->class, 'name') && Node::is($expression->name, 'identifier')) {
             $helper = $this->declaration($file->resolvedName($expression->class));
             if ($helper !== null) {
                 $target = $this->inheritedMethod($helper[0], $file->resolvedName($expression->class), $expression->name->toString(), $helper[1]);
@@ -147,7 +153,7 @@ final class FrameworkContracts
                 }
             }
         }
-        if (! $expression instanceof Node\Expr\Array_) {
+        if (! Node::is($expression, 'expression.array')) {
             $this->notice($file, 'Dynamic schema return in '.$method->name.'.');
 
             return null;
@@ -174,12 +180,12 @@ final class FrameworkContracts
     }
 
     /** @return array<string, mixed> */
-    private function schemaChain(Node\Expr $expr, FileContext $file, ?string $variable): array
+    private function schemaChain(Node $expr, FileContext $file, ?string $variable): array
     {
         $chain = [];
         $known = true;
         $node = $expr;
-        while ($node instanceof Node\Expr\MethodCall && $node->name instanceof Node\Identifier && count($chain) < 32) {
+        while (Node::is($node, 'expression.method-call') && Node::is($node->name, 'identifier') && count($chain) < 32) {
             $arguments = [];
             $supported = ['string', 'integer', 'number', 'boolean', 'object', 'array', 'null', 'required', 'nullable', 'min', 'max', 'default', 'enum', 'description', 'pattern', 'format', 'items', 'properties', 'additionalProperties', 'minLength', 'maxLength', 'minItems', 'maxItems', 'uniqueItems', 'anyOf', 'oneOf', 'allOf', 'examples', 'title', 'exclusiveMin', 'exclusiveMax', 'multipleOf'];
             if (! in_array($node->name->toString(), $supported, true)) {
@@ -197,7 +203,7 @@ final class FrameworkContracts
             array_unshift($chain, ['method' => $node->name->toString(), 'arguments' => $arguments]);
             $node = $node->var;
         }
-        if (! $node instanceof Node\Expr\Variable || $variable === null || $node->name !== $variable || $chain === []) {
+        if (! Node::is($node, 'expression.variable') || $variable === null || $node->name !== $variable || $chain === []) {
             $this->notice($file, 'Unsupported schema expression.');
 
             return ['form' => 'unresolved', 'declaration' => $this->printer->prettyPrintExpr($expr)];
@@ -206,7 +212,7 @@ final class FrameworkContracts
         return ['form' => 'builder', 'chain' => $chain, 'known' => $known];
     }
 
-    private function tool(Stmt\ClassLike $class, string $name, FileContext $file): void
+    private function tool(Node $class, string $name, FileContext $file): void
     {
         $toolName = null;
         $unresolvedName = false;
@@ -273,20 +279,20 @@ final class FrameworkContracts
                 $opts[] = ['name' => $option->getName(), 'shortcut' => $option->getShortcut(), 'accepts_value' => $option->acceptValue(),
                     'value_required' => $option->isValueRequired(), 'array' => $option->isArray(), 'negatable' => $option->isNegatable(), 'default' => $option->getDefault()];
             }
-            if ($owner === 'callback' && $node->getAttribute('api_nested_registration', false)) {
+            if ($owner === 'callback' && $node->getAttribute('apiNestedRegistration', false)) {
                 $this->notice($file, 'Conditional or nested Artisan callback registration.');
             }
-            $this->add('command:'.$name, ['kind' => 'command', 'name' => $name, 'owner' => $owner, 'conditional' => ($this->php->classes[strtolower($owner)]['conditional'] ?? false) || ($owner === 'callback' && $node->getAttribute('api_nested_registration', false)), 'ambiguous' => $this->php->classes[strtolower($owner)]['ambiguous'] ?? false, 'arguments' => $args, 'options' => $opts,
+            $this->add('command:'.$name, ['kind' => 'command', 'name' => $name, 'owner' => $owner, 'conditional' => ($this->php->classes[strtolower($owner)]['conditional'] ?? false) || ($owner === 'callback' && $node->getAttribute('apiNestedRegistration', false)), 'ambiguous' => $this->php->classes[strtolower($owner)]['ambiguous'] ?? false, 'arguments' => $args, 'options' => $opts,
                 'source' => $this->source($node, $file)], $file);
         } catch (\InvalidArgumentException $e) {
             $this->notice($file, 'Command signature is invalid: '.$e->getMessage());
         }
     }
 
-    private function publish(Node\Expr\MethodCall $call, FileContext $file): void
+    private function publish(Node $call, FileContext $file): void
     {
         $args = $call->getArgs();
-        if (! isset($args[0]) || ! $args[0]->value instanceof Node\Expr\Array_) {
+        if (! isset($args[0]) || ! Node::is($args[0]->value, 'expression.array')) {
             $this->notice($file, 'Dynamic publication map.');
 
             return;
@@ -325,21 +331,21 @@ final class FrameworkContracts
     /** @return list<string> */
     private function configKeys(string $path, string $content): array
     {
-        $nodes = (new FileContext($path, $content))->ast();
+        $nodes = (new FileContext($path, $content, analysis: $this->php->analysis))->syntax();
         $keys = [];
-        $visit = function (Node\Expr\Array_ $array, string $prefix) use (&$visit, &$keys): void {
+        $visit = function (Node $array, string $prefix) use (&$visit, &$keys): void {
             foreach ($array->items as $item) {
-                if ($item?->key instanceof Node\Scalar\String_) {
+                if (Node::is($item?->key, 'scalar.string')) {
                     $key = $prefix.$item->key->value;
                     $keys[] = $key;
-                    if ($item->value instanceof Node\Expr\Array_) {
+                    if (Node::is($item->value, 'expression.array')) {
                         $visit($item->value, $key.'.');
                     }
                 }
             }
         };
         foreach ($nodes ?? [] as $node) {
-            if ($node instanceof Stmt\Return_ && $node->expr instanceof Node\Expr\Array_) {
+            if (Node::is($node, 'statement.return') && Node::is($node->expr, 'expression.array')) {
                 $visit($node->expr, '');
             }
         }
@@ -347,22 +353,22 @@ final class FrameworkContracts
         return $keys;
     }
 
-    private function packagePath(Node\Expr $expr, FileContext $file): ?string
+    private function packagePath(Node $expr, FileContext $file): ?string
     {
-        if ($expr instanceof Node\Scalar\MagicConst\Dir) {
+        if (Node::is($expr, 'scalar.magic-const.dir')) {
             return dirname($file->path);
         }
-        if ($expr instanceof Node\Scalar\MagicConst\File) {
+        if (Node::is($expr, 'scalar.magic-const.file')) {
             return $file->path;
         }
-        if ($expr instanceof Node\Expr\BinaryOp\Concat) {
+        if (Node::is($expr, 'expression.binary-op.concat')) {
             $left = $this->packagePath($expr->left, $file);
             $right = $this->packagePath($expr->right, $file);
             if ($left !== null && $right !== null) {
                 return $this->normalize($left.$right);
             }
         }
-        if ($expr instanceof Node\Expr\FuncCall && $expr->name instanceof Node\Name && strtolower($file->resolvedName($expr->name)) === 'dirname' && isset($expr->getArgs()[0])) {
+        if (Node::is($expr, 'expression.func-call') && Node::is($expr->name, 'name') && strtolower($file->resolvedName($expr->name)) === 'dirname' && isset($expr->getArgs()[0])) {
             $args = $expr->getArgs();
             $path = $this->packagePath($args[0]->value, $file);
             $levels = isset($args[1]) ? StaticValue::read($args[1]->value) : ['known' => true, 'value' => 1];
@@ -395,9 +401,9 @@ final class FrameworkContracts
         return implode('/', $parts);
     }
 
-    private function eventExpression(Node\Expr $expr, FileContext $file, Node $site, ?Node\Expr $payloadExpression = null): void
+    private function eventExpression(Node $expr, FileContext $file, Node $site, ?Node $payloadExpression = null): void
     {
-        if ($expr instanceof Node\Expr\New_ && $expr->class instanceof Node\Name) {
+        if (Node::is($expr, 'expression.new') && Node::is($expr->class, 'name')) {
             $this->event($file->resolvedName($expr->class), $file, $site);
 
             return;
@@ -440,7 +446,7 @@ final class FrameworkContracts
         return is_string($base) && (strcasecmp($base, $parent) === 0 || $this->inherits($base, $parent, $depth + 1));
     }
 
-    /** @return array{Stmt\ClassLike, FileContext}|null */
+    /** @return array{Node, FileContext}|null */
     private function declaration(string $name): ?array
     {
         $path = $this->php->classes[strtolower($name)]['source']['path'] ?? null;
@@ -452,8 +458,8 @@ final class FrameworkContracts
         if ($ceiling !== null && memory_get_usage(true) + strlen($source) * 40 > $ceiling * 0.75) {
             return null;
         }
-        $file = new FileContext($path, $source);
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassLike::class) as $class) {
+        $file = new FileContext($path, $source, analysis: $this->php->analysis);
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $class) {
             if (isset($class->namespacedName) && strcasecmp($class->namespacedName->toString(), $name) === 0) {
                 return [$class, $file];
             }
@@ -462,7 +468,7 @@ final class FrameworkContracts
         return null;
     }
 
-    private function inheritedProperty(Stmt\ClassLike $class, string $owner, string $property, int $depth = 0): ?Node\Expr
+    private function inheritedProperty(Node $class, string $owner, string $property, int $depth = 0): ?Node
     {
         foreach ($class->getProperties() as $statement) {
             foreach ($statement->props as $prop) {
@@ -488,8 +494,8 @@ final class FrameworkContracts
         return $origin === null ? null : $this->inheritedProperty($origin[0], $parent, $property, $depth + 1);
     }
 
-    /** @return array{Stmt\ClassMethod, FileContext}|null */
-    private function inheritedMethod(Stmt\ClassLike $class, string $owner, string $name, FileContext $file, int $depth = 0): ?array
+    /** @return array{Node, FileContext}|null */
+    private function inheritedMethod(Node $class, string $owner, string $name, FileContext $file, int $depth = 0): ?array
     {
         foreach ($class->getMethods() as $method) {
             if (strcasecmp($method->name->toString(), $name) === 0) {

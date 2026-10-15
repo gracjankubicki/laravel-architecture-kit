@@ -185,7 +185,7 @@ final class ApplicationAuditMemoryTest extends TestCase
         gc_collect_cycles();
         $before = memory_get_usage();
         $file = new FileContext('app/Sample.php', $source);
-        $this->assertNotNull($file->ast());
+        $this->assertNotNull($file->syntax());
         $realCost = memory_get_usage() - $before;
         $file->releaseAst();
 
@@ -204,7 +204,7 @@ final class ApplicationAuditMemoryTest extends TestCase
         gc_collect_cycles();
         $before = memory_get_usage();
         $file = new FileContext('app/Dense.php', $source);
-        $this->assertNotNull($file->ast());
+        $this->assertNotNull($file->syntax());
         $realCost = memory_get_usage() - $before;
         $file->releaseAst();
 

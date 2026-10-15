@@ -633,6 +633,7 @@ PHP;
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'php' => '^8.5',
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
@@ -842,6 +843,7 @@ PHP;
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'php' => '^8.2',
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
@@ -982,6 +984,7 @@ PHP;
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'php' => '^8.2',
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
@@ -1010,6 +1013,7 @@ PHP;
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'saloonphp/saloon' => '^3.0',
@@ -1031,6 +1035,7 @@ PHP;
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'saloonphp/saloon' => '^4.0',
@@ -1065,6 +1070,7 @@ PHP;
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'saloonphp/saloon' => '^4.0',
@@ -1306,6 +1312,7 @@ PHP);
     {
         $files = new Filesystem;
         $files->put($this->tempPath.'/composer.json', json_encode([
+            'type' => 'project',
             'require' => [
                 'gracjankubicki/laravel-architecture-kit' => '^0.2',
                 'laravel/ai' => $constraint,

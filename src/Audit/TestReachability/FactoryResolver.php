@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\TestReachability;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceClass;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\SourceIndex;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 final readonly class FactoryResolver
 {
@@ -40,7 +38,7 @@ final readonly class FactoryResolver
         $override = $this->sources->method($model, 'factory') ?? $this->sources->method($model, 'newFactory');
         if ($override !== null) {
             [$owner, $method] = $override;
-            if (count($method->stmts ?? []) === 1 && $method->stmts[0] instanceof Stmt\Return_) {
+            if (count($method->stmts ?? []) === 1 && Node::is($method->stmts[0], 'statement.return')) {
                 $factory = $this->factoryExpression($owner, $method->stmts[0]->expr);
             }
             if ($factory === null) {
@@ -150,17 +148,17 @@ final readonly class FactoryResolver
 
     private function parent(SourceClass $source): ?SourceClass
     {
-        return $source->node instanceof Stmt\Class_ && $source->node->extends !== null ? $this->sources->get($source->file->resolvedName($source->node->extends)) : null;
+        return Node::is($source->node, 'statement.class') && $source->node->extends !== null ? $this->sources->get($source->file->resolvedName($source->node->extends)) : null;
     }
 
-    private function factoryExpression(SourceClass $source, ?Expr $expr): ?string
+    private function factoryExpression(SourceClass $source, ?Node $expr): ?string
     {
-        if ($expr instanceof Expr\New_ || ($expr instanceof Expr\StaticCall && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'new')
-            || ($expr instanceof Expr\ClassConstFetch && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class')) {
-            return $expr->class instanceof Node\Name ? $source->file->resolvedName($expr->class) : null;
+        if (Node::is($expr, 'expression.new') || (Node::is($expr, 'expression.static-call') && Node::is($expr->name, 'identifier') && strtolower($expr->name->toString()) === 'new')
+            || (Node::is($expr, 'expression.class-const-fetch') && Node::is($expr->name, 'identifier') && strtolower($expr->name->toString()) === 'class')) {
+            return Node::is($expr->class, 'name') ? $source->file->resolvedName($expr->class) : null;
         }
 
-        return $expr instanceof Node\Scalar\String_ ? ltrim($expr->value, '\\') : null;
+        return Node::is($expr, 'scalar.string') ? ltrim($expr->value, '\\') : null;
     }
 
     private function docName(SourceClass $source, string $name): string
@@ -168,7 +166,7 @@ final readonly class FactoryResolver
         if (str_starts_with($name, '\\')) {
             return ltrim($name, '\\');
         }
-        foreach ((new NodeFinder)->findInstanceOf($source->file->ast() ?? [], Stmt\Use_::class) as $use) {
+        foreach ((new NodeFinder)->findOfKind($source->file->syntax() ?? [], 'statement.use') as $use) {
             foreach ($use->uses as $item) {
                 $alias = $item->getAlias()->toString();
                 if ($name === $alias || str_starts_with($name, $alias.'\\')) {

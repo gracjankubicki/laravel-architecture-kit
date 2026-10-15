@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\PublicApi;
 
-use PhpParser\Node\Stmt\Class_;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 
 /** Public exposure is keyed by its public owner, even when declared in an internal base. */
 final class EffectiveApi
@@ -158,12 +158,12 @@ final class EffectiveApi
                 continue;
             }
             $modifier = $adaptation['modifier'] ?? 0;
-            foreach (['private' => Class_::MODIFIER_PRIVATE, 'protected' => Class_::MODIFIER_PROTECTED, 'public' => Class_::MODIFIER_PUBLIC] as $visibility => $flag) {
+            foreach (['private' => Node::MODIFIER_PRIVATE, 'protected' => Node::MODIFIER_PROTECTED, 'public' => Node::MODIFIER_PUBLIC] as $visibility => $flag) {
                 if (($modifier & $flag) !== 0) {
                     $member['visibility'] = $member['signature']['visibility'] = $visibility;
                 }
             }
-            if (($modifier & Class_::MODIFIER_FINAL) !== 0) {
+            if (($modifier & Node::MODIFIER_FINAL) !== 0) {
                 $member['signature']['final'] = true;
             }
             $alias = $adaptation['alias'];

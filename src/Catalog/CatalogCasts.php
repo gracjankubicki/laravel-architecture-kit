@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\DataCatalog;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Cast declarations contain type names only; constructor arguments are omitted. */
 final class CatalogCasts
@@ -23,7 +21,7 @@ final class CatalogCasts
     public static function extract(FileContext $file): array
     {
         $rows = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassLike::class) as $node) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $node) {
             $class = DataCatalog::name($node, $file);
             $row = ['property' => null, 'method' => null];
             foreach ($node->getProperties() as $property) {
@@ -36,7 +34,7 @@ final class CatalogCasts
             foreach ($node->getMethods() as $method) {
                 if (strtolower($method->name->toString()) === 'casts') {
                     $body = $method->stmts ?? [];
-                    $row['method'] = self::describe(count($body) === 1 && $body[0] instanceof Stmt\Return_ ? self::literal($body[0]->expr, $file, $class) : null);
+                    $row['method'] = self::describe(count($body) === 1 && Node::is($body[0], 'statement.return') ? self::literal($body[0]->expr, $file, $class) : null);
                 }
             }
             $rows[strtolower($class)] = $row;
@@ -50,13 +48,13 @@ final class CatalogCasts
         if ($depth > 16) {
             return null;
         }
-        if ($node instanceof Expr\BinaryOp\Concat) {
+        if (Node::is($node, 'expression.binary-op.concat')) {
             $left = self::literal($node->left, $file, $class, $depth + 1);
             $right = self::literal($node->right, $file, $class, $depth + 1);
 
             return is_string($left) && is_string($right) && strlen($left) + strlen($right) <= 100000 ? $left.$right : null;
         }
-        if ($node instanceof Expr\Array_) {
+        if (Node::is($node, 'expression.array')) {
             if (count($node->items) > 256) {
                 return null;
             }

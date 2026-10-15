@@ -33,7 +33,7 @@ final readonly class FileGuidance
         private ArchitectureCatalog $catalog,
         private AuditScope $scope = new AuditScope,
     ) {
-        $this->classification = new ProjectClassification($files, $basePath);
+        $this->classification = new ProjectClassification($files, $basePath, $scope);
     }
 
     /**

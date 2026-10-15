@@ -284,7 +284,7 @@ final class ProjectClassificationTest extends TestCase
             'return ((array("audit" => (array("classification" => [])))));',
             'return [("audit") => [("classification") => []]];',
         ] as $declaration) {
-            $this->assertNotNull((new FileContext('(fixture)', '<?php '.$declaration))->ast());
+            $this->assertNotNull((new FileContext('(fixture)', '<?php '.$declaration))->syntax());
             $source = 'file_put_contents(__DIR__."/executed", "bad"); '.$declaration.' // '.str_repeat('x', 110000);
             $this->write('config/architectures.php', $source);
             $this->assertTrue(DeclaredConfiguration::hasDeclarationKey('<?php '.$source));
@@ -316,7 +316,7 @@ final class ProjectClassificationTest extends TestCase
             'return [b"\u{61}udit" => [B"\u{63}lassification" => []]];',
         ];
         foreach ($declarations as $declaration) {
-            $this->assertNotNull((new FileContext('(fixture)', '<?php '.$declaration))->ast());
+            $this->assertNotNull((new FileContext('(fixture)', '<?php '.$declaration))->syntax());
             $source = 'file_put_contents(__DIR__."/executed", "bad"); '.$declaration.' // '.str_repeat('x', 110000);
             $this->write('config/architectures.php', $source);
             $this->assertTrue(DeclaredConfiguration::hasDeclarationKey('<?php '.$source));

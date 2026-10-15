@@ -4,32 +4,32 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\PublicApi;
 
-use PhpParser\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 
 /** A bounded literal reader, never PHP evaluation or application constant resolution. */
 final class StaticValue
 {
     /** @return array{known: bool, value: mixed} */
-    public static function read(Node\Expr $expr, int $depth = 0): array
+    public static function read(Node $expr, int $depth = 0): array
     {
         if ($depth > 32) {
             return ['known' => false, 'value' => null];
         }
-        if ($expr instanceof Node\Scalar\String_ || $expr instanceof Node\Scalar\Int_ || $expr instanceof Node\Scalar\Float_) {
+        if (Node::is($expr, 'scalar.string') || Node::is($expr, 'scalar.int') || Node::is($expr, 'scalar.float')) {
             return ['known' => true, 'value' => $expr->value];
         }
-        if ($expr instanceof Node\Expr\ConstFetch) {
+        if (Node::is($expr, 'expression.const-fetch')) {
             return match (strtolower($expr->name->toString())) {
                 'true' => ['known' => true, 'value' => true], 'false' => ['known' => true, 'value' => false],
                 'null' => ['known' => true, 'value' => null], default => ['known' => false, 'value' => null],
             };
         }
-        if ($expr instanceof Node\Expr\ClassConstFetch && $expr->class instanceof Node\Name && $expr->name instanceof Node\Identifier && strtolower($expr->name->toString()) === 'class') {
+        if (Node::is($expr, 'expression.class-const-fetch') && Node::is($expr->class, 'name') && Node::is($expr->name, 'identifier') && strtolower($expr->name->toString()) === 'class') {
             $name = $expr->class->getAttribute('resolvedName');
 
-            return ['known' => true, 'value' => ($name instanceof Node\Name ? $name : $expr->class)->toString()];
+            return ['known' => true, 'value' => (Node::is($name, 'name') ? $name : $expr->class)->toString()];
         }
-        if ($expr instanceof Node\Expr\Array_) {
+        if (Node::is($expr, 'expression.array')) {
             $result = [];
             foreach ($expr->items as $item) {
                 if ($item === null || $item->unpack) {
@@ -49,17 +49,17 @@ final class StaticValue
 
             return ['known' => true, 'value' => $result];
         }
-        if ($expr instanceof Node\Expr\BinaryOp\Concat) {
+        if (Node::is($expr, 'expression.binary-op.concat')) {
             $left = self::read($expr->left, $depth + 1);
             $right = self::read($expr->right, $depth + 1);
             if ($left['known'] && $right['known'] && is_string($left['value']) && is_string($right['value'])) {
                 return ['known' => true, 'value' => $left['value'].$right['value']];
             }
         }
-        if ($expr instanceof Node\Expr\UnaryMinus || $expr instanceof Node\Expr\UnaryPlus) {
+        if (Node::is($expr, 'expression.unary-minus') || Node::is($expr, 'expression.unary-plus')) {
             $value = self::read($expr->expr, $depth + 1);
             if ($value['known'] && (is_int($value['value']) || is_float($value['value']))) {
-                return ['known' => true, 'value' => $expr instanceof Node\Expr\UnaryMinus ? -$value['value'] : $value['value']];
+                return ['known' => true, 'value' => Node::is($expr, 'expression.unary-minus') ? -$value['value'] : $value['value']];
             }
         }
 

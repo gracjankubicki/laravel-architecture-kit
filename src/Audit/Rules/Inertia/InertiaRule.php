@@ -4,21 +4,18 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Inertia;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Derived;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Traverser as NodeTraverser;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
-use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
+use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
 use GracjanKubicki\ArchitectureKit\Classification\ProjectClassification;
-use PhpParser\Node;
-use PhpParser\Node\Arg;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitorAbstract;
 
-final readonly class InertiaRule implements AuditRule
+final readonly class InertiaRule implements PortableAuditRule
 {
     public function __construct(private ?ProjectClassification $classification = null) {}
 
@@ -31,7 +28,7 @@ final readonly class InertiaRule implements AuditRule
     /** @return array<int, AuditFinding> */
     public function check(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -66,7 +63,7 @@ final readonly class InertiaRule implements AuditRule
 
             if (
                 $issues === []
-                && $props['expression'] instanceof Expr\Variable
+                && Node::is($props['expression'], 'expression.variable')
                 && is_string($props['expression']->name)
                 && ! isset($props['requestVariables'][$props['expression']->name])
                 && ! $this->isResolvedPropsVariable(
@@ -126,7 +123,7 @@ final readonly class InertiaRule implements AuditRule
 
             public function enterNode(Node $node): ?int
             {
-                if (! $node instanceof Name) {
+                if (! Node::is($node, 'name')) {
                     return null;
                 }
 
@@ -177,39 +174,44 @@ final readonly class InertiaRule implements AuditRule
                 private object $state,
             ) {}
 
-            public function enterNode(Node $node): null
+            public function enterNode(Node $node): Node
             {
                 if ($this->isControlFlowNode($node)) {
                     $this->controlFlowDepth++;
                 }
 
-                if ($node instanceof Stmt\Class_) {
-                    $this->inertiaMiddlewareClasses[] = $node->extends instanceof Name
+                if (Node::is($node, 'statement.class')) {
+                    $this->inertiaMiddlewareClasses[] = Node::is($node->extends, 'name')
                         && $this->file->resolvedName($node->extends) === 'Inertia\Middleware';
                 }
 
-                if ($node instanceof Node\FunctionLike) {
+                if (Node::is($node, 'function-like')) {
                     $this->pushScope($node);
-                    $this->inertiaShareMethods[] = $node instanceof Stmt\ClassMethod
+                    $this->inertiaShareMethods[] = Node::is($node, 'statement.class-method')
                         && $node->name->toString() === 'share'
                         && end($this->inertiaMiddlewareClasses) === true;
                     $scope = $this->scope();
-                    $node->setAttribute('architectureKitInertiaRequestVariables', $scope['request']);
-                    $node->setAttribute('architectureKitInertiaAliases', $scope['aliases']);
+                    $node = $node->withAttribute('architectureKitInertiaRequestVariables', $scope['request']);
+                    $node = $node->withAttribute('architectureKitInertiaAliases', $scope['aliases']);
                 }
 
                 if (
-                    $node instanceof Expr\Variable
+                    Node::is($node, 'expression.variable')
                     && is_string($node->name)
                 ) {
                     $scope = $this->scope();
-                    $node->setAttribute('architectureKitInertiaRequestVariablesAtUse', $scope['request']);
-                    $node->setAttribute('architectureKitInertiaFactoryVariablesAtUse', $scope['factory']);
-                    $node->setAttribute('architectureKitInertiaAliasesAtUse', $scope['aliases']);
+                    $node = $node->withAttribute('architectureKitInertiaRequestVariablesAtUse', $scope['request']);
+                    $node = $node->withAttribute('architectureKitInertiaFactoryVariablesAtUse', $scope['factory']);
+                    $node = $node->withAttribute('architectureKitInertiaAliasesAtUse', $scope['aliases']);
                 }
 
-                if ($node instanceof Expr\StaticCall && $this->isInertiaClass($node->class)) {
-                    $method = $node->name instanceof Node\Identifier ? $node->name->toString() : null;
+                return $node;
+            }
+
+            public function leaveNode(Node $node): null
+            {
+                if (Node::is($node, 'expression.static-call') && $this->isInertiaClass($node->class)) {
+                    $method = Node::is($node->name, 'identifier') ? $node->name->toString() : null;
 
                     if ($method === 'render') {
                         $this->append($this->argument($node->args, 'props', 1));
@@ -219,15 +221,15 @@ final readonly class InertiaRule implements AuditRule
                 }
 
                 if (
-                    $node instanceof Expr\FuncCall
-                    && $node->name instanceof Name
+                    Node::is($node, 'expression.func-call')
+                    && Node::is($node->name, 'name')
                     && strtolower($node->name->toString()) === 'inertia'
                 ) {
                     $this->append($this->argument($node->args, 'props', 1));
                 }
 
-                if ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) {
-                    $method = $node->name instanceof Node\Identifier ? $node->name->toString() : null;
+                if (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) {
+                    $method = Node::is($node->name, 'identifier') ? $node->name->toString() : null;
 
                     if ($method === 'render' && $this->isFactoryReceiver($node->var)) {
                         $this->append($this->argument($node->args, 'props', 1));
@@ -237,19 +239,14 @@ final readonly class InertiaRule implements AuditRule
                 }
 
                 if (
-                    $node instanceof Stmt\Return_
+                    Node::is($node, 'statement.return')
                     && $node->expr !== null
                     && end($this->inertiaShareMethods) === true
                 ) {
                     $this->append($node->expr);
                 }
 
-                return null;
-            }
-
-            public function leaveNode(Node $node): null
-            {
-                if ($node instanceof Expr\Assign && $node->var instanceof Expr\Variable && is_string($node->var->name)) {
+                if (Node::is($node, 'expression.assign') && Node::is($node->var, 'expression.variable') && is_string($node->var->name)) {
                     $index = array_key_last($this->scopes);
 
                     if ($this->controlFlowDepth > 0) {
@@ -257,7 +254,7 @@ final readonly class InertiaRule implements AuditRule
                     } else {
                         $this->scopes[$index]['aliases'][$node->var->name] = $node->expr;
                     }
-                } elseif ($node instanceof Expr\Assign || $node instanceof Expr\AssignOp) {
+                } elseif (Node::is($node, 'expression.assign') || Node::is($node, 'expression.assign-op')) {
                     $name = $this->arrayMutationVariable($node->var);
 
                     if ($name !== null) {
@@ -265,18 +262,18 @@ final readonly class InertiaRule implements AuditRule
                     }
                 }
 
-                if ($node instanceof Expr\FuncCall && $node->name instanceof Name) {
+                if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name')) {
                     $function = strtolower($node->name->toString());
 
                     if (in_array($function, ['array_push', 'array_unshift'], true)) {
                         $target = $node->args[0]->value ?? null;
-                        $name = $target instanceof Node
+                        $name = Node::is($target, 'node')
                             ? $this->arrayMutationVariable($target)
                             : null;
 
                         if ($name !== null) {
                             $values = array_map(
-                                static fn (Arg $argument): Expr => $argument->value,
+                                static fn (Node $argument): Node => $argument->value,
                                 array_slice($node->args, 1),
                             );
                             $this->recordArrayMutation($name, $values);
@@ -284,12 +281,12 @@ final readonly class InertiaRule implements AuditRule
                     }
                 }
 
-                if ($node instanceof Node\FunctionLike) {
+                if (Node::is($node, 'function-like')) {
                     array_pop($this->scopes);
                     array_pop($this->inertiaShareMethods);
                 }
 
-                if ($node instanceof Stmt\Class_) {
+                if (Node::is($node, 'statement.class')) {
                     array_pop($this->inertiaMiddlewareClasses);
                 }
 
@@ -300,7 +297,7 @@ final readonly class InertiaRule implements AuditRule
                 return null;
             }
 
-            /** @param array<int, Expr> $values */
+            /** @param array<int, Node> $values */
             private function recordArrayMutation(string $name, array $values): void
             {
                 $index = array_key_last($this->scopes);
@@ -313,18 +310,18 @@ final readonly class InertiaRule implements AuditRule
 
                 $previous = $this->scopes[$index]['aliases'][$name] ?? null;
 
-                if (! $previous instanceof Expr) {
+                if (! Node::is($previous, 'expression')) {
                     unset($this->scopes[$index]['aliases'][$name]);
 
                     return;
                 }
 
                 foreach ($values as $value) {
-                    $composed = new Expr\Array_([
-                        new Expr\ArrayItem($previous),
-                        new Expr\ArrayItem($value),
-                    ]);
-                    $composed->setAttribute('architectureKitInertiaPreviousPropsSource', $previous);
+                    $derived = Derived::class;
+                    $composed = $derived::node($previous, 'expression.array', ['items' => [
+                        $derived::node($previous, 'array-item', ['key' => null, 'value' => $previous, 'byRef' => false, 'unpack' => false]),
+                        $derived::node($value, 'array-item', ['key' => null, 'value' => $value, 'byRef' => false, 'unpack' => false]),
+                    ]])->withAttribute('architectureKitInertiaPreviousPropsSource', $previous);
                     $previous = $composed;
                 }
 
@@ -333,27 +330,27 @@ final readonly class InertiaRule implements AuditRule
 
             private function isControlFlowNode(Node $node): bool
             {
-                return $node instanceof Stmt\If_
-                    || $node instanceof Stmt\ElseIf_
-                    || $node instanceof Stmt\Else_
-                    || $node instanceof Stmt\For_
-                    || $node instanceof Stmt\Foreach_
-                    || $node instanceof Stmt\While_
-                    || $node instanceof Stmt\Do_
-                    || $node instanceof Stmt\Switch_
-                    || $node instanceof Stmt\Case_
-                    || $node instanceof Stmt\TryCatch
-                    || $node instanceof Stmt\Catch_
-                    || $node instanceof Stmt\Finally_;
+                return Node::is($node, 'statement.if')
+                    || Node::is($node, 'statement.else-if')
+                    || Node::is($node, 'statement.else')
+                    || Node::is($node, 'statement.for')
+                    || Node::is($node, 'statement.foreach')
+                    || Node::is($node, 'statement.while')
+                    || Node::is($node, 'statement.do')
+                    || Node::is($node, 'statement.switch')
+                    || Node::is($node, 'statement.case')
+                    || Node::is($node, 'statement.try-catch')
+                    || Node::is($node, 'statement.catch')
+                    || Node::is($node, 'statement.finally');
             }
 
             private function arrayMutationVariable(Node $node): ?string
             {
-                while ($node instanceof Expr\ArrayDimFetch) {
+                while (Node::is($node, 'expression.array-dim-fetch')) {
                     $node = $node->var;
                 }
 
-                return $node instanceof Expr\Variable && is_string($node->name)
+                return Node::is($node, 'expression.variable') && is_string($node->name)
                     ? $node->name
                     : null;
             }
@@ -361,7 +358,7 @@ final readonly class InertiaRule implements AuditRule
             /** @param array<string, true> $resolvingAliases */
             private function isFactoryReceiver(Node $node, array $resolvingAliases = []): bool
             {
-                if ($node instanceof Expr\Variable && is_string($node->name)) {
+                if (Node::is($node, 'expression.variable') && is_string($node->name)) {
                     $factories = $this->factoryVariablesAt($node);
 
                     if (isset($factories[$node->name])) {
@@ -379,14 +376,14 @@ final readonly class InertiaRule implements AuditRule
                     return $this->isFactoryReceiver($aliases[$node->name], $resolvingAliases);
                 }
 
-                return $node instanceof Expr\FuncCall
-                    && $node->name instanceof Name
+                return Node::is($node, 'expression.func-call')
+                    && Node::is($node->name, 'name')
                     && strtolower($node->name->toString()) === 'inertia'
                     && $node->args === [];
             }
 
             /** @return array<string, true> */
-            private function factoryVariablesAt(Expr\Variable $variable): array
+            private function factoryVariablesAt(Node $variable): array
             {
                 $scope = $this->scope();
                 $value = $variable->getAttribute('architectureKitInertiaFactoryVariablesAtUse');
@@ -407,7 +404,7 @@ final readonly class InertiaRule implements AuditRule
             }
 
             /** @return array<string, Node> */
-            private function aliasesAt(Expr\Variable $variable): array
+            private function aliasesAt(Node $variable): array
             {
                 $scope = $this->scope();
                 $value = $variable->getAttribute('architectureKitInertiaAliasesAtUse');
@@ -419,7 +416,7 @@ final readonly class InertiaRule implements AuditRule
                 $aliases = [];
 
                 foreach ($value as $name => $expression) {
-                    if (is_string($name) && $expression instanceof Node) {
+                    if (is_string($name) && Node::is($expression, 'node')) {
                         $aliases[$name] = $expression;
                     }
                 }
@@ -429,7 +426,7 @@ final readonly class InertiaRule implements AuditRule
 
             private function isInertiaClass(Node $class): bool
             {
-                if (! $class instanceof Name) {
+                if (! Node::is($class, 'name')) {
                     return false;
                 }
 
@@ -439,7 +436,7 @@ final readonly class InertiaRule implements AuditRule
                 ], true);
             }
 
-            /** @param array<int, Arg> $arguments */
+            /** @param array<int, Node> $arguments */
             private function shareValue(array $arguments): ?Node
             {
                 $named = $this->argument($arguments, 'value', 1);
@@ -452,7 +449,7 @@ final readonly class InertiaRule implements AuditRule
                     ?? $this->argument($arguments, 'key', 0);
             }
 
-            /** @param array<int, Arg> $arguments */
+            /** @param array<int, Node> $arguments */
             private function argument(array $arguments, string $name, int $position): ?Node
             {
                 foreach ($arguments as $argument) {
@@ -482,14 +479,14 @@ final readonly class InertiaRule implements AuditRule
                 return $this->scopes[array_key_last($this->scopes)];
             }
 
-            private function pushScope(Node\FunctionLike $function): void
+            private function pushScope(Node $function): void
             {
                 $parent = $this->scope();
                 $scope = ['request' => [], 'factory' => [], 'aliases' => []];
 
-                if ($function instanceof Expr\ArrowFunction) {
+                if (Node::is($function, 'expression.arrow-function')) {
                     $scope = $parent;
-                } elseif ($function instanceof Expr\Closure) {
+                } elseif (Node::is($function, 'expression.closure')) {
                     foreach ($function->uses as $use) {
                         if (! is_string($use->var->name)) {
                             continue;
@@ -506,7 +503,7 @@ final readonly class InertiaRule implements AuditRule
                 }
 
                 foreach ($function->getParams() as $parameter) {
-                    if (! $parameter->var instanceof Expr\Variable || ! is_string($parameter->var->name)) {
+                    if (! Node::is($parameter->var, 'expression.variable') || ! is_string($parameter->var->name)) {
                         continue;
                     }
 
@@ -533,15 +530,15 @@ final readonly class InertiaRule implements AuditRule
             /** @return array<int, string> */
             private function typeNames(Node|string|null $type): array
             {
-                if ($type instanceof Name) {
+                if (Node::is($type, 'name')) {
                     return [$this->file->resolvedName($type)];
                 }
 
-                if ($type instanceof Node\NullableType) {
+                if (Node::is($type, 'nullable-type')) {
                     return $this->typeNames($type->type);
                 }
 
-                if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+                if (Node::is($type, 'union-type') || Node::is($type, 'intersection-type')) {
                     $names = [];
 
                     foreach ($type->types as $inner) {
@@ -572,12 +569,12 @@ final readonly class InertiaRule implements AuditRule
         array &$issues,
         array $resolvingAliases = [],
     ): void {
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             $aliases = $this->aliasesAt($node, $aliases);
             $requestVariables = $this->requestVariablesAt($node, $requestVariables);
         }
 
-        if ($node instanceof Expr\Variable && is_string($node->name) && isset($aliases[$node->name])) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name) && isset($aliases[$node->name])) {
             if (isset($resolvingAliases[$node->name])) {
                 $issues[] = ['status' => 'warn', 'line' => $node->getStartLine()];
 
@@ -621,11 +618,11 @@ final readonly class InertiaRule implements AuditRule
             return;
         }
 
-        if ($node instanceof Expr\StaticCall && $this->isParentShare($node)) {
+        if (Node::is($node, 'expression.static-call') && $this->isParentShare($node)) {
             return;
         }
 
-        if ($node instanceof Expr\FuncCall && $this->isTransparentArrayComposition($node)) {
+        if (Node::is($node, 'expression.func-call') && $this->isTransparentArrayComposition($node)) {
             foreach ($node->args as $argument) {
                 $this->collectRequestIssues($argument->value, $requestVariables, $aliases, $direct, $issues, $resolvingAliases);
             }
@@ -633,7 +630,7 @@ final readonly class InertiaRule implements AuditRule
             return;
         }
 
-        if ($node instanceof Expr\Array_) {
+        if (Node::is($node, 'expression.array')) {
             foreach ($node->items as $item) {
                 if ($item !== null) {
                     $this->collectRequestIssues($item->value, $requestVariables, $aliases, $direct, $issues, $resolvingAliases);
@@ -643,7 +640,7 @@ final readonly class InertiaRule implements AuditRule
             return;
         }
 
-        if ($node instanceof Expr\ArrowFunction) {
+        if (Node::is($node, 'expression.arrow-function')) {
             $this->collectRequestIssues(
                 $node->expr,
                 $node->getAttribute('architectureKitInertiaRequestVariables', $requestVariables),
@@ -656,7 +653,7 @@ final readonly class InertiaRule implements AuditRule
             return;
         }
 
-        if ($node instanceof Expr\Closure) {
+        if (Node::is($node, 'expression.closure')) {
             $closureRequestVariables = $node->getAttribute('architectureKitInertiaRequestVariables', $requestVariables);
             $closureAliases = $node->getAttribute('architectureKitInertiaAliases', $aliases);
 
@@ -674,13 +671,13 @@ final readonly class InertiaRule implements AuditRule
             return;
         }
 
-        if ($node instanceof Stmt\Return_ && $node->expr !== null) {
+        if (Node::is($node, 'statement.return') && $node->expr !== null) {
             $this->collectRequestIssues($node->expr, $requestVariables, $aliases, $direct, $issues, $resolvingAliases);
 
             return;
         }
 
-        if ($node instanceof Expr\Assign) {
+        if (Node::is($node, 'expression.assign')) {
             $this->collectRequestIssues(
                 $node->expr,
                 $requestVariables,
@@ -693,16 +690,16 @@ final readonly class InertiaRule implements AuditRule
             return;
         }
 
-        $indirect = $node instanceof Expr\FuncCall
-            || $node instanceof Expr\StaticCall
-            || $node instanceof Expr\MethodCall
-            || $node instanceof Expr\NullsafeMethodCall
-            || $node instanceof Expr\New_;
+        $indirect = Node::is($node, 'expression.func-call')
+            || Node::is($node, 'expression.static-call')
+            || Node::is($node, 'expression.method-call')
+            || Node::is($node, 'expression.nullsafe-method-call')
+            || Node::is($node, 'expression.new');
 
         foreach ($node->getSubNodeNames() as $name) {
             $value = $node->{$name};
 
-            if ($value instanceof Node) {
+            if (Node::is($value, 'node')) {
                 $this->collectRequestIssues(
                     $value,
                     $requestVariables,
@@ -713,7 +710,7 @@ final readonly class InertiaRule implements AuditRule
                 );
             } elseif (is_array($value)) {
                 foreach ($value as $child) {
-                    if ($child instanceof Node) {
+                    if (Node::is($child, 'node')) {
                         $this->collectRequestIssues(
                             $child,
                             $requestVariables,
@@ -740,7 +737,7 @@ final readonly class InertiaRule implements AuditRule
         array $aliases = [],
         array $resolvingAliases = [],
     ): ?string {
-        if ($node instanceof Expr\Variable && is_string($node->name)) {
+        if (Node::is($node, 'expression.variable') && is_string($node->name)) {
             $aliases = $this->aliasesAt($node, $aliases);
             $requestVariables = $this->requestVariablesAt($node, $requestVariables);
 
@@ -762,7 +759,7 @@ final readonly class InertiaRule implements AuditRule
             return isset($requestVariables[$node->name]) ? 'unfiltered' : null;
         }
 
-        if ($node instanceof Expr\FuncCall && $this->isRequestHelper($node)) {
+        if (Node::is($node, 'expression.func-call') && $this->isRequestHelper($node)) {
             return $this->singleSelectionState(
                 $node->args,
                 name: 'key',
@@ -771,7 +768,7 @@ final readonly class InertiaRule implements AuditRule
             );
         }
 
-        if ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) {
+        if (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call')) {
             $receiver = $this->requestState($node->var, $requestVariables, $aliases, $resolvingAliases);
 
             if ($receiver === null) {
@@ -782,7 +779,7 @@ final readonly class InertiaRule implements AuditRule
                 return $receiver;
             }
 
-            $method = $node->name instanceof Node\Identifier ? $node->name->toString() : null;
+            $method = Node::is($node->name, 'identifier') ? $node->name->toString() : null;
 
             if ($method === null) {
                 return 'unknown';
@@ -829,7 +826,7 @@ final readonly class InertiaRule implements AuditRule
     }
 
     /**
-     * @param  array<int, Arg>  $arguments
+     * @param  array<int, Node>  $arguments
      * @return 'filtered'|'unfiltered'|'unknown'
      */
     private function selectionState(array $arguments, bool $arraysAllowed, bool $emptySelectionIsUnfiltered): string
@@ -847,7 +844,7 @@ final readonly class InertiaRule implements AuditRule
                 return 'unknown';
             }
 
-            if ($argument->value instanceof Expr\Array_ && $argument->value->items === []) {
+            if (Node::is($argument->value, 'expression.array') && $argument->value->items === []) {
                 return $emptySelectionIsUnfiltered ? 'unfiltered' : 'filtered';
             }
         }
@@ -856,7 +853,7 @@ final readonly class InertiaRule implements AuditRule
     }
 
     /**
-     * @param  array<int, Arg>  $arguments
+     * @param  array<int, Node>  $arguments
      * @return 'filtered'|'unfiltered'|'unknown'
      */
     private function singleSelectionState(
@@ -875,7 +872,7 @@ final readonly class InertiaRule implements AuditRule
             return 'unknown';
         }
 
-        if ($selector instanceof Expr\Array_ && $selector->items === []) {
+        if (Node::is($selector, 'expression.array') && $selector->items === []) {
             return $emptySelectionIsUnfiltered ? 'unfiltered' : 'filtered';
         }
 
@@ -884,13 +881,13 @@ final readonly class InertiaRule implements AuditRule
 
     private function requestDefault(Node $node): ?Node
     {
-        if ($node instanceof Expr\FuncCall && $this->isRequestHelper($node)) {
+        if (Node::is($node, 'expression.func-call') && $this->isRequestHelper($node)) {
             return $this->argumentValue($node->args, 'default', 1);
         }
 
         if (
-            ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall)
-            && $node->name instanceof Node\Identifier
+            (Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call'))
+            && Node::is($node->name, 'identifier')
             && $node->name->toString() === 'input'
         ) {
             return $this->argumentValue($node->args, 'default', 1);
@@ -899,7 +896,7 @@ final readonly class InertiaRule implements AuditRule
         return null;
     }
 
-    /** @param array<int, Arg> $arguments */
+    /** @param array<int, Node> $arguments */
     private function argumentValue(array $arguments, string $name, int $position): ?Node
     {
         foreach ($arguments as $argument) {
@@ -919,7 +916,7 @@ final readonly class InertiaRule implements AuditRule
      * @param  array<string, true>  $resolvingAliases
      */
     private function isResolvedPropsVariable(
-        Expr\Variable $variable,
+        Node $variable,
         array $requestVariables,
         array $aliases,
         array $resolvingAliases = [],
@@ -938,10 +935,10 @@ final readonly class InertiaRule implements AuditRule
         $resolvingAliases[$variable->name] = true;
         $expression = $aliases[$variable->name];
 
-        if ($expression instanceof Expr\Array_) {
+        if (Node::is($expression, 'expression.array')) {
             $previous = $expression->getAttribute('architectureKitInertiaPreviousPropsSource');
 
-            return ! $previous instanceof Node
+            return ! Node::is($previous, 'node')
                 || $this->isResolvedWholePropsExpression(
                     $previous,
                     $requestVariables,
@@ -950,7 +947,7 @@ final readonly class InertiaRule implements AuditRule
                 );
         }
 
-        if ($expression instanceof Expr\Variable) {
+        if (Node::is($expression, 'expression.variable')) {
             return $this->isResolvedPropsVariable(
                 $expression,
                 $requestVariables,
@@ -978,7 +975,7 @@ final readonly class InertiaRule implements AuditRule
         array $aliases,
         array $resolvingAliases,
     ): bool {
-        if ($expression instanceof Expr\Variable) {
+        if (Node::is($expression, 'expression.variable')) {
             return $this->isResolvedPropsVariable(
                 $expression,
                 $requestVariables,
@@ -987,10 +984,10 @@ final readonly class InertiaRule implements AuditRule
             );
         }
 
-        if ($expression instanceof Expr\Array_) {
+        if (Node::is($expression, 'expression.array')) {
             $previous = $expression->getAttribute('architectureKitInertiaPreviousPropsSource');
 
-            return ! $previous instanceof Node
+            return ! Node::is($previous, 'node')
                 || $this->isResolvedWholePropsExpression(
                     $previous,
                     $requestVariables,
@@ -1010,7 +1007,7 @@ final readonly class InertiaRule implements AuditRule
      * @param  array<string, Node>  $fallback
      * @return array<string, Node>
      */
-    private function aliasesAt(Expr\Variable $variable, array $fallback): array
+    private function aliasesAt(Node $variable, array $fallback): array
     {
         $value = $variable->getAttribute('architectureKitInertiaAliasesAtUse');
 
@@ -1021,7 +1018,7 @@ final readonly class InertiaRule implements AuditRule
         $aliases = [];
 
         foreach ($value as $name => $expression) {
-            if (is_string($name) && $expression instanceof Node) {
+            if (is_string($name) && Node::is($expression, 'node')) {
                 $aliases[$name] = $expression;
             }
         }
@@ -1033,7 +1030,7 @@ final readonly class InertiaRule implements AuditRule
      * @param  array<string, true>  $fallback
      * @return array<string, true>
      */
-    private function requestVariablesAt(Expr\Variable $variable, array $fallback): array
+    private function requestVariablesAt(Node $variable, array $fallback): array
     {
         $value = $variable->getAttribute('architectureKitInertiaRequestVariablesAtUse');
 
@@ -1054,11 +1051,11 @@ final readonly class InertiaRule implements AuditRule
 
     private function isLiteralSelection(Node $node, bool $arraysAllowed): bool
     {
-        if ($node instanceof Node\Scalar\String_ || $node instanceof Node\Scalar\Int_) {
+        if (Node::is($node, 'scalar.string') || Node::is($node, 'scalar.int')) {
             return true;
         }
 
-        if (! $arraysAllowed || ! $node instanceof Expr\Array_) {
+        if (! $arraysAllowed || ! Node::is($node, 'expression.array')) {
             return false;
         }
 
@@ -1066,7 +1063,7 @@ final readonly class InertiaRule implements AuditRule
             if (
                 $item === null
                 || $item->unpack
-                || ! $item->value instanceof Node\Scalar\String_ && ! $item->value instanceof Node\Scalar\Int_
+                || ! Node::is($item->value, 'scalar.string') && ! Node::is($item->value, 'scalar.int')
             ) {
                 return false;
             }
@@ -1077,27 +1074,27 @@ final readonly class InertiaRule implements AuditRule
 
     private function isNull(Node $node): bool
     {
-        return $node instanceof Expr\ConstFetch
+        return Node::is($node, 'expression.const-fetch')
             && strtolower($node->name->toString()) === 'null';
     }
 
-    private function isRequestHelper(Expr\FuncCall $call): bool
+    private function isRequestHelper(Node $call): bool
     {
-        return $call->name instanceof Name
+        return Node::is($call->name, 'name')
             && strtolower($call->name->toString()) === 'request';
     }
 
-    private function isParentShare(Expr\StaticCall $call): bool
+    private function isParentShare(Node $call): bool
     {
-        return $call->class instanceof Name
+        return Node::is($call->class, 'name')
             && strtolower($call->class->toString()) === 'parent'
-            && $call->name instanceof Node\Identifier
+            && Node::is($call->name, 'identifier')
             && $call->name->toString() === 'share';
     }
 
-    private function isTransparentArrayComposition(Expr\FuncCall $call): bool
+    private function isTransparentArrayComposition(Node $call): bool
     {
-        return $call->name instanceof Name
+        return Node::is($call->name, 'name')
             && in_array(strtolower($call->name->toString()), ['array_merge', 'array_replace'], true);
     }
 

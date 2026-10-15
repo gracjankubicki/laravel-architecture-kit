@@ -2,16 +2,22 @@
 
 declare(strict_types=1);
 use Composer\InstalledVersions;
+use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteEntry;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Foundation\AliasLoader;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 
 // Executed only by RouteMap::fresh(), never by the audited endpoint.
 $projectPath = $_SERVER['argv'][1] ?? throw new InvalidArgumentException('Missing project path.');
 require $projectPath.'/vendor/autoload.php';
-require_once __DIR__.'/RouteMap.php';
-require_once __DIR__.'/RouteEntry.php';
+if (! class_exists(RouteMap::class, false)) {
+    require_once __DIR__.'/RouteMap.php';
+}
+if (! class_exists(RouteEntry::class, false)) {
+    require_once __DIR__.'/RouteEntry.php';
+}
 $application = require $projectPath.'/bootstrap/app.php';
 $application->make(Kernel::class)->bootstrap();
 $router = $application->make('router');
@@ -65,5 +71,6 @@ $context = [
         'default' => is_string($authConfig['defaults']['guard'] ?? null) ? $authConfig['defaults']['guard'] : null,
         'guards' => $authGuards,
     ],
+    'aliases' => array_filter(AliasLoader::getInstance()->getAliases(), 'is_string'),
 ];
 echo 'ARCHITECTURE_KIT_ROUTES='.json_encode(RouteMap::fromRoutes($router->getRoutes(), $context)->snapshot(), JSON_THROW_ON_ERROR);

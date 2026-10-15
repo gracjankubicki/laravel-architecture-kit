@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit;
 
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
+use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfigPath;
+use Illuminate\Filesystem\Filesystem;
+
 final readonly class EnabledArchitecture
 {
     public function __construct(
@@ -41,9 +46,15 @@ final readonly class EnabledArchitecture
 
     public function defaultPlacement(): ?string
     {
-        return $this->value instanceof Architecture
-            ? $this->value->defaultPlacement()
-            : null;
+        $default = $this->value instanceof Architecture ? $this->value->defaultPlacement() : null;
+        $layout = ProjectLayout::read($this->projectPath);
+        if ($default === null || ! $layout->isPackage()) {
+            return $default;
+        }
+        $files = new Filesystem;
+        $settings = (new ArchitectureConfig(ArchitectureConfigPath::resolve($files, $this->projectPath), $files))->projectSettings();
+
+        return implode(', ', array_map(fn (string $folder): string => $layout->placement($this->slug(), $folder, 'App', $settings)['folder'], explode(', ', $default)));
     }
 
     public function guidelineSource(string $packagePath): string

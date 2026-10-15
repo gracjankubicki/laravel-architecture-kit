@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
-use PhpParser\Node;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Name;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class SecurityCheck implements FileCheck
 {
     public function findings(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
 
         if ($nodes === null) {
             return [];
@@ -38,10 +36,10 @@ final readonly class SecurityCheck implements FileCheck
             public function enterNode(Node $node): null
             {
                 if (
-                    $node instanceof FuncCall
-                    && $node->name instanceof Name
+                    Node::is($node, 'expression.func-call')
+                    && Node::is($node->name, 'name')
                     && in_array($node->name->toString(), ['serialize', 'unserialize'], true)
-                    && PhpAst::contains($node, fn (Node $child): bool => $child instanceof Name && str_ends_with($child->toString(), 'Authenticator'))
+                    && PhpAst::contains($node, fn (Node $child): bool => Node::is($child, 'name') && str_ends_with($child->toString(), 'Authenticator'))
                 ) {
                     $this->state->lines[] = $node->getStartLine();
                 }

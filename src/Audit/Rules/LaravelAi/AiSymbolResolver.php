@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\LaravelAi;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node;
-use PhpParser\Node\Stmt\Class_;
-use PhpParser\Node\Stmt\ClassLike;
-use PhpParser\Node\Stmt\Interface_;
-use PhpParser\Node\Stmt\Trait_;
 
 final class AiSymbolResolver
 {
@@ -31,10 +28,16 @@ final class AiSymbolResolver
 
     private int $analysedBytes = 0;
 
+    /** @var \WeakMap<FileContext, array<string, Node>> */
+    private \WeakMap $declarations;
+
     public function __construct(
         private readonly Filesystem $files = new Filesystem,
         private readonly ?string $basePath = null,
-    ) {}
+        private readonly ?AiRelationshipCache $relationships = null,
+    ) {
+        $this->declarations = new \WeakMap;
+    }
 
     public function isAgent(string $class, FileContext $current): bool
     {
@@ -43,7 +46,7 @@ final class AiSymbolResolver
 
     public function resolveAgent(string $class, FileContext $current): AiRelation
     {
-        return $this->resolvesTo(
+        return $this->sharedRelation(
             ltrim($class, '\\'),
             $current,
             'Laravel\\Ai\\Contracts\\Agent',
@@ -54,13 +57,32 @@ final class AiSymbolResolver
 
     public function isTool(string $class, FileContext $current): bool
     {
-        return $this->resolvesTo(
+        return $this->sharedRelation(
             ltrim($class, '\\'),
             $current,
             'Laravel\\Ai\\Contracts\\Tool',
             null,
             $this->toolCache,
         )->isAgent();
+    }
+
+    /** @param array<string, AiRelation> $cache */
+    private function sharedRelation(string $class, FileContext $current, string $contract, ?string $trait, array &$cache): AiRelation
+    {
+        // A declaration in the current file takes precedence over Composer mapping.
+        // Only root queries are reused; a nested lookup keeps its depth/cycle budget.
+        $location = $this->classLike($current, $class) === null ? '@mapped' : $current->path;
+        $key = implode("\0", [$class, $contract, $trait ?? '', $location]);
+        $known = $this->relationships?->get($key);
+        if ($known !== null) {
+            return $known === 'agent' ? AiRelation::agent() : AiRelation::other();
+        }
+        $result = $this->resolvesTo($class, $current, $contract, $trait, $cache);
+        if (! $result->isIncomplete()) {
+            $this->relationships?->put($key, $result->state);
+        }
+
+        return $result;
     }
 
     /**
@@ -169,7 +191,7 @@ final class AiSymbolResolver
             $this->analysedBytes += $size;
             $context = new FileContext($this->relativePath($path), $this->files->get($path));
 
-            if ($context->ast() === null) {
+            if ($context->syntax() === null) {
                 $failure ??= sprintf('The source for %s could not be parsed.', $class);
 
                 continue;
@@ -185,77 +207,42 @@ final class AiSymbolResolver
         return AiRelation::incomplete($failure);
     }
 
-    private function classLike(FileContext $context, string $class): ?ClassLike
+    private function classLike(FileContext $context, string $class): ?Node
     {
-        $nodes = $context->ast();
+        if (isset($this->declarations[$context])) {
+            return $this->declarations[$context][$class] ?? null;
+        }
+        $nodes = $context->syntax();
 
         if ($nodes === null) {
             return null;
         }
 
-        foreach ($nodes as $node) {
-            $match = $this->findClassLike($node, $class);
-
-            if ($match !== null) {
-                return $match;
+        $declarations = [];
+        foreach ((new NodeFinder)->findOfKind($nodes, 'statement.class-like') as $node) {
+            if ($node->name instanceof Node) {
+                $name = $node->namespacedName ?? null;
+                $resolved = Node::is($name, 'name') ? $name->toString() : $node->name->toString();
+                $declarations[$resolved] ??= $node;
             }
         }
+        $this->declarations[$context] = $declarations;
 
-        return null;
-    }
-
-    private function findClassLike(Node $node, string $class): ?ClassLike
-    {
-        if ($node instanceof ClassLike && $node->name !== null) {
-            $name = $node->namespacedName ?? null;
-            $resolved = $name instanceof Node\Name ? $name->toString() : $node->name->toString();
-
-            if ($resolved === $class) {
-                return $node;
-            }
-        }
-
-        foreach ($node->getSubNodeNames() as $subNodeName) {
-            $value = $node->{$subNodeName};
-
-            if ($value instanceof Node) {
-                $match = $this->findClassLike($value, $class);
-
-                if ($match !== null) {
-                    return $match;
-                }
-            }
-
-            if (is_array($value)) {
-                foreach ($value as $child) {
-                    if (! $child instanceof Node) {
-                        continue;
-                    }
-
-                    $match = $this->findClassLike($child, $class);
-
-                    if ($match !== null) {
-                        return $match;
-                    }
-                }
-            }
-        }
-
-        return null;
+        return $declarations[$class] ?? null;
     }
 
     /** @return array<int, string> */
-    private function relatedTypes(FileContext $context, ClassLike $class): array
+    private function relatedTypes(FileContext $context, Node $class): array
     {
         $types = [];
 
-        if ($class instanceof Class_ && $class->extends instanceof Node\Name) {
+        if (Node::is($class, 'statement.class') && Node::is($class->extends, 'name')) {
             $types[] = $context->resolvedName($class->extends);
         }
 
-        $implements = $class instanceof Class_ ? $class->implements : [];
+        $implements = Node::is($class, 'statement.class') ? $class->implements : [];
 
-        if ($class instanceof Interface_) {
+        if (Node::is($class, 'statement.interface')) {
             $implements = $class->extends;
         }
 
@@ -264,7 +251,7 @@ final class AiSymbolResolver
         }
 
         foreach ($class->stmts as $statement) {
-            if (! $statement instanceof Node\Stmt\TraitUse) {
+            if (! Node::is($statement, 'statement.trait-use')) {
                 continue;
             }
 
@@ -273,7 +260,7 @@ final class AiSymbolResolver
             }
         }
 
-        if ($class instanceof Trait_) {
+        if (Node::is($class, 'statement.trait')) {
             return array_values(array_unique($types));
         }
 

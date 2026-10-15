@@ -1,0 +1,32 @@
+<?php
+
+namespace Experiment;
+
+#[Example(Sample::class)]
+final class Sample
+{
+    public function run($object, $method, $function): void
+    {
+        helper();
+        \Other\helper();
+        $function();
+        $object->save();
+        $object?->save();
+        $object->$method();
+        $object->{'save'}();
+        Sample::run();
+        $object->save(...);
+        helper(...);
+        Sample::run(...);
+        new Sample;
+        new self;
+        new static;
+        new parent;
+        new $object();
+        (helper())();
+        $anonymous = new class(argumentHelper()) { public function nested() { helper(); } };
+    }
+}
+interface Contract { public function run(); }
+trait Shared { public function run() { helper(); } }
+enum State { case Ready; public function run() { helper(); } }

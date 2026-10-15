@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Revision;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Analysis\SnapshotAnalysis;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
@@ -45,6 +47,13 @@ final readonly class RevisionFacts
     /** @param array<string, array{fingerprint: string, entry: FileGraphEntry, shapes: array<string, string>}> $reuse */
     public static function collect(SourceSnapshot $source, RevisionConfiguration $configuration, array $reuse = [], ?AuditScope $scopeOverride = null, bool $includeExcluded = false): self
     {
+        return SnapshotAnalysis::read($source,
+            static fn (): self => self::extract($source, $configuration, $reuse, $scopeOverride, $includeExcluded));
+    }
+
+    /** @param array<string, array{fingerprint: string, entry: FileGraphEntry, shapes: array<string, string>}> $reuse */
+    private static function extract(SourceSnapshot $source, RevisionConfiguration $configuration, array $reuse, ?AuditScope $scopeOverride, bool $includeExcluded): self
+    {
         $started = hrtime(true);
         $scope = $scopeOverride ?? $configuration->scope();
         $roles = new RoleClassifier($configuration->mappings() ?? new ClassificationMappings);
@@ -63,7 +72,7 @@ final readonly class RevisionFacts
                 $notices[] = ['path' => $path, 'line' => 1, 'reason' => $reason];
                 break;
             }
-            $fingerprint = hash('sha256', serialize([$path, $contents, $configuration->fingerprint, $scopeOverride?->directories, $includeExcluded]));
+            $fingerprint = hash('sha256', serialize([$path, $contents, $configuration->fingerprint, AnalysisRuntime::session()->fingerprint(), $scopeOverride?->directories, $includeExcluded]));
             if (($reuse[$path]['fingerprint'] ?? null) === $fingerprint) {
                 $entry = $reuse[$path]['entry'];
                 $shapes = $reuse[$path]['shapes'];

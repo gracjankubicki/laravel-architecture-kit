@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Scalar;
-use PhpParser\Node\Stmt;
 
 /** Attribute selectors only; validation rules, messages and browser payloads are omitted. */
 final class LivewireCatalogExtractor
@@ -30,19 +27,19 @@ final class LivewireCatalogExtractor
             return new CatalogFacts($file->path);
         }
         $fileOwner = CatalogElement::identity($file->path, 'file', $file->path);
-        $pending = array_map(fn ($node) => [$node, $fileOwner, false, null], $file->ast() ?? []);
+        $pending = array_map(fn ($node) => [$node, $fileOwner, false, null], $file->syntax() ?? []);
         $visited = 0;
         while ($pending !== []) {
             [$node, $owner, $bound, $parent] = array_pop($pending);
-            if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+            if (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) {
                 $owner = $owners[$node->getStartFilePos()] ?? $owner;
-                $bound = $node instanceof Stmt\ClassMethod ? ! $node->isStatic() : (($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) && ! $node->static && $bound);
+                $bound = Node::is($node, 'statement.class-method') ? ! $node->isStatic() : ((Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function')) && ! $node->static && $bound);
             }
-            if ($node instanceof Stmt\ClassMethod && strtolower($node->name->toString()) === 'getlisteners') {
-                $expression = count($node->stmts ?? []) === 1 && $node->stmts[0] instanceof Stmt\Return_ ? $node->stmts[0]->expr : null;
+            if (Node::is($node, 'statement.class-method') && strtolower($node->name->toString()) === 'getlisteners') {
+                $expression = count($node->stmts ?? []) === 1 && Node::is($node->stmts[0], 'statement.return') ? $node->stmts[0]->expr : null;
                 [$listeners, $resolved] = $this->listenerMap($expression);
-                $delegated = $expression instanceof Expr\PropertyFetch && $expression->var instanceof Expr\Variable && $expression->var->name === 'this'
-                    && $expression->name instanceof Node\Identifier && $expression->name->toString() === 'listeners';
+                $delegated = Node::is($expression, 'expression.property-fetch') && Node::is($expression->var, 'expression.variable') && $expression->var->name === 'this'
+                    && Node::is($expression->name, 'identifier') && $expression->name->toString() === 'listeners';
                 $mode = $delegated ? 'property' : ($resolved ? 'literal' : 'dynamic');
                 $resolved = $resolved || $delegated;
                 $resolved = $resolved && count(array_filter($node->params, fn ($parameter) => $parameter->default === null && ! $parameter->variadic)) === 0;
@@ -50,14 +47,14 @@ final class LivewireCatalogExtractor
                 $elements[] = new CatalogElement(CatalogElement::identity($file->path, 'livewire-listeners', 'getListeners', $offset), 'Livewire getListeners',
                     'livewire-listeners', max(1, $node->getStartLine()), max(1, $node->getEndLine()), $offset, $owner,
                     metadata: ['form' => 'method', 'mode' => $mode, 'listeners' => $listeners, 'resolved' => $resolved]);
-                if ($expression instanceof Expr\Array_ && count($expression->items) > 128) {
+                if (Node::is($expression, 'expression.array') && count($expression->items) > 128) {
                     $diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Livewire listener map exceeds its 128-entry source budget.', max(1, $node->getStartLine()), $owner);
                 }
                 if (! $resolved) {
                     $diagnostics[] = new CatalogDiagnostic('livewire_listener_analysis', 'Livewire listener map is dynamic or uses an unsupported source shape.', max(1, $node->getStartLine()), $owner);
                 }
             }
-            if ($node instanceof Stmt\Property) {
+            if (Node::is($node, 'statement.property')) {
                 foreach ($node->attrGroups as $group) {
                     foreach ($group->attrs as $attribute) {
                         foreach ($node->props as $property) {
@@ -78,15 +75,15 @@ final class LivewireCatalogExtractor
                     $elements[] = new CatalogElement(CatalogElement::identity($file->path, 'livewire-listeners', 'listeners', $offset), 'Livewire listeners property',
                         'livewire-listeners', max(1, $property->getStartLine()), max(1, $property->getEndLine()), $offset, $propertyOwner,
                         metadata: ['form' => 'property', 'mode' => $resolved ? 'literal' : 'dynamic', 'listeners' => $listeners, 'resolved' => $resolved]);
-                    if ($property->default instanceof Expr\Array_ && count($property->default->items) > 128) {
+                    if (Node::is($property->default, 'expression.array') && count($property->default->items) > 128) {
                         $diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Livewire listener map exceeds its 128-entry source budget.', max(1, $property->getStartLine()), $propertyOwner);
                     } elseif (! $resolved) {
                         $diagnostics[] = new CatalogDiagnostic('livewire_listener_analysis', 'Livewire listeners property is dynamic or has an unsupported source shape.', max(1, $property->getStartLine()), $propertyOwner);
                     }
                 }
             }
-            if ($node instanceof Expr\StaticCall && $node->class instanceof Node\Name && $file->resolvedName($node->class) === 'Livewire\\Livewire'
-                && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'component' && ! $node->isFirstClassCallable()) {
+            if (Node::is($node, 'expression.static-call') && Node::is($node->class, 'name') && $file->resolvedName($node->class) === 'Livewire\\Livewire'
+                && Node::is($node->name, 'identifier') && strtolower($node->name->toString()) === 'component' && ! $node->isFirstClassCallable()) {
                 $arguments = [];
                 $shape = count($node->args) === 2;
                 foreach ($node->getArgs() as $position => $arg) {
@@ -95,16 +92,16 @@ final class LivewireCatalogExtractor
                     $arguments[$name] = $arg->value;
                 }
                 $name = $arguments['name'] ?? null;
-                $name = $name instanceof Scalar\String_ && self::eventName($name->value) ? $name->value : null;
+                $name = Node::is($name, 'scalar.string') && self::eventName($name->value) ? $name->value : null;
                 $class = $arguments['class'] ?? null;
-                $class = $class instanceof Expr\ClassConstFetch && $class->class instanceof Node\Name && $class->name instanceof Node\Identifier
+                $class = Node::is($class, 'expression.class-const-fetch') && Node::is($class->class, 'name') && Node::is($class->name, 'identifier')
                     && strtolower($class->name->toString()) === 'class' ? $file->resolvedName($class->class) : null;
                 $offset = max(0, $node->getStartFilePos());
                 $elements[] = new CatalogElement(CatalogElement::identity($file->path, 'livewire-registration', 'component', $offset), 'Livewire component '.($name ?? 'dynamic'),
                     'livewire-registration', max(1, $node->getStartLine()), max(1, $node->getEndLine()), $offset, $owner,
                     metadata: ['name' => $name, 'class' => $class, 'resolved' => $shape && $name !== null && $class !== null]);
             }
-            if ($node instanceof Expr\MethodCall && ! ($parent instanceof Expr\MethodCall && $parent->var === $node)) {
+            if (Node::is($node, 'expression.method-call') && ! (Node::is($parent, 'expression.method-call') && $parent->var === $node)) {
                 $fact = $this->dispatchFact($file, $node, $owner, $bound);
                 if ($fact !== null) {
                     $elements[] = $fact;
@@ -114,15 +111,15 @@ final class LivewireCatalogExtractor
                 $diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Livewire attribute extraction reached its source budget.', 1);
                 break;
             }
-            if ($node instanceof Node\Attribute && isset($attributes[$node->getStartFilePos()])) {
+            if (Node::is($node, 'attribute') && isset($attributes[$node->getStartFilePos()])) {
                 $source = $attributes[$node->getStartFilePos()];
                 $hook = strtolower(substr($source->name, strrpos($source->name, '\\') + 1));
                 $events = [];
                 $resolved = true;
                 if ($hook === 'on') {
                     $argument = count($node->args) === 1 && ! $node->args[0]->unpack && ($node->args[0]->name === null || $node->args[0]->name->toString() === 'event') ? $node->args[0]->value : null;
-                    $values = $argument instanceof Scalar\String_ ? [$argument] : [];
-                    if ($argument instanceof Expr\Array_ && count($argument->items) <= 128) {
+                    $values = Node::is($argument, 'scalar.string') ? [$argument] : [];
+                    if (Node::is($argument, 'expression.array') && count($argument->items) <= 128) {
                         foreach ($argument->items as $item) {
                             if ($item === null || $item->unpack || $item->byRef) {
                                 $resolved = false;
@@ -131,11 +128,11 @@ final class LivewireCatalogExtractor
                             }
                             $values[] = $item->value;
                         }
-                    } elseif (! $argument instanceof Scalar\String_) {
+                    } elseif (! Node::is($argument, 'scalar.string')) {
                         $resolved = false;
                     }
                     foreach ($values as $value) {
-                        if ($value instanceof Scalar\String_ && self::eventName($value->value)) {
+                        if (Node::is($value, 'scalar.string') && self::eventName($value->value)) {
                             $events[] = $value->value;
                         } else {
                             $resolved = false;
@@ -154,7 +151,7 @@ final class LivewireCatalogExtractor
             }
             foreach ($node->getSubNodeNames() as $key) {
                 foreach (is_array($node->$key) ? $node->$key : [$node->$key] as $child) {
-                    if ($child instanceof Node) {
+                    if (Node::is($child, 'node')) {
                         $pending[] = [$child, $owner, $bound, $node];
                     }
                 }
@@ -167,15 +164,15 @@ final class LivewireCatalogExtractor
     /** @return array{list<array{event: string, method: string}>, bool} */
     private function listenerMap(?Node $expression): array
     {
-        if (! $expression instanceof Expr\Array_ || count($expression->items) > 128) {
+        if (! Node::is($expression, 'expression.array') || count($expression->items) > 128) {
             return [[], false];
         }
         $values = [];
         $resolved = true;
         foreach ($expression->items as $item) {
-            if ($item === null || $item->unpack || $item->byRef || ! $item->value instanceof Scalar\String_
+            if ($item === null || $item->unpack || $item->byRef || ! Node::is($item->value, 'scalar.string')
                 || ! self::listenerMethod($item->value->value)
-                || $item->key !== null && ! $item->key instanceof Scalar\String_ && ! $item->key instanceof Scalar\Int_) {
+                || $item->key !== null && ! Node::is($item->key, 'scalar.string') && ! Node::is($item->key, 'scalar.int')) {
                 $resolved = false;
 
                 continue;
@@ -205,16 +202,16 @@ final class LivewireCatalogExtractor
         return $method === '$refresh' || preg_match('/\A[a-zA-Z_][a-zA-Z0-9_]{0,255}\z/D', $method) === 1;
     }
 
-    private function dispatchFact(FileContext $file, Expr\MethodCall $site, string $owner, bool $bound): ?CatalogElement
+    private function dispatchFact(FileContext $file, Node $site, string $owner, bool $bound): ?CatalogElement
     {
         $root = $site;
         $chain = [];
-        while ($root->var instanceof Expr\MethodCall && count($chain) < 16) {
+        while (Node::is($root->var, 'expression.method-call') && count($chain) < 16) {
             $chain[] = $root;
             $root = $root->var;
         }
-        if (! $root->name instanceof Node\Identifier || strtolower($root->name->toString()) !== 'dispatch'
-            || ! $root->var instanceof Expr\Variable || $root->var->name !== 'this' || $root->isFirstClassCallable()) {
+        if (! Node::is($root->name, 'identifier') || strtolower($root->name->toString()) !== 'dispatch'
+            || ! Node::is($root->var, 'expression.variable') || $root->var->name !== 'this' || $root->isFirstClassCallable()) {
             return null;
         }
         $argument = null;
@@ -235,12 +232,12 @@ final class LivewireCatalogExtractor
         }
         foreach (['ref', 'component', 'el', 'self', 'to'] as $key) {
             $value = $controls[$key] ?? null;
-            if ($value === null || $value instanceof Expr\ConstFetch && strtolower($value->name->toString()) === 'null') {
+            if ($value === null || Node::is($value, 'expression.const-fetch') && strtolower($value->name->toString()) === 'null') {
                 continue;
             }
             if ($key === 'self') {
                 $self = true;
-                $shape = $shape && ($value instanceof Scalar || $value instanceof Expr\ConstFetch && in_array(strtolower($value->name->toString()), ['true', 'false'], true));
+                $shape = $shape && (Node::is($value, 'scalar') || Node::is($value, 'expression.const-fetch') && in_array(strtolower($value->name->toString()), ['true', 'false'], true));
             } elseif (in_array($key, ['component', 'to'], true)) {
                 $target = $this->target($file, $value);
                 $mode = 'component';
@@ -251,7 +248,7 @@ final class LivewireCatalogExtractor
             }
         }
         foreach (array_reverse($chain) as $call) {
-            if (! $call->name instanceof Node\Identifier || $call->isFirstClassCallable()) {
+            if (! Node::is($call->name, 'identifier') || $call->isFirstClassCallable()) {
                 $shape = false;
 
                 continue;
@@ -279,7 +276,7 @@ final class LivewireCatalogExtractor
             $mode = 'self';
             $target = null;
         }
-        $event = $argument instanceof Scalar\String_ && self::eventName($argument->value) ? $argument->value : null;
+        $event = Node::is($argument, 'scalar.string') && self::eventName($argument->value) ? $argument->value : null;
         $offset = max(0, $site->getStartFilePos());
 
         return new CatalogElement(CatalogElement::identity($file->path, 'livewire-dispatch', 'dispatch', $offset), 'Livewire dispatch '.($event ?? 'dynamic'),
@@ -287,12 +284,12 @@ final class LivewireCatalogExtractor
             metadata: ['event' => $event, 'target_mode' => $mode, 'target' => $target, 'resolved' => $shape && $event !== null]);
     }
 
-    private function target(FileContext $file, Expr $value): ?string
+    private function target(FileContext $file, Node $value): ?string
     {
-        if ($value instanceof Scalar\String_ && self::eventName($value->value)) {
+        if (Node::is($value, 'scalar.string') && self::eventName($value->value)) {
             return $value->value;
         }
-        if ($value instanceof Expr\ClassConstFetch && $value->class instanceof Node\Name && $value->name instanceof Node\Identifier && strtolower($value->name->toString()) === 'class') {
+        if (Node::is($value, 'expression.class-const-fetch') && Node::is($value->class, 'name') && Node::is($value->name, 'identifier') && strtolower($value->name->toString()) === 'class') {
             return $file->resolvedName($value->class);
         }
 

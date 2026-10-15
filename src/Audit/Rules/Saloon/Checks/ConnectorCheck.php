@@ -4,17 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\Checks;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Visitor as NodeVisitorAbstract;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\ClassInspector;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Audit\FileCheck;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\Rules\Saloon\IntegrationPaths;
-use PhpParser\Node;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Scalar\String_;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeVisitorAbstract;
 
 final readonly class ConnectorCheck implements FileCheck
 {
@@ -22,7 +19,7 @@ final readonly class ConnectorCheck implements FileCheck
 
     public function findings(FileContext $file): array
     {
-        $nodes = $file->ast();
+        $nodes = $file->syntax();
         $class = $nodes === null ? null : ClassInspector::firstClass($nodes);
 
         if (! $this->paths->isIntegrationPath($file->path) || $class === null || ! ClassInspector::classExtendsAny($class, ['Connector'])) {
@@ -58,11 +55,11 @@ final readonly class ConnectorCheck implements FileCheck
         return $findings;
     }
 
-    private function methodHardcodedUrlLine(Stmt\Class_ $class, string $method): ?int
+    private function methodHardcodedUrlLine(Node $class, string $method): ?int
     {
         $classMethod = ClassInspector::classMethod($class, $method);
 
-        if (! $classMethod instanceof Stmt\ClassMethod) {
+        if (! Node::is($classMethod, 'statement.class-method')) {
             return null;
         }
 
@@ -77,7 +74,7 @@ final readonly class ConnectorCheck implements FileCheck
 
             public function enterNode(Node $node): null
             {
-                if ($this->state->line === null && $node instanceof String_ && str_starts_with($node->value, 'http')) {
+                if ($this->state->line === null && Node::is($node, 'scalar.string') && str_starts_with($node->value, 'http')) {
                     $this->state->line = $node->getStartLine();
                 }
 
@@ -108,7 +105,7 @@ final readonly class ConnectorCheck implements FileCheck
 
             public function enterNode(Node $node): null
             {
-                if ($node instanceof FuncCall && $node->name instanceof Node\Name && $node->name->toString() === 'env') {
+                if (Node::is($node, 'expression.func-call') && Node::is($node->name, 'name') && $node->name->toString() === 'env') {
                     $this->state->lines[] = $node->getStartLine();
                 }
 

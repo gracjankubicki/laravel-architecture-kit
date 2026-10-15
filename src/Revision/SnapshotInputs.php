@@ -38,7 +38,7 @@ final readonly class SnapshotInputs
                 continue;
             }
             foreach ($directories as $directory) {
-                if (self::safe($directory) && str_starts_with($path, rtrim($directory, '/').'/')) {
+                if (self::safe($directory) && ($path === $directory || str_starts_with($path, rtrim($directory, '/').'/'))) {
                     $paths[] = $path;
                     break;
                 }

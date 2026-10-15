@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\DataOperations;
 use GracjanKubicki\ArchitectureKit\Impact\DataSql;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
 
 /** Local terminal operations. Model table selectors are resolved in the current snapshot. */
 final class DataOperationCatalogExtractor
@@ -24,7 +22,7 @@ final class DataOperationCatalogExtractor
     /** @var array<int, CatalogElement> */
     private array $owners = [];
 
-    /** @var array<int, Expr> */
+    /** @var array<int, Node> */
     private array $boundCalls = [];
 
     private int $visited = 0;
@@ -45,7 +43,7 @@ final class DataOperationCatalogExtractor
             }
         }
         $owner = CatalogElement::identity($file->path, 'file', $file->path);
-        foreach ($file->ast() ?? [] as $node) {
+        foreach ($file->syntax() ?? [] as $node) {
             $this->visit($file, $node, $owner, '');
         }
 
@@ -63,45 +61,45 @@ final class DataOperationCatalogExtractor
 
             return;
         }
-        if (isset($this->owners[$node->getStartFilePos()]) && ($node instanceof Stmt\ClassLike || $node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_ || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction)) {
+        if (isset($this->owners[$node->getStartFilePos()]) && (Node::is($node, 'statement.class-like') || Node::is($node, 'statement.class-method') || Node::is($node, 'statement.function') || Node::is($node, 'expression.closure') || Node::is($node, 'expression.arrow-function'))) {
             $declaration = $this->owners[$node->getStartFilePos()];
             $owner = $declaration->id;
-            if ($node instanceof Stmt\ClassLike) {
+            if (Node::is($node, 'statement.class-like')) {
                 $class = $declaration->name;
             }
         }
-        if (($node instanceof Expr\StaticCall || $node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall)
-            && $node->name instanceof Node\Identifier && ! $node->isFirstClassCallable()) {
+        if ((Node::is($node, 'expression.static-call') || Node::is($node, 'expression.method-call') || Node::is($node, 'expression.nullsafe-method-call'))
+            && Node::is($node->name, 'identifier') && ! $node->isFirstClassCallable()) {
             $site = $this->boundCalls[spl_object_id($node)] ?? $node;
-            if ($site instanceof Expr\StaticCall || $site instanceof Expr\MethodCall || $site instanceof Expr\NullsafeMethodCall) {
+            if (Node::is($site, 'expression.static-call') || Node::is($site, 'expression.method-call') || Node::is($site, 'expression.nullsafe-method-call')) {
                 $this->operation($file, $site, $owner, $class);
             }
         }
         foreach ($node->getSubNodeNames() as $key) {
             $value = $node->$key;
             foreach (is_array($value) ? $value : [$value] as $child) {
-                if ($child instanceof Node) {
+                if (Node::is($child, 'node')) {
                     $this->visit($file, $child, $owner, $class);
                 }
             }
         }
     }
 
-    private function operation(FileContext $file, Expr\StaticCall|Expr\MethodCall|Expr\NullsafeMethodCall $site, string $owner, string $class): void
+    private function operation(FileContext $file, Node $site, string $owner, string $class): void
     {
-        if (! $site->name instanceof Node\Identifier) {
+        if (! Node::is($site->name, 'identifier')) {
             return;
         }
         $chain = [];
         $root = $site;
-        while ($root instanceof Expr\MethodCall || $root instanceof Expr\NullsafeMethodCall) {
-            if (count($chain) >= 64 || ! $root->name instanceof Node\Identifier || $root->isFirstClassCallable()) {
+        while (Node::is($root, 'expression.method-call') || Node::is($root, 'expression.nullsafe-method-call')) {
+            if (count($chain) >= 64 || ! Node::is($root->name, 'identifier') || $root->isFirstClassCallable()) {
                 return;
             }
             array_unshift($chain, $root);
             $root = $root->var;
         }
-        if (! $root instanceof Expr\StaticCall || ! $root->class instanceof Node\Name || ! $root->name instanceof Node\Identifier || $root->isFirstClassCallable()) {
+        if (! Node::is($root, 'expression.static-call') || ! Node::is($root->class, 'name') || ! Node::is($root->name, 'identifier') || $root->isFirstClassCallable()) {
             return;
         }
         array_unshift($chain, $root);
@@ -130,22 +128,22 @@ final class DataOperationCatalogExtractor
         $excludedScopes = ['all' => false, 'keys' => [], 'resolved' => true];
         foreach ($chain as $call) {
             $name = strtolower($call->name->toString());
-            if ($call instanceof Expr\NullsafeMethodCall) {
+            if (Node::is($call, 'expression.nullsafe-method-call')) {
                 $conditions[] = 'Receiver must be non-null.';
             }
             if (in_array($name, ['withoutglobalscope', 'withoutglobalscopes'], true)) {
                 $argument = $this->argument($call, 0, $name === 'withoutglobalscope' ? 'scope' : 'scopes');
-                if ($name === 'withoutglobalscopes' && ($call->getArgs() === [] || $argument instanceof Expr\ConstFetch && strtolower($argument->name->toString()) === 'null')) {
+                if ($name === 'withoutglobalscopes' && ($call->getArgs() === [] || Node::is($argument, 'expression.const-fetch') && strtolower($argument->name->toString()) === 'null')) {
                     $excludedScopes['all'] = true;
                 } else {
-                    $values = $name === 'withoutglobalscopes' && $argument instanceof Expr\Array_ ? $argument->items : [$argument];
+                    $values = $name === 'withoutglobalscopes' && Node::is($argument, 'expression.array') ? $argument->items : [$argument];
                     if (count($values) > 128) {
                         $values = [null];
                     }
                     foreach ($values as $value) {
-                        $node = $value instanceof Node\ArrayItem ? ($value->unpack ? null : $value->value) : $value;
-                        $key = $node instanceof Expr\ClassConstFetch && $node->class instanceof Node\Name && $node->name instanceof Node\Identifier && strtolower($node->name->toString()) === 'class'
-                            ? $file->resolvedName($node->class) : ($node instanceof Node\Scalar\String_ ? $node->value : null);
+                        $node = Node::is($value, 'array-item') ? ($value->unpack ? null : $value->value) : $value;
+                        $key = Node::is($node, 'expression.class-const-fetch') && Node::is($node->class, 'name') && Node::is($node->name, 'identifier') && strtolower($node->name->toString()) === 'class'
+                            ? $file->resolvedName($node->class) : (Node::is($node, 'scalar.string') ? $node->value : null);
                         if ($key === null || preg_match('/\A[a-zA-Z_][a-zA-Z0-9_.\\\\-]{0,499}\z/D', $key) !== 1) {
                             $excludedScopes['resolved'] = false;
                         } else {
@@ -204,7 +202,7 @@ final class DataOperationCatalogExtractor
                 'excluded_global_scopes' => $excludedScopes, 'unsupported' => array_values(array_unique($unsupported)), 'conditions' => array_values(array_unique($conditions)), 'execution_proven' => false]);
     }
 
-    private function argument(Expr\CallLike $call, int $position, string $name): ?Node
+    private function argument(Node $call, int $position, string $name): ?Node
     {
         foreach ($call->getArgs() as $index => $argument) {
             if (! $argument->unpack && ($argument->name?->toString() === $name || $argument->name === null && $index === $position)) {
@@ -220,10 +218,10 @@ final class DataOperationCatalogExtractor
         if ($depth > 16) {
             return null;
         }
-        if ($node instanceof Node\Scalar\String_) {
+        if (Node::is($node, 'scalar.string')) {
             return strlen($node->value) <= 100000 ? $node->value : null;
         }
-        if ($node instanceof Expr\BinaryOp\Concat) {
+        if (Node::is($node, 'expression.binary-op.concat')) {
             $left = $this->string($node->left, $depth + 1);
             $right = $this->string($node->right, $depth + 1);
 

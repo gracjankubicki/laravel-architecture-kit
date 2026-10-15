@@ -200,7 +200,7 @@ SOURCE;
                     $this->assertTrue($handler['metadata']['runtime_group_call_reached_required']);
                 }
             }
-            foreach (['[Decoy::class]', '[Reader::class,Reader::class]', '[$dynamic]', '[...$dynamic]', "['same'=>Reader::class]", '[[Reader::class]]'] as $group) {
+            foreach (['[Decoy::class]', '[Reader::class,Reader::class]', '[DYNAMIC_TOOL]', '[...DYNAMIC_TOOLS]', "['same'=>Reader::class]", '[[Reader::class]]'] as $group) {
                 $invalid = str_replace('SearchGroup::class => [Reader::class]', 'SearchGroup::class => '.$group, $source);
                 $index = new CatalogIndex([...$this->facts($invalid), $this->package($version)]);
                 $this->assertSame([], $this->edges($index, 'mcp-member-handler'), $group);
@@ -251,7 +251,7 @@ class Child extends Base {}
 #[ToolName('own-tool')]
 class Own extends Base {}
 class Override extends Base { public function name(): string { return unknown(); } }
-#[ToolName($dynamic)]
+#[ToolName(DYNAMIC_NAME)]
 class Dynamic extends Base {}
 #[ToolName('trait-name')]
 trait Labels {}

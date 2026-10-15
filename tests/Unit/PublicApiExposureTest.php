@@ -118,7 +118,7 @@ PHP);
 
     private function api(string $source): EffectiveApi
     {
-        $files = ['composer.json' => '{"autoload":{"files":["api.php"]}}', 'api.php' => $source];
+        $files = ['composer.json' => '{"require":{"php":"^8.5"},"autoload":{"files":["api.php"]}}', 'api.php' => $source];
         $snapshot = new SourceSnapshot('git', 'abc', 'hash', $files, [], array_keys($files));
 
         return new EffectiveApi(new PhpContracts($snapshot, new AutoloadSurface($snapshot)));

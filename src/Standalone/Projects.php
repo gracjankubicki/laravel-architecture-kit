@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
 use GracjanKubicki\ArchitectureKit\Architecture;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use RuntimeException;
 
 final readonly class Projects
@@ -40,6 +41,9 @@ final readonly class Projects
     public function register(string $root, array $enabled, ?string $profile = null, bool $shared = false): array
     {
         $root = self::discover($root);
+        if ($enabled === []) {
+            $enabled = array_map(static fn (Architecture $architecture): string => $architecture->value, ProjectLayout::read($root)->defaultSelection());
+        }
         $id = hash('sha256', $root);
         if ($profile !== null && ! preg_match('/^[a-zA-Z0-9_-]+$/D', $profile)) {
             throw new RuntimeException('Invalid profile name.');

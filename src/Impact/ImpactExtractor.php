@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogAiAttachments;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogAiGateways;
@@ -11,10 +13,6 @@ use GracjanKubicki\ArchitectureKit\Catalog\CatalogAiOperations;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogSaloonOperations;
 use GracjanKubicki\ArchitectureKit\Catalog\ReceiverDescriptors;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Per-file extraction with no application execution or retained AST. */
 final class ImpactExtractor
@@ -70,11 +68,11 @@ final class ImpactExtractor
         if (($reason = self::sourceLimit(strlen($file->contents))) !== null) {
             return new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => $reason]]);
         }
-        $ast = $file->ast();
+        $ast = $file->syntax();
         if ($ast === null) {
             return new ImpactFacts($file->path, [], [], [['line' => 1, 'reason' => 'Unparseable source.']]);
         }
-        foreach ((new NodeFinder)->findInstanceOf($ast, Stmt\ClassLike::class) as $class) {
+        foreach ((new NodeFinder)->findOfKind($ast, 'statement.class-like') as $class) {
             if (! isset($class->namespacedName) && ! $this->catalogMode) {
                 $this->notices[] = ['line' => $class->getStartLine(), 'reason' => 'Anonymous class dispatch is unresolved.'];
 
@@ -82,10 +80,10 @@ final class ImpactExtractor
             }
             $name = isset($class->namespacedName) ? $class->namespacedName->toString() : '(anonymous) '.$file->path.':'.$class->getStartFilePos();
             $parents = [];
-            if ($class instanceof Stmt\Class_ && $class->extends !== null) {
+            if (Node::is($class, 'statement.class') && $class->extends !== null) {
                 $parents[] = $file->resolvedName($class->extends);
             }
-            foreach ($class instanceof Stmt\Interface_ ? $class->extends : ($class instanceof Stmt\Class_ || $class instanceof Stmt\Enum_ ? $class->implements : []) as $parent) {
+            foreach (Node::is($class, 'statement.interface') ? $class->extends : (Node::is($class, 'statement.class') || Node::is($class, 'statement.enum') ? $class->implements : []) as $parent) {
                 $parents[] = $file->resolvedName($parent);
             }
             $traits = [];
@@ -114,7 +112,7 @@ final class ImpactExtractor
             $methods = [];
             foreach ($class->getMethods() as $method) {
                 $signature = MethodSignature::extract($method, $name, $parents[0] ?? null);
-                $signature['abstract'] = $class instanceof Stmt\Interface_ || $signature['abstract'];
+                $signature['abstract'] = Node::is($class, 'statement.interface') || $signature['abstract'];
                 $methods[strtolower($method->name->toString())] = ['name' => $method->name->toString(), 'line' => $method->getStartLine(), 'final' => $method->isFinal(), 'signature' => $signature];
                 $this->staticContext = $method->isStatic();
                 $vars = $method->isStatic() ? [] : ['this' => ['type' => $name, 'exact' => false]];
@@ -131,8 +129,8 @@ final class ImpactExtractor
                 }
                 $this->walk($method->stmts ?? [], $file, $name, $name.'::'.$method->name->toString(), $parents[0] ?? null, $properties, $vars);
             }
-            $classes[$name] = ['kind' => $class instanceof Stmt\Interface_ ? 'interface' : ($class instanceof Stmt\Trait_ ? 'trait' : 'class'),
-                'line' => $class->getStartLine(), 'final' => $class instanceof Stmt\Class_ && $class->isFinal(), 'abstract' => $class instanceof Stmt\Class_ && $class->isAbstract(), 'parents' => $parents,
+            $classes[$name] = ['kind' => Node::is($class, 'statement.interface') ? 'interface' : (Node::is($class, 'statement.trait') ? 'trait' : 'class'),
+                'line' => $class->getStartLine(), 'final' => Node::is($class, 'statement.class') && $class->isFinal(), 'abstract' => Node::is($class, 'statement.class') && $class->isAbstract(), 'parents' => $parents,
                 'traits' => $traits, 'adaptations' => $adaptations, 'properties' => $properties, 'methods' => $methods];
         }
         $this->staticContext = true;
@@ -144,7 +142,7 @@ final class ImpactExtractor
 
     /** Explicitly analyzes a registered route callback, leaving arbitrary callbacks unresolved.
      */
-    public function extractCallback(FileContext $file, Expr\Closure|Expr\ArrowFunction $callback, string $from): ImpactFacts
+    public function extractCallback(FileContext $file, Node $callback, string $from): ImpactFacts
     {
         $this->catalogMode = false;
         $this->catalogReturns = [];
@@ -159,7 +157,7 @@ final class ImpactExtractor
                 $vars[$param->var->name] = ['type' => $this->type($file, $param->type, '', null), 'exact' => false];
             }
         }
-        if ($callback instanceof Expr\Closure) {
+        if (Node::is($callback, 'expression.closure')) {
             $this->walk($callback->stmts, $file, '', $from, null, [], $vars);
         } else {
             $this->expression($callback->expr, $file, '', $from, null, [], $vars);
@@ -200,11 +198,11 @@ final class ImpactExtractor
 
                 return;
             }
-            if ($node instanceof Stmt\Function_) {
+            if (Node::is($node, 'statement.function')) {
                 if ($this->catalogMode) {
                     $functionVars = [];
                     foreach ($node->params as $param) {
-                        if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                        if (Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
                             $functionVars[$param->var->name] = ['type' => $this->type($file, $param->type, '', null), 'exact' => false];
                         }
                     }
@@ -223,53 +221,53 @@ final class ImpactExtractor
 
                 continue;
             }
-            if ($node instanceof Stmt\ClassLike) {
+            if (Node::is($node, 'statement.class-like')) {
                 continue;
             }
-            if ($node instanceof Expr) {
+            if (Node::is($node, 'expression')) {
                 $this->expression($node, $file, $class, $from, $parent, $properties, $vars);
 
                 continue;
             }
-            if ($node instanceof Stmt\Global_ || $node instanceof Stmt\Static_ || $node instanceof Stmt\Foreach_ && $node->byRef) {
+            if (Node::is($node, 'statement.global') || Node::is($node, 'statement.static') || Node::is($node, 'statement.foreach') && $node->byRef) {
                 $this->referenceScopes[$from] = true;
             }
-            if ($node instanceof Stmt\Unset_) {
+            if (Node::is($node, 'statement.unset')) {
                 foreach ($node->vars as $var) {
-                    if ($var instanceof Expr\Variable && is_string($var->name)) {
+                    if (Node::is($var, 'expression.variable') && is_string($var->name)) {
                         $vars[$var->name] = ['type' => null, 'exact' => false];
                     }
                 }
             }
-            if ($node instanceof Stmt\Foreach_) {
+            if (Node::is($node, 'statement.foreach')) {
                 foreach ([$node->keyVar, $node->valueVar] as $var) {
-                    if ($var instanceof Expr\Variable && is_string($var->name)) {
+                    if (Node::is($var, 'expression.variable') && is_string($var->name)) {
                         $vars[$var->name] = ['type' => null, 'exact' => false];
                     }
                 }
             }
-            if ($this->catalogMode && $node instanceof Stmt\Return_ && $node->expr !== null) {
+            if ($this->catalogMode && Node::is($node, 'statement.return') && $node->expr !== null) {
                 $value = $this->expression($node->expr, $file, $class, $from, $parent, $properties, $vars);
                 $this->catalogReturns[] = ['from' => $from, 'line' => $node->getStartLine(), 'end_line' => $node->getEndLine(), 'offset' => $node->getStartFilePos(), 'value' => $value];
 
                 continue;
             }
-            if ($node instanceof Stmt\Expression) {
+            if (Node::is($node, 'statement.expression')) {
                 $this->expression($node->expr, $file, $class, $from, $parent, $properties, $vars);
 
                 continue;
             }
-            $branched = $node instanceof Stmt\If_ || $node instanceof Stmt\Switch_ || $node instanceof Stmt\TryCatch || $node instanceof Stmt\For_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\While_ || $node instanceof Stmt\Do_;
+            $branched = Node::is($node, 'statement.if') || Node::is($node, 'statement.switch') || Node::is($node, 'statement.try-catch') || Node::is($node, 'statement.for') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.while') || Node::is($node, 'statement.do');
             // Conditions execute before branch bodies. Loops may revisit the body
             // after any write in the loop, so never seed it with a stale local type.
             $keys = $node->getSubNodeNames();
-            if ($node instanceof Stmt\If_ || $node instanceof Stmt\Switch_) {
+            if (Node::is($node, 'statement.if') || Node::is($node, 'statement.switch')) {
                 $this->expression($node->cond, $file, $class, $from, $parent, $properties, $vars);
                 $keys = array_values(array_diff($keys, ['cond']));
             }
-            if ($node instanceof Stmt\For_ || $node instanceof Stmt\Foreach_ || $node instanceof Stmt\While_ || $node instanceof Stmt\Do_) {
-                foreach ((new NodeFinder)->find([$node], static fn (Node $child): bool => $child instanceof Expr\Assign || $child instanceof Expr\AssignRef || $child instanceof Expr\AssignOp || $child instanceof Expr\PreInc || $child instanceof Expr\PostInc || $child instanceof Expr\PreDec || $child instanceof Expr\PostDec || $child instanceof Expr\CallLike || $child instanceof Stmt\Unset_ || $child instanceof Stmt\Foreach_) as $write) {
-                    if ($write instanceof Expr\AssignRef) {
+            if (Node::is($node, 'statement.for') || Node::is($node, 'statement.foreach') || Node::is($node, 'statement.while') || Node::is($node, 'statement.do')) {
+                foreach ((new NodeFinder)->find([$node], static fn (Node $child): bool => Node::is($child, 'expression.assign') || Node::is($child, 'expression.assign-ref') || Node::is($child, 'expression.assign-op') || Node::is($child, 'expression.pre-inc') || Node::is($child, 'expression.post-inc') || Node::is($child, 'expression.pre-dec') || Node::is($child, 'expression.post-dec') || Node::is($child, 'expression.call-like') || Node::is($child, 'statement.unset') || Node::is($child, 'statement.foreach')) as $write) {
+                    if (Node::is($write, 'expression.assign-ref')) {
                         // An alias may mutate any local on the next iteration.
                         foreach (array_keys($vars) as $var) {
                             if ($var !== 'this') {
@@ -279,16 +277,16 @@ final class ImpactExtractor
 
                         continue;
                     }
-                    if ($write instanceof Expr\CallLike) {
-                        $targets = $write->isFirstClassCallable() ? [] : array_map(static fn (Node\Arg $arg): Expr => $arg->value, $write->getArgs());
-                    } elseif ($write instanceof Stmt\Unset_) {
+                    if (Node::is($write, 'expression.call-like')) {
+                        $targets = $write->isFirstClassCallable() ? [] : array_map(static fn (Node $arg): Node => $arg->value, $write->getArgs());
+                    } elseif (Node::is($write, 'statement.unset')) {
                         $targets = $write->vars;
-                    } elseif ($write instanceof Stmt\Foreach_) {
+                    } elseif (Node::is($write, 'statement.foreach')) {
                         $targets = [$write->keyVar, $write->valueVar];
                     } else {
-                        /** @var Expr\Assign|Expr\AssignOp|Expr\PreInc|Expr\PostInc|Expr\PreDec|Expr\PostDec $write */
+                        /** @var Node $write */
                         $targets = [$write->var];
-                        if (! ($write->var instanceof Expr\Variable && is_string($write->var->name)) && ! $write->var instanceof Expr\PropertyFetch) {
+                        if (! (Node::is($write->var, 'expression.variable') && is_string($write->var->name)) && ! Node::is($write->var, 'expression.property-fetch')) {
                             // Destructuring/dynamic targets can overwrite any local.
                             foreach (array_keys($vars) as $var) {
                                 if ($var !== 'this') {
@@ -298,7 +296,7 @@ final class ImpactExtractor
                         }
                     }
                     foreach ($targets as $target) {
-                        if ($target instanceof Expr\Variable && is_string($target->name)) {
+                        if (Node::is($target, 'expression.variable') && is_string($target->name)) {
                             $vars[$target->name] = ['type' => null, 'exact' => false];
                         }
                     }
@@ -330,13 +328,13 @@ final class ImpactExtractor
      *
      * @phpstan-impure
      */
-    private function expression(Expr $expr, FileContext $file, string $class, string $from, ?string $parent, array $properties, array &$vars): array
+    private function expression(Node $expr, FileContext $file, string $class, string $from, ?string $parent, array $properties, array &$vars): array
     {
         $unknown = ['type' => null, 'exact' => false];
         if ($this->limited) {
             return $unknown;
         }
-        if ($this->catalogMode && $expr instanceof Node\Scalar\String_) {
+        if ($this->catalogMode && Node::is($expr, 'scalar.string')) {
             return [...$unknown, 'callable_name' => self::namedCallable($expr->value)];
         }
         if (++$this->nodes > 20000) {
@@ -345,13 +343,13 @@ final class ImpactExtractor
 
             return $unknown;
         }
-        if ($expr instanceof Expr\Variable) {
+        if (Node::is($expr, 'expression.variable')) {
             return is_string($expr->name) ? ($vars[$expr->name] ?? $unknown) : $unknown;
         }
-        if ($expr instanceof Expr\Closure || $expr instanceof Expr\ArrowFunction) {
+        if (Node::is($expr, 'expression.closure') || Node::is($expr, 'expression.arrow-function')) {
             if ($this->catalogMode) {
-                $callbackVars = $expr instanceof Expr\ArrowFunction ? $vars : [];
-                if ($expr instanceof Expr\Closure) {
+                $callbackVars = Node::is($expr, 'expression.arrow-function') ? $vars : [];
+                if (Node::is($expr, 'expression.closure')) {
                     foreach ($expr->uses as $use) {
                         if ($use->byRef) {
                             $this->referenceScopes[$from] = true;
@@ -367,7 +365,7 @@ final class ImpactExtractor
                     unset($callbackVars['this']);
                 }
                 foreach ($expr->params as $param) {
-                    if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                    if (Node::is($param->var, 'expression.variable') && is_string($param->var->name)) {
                         $callbackVars[$param->var->name] = ['type' => $this->type($file, $param->type, $class, $parent), 'exact' => false];
                     }
                 }
@@ -377,7 +375,7 @@ final class ImpactExtractor
                 }
                 $context = $this->staticContext;
                 $this->staticContext = $expr->static || $context;
-                if ($expr instanceof Expr\Closure) {
+                if (Node::is($expr, 'expression.closure')) {
                     $this->walk($expr->stmts, $file, $class, $name, $parent, $properties, $callbackVars);
                 } else {
                     $value = $this->expression($expr->expr, $file, $class, $name, $parent, $properties, $callbackVars);
@@ -391,9 +389,9 @@ final class ImpactExtractor
 
             return $unknown;
         }
-        if ($expr instanceof Expr\Assign || $expr instanceof Expr\AssignRef) {
+        if (Node::is($expr, 'expression.assign') || Node::is($expr, 'expression.assign-ref')) {
             $value = $this->expression($expr->expr, $file, $class, $from, $parent, $properties, $vars);
-            if ($expr instanceof Expr\AssignRef) {
+            if (Node::is($expr, 'expression.assign-ref')) {
                 $this->referenceScopes[$from] = true;
                 foreach (array_keys($vars) as $var) {
                     if ($var !== 'this') {
@@ -403,9 +401,9 @@ final class ImpactExtractor
 
                 return $unknown;
             }
-            if ($expr->var instanceof Expr\Variable && is_string($expr->var->name)) {
+            if (Node::is($expr->var, 'expression.variable') && is_string($expr->var->name)) {
                 $vars[$expr->var->name] = $value;
-            } elseif ($expr->var instanceof Expr\PropertyFetch && $expr->var->name instanceof Node\Identifier) {
+            } elseif (Node::is($expr->var, 'expression.property-fetch') && Node::is($expr->var->name, 'identifier')) {
                 $owner = $this->expression($expr->var->var, $file, $class, $from, $parent, $properties, $vars);
                 if ($owner['type'] !== null) {
                     $vars['@property:'.$owner['type'].'#'.$expr->var->name->toString()] = $unknown;
@@ -421,9 +419,9 @@ final class ImpactExtractor
 
             return $value;
         }
-        if ($expr instanceof Expr\PropertyFetch || $expr instanceof Expr\NullsafePropertyFetch) {
+        if (Node::is($expr, 'expression.property-fetch') || Node::is($expr, 'expression.nullsafe-property-fetch')) {
             $owner = $this->expression($expr->var, $file, $class, $from, $parent, $properties, $vars);
-            if ($owner['type'] !== null && $expr->name instanceof Node\Identifier) {
+            if ($owner['type'] !== null && Node::is($expr->name, 'identifier')) {
                 $prop = $expr->name->toString();
                 if (isset($vars['@property:'.$owner['type'].'#'.$prop])) {
                     return $vars['@property:'.$owner['type'].'#'.$prop];
@@ -434,14 +432,14 @@ final class ImpactExtractor
 
             return $unknown;
         }
-        if ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall || $expr instanceof Expr\StaticCall || $expr instanceof Expr\New_) {
-            $receiver = $expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall
+        if (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call') || Node::is($expr, 'expression.static-call') || Node::is($expr, 'expression.new')) {
+            $receiver = Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call')
                 ? $this->expression($expr->var, $file, $class, $from, $parent, $properties, $vars)
-                : ['type' => $expr->class instanceof Node\Name ? $this->type($file, $expr->class, $class, $parent) : null, 'exact' => $expr->class instanceof Node\Name && strtolower($expr->class->toString()) !== 'static'];
-            if ($this->catalogMode && $expr instanceof Expr\New_ && $expr->class instanceof Stmt\Class_) {
+                : ['type' => Node::is($expr->class, 'name') ? $this->type($file, $expr->class, $class, $parent) : null, 'exact' => Node::is($expr->class, 'name') && strtolower($expr->class->toString()) !== 'static'];
+            if ($this->catalogMode && Node::is($expr, 'expression.new') && Node::is($expr->class, 'statement.class')) {
                 $receiver = ['type' => '(anonymous) '.$file->path.':'.$expr->class->getStartFilePos(), 'exact' => true];
             }
-            $method = $expr instanceof Expr\New_ ? '__construct' : ($expr->name instanceof Node\Identifier ? $expr->name->toString() : null);
+            $method = Node::is($expr, 'expression.new') ? '__construct' : (Node::is($expr->name, 'identifier') ? $expr->name->toString() : null);
             $this->calls[] = ['from' => $from, 'receiver' => $receiver['type'], 'method' => $method, 'exact' => $receiver['exact'],
                 'kind' => $expr->isFirstClassCallable() ? 'reference' : 'call', 'line' => $expr->getStartLine(), 'site' => MethodSignature::site($expr, $class, $this->staticContext)];
             $position = array_key_last($this->calls);
@@ -461,13 +459,13 @@ final class ImpactExtractor
                 if (strtolower($method ?? '') === 'send' && ! $expr->isFirstClassCallable()) {
                     $this->calls[$position]['saloon_pool_send'] = $expr->getArgs() === [];
                 }
-                $this->calls[$position]['this_receiver'] = ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall)
+                $this->calls[$position]['this_receiver'] = (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call'))
                     && ($receiver['bound_this'] ?? false);
-                $this->calls[$position]['late_static_receiver'] = $expr instanceof Expr\StaticCall
-                    && $expr->class instanceof Node\Name && strtolower($expr->class->toString()) === 'static';
-                $this->calls[$position]['lexical_static_receiver'] = $expr instanceof Expr\StaticCall && $expr->class instanceof Node\Name
+                $this->calls[$position]['late_static_receiver'] = Node::is($expr, 'expression.static-call')
+                    && Node::is($expr->class, 'name') && strtolower($expr->class->toString()) === 'static';
+                $this->calls[$position]['lexical_static_receiver'] = Node::is($expr, 'expression.static-call') && Node::is($expr->class, 'name')
                     && in_array(strtolower($expr->class->toString()), ['self', 'parent'], true) ? strtolower($expr->class->toString()) : null;
-                if ($expr instanceof Expr\New_ && in_array(count($expr->args), [2, 3], true)
+                if (Node::is($expr, 'expression.new') && in_array(count($expr->args), [2, 3], true)
                     && array_filter($expr->getArgs(), static fn ($argument) => $argument->name !== null && strlen($argument->name->toString()) > 1000) === []) {
                     $this->calls[$position]['provider_constructor_arguments'] = array_map(static fn ($argument) => [
                         'name' => $argument->name?->toString(), 'unpack' => $argument->unpack, 'by_ref' => $argument->byRef,
@@ -475,7 +473,7 @@ final class ImpactExtractor
                 }
             }
             $saloonArguments = null;
-            if ($this->catalogMode && ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall)
+            if ($this->catalogMode && (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call'))
                 && ! $expr->isFirstClassCallable() && isset(CatalogSaloonOperations::PARAMETERS[strtolower($method ?? '')])) {
                 $saloonArguments = CatalogSaloonOperations::arguments(strtolower($method), $expr->getArgs());
                 $this->calls[$position]['saloon_request'] = ['valid' => $saloonArguments['valid'], 'receiver' => null,
@@ -484,15 +482,15 @@ final class ImpactExtractor
             if (! $expr->isFirstClassCallable()) {
                 foreach ($expr->getArgs() as $argumentPosition => $arg) {
                     $value = $this->expression($arg->value, $file, $class, $from, $parent, $properties, $vars);
-                    $poolRequests = $this->catalogMode && ($expr instanceof Expr\New_ && CatalogSaloonOperations::poolConstructor($file, $expr)
+                    $poolRequests = $this->catalogMode && (Node::is($expr, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $expr)
                         && ($arg->name?->toString() ?? ($argumentPosition === 1 ? 'requests' : '')) === 'requests'
-                        || ($expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall)
+                        || (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call'))
                         && in_array(strtolower($method ?? ''), ['pool', 'setrequests'], true)
                         && ($arg->name?->toString() ?? ($argumentPosition === 0 ? 'requests' : '')) === 'requests');
                     if ($this->catalogMode && ! $arg->unpack && ! $arg->byRef
                         && ($value['type'] !== null || isset($value['callable_name']))) {
-                        $poolConstructor = $expr instanceof Expr\New_ && CatalogSaloonOperations::poolConstructor($file, $expr);
-                        $poolMethod = $expr instanceof Expr\MethodCall || $expr instanceof Expr\NullsafeMethodCall ? strtolower($method ?? '') : '';
+                        $poolConstructor = Node::is($expr, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $expr);
+                        $poolMethod = Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call') ? strtolower($method ?? '') : '';
                         $setter = CatalogSaloonOperations::POOL_SETTERS[$poolMethod] ?? null;
                         $parameters = $poolConstructor ? ['connector', 'requests', 'concurrency', 'responseHandler', 'exceptionHandler']
                             : ($poolMethod === 'pool' ? ['requests', 'concurrency', 'responseHandler', 'exceptionHandler'] : ($setter !== null && $setter[1] !== null ? [$setter[0]] : []));
@@ -511,7 +509,7 @@ final class ImpactExtractor
                         && str_starts_with($value['type'] ?? '', '@return:') && isset($value['factory_call'])) {
                         $this->calls[$position]['saloon_pool_member_factory'] = ['receiver' => $value['type'], 'call' => $value['factory_call']];
                     }
-                    if ($this->catalogMode && $expr instanceof Expr\New_ && CatalogSaloonOperations::poolConstructor($file, $expr)
+                    if ($this->catalogMode && Node::is($expr, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $expr)
                         && ($arg->name?->toString() ?? ($argumentPosition === 0 ? 'connector' : '')) === 'connector') {
                         $this->calls[$position]['saloon_pool_connector'] = $value['type'];
                     }
@@ -521,7 +519,7 @@ final class ImpactExtractor
                     if ($saloonArguments !== null && $argumentPosition === 0) {
                         $this->calls[$position]['saloon_request']['mock_receiver'] = $value['type'];
                     }
-                    if ($this->catalogMode && $expr instanceof Expr\New_ && count($expr->args) === 3
+                    if ($this->catalogMode && Node::is($expr, 'expression.new') && count($expr->args) === 3
                         && ($arg->name?->toString() === 'gateway' || $arg->name === null && $argumentPosition === 0)
                         && ! $arg->unpack && ! $arg->byRef && $value['type'] !== null) {
                         $this->calls[$position]['provider_gateway_value'] = $value;
@@ -550,7 +548,7 @@ final class ImpactExtractor
                         $this->calls[$position]['callback_value'] = $value;
                     }
                     // Application calls may mutate arguments by reference. Do not carry stale types.
-                    if ($arg->value instanceof Expr\Variable && is_string($arg->value->name)) {
+                    if (Node::is($arg->value, 'expression.variable') && is_string($arg->value->name)) {
                         $vars[$arg->value->name] = $this->catalogMode
                             ? $this->argumentValue($value, $this->calls[$position], $expr, $class, $argumentPosition)
                             : $unknown;
@@ -558,7 +556,7 @@ final class ImpactExtractor
                 }
             }
 
-            if ($expr instanceof Expr\New_) {
+            if (Node::is($expr, 'expression.new')) {
                 if ($this->catalogMode) {
                     $receiver['catalog_instance_origin'] = max(0, $expr->getEndFilePos());
                 }
@@ -583,7 +581,7 @@ final class ImpactExtractor
                 $result = ['type' => ($expr->isFirstClassCallable() ? '@method-callable:' : '@return:').$descriptor, 'exact' => false];
                 if (! $expr->isFirstClassCallable()) {
                     $result['catalog_origin'] = max(0, $expr->getEndFilePos());
-                    $result['factory_call'] = ['creator' => $class, 'form' => $expr instanceof Expr\StaticCall ? 'static' : 'instance',
+                    $result['factory_call'] = ['creator' => $class, 'form' => Node::is($expr, 'expression.static-call') ? 'static' : 'instance',
                         'binding' => $this->calls[$position]['late_static_receiver'] ? 'static' : $this->calls[$position]['lexical_static_receiver']];
                 }
                 if (isset($result['factory_call'], $receiver['factory_call'])) {
@@ -602,9 +600,9 @@ final class ImpactExtractor
                 }
                 if ($expr->isFirstClassCallable()) {
                     $call = $this->calls[$position];
-                    $result['callable_form'] = $expr instanceof Expr\StaticCall
+                    $result['callable_form'] = Node::is($expr, 'expression.static-call')
                         && (! in_array($call['site']['form'], ['self', 'parent', 'static'], true) || $this->staticContext) ? 'static' : 'instance';
-                    if ($expr instanceof Expr\StaticCall && $call['site']['form'] === 'class' && ! $this->staticContext) {
+                    if (Node::is($expr, 'expression.static-call') && $call['site']['form'] === 'class' && ! $this->staticContext) {
                         $result['callable_form'] = 'bound-class';
                     }
                     $result['bound_callable'] = ['method' => $method, 'this' => $call['this_receiver'], 'late' => $call['late_static_receiver'], 'lexical' => $call['lexical_static_receiver'], 'creator' => $from, 'scope_bound' => true];
@@ -615,11 +613,11 @@ final class ImpactExtractor
 
             return $unknown;
         }
-        if ($this->catalogMode && $expr instanceof Expr\FuncCall) {
-            if ($expr->name instanceof Node\Name) {
+        if ($this->catalogMode && Node::is($expr, 'expression.func-call')) {
+            if (Node::is($expr->name, 'name')) {
                 $resolved = $file->resolvedName($expr->name);
                 $namespaced = $expr->name->getAttribute('namespacedName');
-                $candidates = $namespaced instanceof Node\Name ? [$namespaced->toString(), $resolved] : [$resolved];
+                $candidates = Node::is($namespaced, 'name') ? [$namespaced->toString(), $resolved] : [$resolved];
                 $receiver = ['type' => '@function:'.json_encode(array_values(array_unique($candidates)), JSON_THROW_ON_ERROR), 'exact' => true];
             } else {
                 $receiver = $this->expression($expr->name, $file, $class, $from, $parent, $properties, $vars);
@@ -642,7 +640,7 @@ final class ImpactExtractor
                         $this->calls[$position]['receiver_factory_call'] = $value['factory_call'];
                     }
                 }
-                if (! $globalJson && $arg->value instanceof Expr\Variable && is_string($arg->value->name)) {
+                if (! $globalJson && Node::is($arg->value, 'expression.variable') && is_string($arg->value->name)) {
                     $vars[$arg->value->name] = $this->argumentValue($value, $this->calls[$position], $expr, $class, $argPosition, $receiver);
                 }
             }
@@ -650,7 +648,7 @@ final class ImpactExtractor
             $result = $expr->isFirstClassCallable() ? $receiver : ($receiver['type'] !== null
                 ? ['type' => '@return:'.json_encode([$receiver['type'], '__invoke', $receiver['exact']], JSON_THROW_ON_ERROR), 'exact' => false,
                     'catalog_origin' => max(0, $expr->getEndFilePos()),
-                    'factory_call' => ['creator' => $class, 'form' => $expr->name instanceof Node\Name ? 'function' : 'instance', 'binding' => null]]
+                    'factory_call' => ['creator' => $class, 'form' => Node::is($expr->name, 'name') ? 'function' : 'instance', 'binding' => null]]
                 : $unknown);
             if (! $expr->isFirstClassCallable() && isset($result['factory_call'], $receiver['factory_call'])) {
                 $context = $receiver['factory_call'];
@@ -669,19 +667,19 @@ final class ImpactExtractor
 
             return $result;
         }
-        if ($expr instanceof Expr\Array_ && count($expr->items) === 2) {
+        if (Node::is($expr, 'expression.array') && count($expr->items) === 2) {
             $items = $this->catalogMode ? self::callableArrayItems($expr) : $expr->items;
             $first = $items[0] ?? null;
             $second = $items[1] ?? null;
-            if ($first !== null && $second?->value instanceof Node\Scalar\String_
+            if ($first !== null && Node::is($second?->value, 'scalar.string')
                 && ! $first->unpack && ! $first->byRef && ! $second->unpack && ! $second->byRef
-                && ($first->key === null || ($first->key instanceof Node\Scalar\Int_ && $first->key->value === 0))
-                && ($second->key === null || ($second->key instanceof Node\Scalar\Int_ && $second->key->value === 1))) {
+                && ($first->key === null || (Node::is($first->key, 'scalar.int') && $first->key->value === 0))
+                && ($second->key === null || (Node::is($second->key, 'scalar.int') && $second->key->value === 1))) {
                 $value = $first->value;
-                if ($this->catalogMode && $value instanceof Node\Scalar\String_) {
+                if ($this->catalogMode && Node::is($value, 'scalar.string')) {
                     return [...$unknown, 'callable_name' => self::namedCallable($value->value.'::'.$second->value->value)];
                 }
-                $receiver = $value instanceof Expr\ClassConstFetch && $value->class instanceof Node\Name && $value->name instanceof Node\Identifier && strtolower($value->name->toString()) === 'class'
+                $receiver = Node::is($value, 'expression.class-const-fetch') && Node::is($value->class, 'name') && Node::is($value->name, 'identifier') && strtolower($value->name->toString()) === 'class'
                     ? ['type' => $this->type($file, $value->class, $class, $parent), 'exact' => true]
                     : $this->expression($value, $file, $class, $from, $parent, $properties, $vars);
                 if ($receiver['type'] !== null) {
@@ -691,10 +689,10 @@ final class ImpactExtractor
                         $position = array_key_last($this->calls);
                         $this->calls[$position]['offset'] = $expr->getStartFilePos();
                         $this->calls[$position]['end_line'] = $expr->getEndLine();
-                        $this->calls[$position]['site']['form'] = $value instanceof Expr\ClassConstFetch ? 'class' : 'instance';
+                        $this->calls[$position]['site']['form'] = Node::is($value, 'expression.class-const-fetch') ? 'class' : 'instance';
 
                         return ['type' => '@method-callable:'.json_encode([$receiver['type'], $second->value->value, $receiver['exact']], JSON_THROW_ON_ERROR), 'exact' => false,
-                            'callable_form' => $value instanceof Expr\ClassConstFetch ? 'static' : 'instance',
+                            'callable_form' => Node::is($value, 'expression.class-const-fetch') ? 'static' : 'instance',
                             'bound_callable' => ['method' => $second->value->value, 'this' => $receiver['bound_this'] ?? false, 'late' => false, 'lexical' => null, 'creator' => $from, 'scope_bound' => false]];
                     }
 
@@ -702,7 +700,7 @@ final class ImpactExtractor
                 }
             }
         }
-        if ($this->catalogMode && $expr instanceof Expr\Array_ && CatalogSaloonOperations::poolMemberArray($expr)) {
+        if ($this->catalogMode && Node::is($expr, 'expression.array') && CatalogSaloonOperations::poolMemberArray($expr)) {
             $members = [];
             $complete = true;
             foreach ($expr->items as $item) {
@@ -724,7 +722,7 @@ final class ImpactExtractor
                 if (! $item->unpack && ! $item->byRef && $member['type'] !== null) {
                     $members[] = ['receiver' => $member['type'], 'origin' => $member['catalog_origin'] ?? $member['catalog_instance_origin'] ?? null];
                 }
-                if ($item->byRef && $item->value instanceof Expr\Variable && is_string($item->value->name)) {
+                if ($item->byRef && Node::is($item->value, 'expression.variable') && is_string($item->value->name)) {
                     $vars[$item->value->name] = $unknown;
                 }
             }
@@ -732,7 +730,7 @@ final class ImpactExtractor
             return [...$unknown, 'catalog_attachments' => CatalogAiAttachments::extract($file, $expr),
                 'catalog_pool_members' => ['complete' => $complete, 'members' => $members]];
         }
-        $branching = $expr instanceof Expr\Ternary || $expr instanceof Expr\Match_ || $expr instanceof Expr\BinaryOp\BooleanAnd || $expr instanceof Expr\BinaryOp\BooleanOr || $expr instanceof Expr\BinaryOp\Coalesce;
+        $branching = Node::is($expr, 'expression.ternary') || Node::is($expr, 'expression.match') || Node::is($expr, 'expression.binary-op.boolean-and') || Node::is($expr, 'expression.binary-op.boolean-or') || Node::is($expr, 'expression.binary-op.coalesce');
         foreach ($expr->getSubNodeNames() as $key) {
             $branch = $vars;
             $this->walk($this->children($expr->$key), $file, $class, $from, $parent, $properties, $branch);
@@ -746,29 +744,29 @@ final class ImpactExtractor
                 $vars = $branch;
             }
         }
-        if ($expr instanceof Expr\FuncCall && ! $expr->isFirstClassCallable()) {
+        if (Node::is($expr, 'expression.func-call') && ! $expr->isFirstClassCallable()) {
             foreach ($expr->getArgs() as $arg) {
-                if ($arg->value instanceof Expr\Variable && is_string($arg->value->name)) {
+                if (Node::is($arg->value, 'expression.variable') && is_string($arg->value->name)) {
                     $vars[$arg->value->name] = $unknown;
                 }
             }
         }
-        if ($expr instanceof Expr\AssignOp || $expr instanceof Expr\PreInc || $expr instanceof Expr\PostInc || $expr instanceof Expr\PreDec || $expr instanceof Expr\PostDec) {
-            if ($expr->var instanceof Expr\Variable && is_string($expr->var->name)) {
+        if (Node::is($expr, 'expression.assign-op') || Node::is($expr, 'expression.pre-inc') || Node::is($expr, 'expression.post-inc') || Node::is($expr, 'expression.pre-dec') || Node::is($expr, 'expression.post-dec')) {
+            if (Node::is($expr->var, 'expression.variable') && is_string($expr->var->name)) {
                 $vars[$expr->var->name] = $unknown;
             }
         }
 
-        return $this->catalogMode && $expr instanceof Expr\Array_
+        return $this->catalogMode && Node::is($expr, 'expression.array')
             ? [...$unknown, 'catalog_attachments' => CatalogAiAttachments::extract($file, $expr)] : $unknown;
     }
 
     private function type(FileContext $file, Node|string|null $type, string $class, ?string $parent): ?string
     {
-        if ($type instanceof Node\NullableType) {
+        if (Node::is($type, 'nullable-type')) {
             return $this->type($file, $type->type, $class, $parent);
         }
-        if ($this->catalogMode && ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType)) {
+        if ($this->catalogMode && (Node::is($type, 'union-type') || Node::is($type, 'intersection-type'))) {
             $types = [];
             foreach ($type->types as $member) {
                 $resolved = $this->type($file, $member, $class, $parent);
@@ -779,7 +777,7 @@ final class ImpactExtractor
 
             return $types === [] ? null : '@types:'.json_encode(array_values(array_unique($types)), JSON_THROW_ON_ERROR);
         }
-        if (! $type instanceof Node\Name) {
+        if (! Node::is($type, 'name')) {
             return null;
         }
 
@@ -802,8 +800,8 @@ final class ImpactExtractor
         return [$name, hash('sha256', strtolower(ltrim($receiver, '\\'))), hash('sha256', strtolower($method))];
     }
 
-    /** @return array<int, Node\ArrayItem> */
-    public static function callableArrayItems(Expr\Array_ $array): array
+    /** @return array<int, Node> */
+    public static function callableArrayItems(Node $array): array
     {
         if (count($array->items) !== 2) {
             return [];
@@ -811,7 +809,7 @@ final class ImpactExtractor
         $items = [];
         $next = 0;
         foreach ($array->items as $item) {
-            if ($item === null || $item->unpack || $item->byRef || $item->key !== null && ! $item->key instanceof Node\Scalar\Int_) {
+            if ($item === null || $item->unpack || $item->byRef || $item->key !== null && ! Node::is($item->key, 'scalar.int')) {
                 return [];
             }
             $key = $item->key->value ?? $next;
@@ -830,7 +828,7 @@ final class ImpactExtractor
      * @param  array<string, mixed>  $invocation
      * @return array{type: ?string, exact: bool}
      */
-    private function argumentValue(array $value, array $call, Expr\CallLike $expression, string $creator, int $position, array $invocation = []): array
+    private function argumentValue(array $value, array $call, Node $expression, string $creator, int $position, array $invocation = []): array
     {
         $unknown = ['type' => null, 'exact' => false];
         if (str_starts_with($call['from'], '(file) ') || isset($this->referenceScopes[$call['from']])) {
@@ -842,7 +840,7 @@ final class ImpactExtractor
             return $unknown;
         }
         if ($value['type'] === null || $call['receiver'] === null || $call['method'] === null
-            || $expression instanceof Expr\New_) {
+            || Node::is($expression, 'expression.new')) {
             return $unknown;
         }
         if (count($expression->getArgs()) > 128) {
@@ -858,16 +856,16 @@ final class ImpactExtractor
                 return $unknown;
             }
             $arguments[] = ['name' => $argument->name?->toString(), 'unpack' => false, 'by_ref' => false];
-            if ($variable instanceof Expr\Variable && $argument->value instanceof Expr\Variable && $variable->name === $argument->value->name) {
+            if (Node::is($variable, 'expression.variable') && Node::is($argument->value, 'expression.variable') && $variable->name === $argument->value->name) {
                 $aliases[] = $offset;
             }
         }
-        $namedFunction = $expression instanceof Expr\FuncCall && ($expression->name instanceof Node\Name
+        $namedFunction = Node::is($expression, 'expression.func-call') && (Node::is($expression->name, 'name')
             || str_starts_with($call['receiver'], '@function:') || str_starts_with($call['receiver'], '@closure:'));
-        $form = $namedFunction ? 'function' : ($expression instanceof Expr\StaticCall ? 'static' : 'instance');
-        $binding = $expression instanceof Expr\StaticCall && $expression->class instanceof Node\Name
+        $form = $namedFunction ? 'function' : (Node::is($expression, 'expression.static-call') ? 'static' : 'instance');
+        $binding = Node::is($expression, 'expression.static-call') && Node::is($expression->class, 'name')
             && in_array(strtolower($expression->class->toString()), ['self', 'parent', 'static'], true) ? strtolower($expression->class->toString()) : null;
-        if ($expression instanceof Expr\FuncCall && str_starts_with($call['receiver'], '@method-callable:')) {
+        if (Node::is($expression, 'expression.func-call') && str_starts_with($call['receiver'], '@method-callable:')) {
             $bound = $invocation['bound_callable'] ?? null;
             $callableForm = $invocation['callable_form'] ?? null;
             $target = ReceiverDescriptors::decode(substr($call['receiver'], 17), $this->descriptorReceivers);
@@ -886,7 +884,7 @@ final class ImpactExtractor
             $creator = $separator === false ? '' : substr($boundCreator, 0, $separator);
         }
         $context = ['creator' => $creator, 'form' => $form, 'binding' => $binding];
-        if ($expression instanceof Expr\FuncCall && str_starts_with($call['receiver'], '@return:') && isset($invocation['factory_call'])) {
+        if (Node::is($expression, 'expression.func-call') && str_starts_with($call['receiver'], '@return:') && isset($invocation['factory_call'])) {
             $context['factory_call'] = $invocation['factory_call'];
         }
         if (self::sourceLimit(0) !== null) {
@@ -920,6 +918,6 @@ final class ImpactExtractor
     /** @return list<Node> */
     private function children(mixed $value): array
     {
-        return $value instanceof Node ? [$value] : (is_array($value) ? array_values(array_filter($value, fn ($v): bool => $v instanceof Node)) : []);
+        return Node::is($value, 'node') ? [$value] : (is_array($value) ? array_values(array_filter($value, fn ($v): bool => Node::is($v, 'node'))) : []);
     }
 }

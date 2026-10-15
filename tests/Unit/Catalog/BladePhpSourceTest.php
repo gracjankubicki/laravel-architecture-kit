@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Catalog\BladeCatalogExtractor;
 use GracjanKubicki\ArchitectureKit\Catalog\PhpCatalogExtractor;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
 use PHPUnit\Framework\TestCase;
 
 final class BladePhpSourceTest extends TestCase
@@ -28,13 +27,13 @@ class Later { public function action() {} }
 {!! \App\Raw::read() !!}
 SOURCE;
         $file = BladeCatalogExtractor::phpSource(new FileContext('resources/views/mapped.blade.php', $source));
-        $this->assertNotNull($file->ast());
+        $this->assertNotNull($file->syntax());
         $this->assertSame($source, $file->contents);
         $calls = [];
-        $pending = $file->ast();
+        $pending = $file->syntax();
         while ($pending !== []) {
             $node = array_pop($pending);
-            if ($node instanceof Expr\StaticCall) {
+            if (Node::is($node, 'expression.static-call')) {
                 $calls[$node->class->toString()] = [$node->getStartLine(), $node->getStartFilePos(), $node->getEndFilePos()];
             }
             foreach ($node->getSubNodeNames() as $key) {
@@ -68,7 +67,7 @@ SOURCE;
 <?php class Actual {} ?>
 SOURCE;
         $file = BladeCatalogExtractor::phpSource(new FileContext('resources/views/comments.blade.php', $source));
-        $this->assertNotNull($file->ast());
+        $this->assertNotNull($file->syntax());
         $facts = (new PhpCatalogExtractor)->extract($file);
         $classes = array_values(array_filter($facts->elements, fn ($element) => $element->kind === 'class'));
         $this->assertCount(1, $classes);
@@ -86,14 +85,14 @@ $value = '{{ \App\Fake::run() }}';
 @endphp
 SOURCE;
         $file = BladeCatalogExtractor::phpSource(new FileContext('resources/views/strings.blade.php', $source));
-        $this->assertNotNull($file->ast());
+        $this->assertNotNull($file->syntax());
         $facts = (new PhpCatalogExtractor)->extract($file);
         $this->assertSame([], $facts->diagnostics);
-        $pending = $file->ast();
+        $pending = $file->syntax();
         $calls = [];
         while ($pending !== []) {
             $node = array_pop($pending);
-            if ($node instanceof Expr\StaticCall) {
+            if (Node::is($node, 'expression.static-call')) {
                 $calls[] = $node;
             }
             foreach ($node->getSubNodeNames() as $key) {

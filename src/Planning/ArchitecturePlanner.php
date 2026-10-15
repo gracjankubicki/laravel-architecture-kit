@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Planning;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
@@ -24,8 +25,6 @@ use GracjanKubicki\ArchitectureKit\Resources\ManagedResourceDeployment;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
-use PhpParser\Node;
-use PhpParser\Node\Stmt\Enum_;
 
 final readonly class ArchitecturePlanner
 {
@@ -262,7 +261,7 @@ final readonly class ArchitecturePlanner
             }
 
             foreach ($nodes as $node) {
-                if ($node instanceof Node && PhpAst::contains($node, fn (Node $candidate): bool => $candidate instanceof Enum_)) {
+                if (Node::is($node, 'node') && PhpAst::contains($node, fn (Node $candidate): bool => Node::is($candidate, 'statement.enum'))) {
                     $evidence[] = ProjectPath::relative($this->basePath, $file->getPathname());
 
                     break;

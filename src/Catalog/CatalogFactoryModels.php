@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Derived;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
+use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\DataCatalog;
 use InvalidArgumentException;
-use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Stmt;
-use PhpParser\NodeFinder;
 
 /** Only source factory/model selectors survive; definition attributes and states are omitted. */
 final class CatalogFactoryModels
@@ -19,7 +18,7 @@ final class CatalogFactoryModels
     public static function extract(FileContext $file, bool $modelFactories = false): array
     {
         $rows = [];
-        foreach ((new NodeFinder)->findInstanceOf($file->ast() ?? [], Stmt\ClassLike::class) as $class) {
+        foreach ((new NodeFinder)->findOfKind($file->syntax() ?? [], 'statement.class-like') as $class) {
             $name = DataCatalog::name($class, $file);
             $row = ['property' => null, 'attribute' => null, 'method' => null];
             foreach ($class->getProperties() as $property) {
@@ -45,12 +44,12 @@ final class CatalogFactoryModels
             foreach ($class->getMethods() as $method) {
                 if (strtolower($method->name->toString()) === ($modelFactories ? 'newfactory' : 'modelname')) {
                     $body = $method->stmts ?? [];
-                    $returned = count($body) === 1 && $body[0] instanceof Stmt\Return_ ? $body[0]->expr : null;
+                    $returned = count($body) === 1 && Node::is($body[0], 'statement.return') ? $body[0]->expr : null;
                     $selector = $returned;
                     if ($modelFactories) {
-                        $selector = $returned instanceof Expr\StaticCall && $returned->class instanceof Node\Name && $returned->name instanceof Node\Identifier
+                        $selector = Node::is($returned, 'expression.static-call') && Node::is($returned->class, 'name') && Node::is($returned->name, 'identifier')
                             && strtolower($returned->name->toString()) === 'new' && ! $returned->isFirstClassCallable() && $returned->getArgs() === []
-                            ? new Expr\ClassConstFetch($returned->class, 'class') : null;
+                            ? Derived::classConstant($returned->class, 'class') : null;
                     }
                     $row['method'] = ['type' => self::type($selector, $file, $name),
                         'resolved' => ($modelFactories ? ! $method->isPrivate() && $method->isStatic() : $method->isPublic() && ! $method->isStatic()) && ! $method->isAbstract(),
@@ -65,12 +64,12 @@ final class CatalogFactoryModels
 
     private static function isNull(Node $node): bool
     {
-        return $node instanceof Expr\ConstFetch && strtolower($node->name->toString()) === 'null';
+        return Node::is($node, 'expression.const-fetch') && strtolower($node->name->toString()) === 'null';
     }
 
     private static function type(?Node $node, FileContext $file, string $class): ?string
     {
-        if ($node instanceof Expr\ClassConstFetch && $node->class instanceof Node\Name && in_array(strtolower($node->class->toString()), ['static', 'parent'], true)) {
+        if (Node::is($node, 'expression.class-const-fetch') && Node::is($node->class, 'name') && in_array(strtolower($node->class->toString()), ['static', 'parent'], true)) {
             return null;
         }
         $value = DataCatalog::literal($node, $file, $class);
