@@ -40,6 +40,7 @@ final readonly class ProjectState
         public AuditScope $auditScope,
         public MissingTestLevel $missingTestLevel,
         public ?ProjectGraphCache $graphCache,
+        public bool $blockIncompleteAnalysis,
     ) {}
 
     public static function load(Filesystem $files, string $packagePath, string $basePath): self
@@ -73,6 +74,7 @@ final readonly class ProjectState
             $config->auditScope(),
             $config->missingTestLevel(),
             $config->graphCache(),
+            $config->blocksIncompleteAnalysis(),
         );
     }
 

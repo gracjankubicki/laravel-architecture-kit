@@ -53,6 +53,6 @@ final class StandaloneServer extends ArchitectureKitServer
             $this->instructions = (new PackageGuidance(ProjectLayout::read($repository->rootPath), $repository->settings))->rewrite($this->instructions);
         }
         $this->tools[] = TaskTool::class;
-        $this->instructions .= ' This standalone process is pinned to one repository. Before edits use task-control begin once, and bind its client/session when applicable. Retain the task beginning through retries and resume. Before finishing use task-control check; incomplete, missing beginning and drift never pass. Repository execution and writes require explicit CLI opt-in. Source facts do not prove execution or tests.';
+        $this->instructions .= ' This standalone process is pinned to one repository. Before edits use task-control begin once, and bind its client/session when applicable. Retain the task beginning through retries and resume. Before finishing use task-control check and read analysis and reason: partial analysis warns by default, while audit.incomplete_analysis=block requires completeness. Pass means no new recognized errors, not complete analysis or passing tests. Failures, missing beginning and drift never pass. Repository execution and writes require explicit CLI opt-in. Source facts do not prove execution or tests.';
     }
 }

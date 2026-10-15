@@ -18,7 +18,7 @@ class GuardCommand extends Command
         {--changed : Audit only changed and untracked application files when git is available}
         {--base= : Git base ref for changed-file audit, for example origin/main}
         {--target : Include the separate desired architecture gate}
-        {--strict : Treat warnings as failures}
+        {--strict : Treat architecture warnings as failures}
         {--json : Output machine-readable JSON for hooks and MCP}
         {--agent : Output token-efficient JSON for AI agents}
         {--limit=20 : Maximum findings shown in --agent output}
@@ -87,6 +87,14 @@ class GuardCommand extends Command
             $this->line('Audit: '.$result->audit->scope);
             $this->line(sprintf('Findings: %d error(s), %d warning(s)', $result->audit->errors(), $result->audit->warnings()));
             $this->line(sprintf('Suppressed: %d inline, %d baseline', $result->audit->suppressedInline, $result->audit->suppressedBaseline));
+
+            if ($result->audit->hasAnalysisFailure()) {
+                $this->warn('Required runtime route analysis failed; the guard cannot pass. Inspect audit --agent.');
+            } elseif ($result->audit->incomplete()) {
+                $this->warn($result->blockIncompleteAnalysis
+                    ? 'Analysis is partial; audit.incomplete_analysis=block requires completeness.'
+                    : 'Analysis is partial; this check covers recognized violations only. Inspect audit --agent for unresolved code.');
+            }
 
             if ($result->audit->cacheNote() !== null) {
                 $this->warn($result->audit->cacheNote());

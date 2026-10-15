@@ -76,7 +76,7 @@
                 "changed": "Audit changed files when true; inspect the full configured audit scope when false.",
                 "base": "Optional Git base revision for detecting changed files. Omit to use the normal working-tree comparison.",
                 "target": "Also evaluate the separately configured desired-architecture gate when true. This does not accept or refresh its reference.",
-                "strict": "Treat audit warnings as blocking when true. Inspect findings and incomplete analysis separately.",
+                "strict": "Treat architecture warnings as blocking when true. Partial analysis follows audit.incomplete_analysis: warn by default, block when explicitly configured.",
                 "limit": "Maximum displayed records. Zero returns summary information without removing analysis limits.",
                 "full": "Include the full report instead of the bounded agent summary when true."
             }

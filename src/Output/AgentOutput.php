@@ -82,7 +82,7 @@ final readonly class AgentOutput
             ...$findings,
             ...$this->suggestions($result->audit === null ? [] : $result->audit->suggestions, $limit),
             ...$this->analysis(
-                $result->audit === null ? 'not_run' : $result->audit->analysisStatus,
+                $result->audit === null ? 'not_run' : ($result->audit->incomplete() ? 'incomplete' : $result->audit->analysisStatus),
                 $result->audit === null ? [] : $result->audit->notices,
                 $limit,
             ),
@@ -422,11 +422,7 @@ final readonly class AgentOutput
             return 'skip';
         }
 
-        if ($result->audit->errors() > 0 || ($result->strict && $result->audit->warnings() > 0)) {
-            return 'fail';
-        }
-
-        return 'ok';
+        return $result->auditOk() ? 'ok' : 'fail';
     }
 
     private function agentsOk(ArchitectureDoctorResult $result): bool

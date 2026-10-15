@@ -136,7 +136,21 @@ Beginning the same task again returns its original record. To start another task
 
 The completion check compares the current multiset of enforced errors with the initial multiset. Moving lines does not create a new error; another occurrence of the same error does. Earlier errors are counted separately and warnings do not block. All current changes participate, including parallel edits by other people; the result does not infer authorship. Do not automatically repair other people's changes.
 
-Incomplete analysis, missing beginnings, changed configuration/tool policy, unreadable inputs and audit failures never produce PASS. The Stop hook asks for correction once in a turn, and limits failed checks across attempts. When another continuation would loop, it releases the turn with an explicit failure message; the task remains unverified. Report the blocker rather than treating released completion as a passed audit.
+Partial analysis warns by default. A task can capture a partial beginning and pass when it finds no new recognized errors. Read `begin_analysis`, `analysis` and `reason` even when `ok` is true. These fields preserve the analysis status, selected policy, notice counts and counts by reason, without storing source messages. Inspect `audit --agent` for detailed notices and findings. A partial pass does not prove a complete code check or passing tests.
+
+Set `audit.incomplete_analysis` to `block` to require complete analysis. The only accepted values are `warn` and `block`; omitting the setting selects `warn`, including for existing profiles. In an external JSON profile:
+
+```json
+{
+  "audit": {
+    "incomplete_analysis": "block"
+  }
+}
+```
+
+The same key works in shared settings and `config/architectures.php`. Task control, MCP and both clients' hooks use this policy. Standalone and Artisan guards use it too, including with `--strict`. The guard still reports every warning; strict mode blocks ordinary architecture warnings, while the five built-in analysis-only warnings follow the selected completeness policy. Raw `audit` retains its existing finding counters and exit rules.
+
+Missing beginnings, changed configuration/tool policy, unreadable required inputs and audit failures never produce PASS. A source-discovery limit that returns a partial report follows the completeness policy; a failed audit cannot pass. Changing the policy or upgrading the tool does not recreate old task beginnings. A failed beginning remains unavailable, and an incompatible beginning requires a new explicitly approved task boundary before edits. The Stop hook asks for correction once in a turn, and limits failed checks across attempts. When another continuation would loop, it releases the turn with an explicit failure message; the task remains unverified. Report the blocker rather than treating released completion as a passed audit.
 
 A human can explicitly skip a known task:
 
@@ -148,7 +162,7 @@ A skipped task remains `ok: false`, `status: skipped`. It does not certify code 
 
 ## Execution and repository writes
 
-Default analysis does not load the application's PHP autoloader, configuration or bootstrap. Controller checks use project-local route declarations, including groups, providers and included files, through the existing bounded source discovery. Source candidates carry their location and do not prove runtime registration. Unresolved handlers, declarations, missing sources and discovery limits retain recognized routes but block task verification. Runtime framework facts remain unavailable; calls that require them can still make an endpoint analysis incomplete. Static search, relationships and guidance remain available.
+Default analysis does not load the application's PHP autoloader, configuration or bootstrap. Controller checks use project-local route declarations, including groups, providers and included files, through the existing bounded source discovery. Source candidates carry their location and do not prove runtime registration. Unresolved handlers, declarations, missing sources and discovery limits retain recognized routes and mark analysis partial. They warn by default and block task verification when `audit.incomplete_analysis` is `block`. Runtime framework facts remain unavailable; calls that require them can still make an endpoint analysis incomplete. Static search, relationships and guidance remain available.
 
 `--allow-execution` opts into runtime route discovery in a child process. It does not install the package into the application or override unsupported runtime requirements. Custom PHP rules require this flag and must be available to the tool's autoloader; unavailable rules produce an error rather than being silently omitted. The tool does not mix an arbitrary application's autoloader into its host process.
 
@@ -180,7 +194,7 @@ Each audit starts route registration after source analysis, then immediately dra
 
 Each audit gets a fresh snapshot for the selected application environment. It does not certify all deployments or prove that an endpoint executed. Failure, invalid settings, a 30 second timeout or more than 8 MB of output keeps verification blocked. Exporting with this option preserves it in both MCP and hooks and sets the hook timeout to 300 seconds. Exporting without it keeps source-only hooks and their existing 120 second timeout. Changing this option or the profile invalidates earlier task comparisons; it never refreshes their beginning automatically.
 
-Enum and Ports and Adapters rules index file names once per audit, without retaining application syntax or persisting the index between audits. Controller analysis normalizes fully qualified handler identities and reuses bounded syntax only within the current audit. Each handler and middleware combination is analysed once, while every route retains its own witness and HTTP-verb checks. Source limits and memory thresholds remain enforced; optional cached syntax is discarded under memory pressure. Runtime context includes observed class aliases, not guesses based on short names. Project implementations take precedence over framework descriptions. Missing or out-of-scope route handlers retain their witnesses and make endpoint analysis incomplete. External dependency methods remain unresolved when their sources are outside the audited graph, and an incomplete result still blocks task verification.
+Enum and Ports and Adapters rules index file names once per audit, without retaining application syntax or persisting the index between audits. Controller analysis normalizes fully qualified handler identities and reuses bounded syntax only within the current audit. Each handler and middleware combination is analysed once, while every route retains its own witness and HTTP-verb checks. Source limits and memory thresholds remain enforced; optional cached syntax is discarded under memory pressure. Runtime context includes observed class aliases, not guesses based on short names. Project implementations take precedence over framework descriptions. Missing or out-of-scope route handlers retain their witnesses and make endpoint analysis incomplete. External dependency methods remain unresolved when their sources are outside the audited graph, and an incomplete result follows `audit.incomplete_analysis`, warning by default or blocking when explicitly configured.
 
 Scaffolding proposals through MCP or `make --agent` write nothing. `make` without `--agent`, baseline updates and `sync` require `--allow-write` in standalone mode. `sync --dry-run` previews its repository files. The graph cache and paginated reports remain in external storage even when execution or writes are allowed.
 

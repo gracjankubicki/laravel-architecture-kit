@@ -10,13 +10,14 @@ use Illuminate\Support\Facades\Artisan;
 
 class ExplainCommandTest extends TestCase
 {
-    public function test_incomplete_test_analysis_explains_uncertainty_and_strict_guard(): void
+    public function test_incomplete_test_analysis_explains_uncertainty_and_completeness_policy(): void
     {
         $this->assertSame(0, Artisan::call('architecture-kit:explain', ['code' => 'W_MISSING_TEST_ANALYSIS_INCOMPLETE', '--agent' => true]));
         $payload = json_decode(trim(Artisan::output()), true);
         $this->assertSame('missing-test', $payload['rule']);
         $this->assertStringContainsString('No test relationship is inferred', $payload['why']);
-        $this->assertStringContainsString('strict guard', $payload['fix']);
+        $this->assertStringContainsString('warn by default', $payload['fix']);
+        $this->assertStringContainsString('audit.incomplete_analysis=block', $payload['fix']);
     }
 
     public function test_it_explains_known_codes_for_agents(): void

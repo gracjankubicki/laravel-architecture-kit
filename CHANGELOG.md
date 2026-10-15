@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.3 - 2026-10-15
+
+- Let partial analysis warn by default in task control, MCP, hooks and guards. Add `audit.incomplete_analysis=block` to require completeness. Keep partial status, notices and analysis-only findings visible, including in strict guards; retain blocking architecture errors, ordinary strict warnings, audit failures and task freshness checks. Never recreate existing task beginnings.
+
 ## v0.9.2 - 2026-10-15
 
 - Recognize native PHP reflection metadata for classes, properties, attributes and type descriptions in endpoint analysis on PHP and Mago. Preserve element types through array access, foreach and source helpers, and refine abstract reflection types with instanceof. Keep reflected execution, evaluated values, attribute argument evaluation and autoloading filters explicitly unresolved; preserve project overrides and argument effects.

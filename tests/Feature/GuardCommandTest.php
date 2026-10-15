@@ -33,7 +33,7 @@ class GuardCommandTest extends TestCase
         self::assertArrayHasKey('analysis', $payload);
     }
 
-    public function test_incomplete_laravel_ai_analysis_alone_blocks_strict_guard(): void
+    public function test_incomplete_laravel_ai_analysis_warns_in_strict_guard_by_default(): void
     {
         (new Filesystem)->put($this->tempPath.'/composer.json', json_encode([
             'type' => 'project',
@@ -56,22 +56,29 @@ final class DynamicGateway
 }
 PHP);
 
-        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame('W_LARAVEL_AI_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
         $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true]));
     }
 
-    public function test_incomplete_test_analysis_alone_blocks_strict_guard(): void
+    public function test_incomplete_test_analysis_warns_unless_explicitly_blocked(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
         $this->writeFile('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn']];");
         $this->writeFile('tests/Feature/DynamicTest.php', "<?php it('dynamic', function () { \$this->get(\$url); });");
-        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
         $payload = json_decode(trim(Artisan::output()), true);
         $this->assertSame('ok', $payload['doctor']);
         $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
-        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true]));
+        $this->assertSame('incomplete', $payload['analysis']['status']);
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--strict' => true]));
+        $this->assertStringContainsString('Analysis is partial', Artisan::output());
+        $this->writeFile('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn', 'incomplete_analysis' => 'block']];");
+        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--agent' => true]));
+        $blocked = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('fail', $blocked['audit']);
+        $this->assertSame('incomplete', $blocked['analysis']['status']);
     }
 
     public function test_guard_agent_output_reports_audit_findings_without_changing_json_contract(): void

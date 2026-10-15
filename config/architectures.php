@@ -18,6 +18,9 @@ return [
         'command' => null,
     ],
     'audit' => [
+        // Partial analysis warns by default. Use block to require completeness.
+        // 'incomplete_analysis' => 'warn',
+        //
         // Directories outside app/ the audit should read, for example:
         // 'paths' => ['routes'],
         //

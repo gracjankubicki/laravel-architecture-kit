@@ -39,11 +39,14 @@ final readonly class TaskControl
         // Reserve the one immutable beginning under a short lock, then analyse
         // outside it. A second caller cannot capture a later beginning.
         try {
-            [$audit, $sources] = $this->stableAudit();
-            $this->complete($audit);
+            [$audit, $sources, $block] = $this->stableAudit();
+            $this->complete($audit, $block);
             $result = ['status' => 'started', 'ok' => false,
                 'fingerprint' => $this->context->fingerprint(), 'begin_sources' => $sources,
-                'begin_errors' => $this->errors($audit), 'begin_warnings' => $audit->warnings()];
+                'begin_errors' => $this->errors($audit), 'begin_warnings' => $audit->warnings(),
+                'begin_analysis' => StandaloneAudit::analysisSummary($audit, $block),
+                'analysis' => StandaloneAudit::analysisSummary($audit, $block),
+                'reason' => $audit->incomplete() ? 'Beginning captured with partial analysis. Inspect audit --agent for unresolved code; only recognized errors can be compared.' : 'Task beginning captured.'];
         } catch (Throwable $error) {
             $result = ['status' => 'blocked', 'ok' => false, 'reason' => $error->getMessage()];
         }
@@ -73,8 +76,8 @@ final readonly class TaskControl
                 if (! isset($saved['begin_errors']) || ($saved['fingerprint'] ?? '') !== $this->context->fingerprint()) {
                     throw new RuntimeException('Task beginning is unavailable or configuration/tool/execution policy changed. No reliable comparison.');
                 }
-                [$audit, $sources] = $this->stableAudit();
-                $this->complete($audit);
+                [$audit, $sources, $block] = $this->stableAudit();
+                $this->complete($audit, $block);
                 $current = $this->errors($audit);
                 $new = 0;
                 foreach ($current as $key => $count) {
@@ -86,7 +89,11 @@ final readonly class TaskControl
                 $saved['previous_errors_remaining'] = array_sum($current) - $new;
                 $saved['warnings'] = $audit->warnings();
                 $saved['checked_sources'] = $sources;
+                $saved['analysis'] = StandaloneAudit::analysisSummary($audit, $block);
                 $saved['reason'] = $new === 0 ? 'No new recognized errors; this does not prove passing application tests.' : 'New architecture errors require correction. No authorship is inferred.';
+                if ($audit->incomplete()) {
+                    $saved['reason'] .= ' Analysis is partial. Inspect audit --agent for unresolved code; this is not a complete code check.';
+                }
             } catch (Throwable $error) {
                 $saved['status'] = 'blocked';
                 $saved['ok'] = false;
@@ -152,7 +159,7 @@ final readonly class TaskControl
         });
     }
 
-    /** @return array{ApplicationAuditResult, string} */
+    /** @return array{ApplicationAuditResult, string, bool} */
     private function stableAudit(): array
     {
         $config = $this->context->fingerprint();
@@ -170,12 +177,15 @@ final readonly class TaskControl
             throw new RuntimeException('Audit input freshness was not verified for this repository. No reliable comparison.');
         }
 
-        return [$audit, $audit->sourceFingerprint];
+        return [$audit, $audit->sourceFingerprint, $state->blockIncompleteAnalysis];
     }
 
-    private function complete(ApplicationAuditResult $audit): void
+    private function complete(ApplicationAuditResult $audit, bool $block): void
     {
-        if (StandaloneAudit::incomplete($audit)) {
+        if ($audit->hasAnalysisFailure()) {
+            throw new RuntimeException('Required runtime route analysis failed. Inspect architecture-kit audit --agent; no reliable check is available.');
+        }
+        if ($block && StandaloneAudit::incomplete($audit)) {
             throw new RuntimeException('Required analysis is incomplete. Inspect architecture-kit audit --agent; no PASS is available.');
         }
     }

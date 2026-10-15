@@ -140,7 +140,7 @@ CODE);
         $this->assertEquals($disabled->findings, $warm->findings);
     }
 
-    public function test_changed_test_keeps_unchanged_handler_diagnostics_and_blocks_strict_guard(): void
+    public function test_changed_test_keeps_unchanged_handler_diagnostics_and_obeys_completeness_policy(): void
     {
         $this->write('app/Http/Controllers/ProjectController.php', '<?php namespace App\\Http\\Controllers; class ProjectController { public function update(): void { $unknown->run(); } }');
         $this->write('tests/Feature/ProjectTest.php', "<?php it('updates', function () { \$this->put('/projects/1'); });");
@@ -162,10 +162,13 @@ CODE);
         $this->assertCount(1, $result->findings);
         $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $result->findings[0]->code);
         $this->assertSame('app/Http/Controllers/ProjectController.php', $result->findings[0]->path);
-        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--changed' => true, '--strict' => true, '--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--changed' => true, '--strict' => true, '--agent' => true]));
         $payload = json_decode(trim(Artisan::output()), true);
         $this->assertSame('ok', $payload['doctor']);
         $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
+        $this->assertSame('incomplete', $payload['analysis']['status']);
+        $this->write('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn', 'incomplete_analysis' => 'block']];");
+        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--changed' => true, '--strict' => true, '--agent' => true]));
     }
 
     public function test_changed_handler_keeps_diagnostic_from_unchanged_called_service(): void

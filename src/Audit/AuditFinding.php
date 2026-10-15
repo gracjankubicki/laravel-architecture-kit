@@ -61,6 +61,17 @@ final readonly class AuditFinding
         $this->code = $code;
     }
 
+    public function isIncompleteAnalysis(): bool
+    {
+        return $this->severity === 'warn' && in_array($this->code, [
+            'W_FORTIFY_ANALYSIS_INCOMPLETE',
+            'W_LARAVEL_AI_ANALYSIS_INCOMPLETE',
+            'W_INERTIA_REQUEST_PROPS_ANALYSIS_INCOMPLETE',
+            'W_THIN_CONTROLLER_READ_ANALYSIS_INCOMPLETE',
+            'W_MISSING_TEST_ANALYSIS_INCOMPLETE',
+        ], true);
+    }
+
     public function severityRank(): int
     {
         return match ($this->severity) {

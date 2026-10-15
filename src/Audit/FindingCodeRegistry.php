@@ -58,7 +58,7 @@ final readonly class FindingCodeRegistry
             'rule' => 'fortify',
             'title' => 'Fortify registration analysis is incomplete',
             'why' => 'A dynamic target or unavailable source prevents static verification of the extension contract.',
-            'fix' => 'Make the registered class explicit or inspect the reported registration before suppressing this strict-blocking warning.',
+            'fix' => 'Inspect the reported registration or make the registered class explicit. Guards warn by default; audit.incomplete_analysis=block requires completeness.',
         ],
         'E_INERTIA_LAYER_DEPENDENCY' => [
             'rule' => 'inertia',
@@ -76,13 +76,13 @@ final readonly class FindingCodeRegistry
             'rule' => 'laravel-ai',
             'title' => 'Laravel AI call analysis is incomplete',
             'why' => 'The receiver is related to Laravel AI, but a dynamic method or unsupported fluent call prevents the audit from proving which SDK operation will run.',
-            'fix' => 'Make the Laravel AI entry point explicit or inspect the reported call before suppressing this strict-blocking warning.',
+            'fix' => 'Inspect the reported call or make the Laravel AI entry point explicit. Guards warn by default; audit.incomplete_analysis=block requires completeness.',
         ],
         'W_INERTIA_REQUEST_PROPS_ANALYSIS_INCOMPLETE' => [
             'rule' => 'inertia',
             'title' => 'Inertia request prop analysis is incomplete',
             'why' => 'A dynamic or indirect transformation prevents static analysis from proving that the page receives only selected request fields.',
-            'fix' => 'Make field selection explicit at the page boundary or inspect the named transformer before suppressing the warning.',
+            'fix' => 'Inspect the named transformer or make field selection explicit at the page boundary. Guards warn by default; audit.incomplete_analysis=block requires completeness.',
         ],
         'E_THIN_CONTROLLER_MODEL_WRITE' => [
             'rule' => 'thin-controller',
@@ -124,7 +124,7 @@ final readonly class FindingCodeRegistry
             'rule' => 'thin-controller',
             'title' => 'Historical incomplete-read warning',
             'why' => 'This code predates GH-17. Unresolved endpoint analysis now uses the non-blocking analysis channel.',
-            'fix' => 'Read the analysis notice at the reported location. It identifies unresolved code and does not require suppressing a strict-blocking warning.',
+            'fix' => 'Read the analysis notice at the reported location. Guards warn by default; audit.incomplete_analysis=block requires completeness.',
         ],
         'W_THIN_CONTROLLER_READ_SERVICE' => [
             'rule' => 'thin-controller',
@@ -178,7 +178,7 @@ final readonly class FindingCodeRegistry
             'rule' => 'missing-test',
             'title' => 'Test relationship analysis is incomplete',
             'why' => 'A dynamic request, factory mapping, or bounded source lookup could not be resolved. No test relationship is inferred from this uncertainty.',
-            'fix' => 'Inspect the reported call and its route or factory mapping. Confirm the existing behavioural test before deciding whether another test is needed. This warning blocks strict guard.',
+            'fix' => 'Inspect the reported call and its route or factory mapping. Confirm the existing behavioural test before deciding whether another test is needed. Guards warn by default, including strict guards; audit.incomplete_analysis=block requires completeness.',
         ],
         'W_MISSING_TEST' => [
             'rule' => 'missing-test',

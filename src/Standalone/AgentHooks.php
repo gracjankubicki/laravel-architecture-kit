@@ -63,7 +63,7 @@ final readonly class AgentHooks
                 $sessions->update($sessionKey, static fn (array $old): array => [...$old, 'task' => $task, 'client' => $client, 'last_event' => $event, 'observed_at' => gmdate('c')]);
                 $state = StandaloneAudit::state($context);
                 $guideline = $state->resources->fullGuideline($state->enabled);
-                $text = 'Architecture Kit task '.$task.'. Status '.$status['status'].'. Keep the same task through corrections/resume. Before editing read enabled-architectures and file-rules. Before finishing task-control check. New errors block verification; never repair other authors\' changes automatically. Start another task explicitly, not on every prompt. '.$guideline;
+                $text = 'Architecture Kit task '.$task.'. Status '.$status['status'].'. '.($status['reason'] ?? '').' Keep the same task through corrections/resume. Before editing read enabled-architectures and file-rules. Before finishing task-control check and inspect analysis: partial analysis warns unless audit.incomplete_analysis=block. New errors block verification; never repair other authors\' changes automatically. Start another task explicitly, not on every prompt. '.$guideline;
                 if (strlen($text) > 16000) {
                     $text = substr($text, 0, 16000)."\nRead architecture-kit://guideline for the full selected guidance.";
                 }

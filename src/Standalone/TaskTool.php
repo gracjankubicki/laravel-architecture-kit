@@ -15,7 +15,7 @@ use RuntimeException;
 use Throwable;
 
 #[Name('task-control')]
-#[Description('Before edits begin an explicitly named task once. Keep its immutable beginning through corrections and resume. Check before completion: only new errors block; missing/incomplete/drift never passes. Skip only on explicit human instruction, remains unverified. Bind a client session when starting another task; never refresh a failing beginning.')]
+#[Description('Before edits begin an explicitly named task once. Keep its immutable beginning through corrections and resume. Check before completion: new recognized errors block. Partial analysis warns by default; audit.incomplete_analysis=block requires completeness. Read analysis and reason even on pass. Failures, missing beginning and drift never pass. Skip only on explicit human instruction, remains unverified. Bind a client session when starting another task; never refresh a failing beginning.')]
 class TaskTool extends Tool
 {
     public function schema(JsonSchema $schema): array

@@ -60,7 +60,7 @@ PHP);
             ArchitectureKitServer::tool($tool, ['changed' => false, 'strict' => true])
                 ->assertOk()
                 ->assertStructuredContent(fn ($json) => $json
-                    ->where('ok', false)
+                    ->where('ok', $tool === Guard::class)
                     ->where('find', $payload['find'])
                     ->etc());
         }
@@ -77,7 +77,7 @@ PHP);
             ArchitectureKitServer::tool($tool, ['changed' => false, 'strict' => true])
                 ->assertOk()
                 ->assertStructuredContent(fn ($json) => $json
-                    ->where('ok', false)
+                    ->where('ok', $tool === Guard::class)
                     ->where('find', $payload['find'])
                     ->etc());
         }

@@ -50,6 +50,30 @@ final readonly class ApplicationAuditResult
         ));
     }
 
+    public function incomplete(): bool
+    {
+        return $this->analysisStatus === 'incomplete' || $this->notices !== []
+            || count(array_filter($this->findings, static fn (AuditFinding $finding): bool => $finding->isIncompleteAnalysis())) > 0;
+    }
+
+    /** A failed explicitly requested route process is not a partial source result. */
+    public function hasAnalysisFailure(): bool
+    {
+        foreach ($this->notices as $notice) {
+            if ($notice->code === 'A_ROUTE_CONTEXT_UNAVAILABLE' && $notice->reason === 'runtime_routes_unavailable') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Analysis-only warnings remain reported but do not enforce architecture. */
+    public function architectureWarnings(): int
+    {
+        return count(array_filter($this->findings, static fn (AuditFinding $finding): bool => $finding->severity === 'warn' && ! $finding->isIncompleteAnalysis()));
+    }
+
     public function warnings(): int
     {
         return count(array_filter(

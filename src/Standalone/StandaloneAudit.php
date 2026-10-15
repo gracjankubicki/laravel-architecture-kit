@@ -46,29 +46,31 @@ final class StandaloneAudit
 
     public static function incomplete(ApplicationAuditResult $result): bool
     {
-        if ($result->analysisStatus === 'incomplete' || $result->notices !== []) {
-            return true;
-        }
-        foreach ($result->findings as $finding) {
-            if ($finding->code === 'W_MISSING_TEST_ANALYSIS_INCOMPLETE') {
-                return true;
-            }
-        }
-
-        return false;
+        return $result->incomplete();
     }
 
     public static function guard(RepositoryContext $context, bool $changed, ?string $base, bool $strict, bool $target): ArchitectureGuardResult
     {
         $result = self::run($context, $changed, $base);
         $doctor = self::doctor($context);
-        if (self::incomplete($result)) {
-            $doctor = new ArchitectureDoctorResult($doctor->enabled, [...$doctor->checks,
-                new ArchitectureDoctorCheck('config', 'blocked', $context->rootPath, 'Required analysis is incomplete. Inspect notices; this is not PASS.'),
-            ], false);
-        }
 
         return new ArchitectureGuardResult($doctor, $result, $strict,
-            $target ? (new ArchitectureTarget($context->rootPath))->inspect() : null);
+            $target ? (new ArchitectureTarget($context->rootPath))->inspect() : null,
+            self::state($context)->blockIncompleteAnalysis);
+    }
+
+    /** @return array{status: string, policy: string, notice_total: int, incomplete_findings: int, reasons: array<string, int>} */
+    public static function analysisSummary(ApplicationAuditResult $audit, bool $block): array
+    {
+        $reasons = [];
+        foreach ($audit->notices as $notice) {
+            $reasons[$notice->reason] = ($reasons[$notice->reason] ?? 0) + 1;
+        }
+        ksort($reasons);
+
+        return ['status' => $audit->incomplete() ? 'incomplete' : $audit->analysisStatus,
+            'policy' => $block ? 'block' : 'warn', 'notice_total' => count($audit->notices),
+            'incomplete_findings' => count(array_filter($audit->findings, static fn ($finding): bool => $finding->isIncompleteAnalysis())),
+            'reasons' => $reasons];
     }
 }

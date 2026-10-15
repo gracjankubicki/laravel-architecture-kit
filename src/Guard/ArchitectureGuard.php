@@ -67,6 +67,7 @@ final readonly class ArchitectureGuard
             audit: $audit,
             strict: $strict,
             target: $includeTarget ? (new ArchitectureTarget($this->basePath))->inspect() : null,
+            blockIncompleteAnalysis: $config->blocksIncompleteAnalysis(),
         );
     }
 

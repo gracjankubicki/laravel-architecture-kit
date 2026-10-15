@@ -136,6 +136,17 @@ final class ArchitectureConfig
         );
     }
 
+    public function blocksIncompleteAnalysis(): bool
+    {
+        $audit = $this->config()['audit'] ?? [];
+        $value = array_key_exists('incomplete_analysis', $audit) ? $audit['incomplete_analysis'] : 'warn';
+        if (! is_string($value) || ! in_array($value, ['warn', 'block'], true)) {
+            throw new InvalidArgumentException('audit.incomplete_analysis must be one of: warn, block.');
+        }
+
+        return $value === 'block';
+    }
+
     public function missingTestLevel(): MissingTestLevel
     {
         $config = $this->config();
@@ -306,6 +317,9 @@ final class ArchitectureConfig
     {
         return implode("\n", [
             $indent."'audit' => [",
+            $indent.'    // Partial analysis warns by default. Use block to require completeness.',
+            $indent."    // 'incomplete_analysis' => 'warn',",
+            $indent.'    //',
             $indent.'    // Directories outside app/ the audit should read, for example: ',
             $indent."    // 'paths' => ['routes'],",
             $indent.'    //',

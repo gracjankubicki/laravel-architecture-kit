@@ -17,15 +17,14 @@ final readonly class ArchitectureGuardResult
         public ?ApplicationAuditResult $audit,
         public bool $strict,
         public ?array $target = null,
+        public bool $blockIncompleteAnalysis = false,
     ) {}
 
     public function ok(): bool
     {
         return ($this->target === null || ($this->target['ok'] && ($this->target['gate']['ok'] ?? true)))
             && $this->doctor->ok()
-            && $this->audit !== null
-            && $this->audit->errors() === 0
-            && (! $this->strict || $this->audit->warnings() === 0);
+            && $this->auditOk();
     }
 
     /**
@@ -100,7 +99,7 @@ final readonly class ArchitectureGuardResult
                         'truncated' => false,
                     ],
                     'analysis' => [
-                        'status' => $this->audit->analysisStatus,
+                        'status' => $this->audit->incomplete() ? 'incomplete' : $this->audit->analysisStatus,
                         'notices' => array_map(
                             fn ($notice): array => $notice->toArray(),
                             $this->audit->notices,
@@ -117,11 +116,13 @@ final readonly class ArchitectureGuardResult
         ];
     }
 
-    private function auditOk(): bool
+    public function auditOk(): bool
     {
         return $this->audit !== null
+            && ! $this->audit->hasAnalysisFailure()
+            && (! $this->blockIncompleteAnalysis || ! $this->audit->incomplete())
             && $this->audit->errors() === 0
-            && (! $this->strict || $this->audit->warnings() === 0);
+            && (! $this->strict || $this->audit->architectureWarnings() === 0);
     }
 
     private function agentsOk(): bool
