@@ -128,6 +128,8 @@ final class StandaloneStateTest extends TestCase
 
     public function test_session_cannot_replace_unverified_task_beginning(): void
     {
+        $registration = (new Projects($this->home))->register($this->root, ['actions']);
+        (new StateStore(dirname($registration['config'])))->update('default', static fn ($settings) => [...$settings, 'control' => ['policy' => 'enforce']]);
         $context = $this->context();
         Host::create($this->home);
         RepositoryContext::activate($context);
@@ -205,10 +207,13 @@ $context = new GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext($_SER
 GracjanKubicki\ArchitectureKit\Standalone\Host::create($_SERVER['argv'][3]);
 GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext::activate($context);
 $marker = $_SERVER['argv'][4];
-spl_autoload_register(static function (string $class) use ($marker): void {
+$release = $_SERVER['argv'][6];
+spl_autoload_register(static function (string $class) use ($marker, $release): void {
     if ($class === 'GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit') {
         file_put_contents($marker, 'audit-starting');
-        usleep(1000000);
+        $deadline = microtime(true) + 5;
+        while (! is_file($release) && microtime(true) < $deadline) { usleep(1000); }
+        if (! is_file($release)) { throw new RuntimeException('Audit release barrier timed out.'); }
     }
 }, true, true);
 $control = new GracjanKubicki\ArchitectureKit\Standalone\TaskControl($context);
@@ -221,7 +226,8 @@ PHP;
                 self::assertSame('started', $control->begin($task)['status']);
             }
             $marker = $this->directory.'/audit-'.$mode;
-            $process = new Process([PHP_BINARY, '-r', $program, '--', dirname(__DIR__, 3).'/vendor/autoload.php', $context->rootPath, $this->home, $marker, $mode]);
+            $release = $marker.'-release';
+            $process = new Process([PHP_BINARY, '-r', $program, '--', dirname(__DIR__, 3).'/vendor/autoload.php', $context->rootPath, $this->home, $marker, $mode, $release]);
             $process->setTimeout(10);
             $process->start();
             try {
@@ -240,6 +246,7 @@ PHP;
                 // The audit is still paused when the short publication lock completes.
                 self::assertTrue($process->isRunning());
                 self::assertSame('skipped', $skipped['status']);
+                file_put_contents($release, 'continue');
                 self::assertSame(0, $process->wait(), $process->getErrorOutput());
                 self::assertSame('skipped', json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR)['status']);
                 self::assertSame($skipped, $control->status($task));
@@ -247,6 +254,57 @@ PHP;
                 if ($process->isRunning()) {
                     $process->stop(0);
                 }
+            }
+        }
+    }
+
+    public function test_missing_check_does_not_publish_or_interfere_with_a_parallel_first_begin(): void
+    {
+        $context = $this->context();
+        Host::create($this->home);
+        $store = new StateStore($context->storage.'/tasks', $context->home);
+        $path = $store->directory.'/'.hash('sha256', 'first').'.json';
+        $lock = fopen($path.'.lock', 'c');
+        self::assertNotFalse($lock);
+        self::assertTrue(flock($lock, LOCK_EX));
+        $ready = $this->directory.'/first-begin-ready';
+        $program = <<<'PHP'
+require $_SERVER['argv'][1];
+$context = new GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext($_SERVER['argv'][2], $_SERVER['argv'][3]);
+GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext::activate($context);
+if ($_SERVER['argv'][4] === 'begin') { file_put_contents($_SERVER['argv'][5], 'ready'); }
+echo json_encode((new GracjanKubicki\ArchitectureKit\Standalone\TaskControl($context))->{$_SERVER['argv'][4]}('first'), JSON_THROW_ON_ERROR);
+PHP;
+        $arguments = [PHP_BINARY, '-r', $program, '--', dirname(__DIR__, 3).'/vendor/autoload.php', $context->rootPath, $this->home];
+        $begin = new Process([...$arguments, 'begin', $ready]);
+        $begin->setTimeout(10);
+        $begin->start();
+        try {
+            $deadline = microtime(true) + 5;
+            while (! is_file($ready) && $begin->isRunning() && microtime(true) < $deadline) {
+                usleep(1000);
+            }
+            self::assertFileExists($ready, $begin->getErrorOutput());
+            $check = new Process([...$arguments, 'check', $ready]);
+            $check->setTimeout(5);
+            // A missing check must finish even while begin awaits its publication lock.
+            self::assertSame(0, $check->run(), $check->getErrorOutput());
+            $missing = json_decode($check->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            self::assertFalse($missing['ok']);
+            self::assertStringContainsString('missing', $missing['reason']);
+            self::assertFileDoesNotExist($path);
+            flock($lock, LOCK_UN);
+            self::assertSame(0, $begin->wait(), $begin->getErrorOutput());
+            $captured = json_decode($begin->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            self::assertSame('started', $captured['status']);
+            self::assertSame($captured['begin_sources'], $store->read(hash('sha256', 'first'))['begin_sources']);
+            RepositoryContext::activate($context);
+            self::assertTrue((new TaskControl($context))->check('first')['ok']);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            if ($begin->isRunning()) {
+                $begin->stop(0);
             }
         }
     }
@@ -259,6 +317,7 @@ PHP;
         $control = new TaskControl($context);
         $begin = $control->begin('concurrent-check');
         self::assertSame('started', $begin['status']);
+        self::assertSame('pass', $control->check('concurrent-check')['status']);
         $marker = $this->directory.'/check-ready';
         $release = $this->directory.'/check-release';
         $program = <<<'PHP'
@@ -338,12 +397,17 @@ $loader = require $_SERVER['argv'][1];
 $loader->addPsr4('GracjanKubicki\\ArchitectureKit\\', $_SERVER['argv'][2], true);
 $context = new GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext($_SERVER['argv'][3], $_SERVER['argv'][4]);
 $original = $context->fingerprint();
+GracjanKubicki\ArchitectureKit\Standalone\Host::create($_SERVER['argv'][4]);
+GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext::activate($context);
+$tasks = new GracjanKubicki\ArchitectureKit\Standalone\TaskControl($context);
+$begin = $tasks->begin('identity');
+$pass = $tasks->check('identity');
 file_put_contents($_SERVER['argv'][2].'/Standalone/RepositoryContext.php', "\n// changed tool source\n", FILE_APPEND);
 try {
     $context->fingerprint();
     echo json_encode(['rejected'=>false]);
 } catch (RuntimeException $error) {
-    echo json_encode(['rejected'=>true, 'reason'=>$error->getMessage()]);
+    echo json_encode(['rejected'=>true, 'reason'=>$error->getMessage(), 'pass'=>$pass['ok'], 'task'=>$tasks->status('identity'), 'begin_sources'=>$begin['begin_sources']]);
 }
 PHP;
         $process = new Process([PHP_BINARY, '-r', $program, '--', dirname(__DIR__, 3).'/vendor/autoload.php', $copy, realpath($this->root), $this->home]);
@@ -351,6 +415,10 @@ PHP;
         self::assertSame(0, $process->run(), $process->getErrorOutput());
         $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
         self::assertTrue($result['rejected']);
+        self::assertTrue($result['pass']);
+        self::assertFalse($result['task']['ok']);
+        self::assertFalse($result['task']['control']['blocking']);
+        self::assertSame($result['begin_sources'], $result['task']['begin_sources']);
         self::assertStringContainsString('Tool sources changed during this process', $result['reason']);
     }
 

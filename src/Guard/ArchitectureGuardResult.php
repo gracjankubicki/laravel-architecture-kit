@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Guard;
 
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
@@ -18,7 +19,14 @@ final readonly class ArchitectureGuardResult
         public bool $strict,
         public ?array $target = null,
         public bool $blockIncompleteAnalysis = false,
+        public ControlPolicy $policy = ControlPolicy::Advisory,
     ) {}
+
+    /** @return array{policy: string, blocking: bool} */
+    public function control(): array
+    {
+        return $this->policy->result($this->ok());
+    }
 
     public function ok(): bool
     {
@@ -34,6 +42,7 @@ final readonly class ArchitectureGuardResult
     {
         return [
             'ok' => $this->ok(),
+            'control' => $this->control(),
             ...($this->target === null ? [] : ['target' => $this->target]),
             'doctor' => $this->doctor->toArray(),
             'agents' => [
@@ -63,7 +72,7 @@ final readonly class ArchitectureGuardResult
                         'truncated' => false,
                     ],
                     'analysis' => [
-                        'status' => 'not_run',
+                        'status' => 'not_run', 'mode' => 'basic', 'checks_complete' => false, 'deep_run' => false,
                         'notices' => [],
                         'total' => 0,
                         'truncated' => false,
@@ -99,7 +108,8 @@ final readonly class ArchitectureGuardResult
                         'truncated' => false,
                     ],
                     'analysis' => [
-                        'status' => $this->audit->incomplete() ? 'incomplete' : $this->audit->analysisStatus,
+                        ...$this->audit->analysis(),
+                        'status' => $this->audit->incomplete() ? 'incomplete' : ($this->audit->analysis()['checks_complete'] ? 'complete' : $this->audit->analysisStatus),
                         'notices' => array_map(
                             fn ($notice): array => $notice->toArray(),
                             $this->audit->notices,
@@ -119,6 +129,7 @@ final readonly class ArchitectureGuardResult
     public function auditOk(): bool
     {
         return $this->audit !== null
+            && $this->audit->analysis()['checks_complete']
             && ! $this->audit->hasAnalysisFailure()
             && (! $this->blockIncompleteAnalysis || ! $this->audit->incomplete())
             && $this->audit->errors() === 0

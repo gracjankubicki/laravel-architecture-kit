@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -33,7 +34,7 @@ class Factory {
     public function partial($dynamic) { return [new Invoice, $dynamic, 'value-secret']; }
 }
 PHP);
-        $facts = (new ProjectGraphBuilder(catalog: true))->build([$file])->catalogFacts[0];
+        $facts = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([$file])->catalogFacts[0];
         $facts = CatalogFacts::fromArray($facts->path, $facts->toArray());
         $returns = array_values(array_filter($facts->relations, fn ($edge) => $edge->kind === 'returns-value' && isset($edge->metadata['saloon_pool_members'])));
         $this->assertCount(3, $returns);
@@ -107,7 +108,7 @@ PHP);
     public function test_builder_collects_pool_facts_using_existing_ast(): void
     {
         $file = new FileContext('app/Action.php', '<?php class Action { function run($connector) { $connector->pool([]); } }');
-        $snapshot = (new ProjectGraphBuilder(catalog: true))->build([$file]);
+        $snapshot = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([$file]);
         $sites = array_values(array_filter($snapshot->catalogFacts[0]->elements, fn ($element) => $element->kind === 'saloon-pool-site'));
         $this->assertCount(1, $sites);
         $this->assertTrue($sites[0]->metadata['resolved']);

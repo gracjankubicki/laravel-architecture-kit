@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -17,7 +18,7 @@ class StaticGraphPackageInertiaTest extends TestCase
     /** @return list<CatalogFacts> */
     private function facts(string $source, string $path = 'app/Inertia.php'): array
     {
-        return (new ProjectGraphBuilder(catalog: true))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
+        return (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
     }
 
     private function package(string $version = '3.3.4', string $path = 'composer.lock'): CatalogFacts
@@ -59,7 +60,7 @@ SOURCE);
         $this->assertStringNotContainsString('never-retain-payload', $serialized);
         $this->assertStringNotContainsString('source-only-sentinel', $serialized);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'renders-inertia-page'));
         $callbacks = $this->edges($index, 'inertia-prop-callback');
         $this->assertCount(4, $callbacks);
@@ -76,7 +77,7 @@ SOURCE);
         }
         $this->assertNotEmpty($index->names[strtolower('Orders/Index')]);
         foreach ([[], [$this->package('99.0.0')], [$this->package(), $this->package('3.0.0', 'vendor/composer/installed.json')]] as $packages) {
-            $index = new CatalogIndex([...$facts, ...$packages]);
+            $index = new CatalogIndex([...$facts, ...$packages], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'renders-inertia-page'));
             $this->assertSame([], $this->edges($index, 'inertia-prop-callback'));
             $this->assertContains('package_inertia_analysis', array_column($index->diagnostics, 'code'));
@@ -95,12 +96,12 @@ Decoy::render('Other/Page', ['data' => fn () => fake()]);
 \Inertia\Inertia::render('Real/Page', $dynamic);
 \Inertia\Inertia::render('Bad/../Page', []);
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'renders-inertia-page'));
         $this->assertSame([], $this->edges($index, 'inertia-prop-callback'));
         $this->assertContains('package_inertia_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts('namespace Inertia; class Inertia {}', 'app/Shadow.php');
-        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()]);
+        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'renders-inertia-page'));
     }
 
@@ -120,7 +121,7 @@ function page() {
 }
 class Service { public static function shared() {} public static function ordinary() {} public static function optional() {} public static function deferred() {} public static function ready() {} }
 SOURCE);
-        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $this->package()]);
+        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'inertia-prop-callback'));
         $this->assertSame([], $this->edges($index, 'inertia-shared-callback'));
         $page = $index->names[strtolower('Orders/Index')][0];
@@ -137,14 +138,14 @@ SOURCE);
     {
         $render = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $this->facts("namespace App; function page() { return \\Inertia\\Inertia::render('Orders/Index', []); }", 'app/Page.php'));
         $share = $this->facts("namespace App; \\Inertia\\Inertia::share(['user' => fn () => one()]);", 'app/Share.php');
-        $index = new CatalogIndex([...$render, ...$share, $this->package()]);
+        $index = new CatalogIndex([...$render, ...$share, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'inertia-shared-callback'));
-        $index = new CatalogIndex([...$render, $this->package()]);
+        $index = new CatalogIndex([...$render, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'inertia-shared-callback'));
-        $index = new CatalogIndex([...$render, ...$this->facts("namespace App; \\Inertia\\Inertia::share('user', fn () => two());", 'app/Share.php'), $this->package()]);
+        $index = new CatalogIndex([...$render, ...$this->facts("namespace App; \\Inertia\\Inertia::share('user', fn () => two());", 'app/Share.php'), $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'inertia-shared-callback'));
         $limited = $this->facts("\\Inertia\\Inertia::render('Orders/Index', [".implode(',', array_fill(0, 129, 'fn () => work()')).']);');
-        $index = new CatalogIndex([...$limited, $this->package()]);
+        $index = new CatalogIndex([...$limited, $this->package()], mode: AnalysisMode::Deep);
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
         $this->assertLessThanOrEqual(128, count($this->edges($index, 'inertia-prop-callback')));
     }
@@ -165,7 +166,7 @@ class Override extends \Inertia\Middleware {
 function page() { return inertia()->render('Account/Show', []); }
 class Service { public static function user() {} public static function once() {} }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'renders-inertia-page'));
         $this->assertCount(2, $this->edges($index, 'declares-inertia-middleware-shared-props'));
         $callbacks = $this->edges($index, 'inertia-shared-callback');

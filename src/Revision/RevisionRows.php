@@ -64,7 +64,7 @@ final readonly class RevisionRows
             }
             $result = [];
             foreach ($value as $key => $item) {
-                if (($key === 'id' && $field === '') || (in_array($key, ['line', 'offset'], true) && in_array($field, ['', 'source', 'site', 'registration', 'source_via', 'preparation_via', 'sites', 'calls'], true))) {
+                if (($key === 'id' && $field === '') || (in_array($key, ['line', 'offset', 'end_line', 'end_offset'], true) && in_array($field, ['', 'source', 'site', 'registration', 'source_via', 'preparation_via', 'sites', 'calls'], true))) {
                     continue;
                 }
                 $result[$key] = self::semantic($item, $symbols, $paths, $symbolPaths, is_int($key) ? $field : (string) $key);

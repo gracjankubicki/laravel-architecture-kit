@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
+use GracjanKubicki\ArchitectureKit\Context\GraphQuery;
+use GracjanKubicki\ArchitectureKit\Context\GraphSource;
 use Illuminate\Filesystem\Filesystem;
 
 /** A source-only A-to-B query. Structural projections never imply method execution. */
 final readonly class ArchitecturePath
 {
     /** @param list<string> $cacheConfiguration */
-    public function __construct(private Filesystem $files, private string $basePath, private AuditScope $scope = new AuditScope, private ?ProjectGraphCache $cache = null, private array $cacheConfiguration = []) {}
+    public function __construct(private Filesystem $files, private string $basePath, private AuditScope $scope = new AuditScope, private ?ProjectGraphCache $cache = null, private array $cacheConfiguration = [], private AnalysisMode $mode = AnalysisMode::Basic) {}
 
     /** @param list<string> $exclude
      * @return array<string, mixed>
@@ -26,8 +30,19 @@ final readonly class ArchitecturePath
         if ($limit < 0 || $limit > 500 || $depth < 1 || $depth > 32) {
             return self::error('E_PATH_LIMIT_INVALID', 'Use limit 0..500 and depth 1..32.');
         }
+        if ($this->mode === AnalysisMode::Basic) {
+            $source = (new GraphSource($this->files, $this->basePath, mode: $this->mode))->load();
+            $query = (new GraphQuery($source['index'], shortNames: true))->query($from, 'path', $to, min(20, $depth));
+
+            return ['v' => 1, 'cmd' => 'path', 'ok' => ! in_array($query['status'], ['invalid_input', 'not_found', 'ambiguous'], true),
+                'analysis' => ['mode' => 'basic', 'deep_run' => false, 'checks_complete' => $source['analysis']['checks_complete'] && $query['analysis']['checks_complete']],
+                'diagnostics' => ['items' => array_slice($source['index']->diagnostics, 0, $limit), 'total' => count($source['index']->diagnostics), 'truncated' => count($source['index']->diagnostics) > $limit],
+                'source_path' => [...$query, 'records' => array_slice($query['records'], 0, $limit)],
+                'snapshot' => $source['snapshot'], 'scope' => ['paths' => $source['scope'], 'audit_paths' => $this->scope->directories]];
+        }
+        AnalysisRuntime::stage('deep.path.execution');
         $exclude = [...$exclude, 'vendor/*'];
-        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true);
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true, mode: $this->mode);
         $plan = $loader->plan($exclude);
         $graph = $loader->build($plan);
         $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath, sourceOnly: true);

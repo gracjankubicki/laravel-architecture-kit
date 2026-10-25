@@ -16,6 +16,7 @@ use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
 use GracjanKubicki\ArchitectureKit\Target\TargetDefinition;
 use Illuminate\Filesystem\Filesystem;
+use Throwable;
 
 /**
  * Answers "which rules govern this one file" so an agent can write it correctly
@@ -72,7 +73,7 @@ final readonly class FileGuidance
         sort($rules);
 
         return [
-            ...(is_file($this->basePath.'/'.TargetDefinition::PATH) ? ['target' => (new ArchitectureTarget($this->basePath))->inspect($path)] : []),
+            ...(is_file($this->basePath.'/'.TargetDefinition::PATH) ? ['target' => $this->targetDeclaration()] : []),
             'classification' => $inScope ? $this->classification->file($path) : [],
             'path' => $path,
             'in_scope' => $inScope,
@@ -81,6 +82,21 @@ final readonly class FileGuidance
             'project_rules' => $project,
             'global_rules' => $inScope ? [...RuleCoverage::globalRules(), ...($this->classification->roles->mappings->unknownLevel !== 'off' ? ['unknown-role'] : [])] : [],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function targetDeclaration(): array
+    {
+        $result = ['source' => TargetDefinition::PATH,
+            'analysis' => ['mode' => 'basic', 'status' => 'not_run', 'deep_run' => false, 'checks_complete' => false],
+            'next' => ['Ask the user for Deep consent, grant analysis-consent for this task, then run architecture-target with analysis_mode=deep and task.']];
+        try {
+            $definition = ArchitectureTarget::load($this->basePath);
+
+            return [...$result, 'declarations' => $definition?->values];
+        } catch (Throwable $exception) {
+            return [...$result, 'm' => 'E_TARGET_CONFIGURATION', 'msg' => $exception->getMessage()];
+        }
     }
 
     /**

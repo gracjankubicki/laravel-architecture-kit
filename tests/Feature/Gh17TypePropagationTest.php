@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContext;
@@ -149,7 +150,7 @@ final class Root {
 PHP);
         $this->write('app/Covered.php', '<?php namespace App; final class Covered { public function run(): void {} }');
         $this->write('app/Unused.php', '<?php namespace App; final class Unused { public function run(): void {} }');
-        $graph = (new ProjectGraphLoader($files, $this->tempPath))->load();
+        $graph = (new ProjectGraphLoader($files, $this->tempPath, mode: AnalysisMode::Deep))->load();
         $sources = new SourceIndex($files, $this->tempPath, $graph);
 
         $result = (new MethodReachability($sources, new FactoryResolver($sources)))->analyze('App\\Root', 'handle');
@@ -165,7 +166,7 @@ PHP);
             [],
             changedOnly: false,
             routes: $routes,
-        );
+            mode: AnalysisMode::Deep);
     }
 
     private function legacyRoutes(): RouteMap

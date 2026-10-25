@@ -20,7 +20,7 @@ final class PathCommand extends Command
         {--agent : Output JSON for agents}
         {--limit=20 : Maximum paths and notices per channel, 0..500}
         {--depth=8 : Maximum hops, 1..32}
-        {--schema : Output the JSON Schema}';
+        {--schema : Output the JSON Schema} {--mode=basic : Analysis scope basic or deep; deep needs prior task consent} {--task= : Task with recorded Deep consent}';
 
     protected $description = 'Find bounded source-only paths between two endpoints, separately for dependencies and execution.';
 
@@ -32,13 +32,14 @@ final class PathCommand extends Command
             return self::SUCCESS;
         }
         try {
+            $mode = RepositoryContext::requestedMode($this->option('mode'), $this->option('task'));
             $limit = $this->option('limit');
             $depth = $this->option('depth');
             if (! ctype_digit((string) $limit) || ! ctype_digit((string) $depth)) {
                 $result = ArchitecturePath::error('E_PATH_LIMIT_INVALID', 'Limits must be non-negative integers.');
             } else {
                 $state = DiscoverySettings::load($files, RepositoryContext::root());
-                $result = (new ArchitecturePath($files, RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint))->inspect((string) $this->argument('from'), (string) $this->argument('to'), $state->exclude, (int) $limit, (int) $depth);
+                $result = (new ArchitecturePath($files, RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint, mode: $mode))->inspect((string) $this->argument('from'), (string) $this->argument('to'), $state->exclude, (int) $limit, (int) $depth);
             }
         } catch (Throwable $exception) {
             $result = ArchitecturePath::error('E_PATH_FAILED', $exception->getMessage());
@@ -49,6 +50,12 @@ final class PathCommand extends Command
             $this->error($result['msg']);
             foreach ($result['candidates'] ?? [] as $candidate) {
                 $this->line($candidate['name'].' '.$candidate['path'].':'.$candidate['line']);
+            }
+        } elseif (isset($result['source_path'])) {
+            $this->line('Basic source path; Deep execution analysis not run.');
+            $this->line(json_encode($result['source_path'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            foreach ($result['diagnostics']['items'] as $notice) {
+                $this->warn(($notice['path'] ?? '(project)').':'.($notice['line'] ?? 1).' '.($notice['message'] ?? $notice['code']));
             }
         } else {
             foreach (['dependencies', 'execution'] as $channel) {

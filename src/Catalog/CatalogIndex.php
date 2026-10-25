@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+
 /** Snapshot composition resolves named declarations again after each per-file rebuild. */
 final class CatalogIndex
 {
@@ -85,7 +88,7 @@ final class CatalogIndex
     /** @param list<CatalogFacts> $files
      * @param  (\Closure(string): ?string)|null  $sourceContents
      */
-    public function __construct(array $files, public readonly ?\Closure $sourceContents = null)
+    public function __construct(array $files, public readonly ?\Closure $sourceContents = null, public readonly AnalysisMode $mode = AnalysisMode::Basic)
     {
         $pendingCalls = [];
         $pendingBindings = [];
@@ -183,6 +186,15 @@ final class CatalogIndex
         }
         $this->composerStates();
         $this->classify();
+        if ($this->mode === AnalysisMode::Basic) {
+            (new CatalogCallResolver($this))->resolve($pendingCalls);
+            foreach ([...$pendingBindings, ...$pendingHttp, ...$pendingExecution] as $registration) {
+                $this->addRelation($registration);
+            }
+
+            return;
+        }
+        AnalysisRuntime::stage('deep.catalog.resolvers');
         (new CatalogResourceResolver($this))->resolve();
         $calls = new CatalogCallResolver($this);
         (new CatalogDataResolver($this, $calls))->resolve();
@@ -229,6 +241,18 @@ final class CatalogIndex
         (new CatalogHorizonResolver($this))->resolve();
         (new CatalogReverbResolver($this, $calls))->resolve();
         (new CatalogLivewireResolver($this, $calls))->resolve();
+    }
+
+    /** Computational completeness is independent of dynamic source uncertainty. */
+    public function checksComplete(): bool
+    {
+        foreach ($this->diagnostics as $diagnostic) {
+            if (preg_match('/limit|parse_error|changed_inputs/', $diagnostic['code'] ?? '')) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function composerStates(): void

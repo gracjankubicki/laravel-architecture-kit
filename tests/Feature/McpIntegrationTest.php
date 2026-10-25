@@ -21,6 +21,7 @@ use GracjanKubicki\ArchitectureKit\Mcp\Tools\PlanUpgrade;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Scaffold;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Resources\UpgradeGuideResources;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
@@ -32,6 +33,8 @@ use Symfony\Component\Process\Process;
 
 class McpIntegrationTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     public function test_incomplete_laravel_ai_analysis_has_the_same_cli_and_mcp_finding(): void
     {
         $this->writeLaravelAiFixture('^0.11', '0.11.2');
@@ -77,7 +80,7 @@ PHP);
             ArchitectureKitServer::tool($tool, ['changed' => false, 'strict' => true])
                 ->assertOk()
                 ->assertStructuredContent(fn ($json) => $json
-                    ->where('ok', $tool === Guard::class)
+                    ->where('ok', true)
                     ->where('find', $payload['find'])
                     ->etc());
         }
@@ -94,14 +97,14 @@ PHP);
         $this->writeFile('app/Models/User.php', '<?php namespace App\\Models; class User extends \\Illuminate\\Database\\Eloquent\\Model { use \\Illuminate\\Database\\Eloquent\\Factories\\HasFactory; }');
         $this->writeFile('database/factories/UserFactory.php', '<?php namespace Database\\Factories; throw new \\RuntimeException("Do not execute"); class UserFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}');
         $this->writeFile('tests/Feature/SendTest.php', '<?php it("send", function () { \\App\\Models\\User::factory(); \\Illuminate\\Support\\Facades\\Artisan::call("send"); \\Illuminate\\Support\\Facades\\Artisan::call($unknown); });');
-        $this->assertSame(1, Artisan::call('architecture-kit:audit', ['--agent' => true, '--strict' => true]));
+        $this->assertSame(1, Artisan::call('architecture-kit:audit', ['--enforce' => true, ...$this->deepCli(), '--agent' => true, '--strict' => true]));
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
         $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($payload['find'], 'm'));
         $this->assertContains('app/Actions/Unused.php', array_column($payload['find'], 'p'));
         $this->assertNotContains('app/Actions/Send.php', array_column($payload['find'], 'p'));
         $this->assertNotContains('database/factories/UserFactory.php', array_column($payload['find'], 'p'));
-        foreach ([AuditChanged::class, Guard::class] as $tool) {
-            ArchitectureKitServer::tool($tool, ['changed' => false, 'strict' => true])
+        foreach ([AuditChanged::class] as $tool) {
+            ArchitectureKitServer::tool($tool, [...$this->deepMcp(), 'changed' => false, 'strict' => true])
                 ->assertOk()
                 ->assertStructuredContent(fn ($json) => $json
                     ->where('ok', false)
@@ -117,7 +120,7 @@ PHP);
         $this->writeFile('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model {}');
         $this->writeFile('app/Http/Controllers/InvoiceController.php', '<?php namespace App\Http\Controllers; final class InvoiceController { public function show(\App\Models\Invoice $invoice) { $invoice->save(); } }');
 
-        ArchitectureKitServer::tool(AuditChanged::class, ['changed' => false, 'strict' => true])
+        ArchitectureKitServer::tool(AuditChanged::class, [...$this->deepMcp(), 'changed' => false, 'strict' => true])
             ->assertOk()
             ->assertStructuredContent(fn ($json) => $json
                 ->where('ok', true)
@@ -395,8 +398,8 @@ PHP);
                 ->assertStructuredContent(fn ($json) => $json
                     ->where('ok', false)
                     ->where('cmd', 'guard')
-                    ->where('m', 'E_COMMAND_FAILED')
-                    ->where('msg', fn (string $message): bool => str_contains($message, 'Audit memory budget exceeded'))
+                    ->where('analysis.checks_complete', false)
+                    ->where('analysis.notices.0.message', fn (string $message): bool => str_contains($message, 'Audit memory budget exceeded'))
                     ->etc()
                 );
 

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 
 /** Reuses the existing conservative assignment/branch analysis, with opt-in callable scopes. */
 final class PhpCallCatalogExtractor
 {
-    public function extract(FileContext $file, CatalogFacts $declarations): CatalogFacts
+    public function extract(FileContext $file, CatalogFacts $declarations, AnalysisMode $mode = AnalysisMode::Basic): CatalogFacts
     {
         $owners = [];
         foreach ($declarations->elements as $element) {
@@ -19,7 +20,7 @@ final class PhpCallCatalogExtractor
             }
         }
         $extractor = new ImpactExtractor;
-        $facts = $extractor->extract($file, catalog: true);
+        $facts = $extractor->extract($file, catalog: true, mode: $mode);
         $relations = $diagnostics = [];
         foreach ($facts->calls as $call) {
             if ($call['kind'] === 'reference' && is_string($call['method']) && preg_match('/^[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*$/D', $call['method']) !== 1) {

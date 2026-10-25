@@ -4,15 +4,102 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogSettings;
 use GracjanKubicki\ArchitectureKit\Context\GraphSource;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 
 final class CatalogSourceTest extends TestCase
 {
+    public function test_materialized_settings_are_not_reused_as_repository_config_sources(): void
+    {
+        $root = realpath($this->tempPath);
+        $files = new Filesystem;
+        foreach ([...CatalogSettings::ROOTS, 'Modules'] as $path) {
+            $files->ensureDirectoryExists($root.'/'.$path);
+        }
+        $original = '<?php return ["enabled"=>[], "audit"=>["cache"=>false], "graph"=>["paths"=>["Modules"]]];';
+        $files->put($root.'/config/architectures.php', $original);
+        $files->put($root.'/Modules/One.php', '<?php namespace Modules; class One {}');
+        $home = $root.'-graph-home';
+        $previous = RepositoryContext::current();
+        try {
+            $context = new RepositoryContext($root, $home);
+            RepositoryContext::activate($context);
+            $this->assertNotSame($original, $files->get($context->configPath));
+            $settings = CatalogSettings::load($files, $root);
+            $this->assertSame($context->configPath, $settings->discovery->sourceFile->path);
+            $this->assertContains('Modules', $settings->scope->directories);
+            foreach ([1, 2] as $attempt) {
+                $parsed = [];
+                $result = (new GraphSource($files, $root, function (string $path) use (&$parsed): void {
+                    $parsed[] = $path;
+                }))->load();
+                $this->assertFalse($result['changed'], json_encode($result['index']->diagnostics));
+                $this->assertTrue($result['analysis']['checks_complete']);
+                $this->assertNotEmpty($result['index']->names['modules\\one']);
+                $this->assertContains($context->configPath, $parsed);
+                $this->assertContains('config/architectures.php', $parsed);
+                $this->assertNotContains('changed_inputs', array_column($result['index']->diagnostics, 'code'));
+                $this->assertSame($original, $files->get($root.'/config/architectures.php'));
+            }
+        } finally {
+            RepositoryContext::activate($previous);
+            $files->deleteDirectory($home);
+        }
+    }
+
+    public function test_external_settings_and_real_sources_still_detect_same_stat_changes(): void
+    {
+        $files = new Filesystem;
+        $previous = RepositoryContext::current();
+        foreach (['source', 'settings', 'materialization'] as $input) {
+            $root = $this->tempPath.'/'.$input;
+            foreach ([...CatalogSettings::ROOTS, 'Modules'] as $path) {
+                $files->ensureDirectoryExists($root.'/'.$path);
+            }
+            $files->copy($this->tempPath.'/composer.json', $root.'/composer.json');
+            $files->put($root.'/config/architectures.php', '<?php return ["enabled"=>[], "audit"=>["cache"=>false], "graph"=>["paths"=>["Modules"]]];');
+            $files->put($root.'/app/One.php', '<?php namespace App; class One {}');
+            $home = $this->tempPath.'-'.$input.'-home';
+            try {
+                $root = realpath($root);
+                $context = new RepositoryContext($root, $home);
+                RepositoryContext::activate($context);
+                $mutated = false;
+                $target = match ($input) {
+                    'source' => $root.'/app/One.php',
+                    'settings' => $root.'/config/architectures.php',
+                    'materialization' => $context->configPath,
+                };
+                $before = $files->get($target);
+                $mtime = filemtime($target);
+                $after = str_replace($input === 'source' ? 'One' : 'Modules', $input === 'source' ? 'Two' : 'Changed', $before);
+                $this->assertSame(strlen($before), strlen($after));
+                $this->assertNotSame($before, $after);
+                $result = (new GraphSource($files, $root, function (string $path) use ($target, $after, $mtime, &$mutated): void {
+                    if ($path === 'app/One.php' && ! $mutated) {
+                        $mutated = true;
+                        file_put_contents($target, $after);
+                        touch($target, $mtime);
+                    }
+                }))->load();
+                $this->assertTrue($mutated);
+                $this->assertSame([$mtime, strlen($before)], [filemtime($target), filesize($target)]);
+                $this->assertTrue($result['changed'], $input);
+                $this->assertFalse($result['analysis']['checks_complete'], $input);
+                $this->assertContains('changed_inputs', array_column($result['index']->diagnostics, 'code'));
+            } finally {
+                RepositoryContext::activate($previous);
+                $files->deleteDirectory($home);
+            }
+        }
+    }
+
     public function test_graph_source_composes_saloon_urls_cold_and_warm_without_running_selectors(): void
     {
         $files = new Filesystem;
@@ -24,7 +111,7 @@ final class CatalogSourceTest extends TestCase
         $parses = [];
         $source = new GraphSource($files, $this->tempPath, function (string $path) use (&$parses): void {
             $parses[] = $path;
-        });
+        }, mode: AnalysisMode::Deep);
         foreach ([false, true] as $warm) {
             $parses = [];
             $result = $source->load();
@@ -54,7 +141,7 @@ SOURCE);
         $parses = [];
         $source = new GraphSource($files, $this->tempPath, function (string $path) use (&$parses): void {
             $parses[] = $path;
-        });
+        }, mode: AnalysisMode::Deep);
         foreach ([false, true] as $warm) {
             $parses = [];
             $result = $source->load();
@@ -75,7 +162,7 @@ SOURCE);
         $files = new Filesystem;
         $files->ensureDirectoryExists($this->tempPath.'/private');
         $files->put($this->tempPath.'/private/metadata.json', '{"packages":[{"name":"private/sentinel","version":"1.0.0"}]}');
-        $loader = new ProjectGraphLoader($files, $this->tempPath, sourceOnly: true, catalog: true);
+        $loader = new ProjectGraphLoader($files, $this->tempPath, sourceOnly: true, catalog: true, mode: AnalysisMode::Deep);
         symlink($this->tempPath.'/private/metadata.json', $this->tempPath.'/composer.lock');
         try {
             $this->assertArrayNotHasKey('composer.lock', $loader->plan()->files);
@@ -119,7 +206,7 @@ SOURCE);
         $files->put($this->tempPath.'/resources/views/example.blade.php', '<h1>Example</h1>');
         $files->put($this->tempPath.'/.env', 'SECRET=never read');
         $settings = CatalogSettings::load($files, $this->tempPath);
-        $loader = new ProjectGraphLoader($files, $this->tempPath, $settings->scope, sourceOnly: true, catalog: true);
+        $loader = new ProjectGraphLoader($files, $this->tempPath, $settings->scope, sourceOnly: true, catalog: true, mode: AnalysisMode::Deep);
         $plan = $loader->plan($settings->exclude);
         $this->assertArrayNotHasKey('tests/Excluded.php', $plan->files);
         $this->assertArrayHasKey('tests/Kept.php', $plan->files);
@@ -128,7 +215,7 @@ SOURCE);
         $this->assertArrayNotHasKey('.env', $plan->files);
         $graph = $loader->build($plan);
         $this->assertCount(count($plan->files), $graph->catalogFacts);
-        $legacy = new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests']));
+        $legacy = new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests']), mode: AnalysisMode::Deep);
         $this->assertArrayHasKey('tests/Excluded.php', $legacy->plan(['tests/Excluded.php'])->files);
     }
 
@@ -138,7 +225,7 @@ SOURCE);
         $files->ensureDirectoryExists($this->tempPath.'/private');
         $files->put($this->tempPath.'/private/Secret.php', '<?php throw new \\RuntimeException("must not read linked source");');
         symlink($this->tempPath.'/private', $this->tempPath.'/routes');
-        $loader = new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'routes']), sourceOnly: true, catalog: true);
+        $loader = new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'routes']), sourceOnly: true, catalog: true, mode: AnalysisMode::Deep);
         $this->assertSame(['composer.json'], array_keys($loader->plan()->files));
         unlink($this->tempPath.'/routes');
     }

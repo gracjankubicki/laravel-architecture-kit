@@ -146,9 +146,9 @@ PHP);
         $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
-        // The fixture controller already failed before this change, so the exit code and
-        // the counters have to stay exactly what they were, not become green.
-        $this->assertSame(1, $exitCode);
+        // Advisory changes the reaction, while the existing error counters remain truthful.
+        $this->assertSame(0, $exitCode);
+        $this->assertFalse($payload['control']['blocking']);
         $this->assertFalse($payload['ok']);
         $this->assertSame(2, $payload['err']);
         $this->assertSame(0, $payload['warn']);

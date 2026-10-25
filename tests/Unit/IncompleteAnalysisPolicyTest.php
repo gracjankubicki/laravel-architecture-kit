@@ -62,7 +62,9 @@ final class IncompleteAnalysisPolicyTest extends TestCase
                 $agent = (new AgentOutput)->guard($guard);
                 self::assertSame($block ? 'fail' : 'ok', $agent['audit']);
                 self::assertSame($code, $agent['find'][0]['m']);
-                self::assertSame('incomplete', $agent['analysis']['status']);
+                self::assertSame('complete', $agent['analysis']['status']);
+                self::assertSame('basic', $agent['analysis']['mode']);
+                self::assertFalse($agent['analysis']['deep_run']);
             }
         }
     }
@@ -77,7 +79,8 @@ final class IncompleteAnalysisPolicyTest extends TestCase
     public function test_notices_and_status_follow_policy_without_hiding_ordinary_warnings_or_errors(): void
     {
         foreach ([new ApplicationAuditResult('app', [], analysisStatus: 'incomplete'), new ApplicationAuditResult('app', [], notices: [$this->notice()])] as $audit) {
-            self::assertTrue($this->guard($audit, true, false)->ok());
+            self::assertSame($audit->analysis()['checks_complete'], $this->guard($audit, true, false)->ok());
+            self::assertFalse($this->guard($audit, true, false)->control()['blocking']);
             self::assertFalse($this->guard($audit, false, true)->ok());
         }
         foreach (['W_CUSTOM_ANALYSIS_INCOMPLETE', 'W_MISSING_TEST', 'W_THIN_CONTROLLER_READ_SERVICE'] as $code) {
@@ -104,7 +107,7 @@ final class IncompleteAnalysisPolicyTest extends TestCase
     public function test_task_summary_is_bounded_to_counts_and_excludes_source_messages(): void
     {
         $audit = new ApplicationAuditResult('app', [$this->finding('warn', 'W_FORTIFY_ANALYSIS_INCOMPLETE')], notices: [$this->notice(), $this->notice()]);
-        self::assertSame(['status' => 'incomplete', 'policy' => 'warn', 'notice_total' => 2, 'incomplete_findings' => 1, 'reasons' => ['source_unavailable' => 2]], StandaloneAudit::analysisSummary($audit, false));
+        self::assertSame(['mode' => 'basic', 'checks_complete' => true, 'deep_run' => false, 'status' => 'incomplete', 'policy' => 'warn', 'notice_total' => 2, 'incomplete_findings' => 1, 'reasons' => ['source_unavailable' => 2]], StandaloneAudit::analysisSummary($audit, false));
         self::assertSame('block', StandaloneAudit::analysisSummary($audit, true)['policy']);
     }
 

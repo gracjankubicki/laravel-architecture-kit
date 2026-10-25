@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -15,7 +16,7 @@ final class ResourceCatalogTest extends TestCase
 {
     private function index(string $source): CatalogIndex
     {
-        return new CatalogIndex((new ProjectGraphBuilder(catalog: true))->build([new FileContext('app/Process.php', '<?php '.$source)])->catalogFacts);
+        return new CatalogIndex((new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('app/Process.php', '<?php '.$source)])->catalogFacts, mode: AnalysisMode::Deep);
     }
 
     public function test_resource_operations_have_owner_evidence_and_omit_payloads_and_credentials(): void
@@ -178,25 +179,25 @@ PHP);
 
     public function test_cached_resource_calls_recheck_source_facade_and_helper_shadows(): void
     {
-        $builder = new ProjectGraphBuilder(catalog: true);
+        $builder = new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep);
         $fixed = $builder->build([new FileContext('app/Process.php', '<?php \\Illuminate\\Support\\Facades\\Cache::remember("key", 1, fn () => App\\Service::run()); config("feature.enabled"); class AppDecoy {}')])->catalogFacts;
         $fixed = array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $fixed);
         $service = $builder->build([new FileContext('app/Service.php', '<?php namespace App; class Service { public static function run() {} }')])->catalogFacts;
         $shadow = $builder->build([new FileContext('app/Shadow.php', '<?php namespace Illuminate\\Support\\Facades { class Cache {} } namespace { function config($key) {} }')])->catalogFacts;
-        $clean = new CatalogIndex([...$fixed, ...$service]);
-        $shadowed = new CatalogIndex([...$fixed, ...$service, ...$shadow]);
+        $clean = new CatalogIndex([...$fixed, ...$service], mode: AnalysisMode::Deep);
+        $shadowed = new CatalogIndex([...$fixed, ...$service, ...$shadow], mode: AnalysisMode::Deep);
         $query = new GraphQuery($shadowed);
         $file = array_values(array_filter($shadowed->elements, fn ($row) => $row['kind'] === 'file' && $row['path'] === 'app/Process.php'))[0];
         $this->assertSame('no_path_in_analyzed_graph', $query->query($file['id'], 'path', $shadowed->names[strtolower('App\\Service::run')][0], 8)['status']);
         $this->assertCount(1, array_filter($clean->relations, fn ($row) => $row['kind'] === 'resource-callback'));
         $this->assertCount(1, array_filter($shadowed->relations, fn ($row) => $row['kind'] === 'references-resource-callback'));
         $this->assertContains('resource_source_shadow', array_column($shadowed->diagnostics, 'code'));
-        $this->assertCount(1, array_filter((new CatalogIndex([...$fixed, ...$service]))->relations, fn ($row) => $row['kind'] === 'resource-callback'));
+        $this->assertCount(1, array_filter((new CatalogIndex([...$fixed, ...$service], mode: AnalysisMode::Deep))->relations, fn ($row) => $row['kind'] === 'resource-callback'));
     }
 
     public function test_cached_view_and_namespaced_helpers_recheck_ordered_source_candidates(): void
     {
-        $builder = new ProjectGraphBuilder(catalog: true);
+        $builder = new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep);
         $facts = $builder->build([new FileContext('app/Process.php', <<<'PHP'
 <?php namespace App;
 function entry() {
@@ -212,15 +213,15 @@ PHP)])->catalogFacts;
 namespace App { function cache($key) {} function config($key) {} }
 namespace Illuminate\Support\Facades { class View {} }
 PHP)])->catalogFacts;
-        $clean = new CatalogIndex($facts);
-        $shadowed = new CatalogIndex([...$facts, ...$shadow]);
+        $clean = new CatalogIndex($facts, mode: AnalysisMode::Deep);
+        $shadowed = new CatalogIndex([...$facts, ...$shadow], mode: AnalysisMode::Deep);
         $effects = fn ($index) => array_values(array_filter($index->relations, fn ($edge) => in_array($edge['kind'], ['renders', 'reads'], true)));
         $this->assertCount(6, $effects($clean));
         $this->assertCount(2, $effects($shadowed));
         $this->assertSame(['billing.global-cache', 'billing.global-config'], array_map(fn ($edge) => $shadowed->elements[$edge['to']]['name'], $effects($shadowed)));
         $this->assertCount(4, array_filter($shadowed->relations, fn ($edge) => in_array($edge['kind'], ['references-renders', 'references-reads'], true)));
         $this->assertContains('resource_source_shadow', array_column($shadowed->diagnostics, 'code'));
-        $this->assertCount(6, $effects(new CatalogIndex($facts)));
+        $this->assertCount(6, $effects(new CatalogIndex($facts, mode: AnalysisMode::Deep)));
     }
 
     public function test_route_through_typed_port_and_adapter_reaches_sanitized_external_endpoint(): void
@@ -235,9 +236,9 @@ PHP)])->catalogFacts;
         foreach ($sources as $path => $source) {
             $files[] = new FileContext($path, '<?php '.$source);
         }
-        $facts = (new ProjectGraphBuilder(catalog: true))->build($files)->catalogFacts;
+        $facts = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build($files)->catalogFacts;
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $route = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'route'))[0];
         $endpoint = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'external-endpoint'))[0];
         $this->assertSame('https://billing.test/invoices', $endpoint['name']);

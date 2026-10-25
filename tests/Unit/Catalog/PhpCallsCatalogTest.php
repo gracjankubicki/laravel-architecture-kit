@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -318,7 +319,7 @@ function run(Worker $parameter, $condition) {
 }
 PHP;
         $file = new FileContext('app/Example.php', $source);
-        $facts = (new ProjectGraphBuilder(catalog: true))->build([$file])->catalogFacts;
+        $facts = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([$file])->catalogFacts;
         $local = $facts['app/Example.php'] ?? array_values($facts)[0];
         $roundtrip = CatalogFacts::fromArray($local->path, $local->toArray());
         $this->assertEquals($local, $roundtrip);
@@ -342,7 +343,7 @@ PHP;
         $this->assertSame($creations[3], $calls['direct']['receiver_instance_origin']);
         $this->assertArrayNotHasKey('receiver_instance_origin', $calls['parameter']);
         $this->assertStringStartsWith('@after-argument:', $calls['afterUnknownCall']['receiver']);
-        $index = new CatalogIndex([$roundtrip]);
+        $index = new CatalogIndex([$roundtrip], mode: AnalysisMode::Deep);
         $this->assertNotContains('App\\Worker::afterUnknownCall', $this->targets($index, 'App\\run'));
         $this->assertArrayNotHasKey('afterClone', $calls);
         $this->assertArrayNotHasKey('afterBranch', $calls);
@@ -358,7 +359,7 @@ PHP;
 
     private function index(string $source): CatalogIndex
     {
-        return new CatalogIndex((new ProjectGraphBuilder(catalog: true))->build([new FileContext('app/Example.php', '<?php '.$source)])->catalogFacts);
+        return new CatalogIndex((new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('app/Example.php', '<?php '.$source)])->catalogFacts, mode: AnalysisMode::Deep);
     }
 
     /** @return list<string> */

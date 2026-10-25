@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex;
@@ -13,7 +14,7 @@ final class BladeCatalogTest extends TestCase
 {
     private function index(string $source): CatalogIndex
     {
-        return new CatalogIndex((new ProjectGraphBuilder(catalog: true))->build([new FileContext('resources/views/billing/invoice.blade.php', $source)])->catalogFacts);
+        return new CatalogIndex((new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('resources/views/billing/invoice.blade.php', $source)])->catalogFacts, mode: AnalysisMode::Deep);
     }
 
     public function test_blade_dependencies_and_exposed_php_keep_source_lines_without_rendering(): void

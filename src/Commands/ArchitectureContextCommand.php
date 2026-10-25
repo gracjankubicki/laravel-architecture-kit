@@ -19,7 +19,7 @@ final class ArchitectureContextCommand extends Command
         {subject? : Exact project FQCN or app-relative PHP path}
         {--agent : Output deterministic JSON for AI agents}
         {--limit=20 : Maximum dependencies and dependents returned per direction}
-        {--schema : Output the JSON Schema for --agent output}';
+        {--schema : Output the JSON Schema for --agent output} {--mode=basic : Analysis scope basic or deep; deep needs prior task consent} {--task= : Task with recorded Deep consent}';
 
     protected $description = 'Show bounded static architecture context for one project symbol without changing files.';
 
@@ -40,6 +40,7 @@ final class ArchitectureContextCommand extends Command
         }
 
         try {
+            $mode = RepositoryContext::requestedMode($this->option('mode'), $this->option('task'));
             $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
             $context = (new ArchitectureContext(
                 $files,
@@ -47,6 +48,7 @@ final class ArchitectureContextCommand extends Command
                 scope: $state->auditScope,
                 cache: $state->graphCache,
                 cacheConfiguration: $state->graphConfiguration(),
+                mode: $mode,
             ))->inspect(
                 subject: $subject,
                 enabled: $state->enabled,
@@ -66,6 +68,10 @@ final class ArchitectureContextCommand extends Command
         }
 
         $this->info('Architecture Kit Project Context');
+        $this->line('Analysis: '.$context->analysis['mode'].'; Deep '.($context->analysis['deep_run'] ? 'run' : 'not run'));
+        foreach ($context->analysis['notices'] as $notice) {
+            $this->warn(($notice['path'] ?? '(project)').':'.($notice['line'] ?? 1).' '.($notice['message'] ?? $notice['code']));
+        }
         $this->line("Subject: {$context->subject->name}");
         $this->line("Role:    {$context->subject->role}");
         $this->line("Path:    {$context->subject->path}:{$context->subject->line}");

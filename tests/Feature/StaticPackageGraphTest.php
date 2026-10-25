@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\BladeCatalogExtractor;
@@ -18,7 +19,7 @@ class StaticPackageGraphTest extends TestCase
     /** @return list<CatalogFacts> */
     private function facts(string $source, string $path = 'app/Search.php'): array
     {
-        return (new ProjectGraphBuilder(catalog: true))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
+        return (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
     }
 
     private function package(string $version = '11.7.0'): CatalogFacts
@@ -58,7 +59,7 @@ SOURCE);
             $this->assertStringNotContainsString($secret, $serialized);
         }
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(5, $this->edges($index, 'prepares-scout-search'));
         $this->assertCount(4, $this->edges($index, 'executes-scout-search'));
         $this->assertCount(2, $this->edges($index, 'updates-scout-index'));
@@ -72,7 +73,7 @@ SOURCE);
             $this->assertSame($edge['metadata']['method'] === 'searchable', $edge['metadata']['queue_delivery_required_if_configured']);
         }
         foreach ([[], [$this->package('99.0.0')]] as $packages) {
-            $index = new CatalogIndex([...$cached, ...$packages]);
+            $index = new CatalogIndex([...$cached, ...$packages], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'executes-scout-search'));
             $this->assertContains('package_scout_analysis', array_column($index->diagnostics, 'code'));
         }
@@ -94,15 +95,15 @@ function consumer(Product $product, Fake $fake) {
 }
 SOURCE);
         $model = $this->facts('namespace App; class Product extends \\Illuminate\\Database\\Eloquent\\Model { use \\Laravel\\Scout\\Searchable; }', 'app/Product.php');
-        $index = new CatalogIndex([...$consumer, ...$model, $this->package()]);
+        $index = new CatalogIndex([...$consumer, ...$model, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'executes-scout-search'));
         $this->assertCount(1, $this->edges($index, 'updates-scout-index'));
         $override = $this->facts('namespace App; class Product extends \\Illuminate\\Database\\Eloquent\\Model { use \\Laravel\\Scout\\Searchable; public static function search() {} public function searchable() {} }', 'app/Product.php');
-        $index = new CatalogIndex([...$consumer, ...$override, $this->package()]);
+        $index = new CatalogIndex([...$consumer, ...$override, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'executes-scout-search'));
         $this->assertSame([], $this->edges($index, 'updates-scout-index'));
         $shadow = $this->facts('namespace Laravel\\Scout; trait Searchable {}', 'app/Shadow.php');
-        $index = new CatalogIndex([...$consumer, ...$model, ...$shadow, $this->package()]);
+        $index = new CatalogIndex([...$consumer, ...$model, ...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'executes-scout-search'));
     }
 
@@ -122,7 +123,7 @@ function consumer() {
 }
 class Service { public static function first() {} public static function second() {} public static function third() {} public static function unused() {} }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $callbacks = $this->edges($index, 'scout-search-callback');
         $this->assertCount(3, $callbacks);
         $this->assertCount(4, $this->edges($index, 'executes-scout-search'));
@@ -142,19 +143,19 @@ SOURCE);
         $consumer = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $consumer);
         $source = 'namespace App; class Base extends \\Illuminate\\Database\\Eloquent\\Model { use \\Laravel\\Scout\\Searchable; public function searchableAs() { return "products_search"; } public function indexableAs() { return "products_write"; } public function searchableUsing() { return app(Engine::class); } } class Product extends Base {}';
         $model = $this->facts($source, 'app/Product.php');
-        $index = new CatalogIndex([...$consumer, ...$model, $this->package()]);
+        $index = new CatalogIndex([...$consumer, ...$model, $this->package()], mode: AnalysisMode::Deep);
         $resource = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'scout-index' && $element['metadata']['model'] === 'App\\Product'))[0];
         $this->assertSame('products_search', $resource['metadata']['search_index_name']);
         $this->assertSame('products_write', $resource['metadata']['write_index_name']);
         $this->assertFalse($resource['metadata']['runtime_selection_known']);
         $this->assertCount(4, $this->edges($index, 'scout-source-hook'));
         $changed = $this->facts(str_replace('return "products_search";', 'return config("scout.prefix").$this->getTable();', $source), 'app/Product.php');
-        $index = new CatalogIndex([...$consumer, ...$changed, $this->package()]);
+        $index = new CatalogIndex([...$consumer, ...$changed, $this->package()], mode: AnalysisMode::Deep);
         $resource = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'scout-index' && $element['metadata']['model'] === 'App\\Product'))[0];
         $this->assertNull($resource['metadata']['search_index_name']);
         $this->assertSame('products_write', $resource['metadata']['write_index_name']);
         $withoutTrait = $this->facts(str_replace('use \\Laravel\\Scout\\Searchable;', '', $source), 'app/Product.php');
-        $this->assertSame([], $this->edges(new CatalogIndex([...$consumer, ...$withoutTrait, $this->package()]), 'executes-scout-search'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$consumer, ...$withoutTrait, $this->package()], mode: AnalysisMode::Deep), 'executes-scout-search'));
     }
 
     public function test_scout_aliases_share_callback_state_rebinding_and_clearing_preserve_builder_identity(): void
@@ -176,7 +177,7 @@ function consumer() {
 }
 class Service { public static function one() {} public static function unused() {} }
 SOURCE);
-        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $this->package()]);
+        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $this->package()], mode: AnalysisMode::Deep);
         $callbacks = $this->edges($index, 'scout-search-callback');
         $this->assertCount(1, $callbacks);
         $this->assertSame('query', $callbacks[0]['metadata']['hook']);
@@ -225,7 +226,7 @@ function propertyMutated() {
     $builder->get();
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'scout-search-callback'));
         $this->assertContains('package_scout_analysis', array_column($index->diagnostics, 'code'));
         foreach ($this->edges($index, 'executes-scout-search') as $edge) {
@@ -248,7 +249,7 @@ function consumer() {
     Product::search()->within($dynamic)->get();
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $reads = $this->edges($index, 'executes-scout-search');
         $this->assertCount(3, $reads);
         $this->assertSame(['products', 'replacement', null], array_column(array_column($reads, 'metadata'), 'index_override'));
@@ -303,7 +304,7 @@ SOURCE);
             $this->assertStringNotContainsString($secret, $raw);
         }
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'socialite-redirect'));
         $this->assertCount(5, $this->edges($index, 'socialite-fetch-user'));
         $this->assertContains('oauth-provider', $index->elements[$index->namedTypes('App\\Custom')[0]]['roles']);
@@ -314,9 +315,9 @@ SOURCE);
             $this->assertSame('oauth-provider', $index->elements[$edge['to']]['kind']);
         }
         $this->assertContains('package_socialite_analysis', array_column($index->diagnostics, 'code'));
-        $this->assertSame([], $this->edges(new CatalogIndex($cached), 'socialite-fetch-user'));
+        $this->assertSame([], $this->edges(new CatalogIndex($cached, mode: AnalysisMode::Deep), 'socialite-fetch-user'));
         $shadow = $this->facts('namespace Laravel\\Socialite\\Facades; class Socialite {}', 'app/Shadow.php');
-        $this->assertSame([], $this->edges(new CatalogIndex([...$cached, ...$shadow, $package]), 'socialite-fetch-user'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$cached, ...$shadow, $package], mode: AnalysisMode::Deep), 'socialite-fetch-user'));
     }
 
     public function test_socialite_lookalikes_argument_errors_and_version_mismatch_keep_source_analysis_explicit(): void
@@ -334,11 +335,11 @@ function consumer(Decoy $decoy) {
 }
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/socialite","version":"5.31.0"}]}'));
-        $index = new CatalogIndex([...$facts, $package]);
+        $index = new CatalogIndex([...$facts, $package], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'socialite-fetch-user'));
         $this->assertContains('package_socialite_analysis', array_column($index->diagnostics, 'code'));
         $mismatch = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/socialite","version":"99.0.0"}]}'));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, $mismatch]), 'socialite-fetch-user'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, $mismatch], mode: AnalysisMode::Deep), 'socialite-fetch-user'));
     }
 
     public function test_socialite_callback_route_uses_the_current_source_handler_and_cached_package_selection(): void
@@ -350,7 +351,7 @@ Route::get('/oauth/github/callback', function () { return Socialite::driver('git
 SOURCE, 'routes/web.php');
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $routes);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/socialite","version":"5.31.0"}]}'));
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $users = $this->edges($index, 'socialite-fetch-user');
         $handlers = $this->edges($index, 'route-handler');
         $this->assertCount(1, $users);
@@ -358,8 +359,8 @@ SOURCE, 'routes/web.php');
         $this->assertSame($handlers[0]['to'], $users[0]['from']);
         $this->assertSame('github', $users[0]['metadata']['driver']);
         $changed = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/socialite","version":"99.0.0"}]}'));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$cached, $changed]), 'socialite-fetch-user'));
-        $this->assertCount(1, $this->edges(new CatalogIndex([...$cached, $changed]), 'route-handler'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$cached, $changed], mode: AnalysisMode::Deep), 'socialite-fetch-user'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([...$cached, $changed], mode: AnalysisMode::Deep), 'route-handler'));
     }
 
     public function test_cashier_billable_subscription_checkout_and_charges_exclude_payment_payloads(): void
@@ -388,7 +389,7 @@ SOURCE);
         foreach (['price-secret-sentinel', 'payment-secret-sentinel', 'private-items-secret-sentinel', 'intent-secret-sentinel', 'source-only-sentinel'] as $secret) {
             $this->assertStringNotContainsString($secret, $raw);
         }
-        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package]);
+        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package], mode: AnalysisMode::Deep);
         $this->assertContains('billable-model', $index->elements[$index->namedTypes('App\\User')[0]]['roles']);
         $this->assertCount(3, $this->edges($index, 'prepares-cashier-subscription'));
         $this->assertCount(3, $this->edges($index, 'reads-cashier-subscription'));
@@ -400,7 +401,7 @@ SOURCE);
             $this->assertFalse($edge['metadata']['checkout_completion_proven']);
             $this->assertTrue($edge['metadata']['external_service_required']);
         }
-        $withoutPackage = new CatalogIndex($facts);
+        $withoutPackage = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($withoutPackage, 'cashier-stripe-operation'));
         $this->assertContains('package_cashier_analysis', array_column($withoutPackage->diagnostics, 'code'));
     }
@@ -425,13 +426,13 @@ function consumer(User $user, Override $override, Decoy $decoy) {
 }
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/cashier","version":"16.8.0"}]}'));
-        $index = new CatalogIndex([...$facts, $package]);
+        $index = new CatalogIndex([...$facts, $package], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'cashier-stripe-operation'));
         $this->assertContains('package_cashier_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts('namespace Laravel\\Cashier; trait Billable {}', 'app/Shadow.php');
-        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, ...$shadow, $package]), 'cashier-stripe-operation'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, ...$shadow, $package], mode: AnalysisMode::Deep), 'cashier-stripe-operation'));
         $mismatch = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/cashier","version":"99.0.0"}]}'));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, $mismatch]), 'cashier-stripe-operation'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, $mismatch], mode: AnalysisMode::Deep), 'cashier-stripe-operation'));
     }
 
     public function test_cashier_webhooks_require_actual_routes_and_do_not_infer_completion_from_received_event(): void
@@ -446,7 +447,7 @@ Route::post('/decoy/webhook', [\App\Decoy::class, 'handleWebhook']);
 SOURCE, 'routes/web.php');
         $controllers = $this->facts('namespace App; class Webhook extends \\Laravel\\Cashier\\Http\\Controllers\\WebhookController { protected function handleCustomerSubscriptionUpdated($payload) {} private function handlePrivate($payload) {} } class Decoy { public function handleWebhook($request) {} } class Listener { public function handle($event) {} }', 'app/Webhook.php');
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/cashier","version":"16.8.0"}]}'));
-        $index = new CatalogIndex([...$routes, ...$controllers, $package]);
+        $index = new CatalogIndex([...$routes, ...$controllers, $package], mode: AnalysisMode::Deep);
         $this->assertContains('cashier-webhook-controller', $index->elements[$index->namedTypes('App\\Webhook')[0]]['roles']);
         $this->assertCount(2, $this->edges($index, 'cashier-webhook-entry'));
         $events = $this->edges($index, 'cashier-webhook-emits-event');
@@ -464,7 +465,7 @@ SOURCE, 'routes/web.php');
         }
         $changed = $this->facts('namespace App; class Webhook extends \\Laravel\\Cashier\\Http\\Controllers\\WebhookController { public function handleWebhook($request) {} } class Decoy { public function handleWebhook($request) {} }', 'app/Webhook.php');
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $routes);
-        $this->assertCount(1, $this->edges(new CatalogIndex([...$cached, ...$changed, $package]), 'cashier-webhook-entry'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([...$cached, ...$changed, $package], mode: AnalysisMode::Deep), 'cashier-webhook-entry'));
     }
 
     public function test_cashier_cached_callers_follow_billable_trait_changes_and_reject_source_builder_shadows(): void
@@ -473,11 +474,11 @@ SOURCE, 'routes/web.php');
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $callers);
         $models = $this->facts('namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model { use \\Laravel\\Cashier\\Billable; }', 'app/User.php');
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/cashier","version":"16.8.0"}]}'));
-        $this->assertCount(1, $this->edges(new CatalogIndex([...$cached, ...$models, $package]), 'cashier-stripe-operation'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([...$cached, ...$models, $package], mode: AnalysisMode::Deep), 'cashier-stripe-operation'));
         $changed = $this->facts('namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model {}', 'app/User.php');
-        $this->assertSame([], $this->edges(new CatalogIndex([...$cached, ...$changed, $package]), 'cashier-stripe-operation'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$cached, ...$changed, $package], mode: AnalysisMode::Deep), 'cashier-stripe-operation'));
         $shadow = $this->facts('namespace Laravel\\Cashier; class SubscriptionBuilder { public function checkout() {} }', 'app/Shadow.php');
-        $this->assertSame([], $this->edges(new CatalogIndex([...$cached, ...$models, ...$shadow, $package]), 'cashier-stripe-operation'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$cached, ...$models, ...$shadow, $package], mode: AnalysisMode::Deep), 'cashier-stripe-operation'));
     }
 
     public function test_horizon_inherits_defaults_using_recursive_array_replacement_without_job_links(): void
@@ -495,7 +496,7 @@ SOURCE, 'config/horizon.php');
         $this->assertStringNotContainsString('source-only-sentinel', $raw);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/horizon","version":"5.49.0"}]}'));
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $supervisors = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'horizon-supervisor'));
         $this->assertCount(2, $supervisors);
         $this->assertSame(['critical', 'emails'], $supervisors[0]['metadata']['options']['queue']);
@@ -510,7 +511,7 @@ SOURCE, 'config/horizon.php');
             $this->assertFalse($edge['metadata']['execution_proven']);
             $this->assertTrue($edge['metadata']['runtime_horizon_provisioning_required']);
         }
-        $this->assertSame([], $this->edges(new CatalogIndex($cached), 'horizon-supervises-queue'));
+        $this->assertSame([], $this->edges(new CatalogIndex($cached, mode: AnalysisMode::Deep), 'horizon-supervises-queue'));
     }
 
     public function test_horizon_dynamic_config_lookalike_paths_version_and_source_profile_shadows_remain_explicit(): void
@@ -518,17 +519,17 @@ SOURCE, 'config/horizon.php');
         $source = 'return ["defaults" => ["worker" => ["connection" => "redis", "queue" => ["default"]]], "environments" => ["*" => ["worker" => ["queue" => env("PRIVATE_QUEUE", "secret-default")]]]];';
         $facts = $this->facts($source, 'config/horizon.php');
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/horizon","version":"5.49.0"}]}'));
-        $index = new CatalogIndex([...$facts, $package]);
+        $index = new CatalogIndex([...$facts, $package], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'horizon-supervises-queue'));
         $this->assertContains('horizon_config_analysis', array_column($index->diagnostics, 'code'));
         $this->assertStringNotContainsString('secret-default', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
         $decoy = $this->facts(str_replace('env("PRIVATE_QUEUE", "secret-default")', '["critical"]', $source), 'app/Horizon.php');
-        $this->assertSame([], $this->edges(new CatalogIndex([...$decoy, $package]), 'horizon-supervises-queue'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$decoy, $package], mode: AnalysisMode::Deep), 'horizon-supervises-queue'));
         $valid = $this->facts(str_replace('env("PRIVATE_QUEUE", "secret-default")', '["critical"]', $source), 'config/horizon.php');
         $mismatch = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/horizon","version":"99.0.0"}]}'));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$valid, $mismatch]), 'horizon-supervises-queue'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$valid, $mismatch], mode: AnalysisMode::Deep), 'horizon-supervises-queue'));
         $shadow = $this->facts('namespace Laravel\\Horizon; class ProvisioningPlan {}', 'app/Shadow.php');
-        $this->assertSame([], $this->edges(new CatalogIndex([...$valid, ...$shadow, $package]), 'horizon-supervises-queue'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$valid, ...$shadow, $package], mode: AnalysisMode::Deep), 'horizon-supervises-queue'));
     }
 
     public function test_horizon_config_edit_queue_string_and_unpacking_recompose_without_stale_queue_edges(): void
@@ -536,19 +537,19 @@ SOURCE, 'config/horizon.php');
         $source = 'return ["defaults" => ["worker" => ["connection" => "redis", "queue" => ["default", "emails"], "balance" => false]], "environments" => ["*" => ["worker" => ["queue" => "critical,notifications"]]]];';
         $facts = $this->facts($source, 'config/horizon.php');
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/horizon","version":"5.49.0"}]}'));
-        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package]);
+        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package], mode: AnalysisMode::Deep);
         $names = array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $this->edges($index, 'horizon-supervises-queue'));
         $this->assertSame(['critical', 'notifications'], $names);
         $supervisor = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'horizon-supervisor'))[0];
         $this->assertFalse($supervisor['metadata']['options']['balance']);
         $changed = $this->facts(str_replace('"critical,notifications"', '"other"', $source), 'config/horizon.php');
-        $index = new CatalogIndex([...$changed, $package]);
+        $index = new CatalogIndex([...$changed, $package], mode: AnalysisMode::Deep);
         $this->assertSame(['other'], array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $this->edges($index, 'horizon-supervises-queue')));
         $unpacked = $this->facts(str_replace('"critical,notifications"', '[...$dynamic]', $source), 'config/horizon.php');
-        $index = new CatalogIndex([...$unpacked, $package]);
+        $index = new CatalogIndex([...$unpacked, $package], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'horizon-supervises-queue'));
         $this->assertContains('horizon_config_analysis', array_column($index->diagnostics, 'code'));
-        $this->assertSame([], $this->edges(new CatalogIndex([$package]), 'horizon-supervises-queue'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$package], mode: AnalysisMode::Deep), 'horizon-supervises-queue'));
     }
 
     public function test_reverb_source_configuration_keeps_addresses_but_omits_credentials(): void
@@ -566,7 +567,7 @@ SOURCE, 'config/broadcasting.php')];
             $this->assertStringNotContainsString($secret, $serialized);
         }
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex($cached);
+        $index = new CatalogIndex($cached, mode: AnalysisMode::Deep);
         $definitions = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'reverb-definition'));
         $this->assertCount(3, $definitions);
         $this->assertEqualsCanonicalizing(['server', 'application', 'connection'], array_column(array_column($definitions, 'metadata'), 'form'));
@@ -582,7 +583,7 @@ return ['default' => env('PRIVATE_CONNECTION', 'private-fallback'), 'connections
     'dynamic' => ['driver' => $driver]]];
 SOURCE;
         $facts = $this->facts($source, 'config/broadcasting.php');
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $this->assertContains('reverb_config_analysis', array_column($index->diagnostics, 'code'));
         $definitions = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'reverb-definition'));
         $this->assertCount(1, $definitions);
@@ -590,9 +591,9 @@ SOURCE;
         $this->assertNull($definitions[0]['metadata']['port']);
         $serialized = json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('private-fallback', $serialized);
-        $decoy = new CatalogIndex($this->facts($source, 'app/broadcasting.php'));
+        $decoy = new CatalogIndex($this->facts($source, 'app/broadcasting.php'), mode: AnalysisMode::Deep);
         $this->assertSame([], array_values(array_filter($decoy->elements, fn ($element) => $element['kind'] === 'reverb-definition')));
-        $log = new CatalogIndex($this->facts("return ['default' => 'log', 'connections' => ['log' => ['driver' => 'log']]];", 'config/broadcasting.php'));
+        $log = new CatalogIndex($this->facts("return ['default' => 'log', 'connections' => ['log' => ['driver' => 'log']]];", 'config/broadcasting.php'), mode: AnalysisMode::Deep);
         $this->assertNotContains('reverb_config_analysis', array_column($log->diagnostics, 'code'));
         $this->assertSame([], array_values(array_filter($log->elements, fn ($element) => $element['kind'] === 'reverb-definition')));
     }
@@ -607,7 +608,7 @@ class Dynamic { public function broadcastConnections() { return $this->connectio
 class EmptyEvent { public function broadcastConnections() { return []; } }
 throw new \RuntimeException('must-never-run');
 SOURCE);
-        $index = new CatalogIndex(array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts));
+        $index = new CatalogIndex(array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), mode: AnalysisMode::Deep);
         $selectors = array_values(array_filter($index->elements, fn ($element) => $element['kind'] === 'broadcast-connection-selector'));
         $this->assertCount(4, $selectors);
         $byName = array_column($selectors, 'metadata', 'name');
@@ -623,7 +624,7 @@ SOURCE);
         $facts = $this->facts($source, 'config/broadcasting.php');
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/reverb","version":"1.11.1"}]}'));
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'declares-broadcast-connection'));
         $this->assertCount(1, $this->edges($index, 'selects-default-broadcast-connection'));
         $defaultEdge = $this->edges($index, 'selects-default-broadcast-connection')[0];
@@ -634,12 +635,12 @@ SOURCE);
         $this->assertFalse($edge['metadata']['execution_proven']);
         $this->assertFalse($index->elements[$edge['to']]['metadata']['runtime_activation_known']);
         $changed = $this->facts(str_replace("'socket'", "'other'", $source), 'config/broadcasting.php');
-        $new = new CatalogIndex([...$changed, $package]);
+        $new = new CatalogIndex([...$changed, $package], mode: AnalysisMode::Deep);
         $this->assertArrayNotHasKey($edge['to'], $new->elements);
         $this->assertCount(1, $this->edges($new, 'selects-default-broadcast-connection'));
         $mismatch = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"laravel/reverb","version":"99.0.0"}]}'));
         foreach ([[], [$mismatch], [$package, ...$this->facts('namespace Laravel\\Reverb; class ServerProviderManager {}', 'app/Shadow.php')]] as $context) {
-            $invalid = new CatalogIndex([...$cached, ...$context]);
+            $invalid = new CatalogIndex([...$cached, ...$context], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($invalid, 'declares-broadcast-connection'));
             $this->assertContains('package_reverb_analysis', array_column($invalid->diagnostics, 'code'));
         }
@@ -664,7 +665,7 @@ class Unused implements \Illuminate\Contracts\Broadcasting\ShouldBroadcast {
 function emit() { event(new Queued); event(new Immediate); }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), [...$config, ...$events]);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'broadcasts-via-reverb');
         $this->assertCount(2, $edges);
         foreach ($edges as $edge) {
@@ -680,10 +681,10 @@ SOURCE);
             $this->assertSame('found', $query->query($edge['from'], 'path', $edge['to'])['status']);
         }
         $changed = $this->facts("return ['default' => env('PRIVATE_CONNECTION'), 'connections' => ['socket' => ['driver' => 'reverb']]];", 'config/broadcasting.php');
-        $new = new CatalogIndex([...$changed, ...$events, $package]);
+        $new = new CatalogIndex([...$changed, ...$events, $package], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($new, 'broadcasts-via-reverb'));
         $this->assertContains('package_reverb_analysis', array_column($new->diagnostics, 'code'));
-        $this->assertSame([], $this->edges(new CatalogIndex($cached), 'broadcasts-via-reverb'));
+        $this->assertSame([], $this->edges(new CatalogIndex($cached, mode: AnalysisMode::Deep), 'broadcasts-via-reverb'));
     }
 
     public function test_reverb_empty_channels_empty_connections_dynamic_trait_and_decoys_do_not_fake_delivery(): void
@@ -709,7 +710,7 @@ class UnknownBase extends \Vendor\BaseEvent implements \Illuminate\Contracts\Bro
 class Lookalike { public function broadcastOn() { return ['orders']; } public function broadcastConnections() { return ['socket']; } }
 function emit() { event(new EmptyChannels); event(new EmptyConnections); event(new RuntimeConnections); event(new UnknownBase); event(new Lookalike); }
 SOURCE);
-        $index = new CatalogIndex([...$config, ...$events, $package]);
+        $index = new CatalogIndex([...$config, ...$events, $package], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'broadcasts-via-reverb'));
         $this->assertContains('package_reverb_analysis', array_column($index->diagnostics, 'code'));
     }
@@ -733,7 +734,7 @@ throw new \RuntimeException('listener-source-only-sentinel');
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $listeners = $this->edges($index, 'livewire-event-listener');
         $this->assertCount(3, $listeners);
         $this->assertCount(1, $this->edges($index, 'livewire-refreshes-component'));
@@ -750,7 +751,7 @@ SOURCE);
         $this->assertStringEndsWith('BaseOrders::reload', $index->elements[$targeted[0]['to']]['name']);
         $this->assertArrayNotHasKey('fake-event', $index->names);
         $this->assertStringNotContainsString('listener-source-only-sentinel', json_encode(array_map(fn ($fact) => $fact->toArray(), $cached), JSON_THROW_ON_ERROR));
-        $this->assertSame([], $this->edges(new CatalogIndex($cached), 'livewire-event-listener'));
+        $this->assertSame([], $this->edges(new CatalogIndex($cached, mode: AnalysisMode::Deep), 'livewire-event-listener'));
     }
 
     public function test_livewire_listener_attributes_override_literal_maps_and_dynamic_or_inaccessible_selectors_are_explicit(): void
@@ -774,7 +775,7 @@ class Conditional extends \Livewire\Component { protected function getListeners(
 class RequiredArgument extends \Livewire\Component { protected function getListeners($required) { return ['required-argument' => 'reload']; } public function reload() {} }
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
-        $index = new CatalogIndex([...$facts, $package]);
+        $index = new CatalogIndex([...$facts, $package], mode: AnalysisMode::Deep);
         $listeners = $this->edges($index, 'livewire-event-listener');
         $this->assertCount(1, $listeners);
         $this->assertSame('App\\Orders::attributeListener', $index->elements[$listeners[0]['to']]['name']);
@@ -814,7 +815,7 @@ throw new \RuntimeException('property-source-only-sentinel');
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $listeners = $this->edges($index, 'livewire-event-listener');
         $this->assertCount(5, $listeners);
         $this->assertCount(1, $this->edges($index, 'livewire-refreshes-component'));
@@ -827,7 +828,7 @@ SOURCE);
         $this->assertArrayNotHasKey('unused', $index->names);
         $this->assertArrayNotHasKey('fake', $index->names);
         $this->assertStringNotContainsString('property-source-only-sentinel', json_encode(array_map(fn ($fact) => $fact->toArray(), $cached), JSON_THROW_ON_ERROR));
-        $this->assertSame([], $this->edges(new CatalogIndex($cached), 'livewire-event-listener'));
+        $this->assertSame([], $this->edges(new CatalogIndex($cached, mode: AnalysisMode::Deep), 'livewire-event-listener'));
     }
 
     public function test_livewire_listener_property_uncertainty_and_entry_budget_do_not_create_delivery(): void
@@ -841,13 +842,13 @@ class UnknownTrait extends \Livewire\Component { use \Vendor\UnknownListeners; p
 class GetterOverride extends \Livewire\Component { protected $listeners = ['ignored' => 'reload']; protected function getListeners() { return config('private-selector-sentinel'); } public function reload() {} }
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
-        $index = new CatalogIndex([...$facts, $package]);
+        $index = new CatalogIndex([...$facts, $package], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'livewire-event-listener'));
         $this->assertContains('package_livewire_analysis', array_column($index->diagnostics, 'code'));
         $entries = implode(',', array_map(fn ($number) => "'event-".$number."' => 'reload'", range(1, 129)));
         foreach (['protected $listeners = ['.$entries.'];', 'protected function getListeners() { return ['.$entries.']; }'] as $declaration) {
             $limited = $this->facts('class Limited extends \\Livewire\\Component { '.$declaration.' public function reload() {} }');
-            $index = new CatalogIndex([...$limited, $package]);
+            $index = new CatalogIndex([...$limited, $package], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'livewire-event-listener'));
             $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
             $this->assertFalse($limited[0]->cacheable());
@@ -899,7 +900,7 @@ class RootAndMethod extends \Livewire\Component {
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $listeners = $this->edges($index, 'livewire-event-listener');
         $this->assertCount(5, $listeners);
         $this->assertCount(2, $this->edges($index, 'livewire-refreshes-component'));
@@ -941,7 +942,7 @@ class Orders extends \Livewire\Component {
 }
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
-        $index = new CatalogIndex([...$facts, $package]);
+        $index = new CatalogIndex([...$facts, $package], mode: AnalysisMode::Deep);
         $listeners = $this->edges($index, 'livewire-event-listener');
         $this->assertCount(2, $listeners);
         $this->assertContains('package_livewire_analysis', array_column($index->diagnostics, 'code'));
@@ -979,7 +980,7 @@ SOURCE);
         }
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $this->assertContains('livewire-component', $index->elements[$index->namedTypes('App\\Orders')[0]]['roles']);
         $this->assertContains('livewire-form', $index->elements[$index->namedTypes('App\\OrderForm')[0]]['roles']);
         $byName = array_column(array_values($index->elements), null, 'name');
@@ -1014,7 +1015,7 @@ class Lookalike { #[\Livewire\Attributes\On('saved')] public function reload() {
 SOURCE;
         $facts = $this->facts($source);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
-        $index = new CatalogIndex([...$facts, $package]);
+        $index = new CatalogIndex([...$facts, $package], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'livewire-event-listener'));
         $this->assertContains('livewire_attribute_analysis', array_column($index->diagnostics, 'code'));
         $this->assertContains('package_livewire_analysis', array_column($index->diagnostics, 'code'));
@@ -1022,11 +1023,11 @@ SOURCE;
         $mismatch = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"99.0.0"}]}'));
         foreach ([[], [$mismatch], [$package, ...$this->facts('namespace Livewire; class Component {}', 'app/Shadow.php')],
             [$package, ...$this->facts('namespace Livewire\\Attributes; class On {}', 'app/Shadow.php')]] as $context) {
-            $invalid = new CatalogIndex([...$valid, ...$context]);
+            $invalid = new CatalogIndex([...$valid, ...$context], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($invalid, 'livewire-event-listener'));
             $this->assertContains('package_livewire_analysis', array_column($invalid->diagnostics, 'code'));
         }
-        $this->assertCount(1, $this->edges(new CatalogIndex([...$valid, $package]), 'livewire-event-listener'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([...$valid, $package], mode: AnalysisMode::Deep), 'livewire-event-listener'));
     }
 
     public function test_livewire_dispatch_to_listener_is_a_browser_delivery_candidate_and_cache_recomposes(): void
@@ -1047,7 +1048,7 @@ SOURCE;
         $serialized = json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('private-payload-sentinel', $serialized);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
-        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package]);
+        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package], mode: AnalysisMode::Deep);
         $dispatch = $this->edges($index, 'dispatches-livewire-event');
         $this->assertCount(1, $dispatch);
         $byName = array_column(array_values($index->elements), null, 'name');
@@ -1061,11 +1062,11 @@ SOURCE;
         }
         $this->assertContains('package_livewire_analysis', array_column($index->diagnostics, 'code'));
         $changed = $this->facts(str_replace("On('order-saved')", "On('other-event')", $source));
-        $new = new CatalogIndex([...$changed, $package]);
+        $new = new CatalogIndex([...$changed, $package], mode: AnalysisMode::Deep);
         $this->assertSame('no_path_in_analyzed_graph', (new GraphQuery($new))->query($byName['App\\Sender::save']['id'], 'path', $byName['App\\Receiver::reload']['id'])['status']);
         $override = $this->facts(str_replace('public function unknown', 'public function dispatch($event, ...$params) {} public function unknown', $source));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$override, $package]), 'dispatches-livewire-event'));
-        $this->assertSame([], $this->edges(new CatalogIndex($facts), 'dispatches-livewire-event'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$override, $package], mode: AnalysisMode::Deep), 'dispatches-livewire-event'));
+        $this->assertSame([], $this->edges(new CatalogIndex($facts, mode: AnalysisMode::Deep), 'dispatches-livewire-event'));
     }
 
     public function test_livewire_component_registration_is_structural_and_requires_real_component_contract(): void
@@ -1080,7 +1081,7 @@ Components::component('fake', Fake::class);
 Components::component($dynamic, Orders::class);
 SOURCE);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
-        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package]);
+        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package], mode: AnalysisMode::Deep);
         $registrations = $this->edges($index, 'registers-livewire-component');
         $this->assertCount(1, $registrations);
         $this->assertSame('orders-grid', $index->elements[$registrations[0]['to']]['name']);
@@ -1092,7 +1093,7 @@ SOURCE);
         $this->assertSame('no_path_in_analyzed_graph', (new GraphQuery($index))->query($registrations[0]['from'], 'path', $classes[0]['to'])['status']);
         $this->assertContains('package_livewire_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts('namespace Livewire; class LivewireManager {}', 'app/Shadow.php');
-        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, ...$shadow, $package]), 'registers-livewire-component'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, ...$shadow, $package], mode: AnalysisMode::Deep), 'registers-livewire-component'));
     }
 
     public function test_livewire_self_and_component_targeting_do_not_leak_to_unrelated_listeners(): void
@@ -1115,7 +1116,7 @@ SOURCE;
         $facts = $this->facts($source);
         $this->assertStringNotContainsString('private-dom-sentinel', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
-        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package]);
+        $index = new CatalogIndex([...array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts), $package], mode: AnalysisMode::Deep);
         $byName = array_column(array_values($index->elements), null, 'name');
         $query = new GraphQuery($index);
         foreach (['selfOnly' => 'Sender', 'namedSelf' => 'Sender', 'byAlias' => 'Receiver', 'byClass' => 'Receiver'] as $method => $receiver) {
@@ -1129,7 +1130,7 @@ SOURCE;
         }
         $this->assertContains('package_livewire_analysis', array_column($index->diagnostics, 'code'));
         $conflicting = $this->facts($source." \Livewire\Livewire::component('orders-grid', Other::class);");
-        $new = new CatalogIndex([...$conflicting, $package]);
+        $new = new CatalogIndex([...$conflicting, $package], mode: AnalysisMode::Deep);
         $this->assertSame('no_path_in_analyzed_graph', (new GraphQuery($new))->query($byName['App\\Sender::byAlias']['id'], 'path', $byName['App\\Receiver::receive']['id'])['status']);
     }
 
@@ -1152,12 +1153,12 @@ new class extends \Livewire\Component {
 SOURCE;
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
         $build = function (string $contents) {
-            $snapshot = (new ProjectGraphBuilder(catalog: true))->build([new FileContext('resources/views/livewire/orders.blade.php', $contents)]);
+            $snapshot = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('resources/views/livewire/orders.blade.php', $contents)]);
 
             return array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $snapshot->catalogFacts);
         };
         $facts = $build($source);
-        $index = new CatalogIndex([...$facts, $package]);
+        $index = new CatalogIndex([...$facts, $package], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'livewire-view-action');
         $this->assertCount(1, $edges);
         $this->assertStringEndsWith('::save', $index->elements[$edges[0]['to']]['name']);
@@ -1166,9 +1167,9 @@ SOURCE;
         $this->assertTrue($edges[0]['metadata']['nearest_component_scope_required']);
         $this->assertContains('package_livewire_analysis', array_column($index->diagnostics, 'code'));
         $this->assertStringNotContainsString('private-argument-sentinel', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
-        $this->assertSame([], $this->edges(new CatalogIndex($facts), 'livewire-view-action'));
+        $this->assertSame([], $this->edges(new CatalogIndex($facts, mode: AnalysisMode::Deep), 'livewire-view-action'));
         foreach ([str_replace('public function save', 'protected function save', $source), str_replace('save(\'private-argument-sentinel\')', 'missing()', $source)] as $changed) {
-            $this->assertSame([], $this->edges(new CatalogIndex([...$build($changed), $package]), 'livewire-view-action'));
+            $this->assertSame([], $this->edges(new CatalogIndex([...$build($changed), $package], mode: AnalysisMode::Deep), 'livewire-view-action'));
         }
     }
 
@@ -1190,9 +1191,9 @@ class Lookalike {
     public function save() {}
 }
 SOURCE;
-        $snapshot = (new ProjectGraphBuilder(catalog: true))->build([new FileContext('app/Orders.php', $source), new FileContext('resources/views/orders.blade.php', '<button wire:click="save"></button>')]);
+        $snapshot = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('app/Orders.php', $source), new FileContext('resources/views/orders.blade.php', '<button wire:click="save"></button>')]);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
-        $index = new CatalogIndex([...$snapshot->catalogFacts, $package]);
+        $index = new CatalogIndex([...$snapshot->catalogFacts, $package], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'livewire-view-action');
         $this->assertCount(2, $edges);
         $this->assertEqualsCanonicalizing(['App\\Orders::save', 'App\\OtherOrders::save'], array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $edges));
@@ -1220,10 +1221,10 @@ SOURCE;
         $files[] = new FileContext('resources/views/components/wrong/arbitrary.blade.php', '<button wire:click="save"></button>');
         $files[] = new FileContext('resources/views/components/later.blade.php', '<?php $first = 1; ?>'.$class.' ?> <button wire:click="save"></button>');
         $files[] = new FileContext('resources/views/components/second.blade.php', '<?php new class {}; new class extends \\Livewire\\Component { public function save() {} }; ?> <button wire:click="save"></button>');
-        $snapshot = (new ProjectGraphBuilder(catalog: true))->build($files);
+        $snapshot = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build($files);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $snapshot->catalogFacts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'renders-livewire-view');
         $this->assertCount(11, $edges);
         $this->assertCount(11, $this->edges($index, 'livewire-view-action'));
@@ -1260,12 +1261,12 @@ new class extends Component {
     public function save() {}
 };
 SOURCE;
-        $snapshot = (new ProjectGraphBuilder(catalog: true))->build([$singleFile,
+        $snapshot = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([$singleFile,
             new FileContext('resources/views/livewire/orders/orders.php', $multi),
             new FileContext('resources/views/livewire/orders/orders.blade.php', '<div>orders</div>')]);
         $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', '{"packages":[{"name":"livewire/livewire","version":"4.4.5"}]}'));
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $snapshot->catalogFacts);
-        $index = new CatalogIndex([...$cached, $package]);
+        $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
         $views = $this->edges($index, 'renders-livewire-view');
         $this->assertCount(2, $views);
         $this->assertEqualsCanonicalizing(['single-file', 'multi-file'], array_column(array_column($views, 'metadata'), 'source_form'));
@@ -1282,11 +1283,11 @@ SOURCE;
         $this->assertSame('resources/views/livewire/counter.blade.php', $method['path']);
         $serialized = json_encode(array_map(fn ($fact) => $fact->toArray(), $snapshot->catalogFacts), JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('private-js-sentinel', $serialized);
-        $this->assertSame([], $this->edges(new CatalogIndex($cached), 'renders-livewire-view'));
-        $withoutView = new CatalogIndex([...array_filter($cached, fn ($fact) => $fact->path !== 'resources/views/livewire/orders/orders.blade.php'), $package]);
+        $this->assertSame([], $this->edges(new CatalogIndex($cached, mode: AnalysisMode::Deep), 'renders-livewire-view'));
+        $withoutView = new CatalogIndex([...array_filter($cached, fn ($fact) => $fact->path !== 'resources/views/livewire/orders/orders.blade.php'), $package], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($withoutView, 'renders-livewire-view'));
-        $override = (new ProjectGraphBuilder(catalog: true))->build([new FileContext('resources/views/livewire/counter.blade.php',
+        $override = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('resources/views/livewire/counter.blade.php',
             str_replace('public function reload() {}', 'public function reload() {} public function render() { return view("other"); }', $single))]);
-        $this->assertSame([], $this->edges(new CatalogIndex([...$override->catalogFacts, $package]), 'renders-livewire-view'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$override->catalogFacts, $package], mode: AnalysisMode::Deep), 'renders-livewire-view'));
     }
 }

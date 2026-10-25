@@ -14,7 +14,7 @@ class RuntimeResolverTest extends TestCase
     {
         $resolver = new RuntimeResolver;
 
-        $this->assertSame(['php', 'artisan', 'architecture-kit:guard', '--changed', '--strict', '--json'], $resolver->guardCommand());
+        $this->assertSame(['php', 'artisan', 'architecture-kit:guard', '--changed', '--json'], $resolver->guardCommand());
         $this->assertSame([
             'command' => 'php',
             'args' => ['artisan', 'architecture-kit:mcp'],

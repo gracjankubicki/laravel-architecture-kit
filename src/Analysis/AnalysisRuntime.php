@@ -18,6 +18,18 @@ final class AnalysisRuntime
         self::$current = $session;
     }
 
+    public static function stage(string $stage): void
+    {
+        // Stage observation is optional even for pure in-memory catalog composition.
+        if (self::$current !== null) {
+            self::$current->observeStage($stage);
+        } elseif (($context = RepositoryContext::current()) !== null) {
+            $context->analysis()->observeStage($stage);
+        } elseif (function_exists('app') && Container::getInstance()->bound(AnalysisSession::class)) {
+            app(AnalysisSession::class)->observeStage($stage);
+        }
+    }
+
     public static function session(): AnalysisSession
     {
         if (self::$current !== null) {

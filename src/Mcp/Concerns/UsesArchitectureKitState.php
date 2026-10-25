@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Mcp\Concerns;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctor;
@@ -42,7 +44,7 @@ trait UsesArchitectureKitState
         ))->run(state: $state);
     }
 
-    protected function audit(ProjectState $state, bool $changedOnly, ?string $baseRef): ApplicationAuditResult
+    protected function audit(ProjectState $state, bool $changedOnly, ?string $baseRef, AnalysisMode $mode = AnalysisMode::Basic): ApplicationAuditResult
     {
         return (new ApplicationAudit($this->files(), RepositoryContext::root()))->run(
             enabled: $state->enabled,
@@ -54,17 +56,18 @@ trait UsesArchitectureKitState
             missingTestLevel: $state->missingTestLevel,
             cache: $state->graphCache,
             cacheConfiguration: $state->graphConfiguration(),
+            mode: $mode,
         );
     }
 
-    protected function guard(ProjectState $state, bool $changedOnly, ?string $baseRef, bool $strict, bool $includeTarget = false): ArchitectureGuardResult
+    protected function guard(ProjectState $state, bool $changedOnly, ?string $baseRef, bool $strict, bool $includeTarget = false, ?ControlPolicy $policy = null): ArchitectureGuardResult
     {
         return (new ArchitectureGuard(
             files: $this->files(),
             packagePath: $this->packagePath(),
             basePath: RepositoryContext::root(),
             console: null,
-        ))->run($changedOnly, $baseRef, $strict, $state, $includeTarget);
+        ))->run($changedOnly, $baseRef, $strict, $state, $includeTarget, $policy);
     }
 
     /**

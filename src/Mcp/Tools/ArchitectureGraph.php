@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('architecture-graph')]
-#[Description('Inspect a selected element: context returns direct typed relationships, path finds one shortest directed semantic path to target, and impact finds direct and transitive dependents with explanation paths. Use an ID from architecture-search, exact FQCN or file path. Inspect analysis_complete, traversal limits and diagnostics. Relationships and candidate tests do not prove execution or passing tests.')]
+#[Description('Basic source map by default. Semantic execution/effects require analysis_mode=deep and prior task consent. Inspect a selected element: context returns direct typed relationships, path finds one shortest directed semantic path to target, and impact finds direct and transitive dependents with explanation paths. Use an ID from architecture-search, exact FQCN or file path. Inspect analysis_complete, traversal limits and diagnostics. Relationships and candidate tests do not prove execution or passing tests.')]
 #[IsReadOnly]
 final class ArchitectureGraph extends Tool
 {
@@ -29,7 +29,7 @@ final class ArchitectureGraph extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return [
+        return ['analysis_mode' => $schema->string()->enum(['basic', 'deep'])->default('basic')->description('Deep requires prior human consent recorded for task; full only controls report size.'), 'task' => $schema->string()->description('Task with previously recorded consent.'),
             'subject' => $schema->string()->description('Element ID, exact FQCN or project-relative file path. Paths select the file element.')->required(),
             'mode' => $schema->string()->enum(['context', 'path', 'impact'])->default('context')->description('Direct relationships, a directed path, or possible change impact.'),
             'target' => $schema->string()->description('Destination selector, required for path mode. Omit this parameter entirely in context and impact modes; an empty string is invalid.'),
@@ -42,7 +42,7 @@ final class ArchitectureGraph extends Tool
 
     public function handle(Request $request): ResponseFactory
     {
-        $arguments = $request->all(['subject', 'mode', 'target', 'depth', 'limit', 'offset', 'snapshot']);
+        $arguments = $request->all(['analysis_mode', 'task', 'subject', 'mode', 'target', 'depth', 'limit', 'offset', 'snapshot']);
         $invalid = $this->invalidInput($request, ['subject' => 'string', 'mode' => 'string', 'target' => 'string', 'depth' => 'integer', 'limit' => 'integer', 'offset' => 'integer', 'snapshot' => 'string']);
         foreach ($arguments as $value) {
             if (is_string($value) && strlen($value) > 4096) {
@@ -61,7 +61,8 @@ final class ArchitectureGraph extends Tool
                 ['status' => 'invalid_input', 'records' => [], 'message' => $invalid ?? 'A non-empty subject is required.'], 'records'));
         }
         try {
-            $source = (new GraphSource(app(Filesystem::class), RepositoryContext::root()))->load();
+            $mode = RepositoryContext::requestedMode($request->get('analysis_mode', 'basic'), $request->get('task'));
+            $source = (new GraphSource(app(Filesystem::class), RepositoryContext::root(), mode: $mode))->load();
             $result = (new GraphQuery($source['index']))->query($request->get('subject'), $request->get('mode', 'context'), $request->get('target'), $request->get('depth', 4));
             if (! $result['traversal_complete']) {
                 $source['index']->diagnostics[] = ['code' => 'traversal_limit', 'message' => 'Traversal reached a depth, node or edge budget. Counts are lower bounds; a missing path is not a no-path result.'];
@@ -71,10 +72,13 @@ final class ArchitectureGraph extends Tool
                 $result['records'] = [];
             }
 
+            $result['analysis'] = [...$source['analysis'], ...$result['analysis'],
+                'checks_complete' => $source['analysis']['checks_complete'] && $result['analysis']['checks_complete']];
+
             return Response::structured(GraphPage::make('architecture-graph', $arguments, $source['snapshot'], $source['scope'], $source['index']->diagnostics, $result, 'records'));
-        } catch (Throwable) {
+        } catch (Throwable $error) {
             return Response::structured(GraphPage::make('architecture-graph', [], '', [],
-                [['code' => 'source_unavailable', 'message' => 'Source settings or graph could not be read safely. Inspect project configuration.']],
+                [['code' => 'source_unavailable', 'message' => $error->getMessage()]],
                 ['status' => 'unavailable', 'records' => []], 'records'));
         }
     }

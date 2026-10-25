@@ -11,12 +11,15 @@ use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\AuditChanged;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Guard;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ControllerRoutesFreshnessTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     public function test_fresh_boot_uses_edited_routes_and_preserves_the_existing_route_cache(): void
     {
         $files = new Filesystem;
@@ -50,22 +53,22 @@ PHP);
             $first = RouteMap::fresh($this->tempPath);
             $this->assertNull($first->unavailable);
             $this->assertSame(['GET', 'HEAD'], $first->verbs('App\Http\Controllers\PlanningController', 'show'));
-            $this->assertSame(0, Artisan::call('architecture-kit:audit', ['--strict' => true, '--agent' => true]));
+            $this->assertSame(0, Artisan::call('architecture-kit:audit', [...$this->deepCli(), '--enforce' => true, '--strict' => true, '--agent' => true]));
             $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--strict' => true, '--agent' => true]));
-            ArchitectureKitServer::tool(AuditChanged::class, ['changed' => false])->assertOk()
+            ArchitectureKitServer::tool(AuditChanged::class, [...$this->deepMcp(), 'changed' => false])->assertOk()
                 ->assertStructuredContent(fn ($json) => $json->where('warn', 0)->where('err', 0)->etc());
             $files->put($this->tempPath.'/routes/web.php', '<?php Illuminate\Support\Facades\Route::post("/planning", [\App\Http\Controllers\PlanningController::class, "show"]);');
             $second = RouteMap::fresh($this->tempPath);
             $this->assertNull($second->unavailable);
             $this->assertSame(['POST'], $second->verbs('App\Http\Controllers\PlanningController', 'show'));
-            $this->assertSame(1, Artisan::call('architecture-kit:audit', ['--strict' => true, '--agent' => true]));
+            $this->assertSame(1, Artisan::call('architecture-kit:audit', [...$this->deepCli(), '--enforce' => true, '--strict' => true, '--agent' => true]));
             $payload = json_decode(Artisan::output(), true);
             $this->assertSame('W_THIN_CONTROLLER_SERVICE_DEPENDENCY', $payload['find'][0]['m']);
             // Same MCP server/test process, fresh route knowledge on every call.
-            ArchitectureKitServer::tool(AuditChanged::class, ['changed' => false])->assertOk()
+            ArchitectureKitServer::tool(AuditChanged::class, [...$this->deepMcp(), 'changed' => false])->assertOk()
                 ->assertStructuredContent(fn ($json) => $json->where('find.0.m', 'W_THIN_CONTROLLER_SERVICE_DEPENDENCY')->etc());
             ArchitectureKitServer::tool(Guard::class, ['changed' => false, 'strict' => true])->assertOk()
-                ->assertStructuredContent(fn ($json) => $json->where('ok', false)->where('find.0.m', 'W_THIN_CONTROLLER_SERVICE_DEPENDENCY')->etc());
+                ->assertStructuredContent(fn ($json) => $json->where('ok', true)->where('analysis.mode', 'basic')->where('analysis.deep_run', false)->etc());
             $this->assertSame($cacheBefore, file_get_contents($this->tempPath.'/bootstrap/cache/routes-v7.php'));
         } finally {
             unlink($this->tempPath.'/vendor');

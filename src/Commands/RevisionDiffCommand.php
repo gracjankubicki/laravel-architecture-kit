@@ -8,10 +8,11 @@ use GracjanKubicki\ArchitectureKit\Revision\ArchitectureRevisionDiff;
 use GracjanKubicki\ArchitectureKit\Revision\RevisionDiffSchema;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
+use Throwable;
 
 final class RevisionDiffCommand extends Command
 {
-    protected $signature = 'architecture-kit:revision-diff {from? : Git revision before the change} {--to=working : Git revision or working sources} {--shared-config= : Use before or after configuration for both states} {--pair=* : Explicit old=new symbol identity} {--limit=50 : Display at most 0..500 rows per channel} {--agent : Output JSON} {--schema : Output JSON Schema}';
+    protected $signature = 'architecture-kit:revision-diff {from? : Git revision before the change} {--to=working : Git revision or working sources} {--shared-config= : Use before or after configuration for both states} {--pair=* : Explicit old=new symbol identity} {--limit=50 : Display at most 0..500 rows per channel} {--mode=basic : Full assessment requires deep and prior consent} {--task= : Consented task for Deep assessment} {--agent : Output JSON} {--schema : Output JSON Schema}';
 
     protected $description = 'Compare architecture across source revisions without checkout, execution or project cache writes.';
 
@@ -22,11 +23,17 @@ final class RevisionDiffCommand extends Command
 
             return self::SUCCESS;
         }
+        try {
+            RepositoryContext::requiredDeep($this->option('mode'), $this->option('task'));
+        } catch (Throwable $exception) {
+            $result = ArchitectureRevisionDiff::error('E_REVISION_CONSENT', $exception->getMessage());
+            $result['analysis'] = ['mode' => 'basic', 'status' => 'not_run', 'deep_run' => false, 'checks_complete' => false];
+        }
         $pairs = [];
         foreach ($this->option('pair') as $pair) {
             $parts = explode('=', $pair, 2);
             if (count($parts) !== 2 || isset($pairs[$parts[0]])) {
-                $result = ArchitectureRevisionDiff::error('E_REVISION_INPUT', 'Use one --pair=old=new per explicit symbol pair.');
+                $result ??= ArchitectureRevisionDiff::error('E_REVISION_INPUT', 'Use one --pair=old=new per explicit symbol pair.');
                 break;
             }
             $pairs[$parts[0]] = $parts[1];

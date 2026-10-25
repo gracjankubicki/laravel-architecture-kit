@@ -30,7 +30,7 @@ final class ImpactCommand extends Command
         {--operation= : Table effect filter: read, write, schema, or schema-read}
         {--report= : Continue an immutable proposal report without subject or proposal}
         {--page= : Start immutable proposal paging at 1, or read a saved page}
-        {--schema : Output the JSON Schema}';
+        {--schema : Output the JSON Schema} {--mode=basic : Analysis scope basic or deep; deep needs prior task consent} {--task= : Task with recorded Deep consent}';
 
     protected $description = 'Inspect symbol relationships or database table uses without executing application code.';
 
@@ -42,6 +42,7 @@ final class ImpactCommand extends Command
             return self::SUCCESS;
         }
         try {
+            $mode = RepositoryContext::requestedMode($this->option('mode'), $this->option('task'));
             $limit = $this->option('limit');
             $depth = $this->option('depth');
             if ((! is_int($limit) && (! is_string($limit) || ! ctype_digit($limit))) || (! is_int($depth) && (! is_string($depth) || ! ctype_digit($depth)))) {
@@ -54,10 +55,10 @@ final class ImpactCommand extends Command
                 $filters = [$this->option('table'), $this->option('table-match'), $this->option('connection'), $this->option('operation')];
                 $result = ! is_string($page) || ! ctype_digit($page) || array_filter($filters, fn ($value) => $value !== null) !== []
                     ? ArchitectureImpact::error('E_IMPACT_PAGE_INPUT', 'Use integer page; proposal pagination cannot be combined with table filters.')
-                    : (new ImpactPages($files, RepositoryContext::root()))->inspect((string) ($this->argument('subject') ?? ''), (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('report'), (int) $page);
+                    : (new ImpactPages($files, RepositoryContext::root(), $mode))->inspect((string) ($this->argument('subject') ?? ''), (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('report'), (int) $page);
             } else {
                 $state = DiscoverySettings::load($files, RepositoryContext::root());
-                $result = (new ArchitectureImpact($files, RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint))
+                $result = (new ArchitectureImpact($files, RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint, mode: $mode))
                     ->inspect((string) ($this->argument('subject') ?? ''), $state->exclude, (int) $limit, (int) $depth, $this->option('change'), $this->option('signature'), $this->option('target-class'), $this->option('target-path'), $this->option('table'), $this->option('table-match'), $this->option('connection'), $this->option('operation'));
             }
         } catch (Throwable $exception) {

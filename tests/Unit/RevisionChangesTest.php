@@ -14,6 +14,30 @@ use PHPUnit\Framework\TestCase;
 
 final class RevisionChangesTest extends TestCase
 {
+    public function test_call_coordinates_do_not_hide_target_argument_or_lexical_class_changes(): void
+    {
+        $before = [['from' => 'App\Caller::run', 'receiver' => 'App\Target', 'method' => 'work', 'kind' => 'call',
+            'line' => 1, 'offset' => 10, 'end_line' => 1, 'end_offset' => 20,
+            'site' => ['class' => 'App\Caller', 'static_context' => false, 'arguments' => [['name' => null, 'unpack' => false]]]]];
+        $shifted = $before;
+        $shifted[0] = [...$shifted[0], 'line' => 9, 'offset' => 50, 'end_line' => 10, 'end_offset' => 75];
+        self::assertSame([], RevisionRows::compare($before, $shifted));
+        $renamed = $shifted;
+        $renamed[0]['from'] = 'App\RenamedCaller::run';
+        $renamed[0]['site']['class'] = 'App\RenamedCaller';
+        self::assertSame([], RevisionRows::compare($before, $renamed, ['app\caller' => 'app\renamedcaller']));
+        foreach (['receiver', 'method', 'lexical_class', 'argument'] as $change) {
+            $changed = $shifted;
+            match ($change) {
+                'receiver' => $changed[0]['receiver'] = 'App\OtherTarget',
+                'method' => $changed[0]['method'] = 'other',
+                'lexical_class' => $changed[0]['site']['class'] = 'App\OtherCaller',
+                'argument' => $changed[0]['site']['arguments'][0]['name'] = 'named',
+            };
+            self::assertCount(2, RevisionRows::compare($before, $changed), $change);
+        }
+    }
+
     public function test_line_shifts_are_ignored_and_duplicate_statements_remain_distinct(): void
     {
         $before = $this->facts(['app/Run.php' => '<?php namespace App; class Run { public function run() { Other::work(); Other::work(); } }']);

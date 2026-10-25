@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
@@ -208,7 +209,7 @@ PHP);
             'packageVersions' => [],
         ]);
 
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, routes: $routes);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, routes: $routes, mode: AnalysisMode::Deep);
         $missing = array_column(array_filter($result->findings, fn ($finding): bool => $finding->code === 'W_MISSING_TEST'), 'path');
 
         $this->assertNotContains('app/Actions/ViewedProject.php', $missing);
@@ -235,7 +236,7 @@ PHP);
             'packageVersions' => [],
         ]);
 
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, routes: $routes);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, routes: $routes, mode: AnalysisMode::Deep);
         $this->assertNotContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($result->findings, 'code'));
         $missing = array_column(array_filter($result->findings, fn ($finding): bool => $finding->code === 'W_MISSING_TEST'), 'path');
         $this->assertNotContains('app/Actions/InspectProject.php', $missing);
@@ -270,7 +271,7 @@ PHP);
                     'packageVersions' => [],
                 ],
             ),
-        );
+            mode: AnalysisMode::Deep);
 
         $items = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
         foreach ($result->suggestions as $suggestion) {

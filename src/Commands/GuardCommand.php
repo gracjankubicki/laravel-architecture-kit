@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
@@ -17,7 +18,10 @@ class GuardCommand extends Command
     protected $signature = 'architecture-kit:guard
         {--changed : Audit only changed and untracked application files when git is available}
         {--base= : Git base ref for changed-file audit, for example origin/main}
-        {--target : Include the separate desired architecture gate}
+        {--target : Include the separate desired architecture gate after Deep consent}
+        {--mode=basic : Analysis mode for optional target assessment; audit stays Basic}
+        {--task= : Consented task for Deep target assessment}
+        {--enforce : Explicitly block on unsuccessful analysis}
         {--strict : Treat architecture warnings as failures}
         {--json : Output machine-readable JSON for hooks and MCP}
         {--agent : Output token-efficient JSON for AI agents}
@@ -30,6 +34,7 @@ class GuardCommand extends Command
     public function handle(Filesystem $files): int
     {
         $agent = new AgentOutput;
+        $policy = $this->option('enforce') ? ControlPolicy::Enforce : ControlPolicy::Advisory;
 
         if ((bool) $this->option('schema')) {
             $this->writeJson($agent->schema('guard'));
@@ -38,22 +43,28 @@ class GuardCommand extends Command
         }
 
         try {
+            if ($this->option('target')) {
+                RepositoryContext::requiredDeep($this->option('mode'), $this->option('task'));
+            } elseif ($this->option('mode') !== 'basic') {
+                throw new \RuntimeException('Guard audit uses Basic; Deep mode is available only with --target.');
+            }
             $result = (new ArchitectureGuard($files, dirname(__DIR__, 2), RepositoryContext::root(), $this->getApplication()))->run(
                 changedOnly: (bool) $this->option('changed'),
                 baseRef: $this->option('base') !== null ? (string) $this->option('base') : null,
                 strict: (bool) $this->option('strict'),
                 includeTarget: (bool) $this->option('target'),
+                policy: $this->option('enforce') ? ControlPolicy::Enforce : null,
             );
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent') || (bool) $this->option('json')) {
-                $this->writeJson($agent->error('guard', $exception->getMessage()));
+                $this->writeJson($agent->error('guard', $exception->getMessage(), policy: $policy));
 
-                return self::FAILURE;
+                return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
             }
 
             $this->error($exception->getMessage());
 
-            return self::FAILURE;
+            return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
         }
 
         if ((bool) $this->option('agent')) {
@@ -63,7 +74,7 @@ class GuardCommand extends Command
                 full: (bool) $this->option('full'),
             ));
 
-            return $result->ok() ? self::SUCCESS : self::FAILURE;
+            return $result->control()['blocking'] ? self::FAILURE : self::SUCCESS;
         }
 
         if ((bool) $this->option('json')) {
@@ -72,10 +83,12 @@ class GuardCommand extends Command
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
             ) ?: '{}', OutputInterface::OUTPUT_RAW);
 
-            return $result->ok() ? self::SUCCESS : self::FAILURE;
+            return $result->control()['blocking'] ? self::FAILURE : self::SUCCESS;
         }
 
+        $policy = $result->policy;
         $this->info('Architecture Kit Guard');
+        $this->line('Basic audit; '.($this->option('target') ? 'Deep target assessment' : 'Deep not run').'. Policy: '.$policy->value);
         $this->line('Doctor: '.($result->doctor->ok() ? 'ok' : 'failed'));
 
         if ($result->audit === null) {
@@ -140,7 +153,7 @@ class GuardCommand extends Command
                 }
             }
 
-            return self::FAILURE;
+            return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
         }
 
         $this->line('Architecture guard passed.');

@@ -8,6 +8,7 @@ use Closure;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\ConstantValue as ConstExprEvaluator;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
@@ -64,7 +65,7 @@ final readonly class CatalogSettings
                 throw new InvalidArgumentException('Graph scope contains an unsafe directory.');
             }
         }
-        $roots = array_values(array_unique([...self::ROOTS, ...$paths]));
+        $roots = array_values(array_unique([...self::ROOTS, ...ProjectLayout::read($base)->graphSources(), ...$paths]));
         $diagnostics = [];
         foreach ($roots as $root) {
             if (! DiscoverySettings::safe($base, $root)) {

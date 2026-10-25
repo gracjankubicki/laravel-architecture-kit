@@ -30,7 +30,7 @@ final class ArchitectureContext extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return [
+        return ['analysis_mode' => $schema->string()->enum(['basic', 'deep'])->default('basic')->description('Deep requires prior human consent recorded for task; full only controls report size.'), 'task' => $schema->string()->description('Task with previously recorded consent.'),
             'subject' => $schema->string()->required()->description('Exact project FQCN or app-relative PHP file path. Use architecture-search first when the symbol is unknown.'),
             'limit' => $schema->integer()->min(0)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'),
         ];
@@ -55,6 +55,7 @@ final class ArchitectureContext extends Tool
         $agent = new AgentOutput;
 
         try {
+            $mode = RepositoryContext::requestedMode($request->get('analysis_mode', 'basic'), $request->get('task'));
             $state = $this->projectState();
             $context = (new ContextQuery(
                 $this->files(),
@@ -62,6 +63,7 @@ final class ArchitectureContext extends Tool
                 scope: $state->auditScope,
                 cache: $state->graphCache,
                 cacheConfiguration: $state->graphConfiguration(),
+                mode: $mode,
             ))->inspect(
                 subject: $subject,
                 enabled: $state->enabled,

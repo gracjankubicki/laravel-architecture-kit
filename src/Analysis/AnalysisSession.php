@@ -14,7 +14,7 @@ final class AnalysisSession
 
     private bool $failed = false;
 
-    public function __construct(private readonly AnalysisEngine $backend, public readonly string $phpVersion)
+    public function __construct(private readonly AnalysisEngine $backend, public readonly string $phpVersion, public readonly AnalysisMode $mode = AnalysisMode::Basic, private readonly ?\Closure $stageObserver = null)
     {
         new SourceInput('(session)', '', $phpVersion);
         $this->engine = $backend->descriptor();
@@ -51,7 +51,29 @@ final class AnalysisSession
     {
         $this->fingerprint();
 
-        return new self($this->backend, $version);
+        return new self($this->backend, $version, $this->mode, $this->stageObserver);
+    }
+
+    /** Internal stage names only. No source or payload is passed to the observer. */
+    public function observeStage(string $stage): void
+    {
+        ($this->stageObserver ?? static function (string $stage): void {})($stage);
+    }
+
+    public function observesStages(): bool
+    {
+        return $this->stageObserver !== null;
+    }
+
+    public function withMode(AnalysisMode $mode): self
+    {
+        return new self($this->backend, $this->phpVersion, $mode, $this->stageObserver);
+    }
+
+    /** Keeps the pinned engine; intended for internal stage-entry verification. */
+    public function withStageObserver(?\Closure $observer): self
+    {
+        return new self($this->backend, $this->phpVersion, $this->mode, $observer);
     }
 
     public function fingerprint(): string
@@ -60,6 +82,6 @@ final class AnalysisSession
             throw new RuntimeException('Analysis engine session is no longer valid. Restart without refreshing the task beginning.');
         }
 
-        return hash('sha256', json_encode([$this->engine->fingerprint(), $this->phpVersion], JSON_THROW_ON_ERROR));
+        return hash('sha256', json_encode([$this->engine->fingerprint(), $this->phpVersion, $this->mode->value], JSON_THROW_ON_ERROR));
     }
 }

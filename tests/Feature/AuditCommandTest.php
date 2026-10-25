@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
@@ -13,6 +14,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
 use GracjanKubicki\ArchitectureKit\Audit\Suppression\Baseline;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
@@ -22,6 +24,8 @@ use Symfony\Component\Process\Process;
 
 class AuditCommandTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     public function test_full_agent_report_is_written_without_terminal_formatting(): void
     {
         $this->writeConfig([Architecture::ThinControllers, Architecture::Actions]);
@@ -34,7 +38,7 @@ class AuditCommandTest extends TestCase
             }
         };
         $output = new BufferedOutput(formatter: $formatter);
-        Artisan::call('architecture-kit:audit', ['--agent' => true, '--full' => true], $output);
+        Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true, '--full' => true], $output);
         $payload = json_decode(trim($output->fetch()), true, flags: JSON_THROW_ON_ERROR);
         self::assertSame('audit', $payload['cmd']);
         self::assertArrayHasKey('analysis', $payload);
@@ -59,7 +63,7 @@ class AuditCommandTest extends TestCase
         $this->writeConfig([Architecture::Actions]);
         $this->writeFile('app/Models/User.php', '<?php final class User {}');
 
-        $this->artisan('architecture-kit:audit --changed')
+        $this->artisan('architecture-kit:audit --enforce --changed')
             ->expectsOutputToContain('Scope: all application files (changed scope unavailable)')
             ->assertExitCode(0);
     }
@@ -95,7 +99,7 @@ PHP,
         (new Filesystem)->ensureDirectoryExists(dirname($baselinePath));
         (new Filesystem)->put($baselinePath, $baseline);
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--changed' => true, '--update-baseline' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--changed' => true, '--update-baseline' => true]);
 
         $this->assertSame(1, $exitCode);
         $this->assertStringContainsString('cannot be used together', Artisan::output());
@@ -106,7 +110,7 @@ PHP,
     {
         $this->writeConfig([]);
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--changed' => true, '--update-baseline' => true, '--agent' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--changed' => true, '--update-baseline' => true, '--agent' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(1, $exitCode);
@@ -140,7 +144,7 @@ final class DocumentController
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true]);
         $output = trim(Artisan::output());
         $payload = json_decode($output, true);
 
@@ -183,7 +187,7 @@ final class DocumentController
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--full' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true, '--full' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(1, $exitCode);
@@ -217,7 +221,7 @@ final class DocumentController
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--limit' => 0]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true, '--limit' => 0]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(1, $exitCode);
@@ -255,7 +259,7 @@ final class DocumentController
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--limit' => 1]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true, '--limit' => 1]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(1, $exitCode);
@@ -283,7 +287,7 @@ return [
 ];
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(1, $exitCode);
@@ -294,7 +298,7 @@ PHP);
 
     public function test_agent_schema_option_outputs_json_schema(): void
     {
-        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--schema' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true, '--schema' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(0, $exitCode);
@@ -332,7 +336,7 @@ final class InvalidFinding
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--agent' => true, '--strict' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true, '--strict' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(1, $exitCode);
@@ -372,10 +376,10 @@ final class DocumentController
 }
 PHP);
 
-        Artisan::call('architecture-kit:audit');
+        Artisan::call('architecture-kit:audit --enforce');
         $textOutput = Artisan::output();
 
-        Artisan::call('architecture-kit:audit', ['--agent' => true]);
+        Artisan::call('architecture-kit:audit', ['--enforce' => true, '--agent' => true]);
         $agentOutput = Artisan::output();
 
         $this->assertLessThan(strlen($textOutput) + 250, strlen($agentOutput));
@@ -474,7 +478,7 @@ final readonly class UpdateDocumentData
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->assertExitCode(0);
     }
@@ -486,12 +490,12 @@ PHP);
         $this->writeFile('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model {}');
         $this->writeFile('app/Http/Controllers/InvoiceController.php', '<?php namespace App\Http\Controllers; final class InvoiceController { public function show(\App\Models\Invoice $invoice) { $invoice->save(); } }');
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--strict' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', ['--enforce' => true, ...$this->deepCli(), '--strict' => true]);
         $human = Artisan::output();
         $this->assertSame(0, $exitCode, $human);
         $this->assertStringContainsString('Architectural suggestions', $human);
 
-        Artisan::call('architecture-kit:audit', ['--agent' => true, '--strict' => true]);
+        Artisan::call('architecture-kit:audit', ['--enforce' => true, ...$this->deepCli(), '--agent' => true, '--strict' => true]);
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame(0, $payload['err']);
         $this->assertSame(0, $payload['warn']);
@@ -499,7 +503,7 @@ PHP);
         $this->assertContains($payload['analysis']['status'], ['complete', 'incomplete']);
         $this->assertSame(['continue'], $payload['next']);
 
-        Artisan::call('architecture-kit:audit', ['--agent' => true, '--limit' => 0]);
+        Artisan::call('architecture-kit:audit', ['--enforce' => true, ...$this->deepCli(), '--agent' => true, '--limit' => 0]);
         $hidden = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame([], $hidden['suggestions']['items']);
         $this->assertSame(1, $hidden['suggestions']['total']);
@@ -512,12 +516,12 @@ PHP);
         $this->withRoutes('<?php Illuminate\Support\Facades\Route::get("/invoices", [\App\Http\Controllers\InvoiceController::class, "show"]);');
         $this->writeFile('app/Http/Controllers/InvoiceController.php', '<?php namespace App\Http\Controllers; final class InvoiceController { public function show() { $client->call(); } }');
 
-        $exitCode = Artisan::call('architecture-kit:audit', ['--strict' => true]);
+        $exitCode = Artisan::call('architecture-kit:audit', [...$this->deepCli(), '--strict' => true]);
         $human = Artisan::output();
         $this->assertSame(0, $exitCode, $human);
         $this->assertStringContainsString('Incomplete analysis', $human);
 
-        Artisan::call('architecture-kit:audit', ['--agent' => true, '--strict' => true]);
+        Artisan::call('architecture-kit:audit', [...$this->deepCli(), '--agent' => true, '--strict' => true]);
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame('incomplete', $payload['analysis']['status']);
         $this->assertSame('A_CALL_UNRESOLVED', $payload['analysis']['notices'][0]['code']);
@@ -600,7 +604,7 @@ PHP);
                 && str_contains($finding->message, 'vendor response types')
         ));
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('warn  ports-and-adapters')
             ->expectsOutputToContain('error ports-and-adapters')
             ->assertExitCode(1);
@@ -632,7 +636,7 @@ interface DocumentTypeDetector
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->assertExitCode(0);
     }
@@ -655,7 +659,7 @@ interface Arrayable
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->assertExitCode(0);
     }
@@ -971,11 +975,11 @@ final class StoreDocumentRequest extends FormRequest
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('warn  enums')
             ->assertExitCode(0);
 
-        $this->artisan('architecture-kit:audit --strict')
+        $this->artisan('architecture-kit:audit --enforce --strict')
             ->expectsOutputToContain('warn  enums')
             ->assertExitCode(1);
     }
@@ -1014,11 +1018,11 @@ PHP);
                 && str_contains($finding->message, 'private static factory')
         ));
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('warn  testability')
             ->assertExitCode(0);
 
-        $this->artisan('architecture-kit:audit --strict')
+        $this->artisan('architecture-kit:audit --enforce --strict')
             ->expectsOutputToContain('warn  testability')
             ->assertExitCode(1);
     }
@@ -1055,7 +1059,7 @@ final class StoreDocumentRequest extends FormRequest
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit --strict')
+        $this->artisan('architecture-kit:audit --enforce --strict')
             ->expectsOutputToContain('No architecture violations found.')
             ->assertExitCode(0);
     }
@@ -1095,7 +1099,7 @@ PHP);
         $this->git('add app/Http/Controllers/DocumentController.php');
         $this->git('commit -m feature');
 
-        $this->artisan('architecture-kit:audit --changed --base=main')
+        $this->artisan('architecture-kit:audit --enforce --changed --base=main')
             ->expectsOutputToContain('Scope: changed application files since main')
             ->expectsOutputToContain('error thin-controller')
             ->assertExitCode(1);
@@ -1150,13 +1154,13 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit --changed --base=main')
+        $this->artisan('architecture-kit:audit --enforce --changed --base=main')
             ->expectsOutputToContain('error thin-controller')
             ->assertExitCode(1);
 
         $this->git('add app/Http/Controllers/DocumentController.php');
 
-        $this->artisan('architecture-kit:audit --changed --base=main')
+        $this->artisan('architecture-kit:audit --enforce --changed --base=main')
             ->expectsOutputToContain('error thin-controller')
             ->assertExitCode(1);
 
@@ -1178,7 +1182,7 @@ final class UntrackedController
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit --changed --base=main')
+        $this->artisan('architecture-kit:audit --enforce --changed --base=main')
             ->expectsOutputToContain('app/Http/Controllers/UntrackedController.php')
             ->assertExitCode(1);
     }
@@ -1306,12 +1310,12 @@ PHP);
 
         $thinOnly = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers],
-            changedOnly: false,
+            changedOnly: false, mode: AnalysisMode::Deep,
             routes: new RouteMap(['app\\http\\controllers\\documentcontroller::store' => ['POST']]),
         );
         $withActions = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions],
-            changedOnly: false,
+            changedOnly: false, mode: AnalysisMode::Deep,
             routes: new RouteMap(['app\\http\\controllers\\documentcontroller::store' => ['POST']]),
         );
 
@@ -1347,7 +1351,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
             ->assertExitCode(0);
@@ -1372,7 +1376,7 @@ final class FortifyServiceProvider
 PHP);
         $this->writeFile('app/Exceptions/DocumentFailure.php', '<?php namespace App\Exceptions; final class DocumentFailure {}');
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('error folder-purity')
             ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
             ->doesntExpectOutputToContain('does not implement Laravel\Fortify\Contracts\CreatesNewUsers')
@@ -1405,7 +1409,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit --strict')
+        $this->artisan('architecture-kit:audit --enforce --strict')
             ->expectsOutputToContain('error thin-controller')
             ->expectsOutputToContain('warn  invalid-suppression')
             ->assertExitCode(1);
@@ -1434,7 +1438,7 @@ final class FetchDocument
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
             ->assertExitCode(0);
@@ -1463,7 +1467,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit --strict')
+        $this->artisan('architecture-kit:audit --enforce --strict')
             ->expectsOutputToContain('error thin-controller')
             ->expectsOutputToContain('warn  invalid-suppression')
             ->assertExitCode(1);
@@ -1496,7 +1500,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit --update-baseline')
+        $this->artisan('architecture-kit:audit --enforce --update-baseline')
             ->expectsOutputToContain('No architecture violations found.')
             ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
             ->assertExitCode(0);
@@ -1521,7 +1525,7 @@ final class OtherController
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('error thin-controller')
             ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
             ->assertExitCode(1);
@@ -1555,7 +1559,7 @@ PHP);
             'findings' => [],
         ]));
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('uses legacy version 1 and does not record severity')
             ->assertExitCode(1);
     }
@@ -1594,7 +1598,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->assertExitCode(0);
     }
@@ -1604,7 +1608,7 @@ PHP);
         $this->writeConfig([Architecture::Actions]);
         $this->writeFile('app/Actions/Broken.php', '<?php final class Broken {');
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('error unparseable-file')
             ->assertExitCode(1);
     }
@@ -1642,7 +1646,7 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('error fixture-audit-rule')
             ->assertExitCode(1);
 
@@ -1662,7 +1666,7 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
             ->assertExitCode(0);
@@ -1703,7 +1707,7 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('error fixture-audit-rule')
             ->assertExitCode(1);
 
@@ -1723,7 +1727,7 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->expectsOutputToContain('Suppressed: 1 inline, 0 baseline')
             ->assertExitCode(0);
@@ -1765,7 +1769,7 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->assertExitCode(0);
     }
@@ -1805,7 +1809,7 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('error fixture-audit-rule')
             ->assertExitCode(1);
     }
@@ -1845,12 +1849,12 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $this->artisan('architecture-kit:audit --update-baseline')
+        $this->artisan('architecture-kit:audit --enforce --update-baseline')
             ->expectsOutputToContain('No architecture violations found.')
             ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
             ->assertExitCode(0);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('No architecture violations found.')
             ->expectsOutputToContain('Suppressed: 0 inline, 1 baseline')
             ->assertExitCode(0);
@@ -1864,7 +1868,7 @@ PHP);
         $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit');
         $files->put($this->tempPath.'/.architecture-kit/baseline.json', '{broken');
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('.architecture-kit/baseline.json is invalid or uses an unsupported version.')
             ->assertExitCode(1);
     }
@@ -1887,7 +1891,7 @@ return [
 ];
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('Architecture Kit audit rule [GracjanKubicki\ArchitectureKit\Tests\Feature\MissingFixtureAuditRule] does not exist.')
             ->assertExitCode(1);
     }
@@ -1910,7 +1914,7 @@ return [
 ];
 PHP);
 
-        $this->artisan('architecture-kit:audit')
+        $this->artisan('architecture-kit:audit --enforce')
             ->expectsOutputToContain('Architecture Kit audit rule [GracjanKubicki\ArchitectureKit\Tests\Feature\FixtureNotAuditRule] must implement GracjanKubicki\ArchitectureKit\Audit\AuditRule.')
             ->assertExitCode(1);
     }
@@ -1936,7 +1940,7 @@ PHP);
         $this->writeFile('app/First.php', "<?php\n\nfinal class First {}\n");
         $this->writeFile('app/Second.php', "<?php\n\nfinal class Second {}\n");
 
-        $this->artisan('architecture-kit:audit --no-baseline')->assertExitCode(0);
+        $this->artisan('architecture-kit:audit --enforce --no-baseline')->assertExitCode(0);
 
         $this->assertSame(1, CountingFixtureAuditRule::$instances);
     }

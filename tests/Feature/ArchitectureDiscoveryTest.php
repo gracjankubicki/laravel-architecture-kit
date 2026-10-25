@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Discovery\ArchitectureDiscovery;
 use GracjanKubicki\ArchitectureKit\Discovery\SearchSchema;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitecturePath;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Search;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureDiscoveryTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -36,7 +40,7 @@ final class ArchitectureDiscoveryTest extends TestCase
 
     private function search(string $query = '', ?string $kind = null, int $limit = 20): array
     {
-        return (new ArchitectureDiscovery(new Filesystem, $this->tempPath))->search($query, $kind, $limit);
+        return (new ArchitectureDiscovery(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->search($query, $kind, $limit);
     }
 
     public function test_literal_case_insensitive_search_exact_first_and_supported_selector(): void
@@ -50,7 +54,7 @@ final class ArchitectureDiscoveryTest extends TestCase
         $this->assertSame($r['candidates'], $this->search('app\\invoice')['candidates']);
         $route = $this->search('/INVOICES', 'route')['candidates'][0];
         $this->assertSame('App\\Invoice::sendInvoice', $route['selector']);
-        $this->assertTrue((new ArchitecturePath(new Filesystem, $this->tempPath))->inspect($route['selector'], 'Invoice')['ok']);
+        $this->assertTrue((new ArchitecturePath(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->inspect($route['selector'], 'Invoice')['ok']);
         $this->assertNotEmpty($this->search('invoice.list', 'route')['candidates']);
         $this->assertNotEmpty($this->search('invoice:send', 'command')['candidates']);
         $this->assertSame('file', $this->search('invoice:send', 'command')['candidates'][0]['selector_scope']);
@@ -183,7 +187,7 @@ final class ArchitectureDiscoveryTest extends TestCase
                 return $value;
             }
         };
-        $r = (new ArchitectureDiscovery($files, $this->tempPath))->search('invoice');
+        $r = (new ArchitectureDiscovery($files, $this->tempPath, mode: AnalysisMode::Deep))->search('invoice');
         $this->assertFalse($r['fresh']);
         $this->assertSame('stale', $r['status']);
     }
@@ -203,12 +207,12 @@ final class ArchitectureDiscoveryTest extends TestCase
     public function test_cli_mcp_schema_and_input_errors_agree(): void
     {
         $this->fixture();
-        $this->assertSame(0, Artisan::call('architecture-kit:search', ['query' => 'invoice', '--kind' => 'route', '--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:search', [...$this->deepCli(), 'query' => 'invoice', '--kind' => 'route', '--agent' => true]));
         $r = json_decode(trim(Artisan::output()), true);
-        ArchitectureKitServer::tool(Search::class, ['query' => 'invoice', 'kind' => 'route'])->assertOk()->assertStructuredContent(fn ($json) => $json->where('candidates', $r['candidates'])->where('total', $r['total'])->etc());
-        ArchitectureKitServer::tool(Search::class, ['query' => []])->assertSee('E_INVALID_TOOL_INPUT');
-        $this->assertSame(1, Artisan::call('architecture-kit:search', ['query' => 'invoice', '--limit' => '-1', '--agent' => true]));
-        $this->assertSame(0, Artisan::call('architecture-kit:search', ['--schema' => true]));
+        ArchitectureKitServer::tool(Search::class, [...$this->deepMcp(), 'query' => 'invoice', 'kind' => 'route'])->assertOk()->assertStructuredContent(fn ($json) => $json->where('candidates', $r['candidates'])->where('total', $r['total'])->etc());
+        ArchitectureKitServer::tool(Search::class, [...$this->deepMcp(), 'query' => []])->assertSee('E_INVALID_TOOL_INPUT');
+        $this->assertSame(1, Artisan::call('architecture-kit:search', [...$this->deepCli(), 'query' => 'invoice', '--limit' => '-1', '--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:search', [...$this->deepCli(), '--schema' => true]));
         $this->assertSame(SearchSchema::get(), json_decode(trim(Artisan::output()), true));
     }
 }

@@ -17,6 +17,7 @@ use GracjanKubicki\ArchitectureKit\Target\FrozenFilesystem;
 use GracjanKubicki\ArchitectureKit\Target\MutatingSourceReader;
 use GracjanKubicki\ArchitectureKit\Target\TargetSchema;
 use GracjanKubicki\ArchitectureKit\Target\TargetSources;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
@@ -25,6 +26,8 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 
 final class ArchitectureTargetTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     public function test_absent_target_is_inert_and_does_not_read_project_configuration(): void
     {
         $this->write('config/architectures.php', '<?php file_put_contents(__DIR__."/executed", "bad"); return env("UNKNOWN");');
@@ -186,21 +189,24 @@ final class ArchitectureTargetTest extends TestCase
         $this->fixture();
         $this->write('config/architectures.php', '<?php return ["enabled" => ["actions"]];');
         $report = $this->report('App\\Actions\\CreateInvoice');
-        $this->assertSame(0, Artisan::call('architecture-kit:target', ['subject' => 'App\\Actions\\CreateInvoice', '--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:target', [...$this->deepCli(), 'subject' => 'App\\Actions\\CreateInvoice', '--agent' => true]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame(json_decode(json_encode($report, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR), $cli);
-        ArchitectureKitServer::tool(Target::class, ['subject' => 'App\\Actions\\CreateInvoice'])->assertOk()
+        ArchitectureKitServer::tool(Target::class, [...$this->deepMcp(), 'subject' => 'App\\Actions\\CreateInvoice'])->assertOk()
             ->assertStructuredContent(fn ($json) => $json->where('cmd', 'architecture-target')->where('subject.status', 'migration')->where('gate.mode', 'info')->etc());
         $this->assertSame(0, Artisan::call('architecture-kit:target', ['--schema' => true]));
         $schema = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame(TargetSchema::get(), $schema);
         $this->assertSame(0, Artisan::call('architecture-kit:file-rules', ['path' => 'app/Billing/Actions/Future.php', '--agent' => true]));
         $guidance = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame('future_file', $guidance['target']['subject']['status']);
+        $this->assertSame('not_run', $guidance['target']['analysis']['status']);
+        $this->assertSame('billing', $guidance['target']['declarations']['id']);
+        $this->assertArrayNotHasKey('gate', $guidance['target']);
+        $this->assertArrayNotHasKey('reference_candidate', $guidance['target']);
         $this->target(['mode' => 'block']);
-        $this->assertSame(1, Artisan::call('architecture-kit:target', ['--agent' => true]));
+        $this->assertSame(1, Artisan::call('architecture-kit:target', [...$this->deepCli(), '--agent' => true]));
         $this->assertFalse($this->report()['gate']['ok']);
-        $this->assertSame(1, Artisan::call('architecture-kit:target', ['--limit' => '-1', '--agent' => true]));
+        $this->assertSame(1, Artisan::call('architecture-kit:target', [...$this->deepCli(), '--limit' => '-1', '--agent' => true]));
     }
 
     public function test_known_dependency_policies_and_migration_order_with_cycles(): void
@@ -299,12 +305,14 @@ final class ArchitectureTargetTest extends TestCase
         $this->assertSame(0, $exit, $output);
         $ordinary = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
         $this->assertArrayNotHasKey('target', $ordinary);
-        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--agent' => true, '--target' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', [...$this->deepCli(), '--agent' => true, '--target' => true]));
         $targeted = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame('ok', $targeted['audit']);
         $this->assertFalse($targeted['target']['gate']['ok']);
+        $this->assertFalse($targeted['control']['blocking']);
+        $this->assertSame(1, Artisan::call('architecture-kit:guard', [...$this->deepCli(), '--agent' => true, '--target' => true, '--enforce' => true]));
         $this->assertSame($ordinary['err'], $targeted['err']);
-        ArchitectureKitServer::tool(Guard::class, ['changed' => false, 'strict' => false, 'target' => true])->assertOk()
+        ArchitectureKitServer::tool(Guard::class, [...$this->deepMcp(), 'changed' => false, 'strict' => false, 'target' => true])->assertOk()
             ->assertStructuredContent(fn ($json) => $json->where('ok', false)->where('audit', 'ok')->where('target.gate.ok', false)->etc());
     }
 
@@ -322,7 +330,7 @@ final class ArchitectureTargetTest extends TestCase
         $this->assertFalse($large['gate']['ok']);
         $this->assertTrue($large['analysis']['total_is_lower_bound']);
         $this->assertSame(1, $large['totals']['migration']);
-        $this->assertSame(1, Artisan::call('architecture-kit:target', ['--limit' => '0', '--agent' => true]));
+        $this->assertSame(1, Artisan::call('architecture-kit:target', [...$this->deepCli(), '--limit' => '0', '--agent' => true]));
         $limited = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame([], $limited['elements']);
         $this->assertSame(1, $limited['totals']['migration']);

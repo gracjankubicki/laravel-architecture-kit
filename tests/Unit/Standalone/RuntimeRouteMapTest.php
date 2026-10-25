@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Standalone;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteEntry;
@@ -136,7 +137,7 @@ final class RuntimeRouteMapTest extends TestCase
                     // Exercise the real 30s deadline, without changing the worker clock.
                     usleep(31_000_000);
                 }
-            }))->run([Architecture::ThinControllers], changedOnly: false, useBaseline: false);
+            }))->run([Architecture::ThinControllers], changedOnly: false, useBaseline: false, mode: AnalysisMode::Deep);
         } finally {
             RepositoryContext::activate(null);
         }

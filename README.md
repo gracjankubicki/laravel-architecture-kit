@@ -29,6 +29,26 @@ This package is installed as a runtime dependency because the committed architec
 
 Use the [standalone global tool](STANDALONE.md) when you need local AI guidance and task checks without installing this package or writing its configuration into the application. The standalone integrations support Codex and Claude Code.
 
+
+## Basic analysis and advisory control
+
+Basic is the default on CLI, MCP and hooks, including existing profiles. It maps project source, including Modules, checks local architecture rules and demonstrated call/interface mismatches, and lists candidate tests. Vendor is a boundary. Candidates and relationships do not prove execution, test coverage or business correctness.
+
+Read `analysis.mode`, `analysis.checks_complete`, `analysis.deep_run` and the real `ok`/status. `control.blocking` independently describes the reaction. Errors, timeouts, missing beginnings and stale results remain failed or unverified. Advisory permits continuing and completing a turn with an explicit handoff of remaining errors and unverified checks. Try to fix new errors first. For an important gap, search and read source, cite the file and relationship or describe uncertainty. Ask the human when missing information prevents choosing a correct change.
+
+`--strict` changes warning evaluation. `--full` expands the report. Neither enables Deep or blocking. Use `--enforce` on audit/guard/task, MCP `enforce=true`, or explicit `control.policy=enforce` for blocking. `audit.incomplete_analysis=block` affects analysis completeness, and does not enable Enforce or Deep. Guard and task control check Basic. Skip remains `ok:false` and keeps its existing ability to release completion, including in enforced hooks.
+
+Deep preserves semantic execution/effect analysis in the same package. Agents must ask the human before using it, then record the obtained consent for one repository and task. Standalone examples:
+
+```sh
+architecture-kit analysis-consent grant-deep TASK --confirm
+architecture-kit audit --agent --mode=deep --task=TASK
+architecture-kit impact 'App\Service::run' --agent --mode=deep --task=TASK
+```
+
+For local Artisan use `php artisan architecture-kit:analysis-consent TASK --confirm`, then add `--mode=deep --task=TASK` to audit, search, context, impact, path or reach. Full revision-diff and target assessment require explicit Deep and consent as well. Guard audit stays Basic; adding --target requires Deep and a consented task. file-rules reads only target declarations in Basic, with full assessment marked not_run, and reports invalid declarations without losing ordinary rules. MCP uses `analysis-consent` with `task` and `confirm=true`, then `analysis_mode=deep` and the same `task`. On architecture-graph, `mode=context|path|impact` still selects the query; `analysis_mode` selects Basic or Deep. Retry/resume retain consent. Another task or repository needs another grant. A confirmation flag records the caller statement and does not authenticate a human. Refusal leaves ordinary reading and Basic search available. Deep never grants runtime routes or custom PHP execution.
+
+
 ## Capabilities and enforcement
 
 | Capability | What it provides | Enforced by guard? |
@@ -1090,14 +1110,14 @@ Create `.architecture-kit/target.json` to describe the architecture you want for
 For example, `app/Actions/CreateInvoice.php` can remain where it is while the report identifies `app/Billing/Actions` as its destination. `Invoice` can stay in `app/Models`. Classification uses the same directory, namespace and whole-segment pattern declarations as current project classification. It does not enable architecture profiles. Placements select a kind, optionally a module, and may constrain the role. The module-specific placement takes precedence. Conflicting selectors or placement roles produce a configuration error. Dependency policies apply together: every matching policy must allow a dependency. An empty `allow` list forbids all recognized project dependencies from that selector.
 
 ```shell
-php artisan architecture-kit:target --agent
-php artisan architecture-kit:target 'App\Actions\CreateInvoice::handle' --agent
-php artisan architecture-kit:target app/Billing/Actions/NewInvoice.php --agent
+php artisan architecture-kit:target --mode=deep --task=TASK --agent
+php artisan architecture-kit:target 'App\Actions\CreateInvoice::handle' --mode=deep --task=TASK --agent
+php artisan architecture-kit:target app/Billing/Actions/NewInvoice.php --mode=deep --task=TASK --agent
 php artisan architecture-kit:target --schema
-php artisan architecture-kit:guard --target --agent
+php artisan architecture-kit:guard --target --mode=deep --task=TASK --agent
 ```
 
-MCP `architecture-target` accepts `subject` and `limit`. MCP `guard` accepts `target: true` to add this separate gate. CLI and MCP return the same source report. `file-rules` adds the target report when a declaration exists, including guidance for a future PHP file. A future namespace is not guessed. Without a target file these paths preserve their existing behavior.
+First ask the user and record consent for TASK as described above. MCP `architecture-target` requires `analysis_mode=deep` and consented `task`, and accepts `subject` and `limit`. MCP `guard` requires the same Deep parameters and consent with `target: true` to add this separate gate; its audit stays Basic. CLI and MCP return the same source report. `file-rules` adds only the target declaration and source when it exists; full evaluation is `not_run` until a separately consented Deep assessment. Invalid or unsafe declarations report their reason while ordinary rules remain available. A future namespace is not guessed. Without a target file these paths preserve their existing behavior.
 
 Each element has `current`, `expected`, source path and line, issues, and a status of `conformant`, `migration`, `requires_check` or `outside_scope`. Known dependencies come before callers in `migration_order`. Cycles require a joint migration decision. The order is a proposal and never moves or edits code. Missing, external, dynamic or unrecognized dependencies remain explicit uncertainty. Existing PHP files without classes remain file elements requiring inspection; unparseable existing sources are not future files. Source uncertainty notices accompany their affected elements with file-level scope. Blocking fails on incomplete structure or dependency analysis, stale inputs or covered elements requiring inspection. Informational and warning modes report that uncertainty without blocking.
 
@@ -1117,14 +1137,14 @@ Analysis reads frozen bounded source bytes without booting project PHP or requir
 Use `revision-diff` to see how the application's architecture changed between a Git revision and working sources, including dirty and untracked files, or between two commits. It reads both states without checking out either version or booting their application code.
 
 ```sh
-php artisan architecture-kit:revision-diff HEAD --agent
-php artisan architecture-kit:revision-diff v1.0.0 --to=v1.1.0 --agent
-php artisan architecture-kit:revision-diff HEAD --shared-config=before --agent
-php artisan architecture-kit:revision-diff HEAD --pair='App\OldAction=App\NewAction' --agent
+php artisan architecture-kit:revision-diff HEAD --agent --mode=deep --task=TASK
+php artisan architecture-kit:revision-diff v1.0.0 --to=v1.1.0 --agent --mode=deep --task=TASK
+php artisan architecture-kit:revision-diff HEAD --shared-config=before --agent --mode=deep --task=TASK
+php artisan architecture-kit:revision-diff HEAD --pair='App\OldAction=App\NewAction' --agent --mode=deep --task=TASK
 php artisan architecture-kit:revision-diff --schema
 ```
 
-MCP `revision-diff` accepts `from`, `to`, `shared_config`, `manual_pairs` and `limit`. `manual_pairs` maps old symbol names to new names. Both interfaces use the same comparison; timing metrics vary per invocation. `limit` is 0..500 displayed rows per channel, including candidate pairs. Totals remain counts of the recognized differences before display truncation.
+Revision comparison requires prior human consent for the task. MCP `revision-diff` requires `analysis_mode=deep` and `task` and accepts `from`, `to`, `shared_config`, `manual_pairs` and `limit`. `manual_pairs` maps old symbol names to new names. Both interfaces use the same comparison; timing metrics vary per invocation. `limit` is 0..500 displayed rows per channel, including candidate pairs. Totals remain counts of the recognized differences before display truncation.
 
 The report separates these differences:
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
@@ -34,7 +35,7 @@ final class MissingTestArtisanTest extends TestCase
 
     private function audit(): ApplicationAuditResult
     {
-        return (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn);
+        return (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep);
     }
 
     public function test_facade_testcase_and_pest_dispatch_reach_only_the_handler(): void
@@ -94,7 +95,7 @@ final class MissingTestArtisanTest extends TestCase
         $files = new Filesystem;
         $audit = new ApplicationAudit($files, $this->tempPath);
         $cache = new ProjectGraphCache($files, $this->tempPath);
-        $run = fn ($cache) => $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache);
+        $run = fn ($cache) => $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache, mode: AnalysisMode::Deep);
         $disabled = $run(null);
         $this->assertNotSame([], $disabled->findings);
         $this->assertEquals($disabled->findings, $run($cache)->findings);
@@ -104,10 +105,10 @@ final class MissingTestArtisanTest extends TestCase
         $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($changed->findings, 'code'));
         $this->assertContains('app/Actions/Send.php', array_column($changed->findings, 'path'));
         $this->assertEquals($run(null)->findings, $changed->findings);
-        $error = $audit->run([], false, missingTestLevel: MissingTestLevel::Error);
+        $error = $audit->run([], false, missingTestLevel: MissingTestLevel::Error, mode: AnalysisMode::Deep);
         $this->assertContains('E_MISSING_TEST', array_column($error->findings, 'code'));
         $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($error->findings, 'code'));
-        $this->assertSame([], $audit->run([], false, missingTestLevel: MissingTestLevel::Off)->findings);
+        $this->assertSame([], $audit->run([], false, missingTestLevel: MissingTestLevel::Off, mode: AnalysisMode::Deep)->findings);
     }
 
     public function test_unrelated_dynamic_and_unknown_callers_do_not_poison_literal_dispatch(): void

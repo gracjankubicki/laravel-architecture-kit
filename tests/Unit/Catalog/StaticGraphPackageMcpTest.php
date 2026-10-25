@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -17,7 +18,7 @@ class StaticGraphPackageMcpTest extends TestCase
     /** @return list<CatalogFacts> */
     private function facts(string $source): array
     {
-        return (new ProjectGraphBuilder(catalog: true))->build([new FileContext('app/Mcp.php', '<?php '.$source)])->catalogFacts;
+        return (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('app/Mcp.php', '<?php '.$source)])->catalogFacts;
     }
 
     private function package(string $version = '0.8.2', string $path = 'composer.lock'): CatalogFacts
@@ -48,7 +49,7 @@ throw new \RuntimeException('source-only-sentinel');
 SOURCE);
         $this->assertStringNotContainsString('source-only-sentinel', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'starts-mcp-server'));
         $handlers = $this->edges($index, 'mcp-member-handler');
         $this->assertCount(4, $handlers);
@@ -61,7 +62,7 @@ SOURCE);
             $this->assertNotEmpty($handler['metadata']['package_sources']);
         }
         foreach ([[], [$this->package('99.0.0')], [$this->package(), $this->package('0.9.0', 'vendor/composer/installed.json')]] as $packages) {
-            $index = new CatalogIndex([...$facts, ...$packages]);
+            $index = new CatalogIndex([...$facts, ...$packages], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'mcp-member-handler'));
             $this->assertSame([], $this->edges($index, 'starts-mcp-server'));
             $this->assertContains('package_mcp_analysis', array_column($index->diagnostics, 'code'));
@@ -81,7 +82,7 @@ class Override extends \Laravel\Mcp\Server { protected array $tools = [Decoy::cl
 \Laravel\Mcp\Facades\Mcp::web($uri, Dynamic::class);
 \Laravel\Mcp\Facades\Mcp::local('decoy', Decoy::class);
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'mcp-member-handler'));
         $this->assertSame([], $this->edges($index, 'starts-mcp-server'));
         $this->assertContains('package_mcp_analysis', array_column($index->diagnostics, 'code'));
@@ -116,7 +117,7 @@ SOURCE);
             $package = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', json_encode(['packages' => [
                 ['name' => 'laravel/mcp', 'version' => $version, 'source' => ['reference' => $reference]],
             ]], JSON_THROW_ON_ERROR)));
-            $index = new CatalogIndex([...$cached, $package]);
+            $index = new CatalogIndex([...$cached, $package], mode: AnalysisMode::Deep);
             $this->assertCount(2, $this->edges($index, 'starts-mcp-server'), $version);
             $handlers = $this->edges($index, 'mcp-member-handler');
             $this->assertCount(version_compare($version, '0.9.6.0', '>=') ? 4 : 3, $handlers, $version);
@@ -144,7 +145,7 @@ class Server extends \Laravel\Mcp\Server { protected array $tools = ['\\App\\Fir
 \Laravel\Mcp\Facades\Mcp::web('/mcp', 'App\\Server');
 SOURCE;
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $this->facts($source));
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'starts-mcp-server'));
         $handlers = $this->edges($index, 'mcp-member-handler');
         $this->assertCount(1, $handlers);
@@ -152,7 +153,7 @@ SOURCE;
 
         $edited = str_replace('App\\\\First', 'App\\\\Second', $source);
         $fresh = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $this->facts($edited));
-        $index = new CatalogIndex([...$fresh, $this->package()]);
+        $index = new CatalogIndex([...$fresh, $this->package()], mode: AnalysisMode::Deep);
         $handlers = $this->edges($index, 'mcp-member-handler');
         $this->assertCount(1, $handlers);
         $this->assertSame('App\\Second::handle', $index->elements[$handlers[0]['to']]['name']);
@@ -168,7 +169,7 @@ class Server extends \Laravel\Mcp\Server { protected array $tools = [\Laravel\Mc
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
         foreach (['0.8.2', '0.9.5', '0.9.6', '1.0.0'] as $version) {
-            $index = new CatalogIndex([...$cached, $this->package($version)]);
+            $index = new CatalogIndex([...$cached, $this->package($version)], mode: AnalysisMode::Deep);
             $this->assertCount(version_compare($version, '0.9.6', '<') ? 1 : 0, $this->edges($index, 'mcp-member-handler'), $version);
             if (version_compare($version, '0.9.6', '>=')) {
                 $this->assertContains('package_mcp_analysis', array_column($index->diagnostics, 'code'));
@@ -187,7 +188,7 @@ class Server extends \Laravel\Mcp\Server { protected array $tools = [Reader::cla
 SOURCE;
         foreach (['0.9.6', '1.0.0'] as $version) {
             $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $this->facts($source));
-            $index = new CatalogIndex([...$cached, $this->package($version)]);
+            $index = new CatalogIndex([...$cached, $this->package($version)], mode: AnalysisMode::Deep);
             $handlers = $this->edges($index, 'mcp-member-handler');
             $this->assertCount(2, $handlers);
             $this->assertEqualsCanonicalizing(['direct', 'execute_tools'], array_column(array_column($handlers, 'metadata'), 'dispatch'));
@@ -202,7 +203,7 @@ SOURCE;
             }
             foreach (['[Decoy::class]', '[Reader::class,Reader::class]', '[DYNAMIC_TOOL]', '[...DYNAMIC_TOOLS]', "['same'=>Reader::class]", '[[Reader::class]]'] as $group) {
                 $invalid = str_replace('SearchGroup::class => [Reader::class]', 'SearchGroup::class => '.$group, $source);
-                $index = new CatalogIndex([...$this->facts($invalid), $this->package($version)]);
+                $index = new CatalogIndex([...$this->facts($invalid), $this->package($version)], mode: AnalysisMode::Deep);
                 $this->assertSame([], $this->edges($index, 'mcp-member-handler'), $group);
                 $this->assertContains('package_mcp_analysis', array_column($index->diagnostics, 'code'));
             }
@@ -210,11 +211,11 @@ SOURCE;
                 'namespace Laravel\\Mcp\\Server\\Tools; class ExecuteTools {}',
                 'namespace Laravel\\Mcp\\Server; class ToolInvoker {}',
                 'namespace Laravel\\Mcp\\Server; class ServerContext {}'] as $shadow) {
-                $index = new CatalogIndex([...$this->facts($source.' '.$shadow), $this->package($version)]);
+                $index = new CatalogIndex([...$this->facts($source.' '.$shadow), $this->package($version)], mode: AnalysisMode::Deep);
                 $this->assertSame([], $this->edges($index, 'mcp-member-handler'));
             }
         }
-        $index = new CatalogIndex([...$this->facts($source), $this->package('0.9.5')]);
+        $index = new CatalogIndex([...$this->facts($source), $this->package('0.9.5')], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'mcp-member-handler'));
         $this->assertContains('package_mcp_analysis', array_column($index->diagnostics, 'code'));
     }
@@ -229,12 +230,12 @@ class Server extends \Laravel\Mcp\Server { protected array $tools = ['not a clas
 SOURCE;
         $facts = $this->facts($source);
         $this->assertStringNotContainsString('token=secret', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'mcp-member-handler'));
         $this->assertContains('package_mcp_analysis', array_column($index->diagnostics, 'code'));
 
         $limited = str_replace("'not a class?token=secret'", implode(',', array_fill(0, 129, 'Tool::class')), $source);
-        $index = new CatalogIndex([...$this->facts($limited), $this->package()]);
+        $index = new CatalogIndex([...$this->facts($limited), $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'mcp-member-handler'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
     }
@@ -261,7 +262,7 @@ class Repeated extends Base {}
 SOURCE);
         $this->assertStringNotContainsString('private-description-sentinel', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $names = [];
         foreach ($this->edges($index, 'declares-mcp-name') as $edge) {
             $names[$index->elements[$edge['from']]['name']] = $edge['metadata']['selector'];
@@ -275,6 +276,6 @@ SOURCE);
             $this->assertNull($edge['metadata']['selector']);
         }
         $this->assertContains('package_mcp_analysis', array_column($index->diagnostics, 'code'));
-        $this->assertSame([], $this->edges(new CatalogIndex($facts), 'declares-mcp-name'));
+        $this->assertSame([], $this->edges(new CatalogIndex($facts, mode: AnalysisMode::Deep), 'declares-mcp-name'));
     }
 }

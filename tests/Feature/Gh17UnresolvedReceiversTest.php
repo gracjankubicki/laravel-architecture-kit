@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
@@ -295,7 +296,7 @@ PHP);
             [],
             changedOnly: false,
             routes: new RouteMap(['app\http\controllers\frameworkcontroller::show' => ['GET', 'HEAD']]),
-        );
+            mode: AnalysisMode::Deep);
     }
 
     private function controller(string $method): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Analysis\Distribution\EngineInstallation;
 use GracjanKubicki\ArchitectureKit\Analysis\MagoAnalysisEngine;
 use Illuminate\Console\Application;
@@ -51,12 +52,12 @@ final class Runner
                     throw new RuntimeException('Hook input must be an object.');
                 }
                 Host::create($home);
-                self::output((new AgentHooks($home, $options['profile'] ?? null, $options['project'] ?? null, isset($options['runtime-routes'])))->handle($args[2] ?? '', $input));
+                self::output((new AgentHooks($home, $options['profile'] ?? null, $options['project'] ?? null, isset($options['runtime-routes']), isset($options['enforce']) ? ControlPolicy::Enforce : null))->handle($args[2] ?? '', $input));
 
                 return 0;
             }
             if ($command === 'help') {
-                fwrite(STDOUT, "architecture-kit [--project PATH] [--tool-home PATH] [--profile NAME] COMMAND\nengine install|status|describe\ninit [architecture ...] [--shared --allow-write]\ntask begin|check|status|skip|bind TASK [--confirm] [--client codex|claude --session ID]\nintegration export|status codex|claude\nmcp | audit | guard | doctor | search | impact | path | reach | file-rules | guidelines | make | sync\nDefault: source-only, external state. --runtime-routes explicitly boots the application to read routes. --allow-write authorizes repository mutations. --allow-execution enables broader application/custom-rule execution.\n");
+                fwrite(STDOUT, "architecture-kit [--project PATH] [--tool-home PATH] [--profile NAME] COMMAND\nengine install|status|describe\ninit [architecture ...] [--shared --allow-write]\nanalysis-consent grant-deep TASK [--confirm]\ntask begin|check|status|skip|bind TASK [--confirm] [--client codex|claude --session ID]\nintegration export|status codex|claude\nmcp | audit | guard | doctor | search | impact | path | reach | file-rules | guidelines | make | sync\nDefault: source-only, external state. --runtime-routes explicitly boots the application to read routes. --allow-write authorizes repository mutations. --allow-execution enables broader application/custom-rule execution.\n");
 
                 return 0;
             }
@@ -76,7 +77,7 @@ final class Runner
             $host = Host::create($home);
             if ($command === 'task') {
                 $task = $args[3] ?? '';
-                $tasks = new TaskControl($context);
+                $tasks = new TaskControl($context, isset($options['enforce']) ? ControlPolicy::Enforce : null, strict: isset($options['strict']));
                 $result = match ($args[2] ?? '') {
                     'begin' => $tasks->begin($task),
                     'check' => $tasks->check($task),
@@ -87,10 +88,18 @@ final class Runner
                 };
                 self::output($result);
 
-                return in_array($result['status'] ?? 'bound', ['pass', 'started', 'bound', 'skipped'], true) ? 0 : 1;
+                return ($result['status'] ?? '') === 'skipped' ? 0 : (($result['control']['blocking'] ?? false) ? 1 : 0);
+            }
+            if ($command === 'analysis-consent') {
+                if (($args[2] ?? '') !== 'grant-deep' || ! isset($options['confirm'])) {
+                    throw new RuntimeException('Record previously obtained human consent with analysis-consent grant-deep TASK --confirm.');
+                }
+                self::output(['ok' => true, 'consent' => (new AnalysisConsent($context))->grantDeep($args[3] ?? '')]);
+
+                return 0;
             }
             if ($command === 'integration') {
-                $hooks = new AgentHooks($home, $context->profile, runtimeRoutes: $context->runtimeRoutes);
+                $hooks = new AgentHooks($home, $context->profile, runtimeRoutes: $context->runtimeRoutes, policy: isset($options['enforce']) ? ControlPolicy::Enforce : null);
                 $client = $args[3] ?? '';
                 self::output(match ($args[2] ?? '') {
                     'export' => $hooks->export($client, realpath($argv[0]) ?: throw new RuntimeException('Executable path is unavailable.'), $root),
@@ -117,13 +126,32 @@ final class Runner
                 $instance->setName(str_replace('architecture-kit:', '', $instance->getName()));
                 $console->add($instance);
             }
+            if (isset($options['enforce']) && in_array($command, ['audit', 'guard'], true)) {
+                $args[] = '--enforce';
+            }
+            if (isset($options['strict']) && in_array($command, ['audit', 'guard'], true)) {
+                $args[] = '--strict';
+            }
             $console->setAutoExit(false);
 
             return $console->run(new ArgvInput($args));
         } catch (Throwable $error) {
-            fwrite(STDERR, json_encode(['ok' => false, 'status' => 'blocked', 'reason' => $error->getMessage()], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
+            $policy = isset($options['enforce']) ? ControlPolicy::Enforce : ControlPolicy::Advisory;
+            try {
+                $policy = isset($options['enforce']) ? ControlPolicy::Enforce : ($context ?? null)?->controlPolicy() ?? ControlPolicy::Advisory;
+            } catch (Throwable) {
+                // Invalid policy is itself unverified; explicit enforce still applies.
+            }
+            $failure = ['ok' => false, 'status' => 'blocked', 'reason' => $error->getMessage(), 'analysis' => ['mode' => 'basic', 'checks_complete' => false, 'deep_run' => false], 'control' => $policy->result(false)];
+            if (($command ?? null) === 'hook') {
+                $message = 'Architecture Kit unverified: '.$error->getMessage().'. Continue with source inspection and report this gap in the handoff.';
+                self::output($policy === ControlPolicy::Enforce ? ['decision' => 'block', 'reason' => $message] : ['systemMessage' => $message]);
 
-            return 2;
+                return 0;
+            }
+            fwrite(STDERR, json_encode($failure, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n");
+
+            return $policy === ControlPolicy::Enforce ? 2 : 0;
         } finally {
             RepositoryContext::activate(null);
         }
@@ -152,10 +180,13 @@ final class Runner
         $args = [];
         $options = [];
         $values = ['project', 'tool-home', 'profile', 'client', 'session'];
-        $flags = ['allow-write', 'allow-execution', 'runtime-routes', 'confirm', 'shared'];
+        $flags = ['allow-write', 'allow-execution', 'runtime-routes', 'confirm', 'shared', 'enforce', 'strict'];
         for ($i = 0; $i < count($argv); $i++) {
             $arg = $argv[$i];
             $parts = explode('=', ltrim($arg, '-'), 2);
+            if (in_array($parts[0], ['enforce', 'strict'], true) && isset($parts[1])) {
+                throw new RuntimeException('Use the bare --'.$parts[0].' flag.');
+            }
             if ($parts[0] === 'runtime-routes' && isset($parts[1])) {
                 throw new RuntimeException('Use the bare --runtime-routes flag to explicitly enable application route bootstrap.');
             }

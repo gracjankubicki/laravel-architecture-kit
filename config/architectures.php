@@ -17,6 +17,10 @@ return [
         'php' => 'php',
         'command' => null,
     ],
+    'control' => [
+        // Reaction is independent of the analysis result and Basic/Deep scope.
+        'policy' => 'advisory',
+    ],
     'audit' => [
         // Partial analysis warns by default. Use block to require completeness.
         // 'incomplete_analysis' => 'warn',

@@ -4,18 +4,22 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ExecutionSources;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Impact;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureConsoleScheduleTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -38,7 +42,7 @@ final class ArchitectureConsoleScheduleTest extends TestCase
 
     private function inspectImpact(string $subject = 'Service::send', int $limit = 100, int $depth = 16): array
     {
-        $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect($subject, [], $limit, $depth);
+        $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect($subject, [], $limit, $depth);
         $this->assertTrue($result['ok'], json_encode($result));
 
         return $result;
@@ -243,13 +247,13 @@ final class ArchitectureConsoleScheduleTest extends TestCase
     public function test_cli_mcp_preflights_and_limits_share_console_and_schedule_flows(): void
     {
         $this->fixture();
-        Artisan::call('architecture-kit:impact', ['subject' => 'Service::send', '--agent' => true, '--limit' => 100, '--depth' => 16]);
+        Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Service::send', '--agent' => true, '--limit' => 100, '--depth' => 16]);
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
-        $mcp = ArchitectureKitServer::tool(Impact::class, ['subject' => 'Service::send', 'limit' => 100, 'depth' => 16]);
+        $mcp = ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'Service::send', 'limit' => 100, 'depth' => 16]);
         $mcp->assertOk()->assertSee('artisan-command')->assertSee('schedule-task');
         $this->assertSame($this->inspectImpact()['execution'], $cli['execution']);
         foreach (['delete', 'signature', 'move'] as $change) {
-            $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect($change === 'move' ? 'Service' : 'Service::send', [], 100, 16, $change);
+            $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect($change === 'move' ? 'Service' : 'Service::send', [], 100, 16, $change);
             $this->assertNotEmpty($result['execution']['flows']);
             $this->assertFalse($result[$change]['safe_to_change']);
         }

@@ -108,6 +108,31 @@ final readonly class ProjectLayout
         return array_values(array_unique($paths));
     }
 
+    /** Own source roots for a graph, including application Composer mappings and Modules.
+     * @return list<string>
+     */
+    public function graphSources(): array
+    {
+        $paths = $this->isPackage() ? [] : ['app'];
+        $autoload = $this->composer['autoload'] ?? [];
+        foreach (['psr-4', 'psr-0', 'classmap', 'files'] as $kind) {
+            $entries = $autoload[$kind] ?? [];
+            if (! is_array($entries)) {
+                throw new InvalidArgumentException('Invalid Composer source declaration.');
+            }
+            foreach ($entries as $roots) {
+                foreach (is_array($roots) ? $roots : [$roots] as $path) {
+                    $paths[] = self::path($path);
+                }
+            }
+        }
+        if ($this->root !== '' && is_dir($this->root.'/Modules') && ! is_link($this->root.'/Modules')) {
+            $paths[] = 'Modules';
+        }
+
+        return array_values(array_unique($paths));
+    }
+
     /** @param array<string, mixed> $settings
      * @return array{folder: string, namespace: string} */
     public function placement(string $slug, string $defaultFolder, string $defaultNamespace, array $settings = []): array

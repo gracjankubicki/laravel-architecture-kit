@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
@@ -20,8 +22,9 @@ final class StandaloneAudit
         return ProjectState::load(new Filesystem, dirname(__DIR__, 2), $context->rootPath);
     }
 
-    public static function run(RepositoryContext $context, bool $changed = false, ?string $base = null): ApplicationAuditResult
+    public static function run(RepositoryContext $context, bool $changed = false, ?string $base = null, AnalysisMode $mode = AnalysisMode::Basic, ?string $task = null): ApplicationAuditResult
     {
+        $context->assertAnalysisMode($mode, $task);
         $state = self::state($context);
 
         // Never use a persistent suppression baseline as a substitute for the task's actual beginning.
@@ -29,7 +32,7 @@ final class StandaloneAudit
             enabled: $state->enabled, changedOnly: $changed, baseRef: $base,
             exclude: $state->exclude, customRules: $state->customRules, useBaseline: false,
             scope: $state->auditScope, missingTestLevel: $state->missingTestLevel,
-            cache: $state->graphCache, cacheConfiguration: [...$state->graphConfiguration(), $context->fingerprint()],
+            cache: $state->graphCache, cacheConfiguration: [...$state->graphConfiguration(), $context->fingerprint()], mode: $mode,
         );
     }
 
@@ -49,14 +52,14 @@ final class StandaloneAudit
         return $result->incomplete();
     }
 
-    public static function guard(RepositoryContext $context, bool $changed, ?string $base, bool $strict, bool $target): ArchitectureGuardResult
+    public static function guard(RepositoryContext $context, bool $changed, ?string $base, bool $strict, bool $target, ?ControlPolicy $policy = null): ArchitectureGuardResult
     {
         $result = self::run($context, $changed, $base);
         $doctor = self::doctor($context);
 
         return new ArchitectureGuardResult($doctor, $result, $strict,
             $target ? (new ArchitectureTarget($context->rootPath))->inspect() : null,
-            self::state($context)->blockIncompleteAnalysis);
+            self::state($context)->blockIncompleteAnalysis, $policy ?? $context->controlPolicy());
     }
 
     /** @return array{status: string, policy: string, notice_total: int, incomplete_findings: int, reasons: array<string, int>} */
@@ -68,7 +71,7 @@ final class StandaloneAudit
         }
         ksort($reasons);
 
-        return ['status' => $audit->incomplete() ? 'incomplete' : $audit->analysisStatus,
+        return [...$audit->analysis(), 'status' => $audit->incomplete() ? 'incomplete' : ($audit->analysis()['checks_complete'] ? 'complete' : $audit->analysisStatus),
             'policy' => $block ? 'block' : 'warn', 'notice_total' => count($audit->notices),
             'incomplete_findings' => count(array_filter($audit->findings, static fn ($finding): bool => $finding->isIncompleteAnalysis())),
             'reasons' => $reasons];

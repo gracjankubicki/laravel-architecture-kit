@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
@@ -11,12 +12,15 @@ use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
 use GracjanKubicki\ArchitectureKit\Impact\MoveAutoload;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Impact;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureMoveTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -34,7 +38,7 @@ final class ArchitectureMoveTest extends TestCase
     {
         $files ??= new Filesystem;
 
-        return (new ArchitectureImpact($files, $this->tempPath, new AuditScope(['app', 'tests']), $cache ? new ProjectGraphCache($files, $this->tempPath) : null))->inspect($subject, limit: $limit, change: 'move', targetClass: $class, targetPath: $path);
+        return (new ArchitectureImpact($files, $this->tempPath, new AuditScope(['app', 'tests']), $cache ? new ProjectGraphCache($files, $this->tempPath) : null, mode: AnalysisMode::Deep))->inspect($subject, limit: $limit, change: 'move', targetClass: $class, targetPath: $path);
     }
 
     private function fixture(): void
@@ -156,7 +160,7 @@ final class ArchitectureMoveTest extends TestCase
         $this->assertSame('E_IMPACT_MOVE_TARGET_INVALID', $this->inspectImpact(path: 'outside/A.php')['m']);
         unlink($this->tempPath.'/outside');
         $this->assertSame('E_IMPACT_CHANGE_INVALID', $this->inspectImpact('Target::run')['m']);
-        $impact = new ArchitectureImpact(new Filesystem, $this->tempPath);
+        $impact = new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep);
         $this->assertSame('E_IMPACT_CHANGE_INVALID', $impact->inspect('Target', targetClass: 'App\\NewName')['m']);
         $this->assertSame('E_IMPACT_CHANGE_INVALID', $impact->inspect('Target', change: 'move', signature: 'run()')['m']);
         $this->assertSame('E_IMPACT_SUBJECT_NOT_FOUND', $this->inspectImpact('Absent')['m']);
@@ -218,7 +222,7 @@ final class ArchitectureMoveTest extends TestCase
         $this->assertSame($cold['move'], $warm['move']);
         $this->composer(['autoload' => ['psr-4' => ['App\\' => 'other/']]]);
         $changed = $this->inspectImpact(class: 'App\\Renamed', path: 'app/Renamed.php', cache: true);
-        $this->assertSame('fresh', $changed['cache']);
+        $this->assertSame('missing', $changed['cache']); // Composer roots are part of the current source-map identity.
         $this->assertNotSame($warm['snapshot'], $changed['snapshot']);
         $this->assertNotSame($warm['move']['autoload']['hash'], $changed['move']['autoload']['hash']);
         $files = new class extends Filesystem
@@ -278,17 +282,17 @@ final class ArchitectureMoveTest extends TestCase
         $limited = $this->inspectImpact(class: 'App\\Renamed', limit: 0);
         $this->assertSame('limit', $limited['move']['status']);
         $this->assertSame([], $limited['move']['breaking']);
-        $impact = new ArchitectureImpact(new Filesystem, $this->tempPath);
+        $impact = new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep);
         $this->assertArrayNotHasKey('move', $impact->inspect('Target'));
         $this->assertArrayHasKey('delete', $impact->inspect('Target', change: 'delete'));
         $this->assertArrayHasKey('signature', $impact->inspect('Target::run', signature: 'run()'));
         $this->write('config/architectures.php', "return ['enabled' => ['actions'], 'audit' => ['cache' => false]];");
-        $this->assertSame(0, Artisan::call('architecture-kit:impact', ['subject' => 'Target', '--change' => 'move', '--target-class' => 'App\\Renamed', '--target-path' => 'app/Renamed.php', '--agent' => true, '--limit' => 100]));
+        $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Target', '--change' => 'move', '--target-class' => 'App\\Renamed', '--target-path' => 'app/Renamed.php', '--agent' => true, '--limit' => 100]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
-        ArchitectureKitServer::tool(Impact::class, ['subject' => 'Target', 'change' => 'move', 'target_class' => 'App\\Renamed', 'target_path' => 'app/Renamed.php', 'limit' => 100])->assertOk()->assertStructuredContent(fn ($json) => $json->where('move', $cli['move'])->etc());
+        ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'Target', 'change' => 'move', 'target_class' => 'App\\Renamed', 'target_path' => 'app/Renamed.php', 'limit' => 100])->assertOk()->assertStructuredContent(fn ($json) => $json->where('move', $cli['move'])->etc());
         $this->assertArrayHasKey('move', ImpactSchema::get()['oneOf'][0]['properties']);
-        $this->assertSame(0, Artisan::call('architecture-kit:impact', ['subject' => 'Target', '--change' => 'move']));
+        $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Target', '--change' => 'move']));
         $this->assertStringContainsString('Move inspect:', Artisan::output());
-        ArchitectureKitServer::tool(Impact::class, ['subject' => 'Target', 'change' => 'move', 'target_path' => 12])->assertStructuredContent(fn ($json) => $json->where('m', 'E_INVALID_TOOL_INPUT')->etc());
+        ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'Target', 'change' => 'move', 'target_path' => 12])->assertStructuredContent(fn ($json) => $json->where('m', 'E_INVALID_TOOL_INPUT')->etc());
     }
 }

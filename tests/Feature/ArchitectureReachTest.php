@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Reach;
 use GracjanKubicki\ArchitectureKit\Reach\ArchitectureReach;
 use GracjanKubicki\ArchitectureKit\Reach\ReachSchema;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureReachTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -35,7 +39,7 @@ final class ArchitectureReachTest extends TestCase
 
     private function reach(string $subject = 'App\\A::go', int $limit = 20, int $depth = 4, ?string $id = null, int $page = 1): array
     {
-        return (new ArchitectureReach(new Filesystem, $this->tempPath))->inspect($subject, $limit, $depth, $id, $page);
+        return (new ArchitectureReach(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->inspect($subject, $limit, $depth, $id, $page);
     }
 
     public function test_cycles_and_duplicate_paths_count_unique_direct_and_exclusively_indirect(): void
@@ -80,7 +84,7 @@ final class ArchitectureReachTest extends TestCase
                 return parent::get($path, $lock);
             }
         };
-        $this->assertTrue((new ArchitectureReach($metadataOnly, $this->tempPath))->inspect('', 1, 4, $id, 2)['ok']);
+        $this->assertTrue((new ArchitectureReach($metadataOnly, $this->tempPath, mode: AnalysisMode::Deep))->inspect('', 1, 4, $id, 2)['ok']);
     }
 
     public function test_added_removed_edited_and_config_sources_invalidate_pages(): void
@@ -243,7 +247,7 @@ final class ArchitectureReachTest extends TestCase
                 return $value;
             }
         };
-        $r = (new ArchitectureReach($files, $this->tempPath))->inspect('App\\A::go', 1);
+        $r = (new ArchitectureReach($files, $this->tempPath, mode: AnalysisMode::Deep))->inspect('App\\A::go', 1);
         $this->assertTrue($r['ok'], json_encode($r));
         $this->assertFalse($r['reach']['fresh']);
         $this->assertTrue($r['reach']['total_is_lower_bound']);
@@ -299,23 +303,23 @@ final class ArchitectureReachTest extends TestCase
             $this->assertSame('incomplete', $r['reach']['status']);
             $this->assertContains('Vendor\\Client', array_column($r['analysis']['notices'], 'receiver'), $subject);
         }
-        $legacy = (new ArchitectureImpact(new Filesystem, $this->tempPath))->inspect('App\\Unknown');
+        $legacy = (new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->inspect('App\\Unknown');
         $this->assertArrayNotHasKey('reach', $legacy);
     }
 
     public function test_cli_mcp_and_schema_and_legacy_contract(): void
     {
         $this->fixture();
-        Artisan::call('architecture-kit:reach', ['subject' => 'App\\A::go', '--agent' => true, '--limit' => 1]);
+        Artisan::call('architecture-kit:reach', [...$this->deepCli(), 'subject' => 'App\\A::go', '--agent' => true, '--limit' => 1]);
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertTrue($cli['ok'], json_encode($cli));
         $this->assertSame('reach', $cli['cmd']);
-        ArchitectureKitServer::tool(Reach::class, ['subject' => 'App\\A::go', 'limit' => 1])->assertOk()->assertStructuredContent(fn ($json) => $json->where('reach.counts', $cli['reach']['counts'])->where('dependencies', $cli['dependencies'])->etc());
-        ArchitectureKitServer::tool(Reach::class, ['subject' => []])->assertSee('E_INVALID_TOOL_INPUT');
+        ArchitectureKitServer::tool(Reach::class, [...$this->deepMcp(), 'subject' => 'App\\A::go', 'limit' => 1])->assertOk()->assertStructuredContent(fn ($json) => $json->where('reach.counts', $cli['reach']['counts'])->where('dependencies', $cli['dependencies'])->etc());
+        ArchitectureKitServer::tool(Reach::class, [...$this->deepMcp(), 'subject' => []])->assertSee('E_INVALID_TOOL_INPUT');
         $this->assertContains('reach', ReachSchema::get()['oneOf'][0]['required']);
         $this->assertSame(1000, ReachSchema::get()['oneOf'][0]['properties']['analysis']['properties']['limit']['maximum']);
         $this->assertContains(Reach::class, (new \ReflectionClass(ArchitectureKitServer::class))->getDefaultProperties()['tools']);
-        $legacy = (new ArchitectureImpact(new Filesystem, $this->tempPath))->inspect('App\\A::go', limit: 1);
+        $legacy = (new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->inspect('App\\A::go', limit: 1);
         $this->assertTrue($legacy['ok']);
         $this->assertSame('impact', $legacy['cmd']);
         $this->assertArrayNotHasKey('reach', $legacy);

@@ -21,7 +21,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('architecture-search')]
-#[Description('Find a PHP or Laravel element by literal name, path, route, table or kind. Returns ranked candidates with IDs and source locations. Inspect analysis_complete and diagnostics before selecting a candidate. Discovery reads source files without executing the application or tests.')]
+#[Description('Basic source map by default. Semantic execution/effects require analysis_mode=deep and prior task consent. Find a PHP or Laravel element by literal name, path, route, table or kind. Returns ranked candidates with IDs and source locations. Inspect analysis_complete and diagnostics before selecting a candidate. Discovery reads source files without executing the application or tests.')]
 #[IsReadOnly]
 final class ArchitectureSearch extends Tool
 {
@@ -29,7 +29,7 @@ final class ArchitectureSearch extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return [
+        return ['analysis_mode' => $schema->string()->enum(['basic', 'deep'])->default('basic')->description('Deep requires prior human consent recorded for task; full only controls report size.'), 'task' => $schema->string()->description('Task with previously recorded consent.'),
             'query' => $schema->string()->description('Non-empty literal fragment; exact matches rank first.')->required(),
             'kind' => $schema->string()->description('Exact element kind or role from supported_kinds.'),
             'path' => $schema->string()->description('Project-relative file or directory prefix, matched on path segments.'),
@@ -41,7 +41,7 @@ final class ArchitectureSearch extends Tool
 
     public function handle(Request $request): ResponseFactory
     {
-        $arguments = $request->all(['query', 'kind', 'path', 'limit', 'offset', 'snapshot']);
+        $arguments = $request->all(['analysis_mode', 'task', 'query', 'kind', 'path', 'limit', 'offset', 'snapshot']);
         $invalid = $this->invalidInput($request, ['query' => 'string', 'kind' => 'string', 'path' => 'string', 'limit' => 'integer', 'offset' => 'integer', 'snapshot' => 'string']);
         $oversized = false;
         foreach ($arguments as $value) {
@@ -58,19 +58,20 @@ final class ArchitectureSearch extends Tool
                 ['status' => 'invalid_input', 'candidates' => [], 'message' => $invalid ?? 'A non-empty query is required.'], 'candidates'));
         }
         try {
-            $source = (new GraphSource(app(Filesystem::class), RepositoryContext::root()))->load();
+            $mode = RepositoryContext::requestedMode($request->get('analysis_mode', 'basic'), $request->get('task'));
+            $source = (new GraphSource(app(Filesystem::class), RepositoryContext::root(), mode: $mode))->load();
             $result = (new GraphSearch($source['index']))->find($request->get('query'), $request->get('kind'), $request->get('path'));
             if ($source['changed']) {
                 $result['status'] = 'stale_snapshot';
                 $result['candidates'] = [];
             }
 
-            return Response::structured(GraphPage::make('architecture-search', $arguments, $source['snapshot'], $source['scope'], $source['index']->diagnostics, $result, 'candidates'));
-        } catch (Throwable) {
+            return Response::structured(GraphPage::make('architecture-search', $arguments, $source['snapshot'], $source['scope'], $source['index']->diagnostics, [...$result, 'analysis' => $source['analysis']], 'candidates'));
+        } catch (Throwable $error) {
             return Response::structured(['v' => 1, 'cmd' => 'architecture-search', 'ok' => false, 'status' => 'unavailable',
                 'snapshot' => null, 'scope' => [], 'analysis_complete' => false, 'truncated' => false,
                 'limits' => ['max_bytes' => GraphPage::MAX_BYTES], 'diagnostics' => ['summary' => ['source_unavailable' => 1],
-                    'details' => [['code' => 'source_unavailable', 'message' => 'Source settings or graph could not be read safely. Inspect project configuration.']]],
+                    'details' => [['code' => 'source_unavailable', 'message' => $error->getMessage()]]],
                 'result' => ['candidates' => []], 'next' => null]);
         }
     }

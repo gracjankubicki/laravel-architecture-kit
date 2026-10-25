@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CachedGraph;
@@ -347,7 +348,8 @@ SRC);
     {
         $this->fixture();
         $this->write('app/Inherited.php', '<?php namespace App; class PropertyBase { protected InvoiceCalculator $c; } final class Inherited extends PropertyBase { public function run() { $this->c->calculate(); } public function union(InvoiceCalculator|PropertyBase $c) { $c->calculate(); } }');
-        $result = $this->inspectImpact('InvoiceCalculator::calculate');
+        $files = new Filesystem;
+        $result = (new ArchitectureImpact($files, $this->tempPath, new AuditScope(['app', 'tests', 'routes']), mode: AnalysisMode::Deep))->inspect('InvoiceCalculator::calculate');
         $this->assertContains('App\Inherited::run', array_column($result['dependents'], 'symbol'));
         $this->assertNotContains('App\Inherited::union', array_column($result['dependents'], 'symbol'));
         $this->assertSame('incomplete', $result['analysis']['status']);

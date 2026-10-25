@@ -4,18 +4,22 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitecturePath;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ExplainFinding;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Path;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitecturePathTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -36,7 +40,7 @@ final class ArchitecturePathTest extends TestCase
 
     private function inspectImpact(string $from = 'A::run', string $to = 'D::run', int $limit = 20, int $depth = 8, array $exclude = []): array
     {
-        return (new ArchitecturePath(new Filesystem, $this->tempPath, new AuditScope))->inspect($from, $to, $exclude, $limit, $depth);
+        return (new ArchitecturePath(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect($from, $to, $exclude, $limit, $depth);
     }
 
     public function test_all_nine_endpoint_combinations_keep_multiple_paths_and_locations(): void
@@ -247,7 +251,7 @@ final class ArchitecturePathTest extends TestCase
                 return $contents;
             }
         };
-        $r = (new ArchitecturePath($files, $this->tempPath))->inspect('A::run', 'D::run');
+        $r = (new ArchitecturePath($files, $this->tempPath, mode: AnalysisMode::Deep))->inspect('A::run', 'D::run');
         $this->assertFalse($r['analysis']['fresh']);
         $this->assertSame('stale', $r['execution']['status']);
         $this->assertSame('stale', $r['dependencies']['status']);
@@ -334,7 +338,7 @@ final class ArchitecturePathTest extends TestCase
                 return parent::get($path, $lock);
             }
         };
-        $r = (new ArchitecturePath($files, $this->tempPath, new AuditScope(['app', 'vendor'])))->inspect('A::run', 'D::run');
+        $r = (new ArchitecturePath($files, $this->tempPath, new AuditScope(['app', 'vendor']), mode: AnalysisMode::Deep))->inspect('A::run', 'D::run');
         $this->assertTrue($r['ok']);
         $this->assertFalse($r['execution']['found']);
         $this->assertNotEmpty($r['execution']['external_boundaries']);
@@ -351,7 +355,7 @@ final class ArchitecturePathTest extends TestCase
             $this->assertArrayHasKey('path', $notice);
             $this->assertStringStartsWith('app/', $notice['path']);
         }
-        $this->assertSame(0, Artisan::call('architecture-kit:path', ['from' => 'A::run', 'to' => 'D::run']));
+        $this->assertSame(0, Artisan::call('architecture-kit:path', [...$this->deepCli(), 'from' => 'A::run', 'to' => 'D::run']));
         $this->assertStringContainsString('app/Broken.php', Artisan::output());
         $this->assertStringNotContainsString('Undefined array key', Artisan::output());
     }
@@ -365,7 +369,7 @@ final class ArchitecturePathTest extends TestCase
         $this->assertFalse($r['execution']['found']);
         $this->assertSame('incomplete', $r['execution']['status']);
         $this->assertStringContainsString('model receiver/method is unresolved', $r['execution']['notices'][0]['reason']);
-        $old = (new ArchitectureImpact(new Filesystem, $this->tempPath))->inspect('D::run');
+        $old = (new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->inspect('D::run');
         $this->assertSame([], $old['execution']['flow_analysis']['unresolved']);
         $this->write('app/A.php', 'namespace App; class A { public static function run(Order $order) { $order->customMacro(); } }');
         $this->assertSame('incomplete', $this->inspectImpact()['execution']['status']);
@@ -381,14 +385,14 @@ final class ArchitecturePathTest extends TestCase
     public function test_cli_mcp_and_schema_agree_and_bad_input_is_rejected(): void
     {
         $this->fixture();
-        $this->assertSame(0, Artisan::call('architecture-kit:path', ['from' => 'A::run', 'to' => 'D::run', '--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:path', [...$this->deepCli(), 'from' => 'A::run', 'to' => 'D::run', '--agent' => true]));
         $cli = json_decode(trim(Artisan::output()), true);
-        ArchitectureKitServer::tool(Path::class, ['from' => 'A::run', 'to' => 'D::run'])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->where('dependencies', $cli['dependencies'])->etc());
+        ArchitectureKitServer::tool(Path::class, [...$this->deepMcp(), 'from' => 'A::run', 'to' => 'D::run'])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->where('dependencies', $cli['dependencies'])->etc());
         $this->assertTrue($cli['execution']['found']);
-        $this->assertSame(0, Artisan::call('architecture-kit:path', ['--schema' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:path', [...$this->deepCli(), '--schema' => true]));
         $schema = json_decode(trim(Artisan::output()), true);
         $this->assertSame('path', $schema['oneOf'][0]['properties']['cmd']['const']);
-        $this->assertSame(1, Artisan::call('architecture-kit:path', ['from' => 'A', 'to' => 'D', '--limit' => '-1', '--agent' => true]));
-        ArchitectureKitServer::tool(Path::class, ['from' => [], 'to' => 'D'])->assertSee('E_INVALID_TOOL_INPUT');
+        $this->assertSame(1, Artisan::call('architecture-kit:path', [...$this->deepCli(), 'from' => 'A', 'to' => 'D', '--limit' => '-1', '--agent' => true]));
+        ArchitectureKitServer::tool(Path::class, [...$this->deepMcp(), 'from' => [], 'to' => 'D'])->assertSee('E_INVALID_TOOL_INPUT');
     }
 }

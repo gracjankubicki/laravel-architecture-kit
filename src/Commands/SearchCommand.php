@@ -12,7 +12,7 @@ use Illuminate\Filesystem\Filesystem;
 
 final class SearchCommand extends Command
 {
-    protected $signature = 'architecture-kit:search {query? : Literal name or path fragment} {--kind= : Declaration kind} {--limit=20 : Maximum candidates and notices, 0..500} {--agent : Output JSON} {--schema : Output JSON Schema}';
+    protected $signature = 'architecture-kit:search {query? : Literal name or path fragment} {--kind= : Declaration kind} {--limit=20 : Maximum candidates and notices, 0..500} {--agent : Output JSON} {--schema : Output JSON Schema} {--mode=basic : Analysis scope basic or deep; deep needs prior task consent} {--task= : Task with recorded Deep consent}';
 
     protected $description = 'Find source declarations and choose an explicit impact/path selector.';
 
@@ -23,10 +23,15 @@ final class SearchCommand extends Command
 
             return self::SUCCESS;
         }
-        $limit = (string) $this->option('limit');
-        $result = ctype_digit($limit)
-            ? (new ArchitectureDiscovery($files, RepositoryContext::root()))->search((string) $this->argument('query'), $this->option('kind'), (int) $limit)
-            : ArchitectureDiscovery::error('E_SEARCH_INPUT', 'Use an integer limit 0..500.');
+        try {
+            $mode = RepositoryContext::requestedMode($this->option('mode'), $this->option('task'));
+            $limit = (string) $this->option('limit');
+            $result = ctype_digit($limit)
+                ? (new ArchitectureDiscovery($files, RepositoryContext::root(), $mode))->search((string) $this->argument('query'), $this->option('kind'), (int) $limit)
+                : ArchitectureDiscovery::error('E_SEARCH_INPUT', 'Use an integer limit 0..500.');
+        } catch (\Throwable $error) {
+            $result = ArchitectureDiscovery::error('E_ANALYSIS_UNAVAILABLE', $error->getMessage());
+        }
         if ($this->option('agent')) {
             $this->line(json_encode($result, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         } elseif (! $result['ok']) {

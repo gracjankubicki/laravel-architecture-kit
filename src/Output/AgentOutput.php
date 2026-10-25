@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Output;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AnalysisNotice;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
@@ -31,11 +33,13 @@ final readonly class AgentOutput
     /**
      * @return array<string, mixed>
      */
-    public function audit(ApplicationAuditResult $result, bool $ok, int $limit = 20, bool $full = false, bool $baselineUpdated = false): array
+    public function audit(ApplicationAuditResult $result, bool $ok, int $limit = 20, bool $full = false, bool $baselineUpdated = false, ControlPolicy $policy = ControlPolicy::Advisory): array
     {
+        $ok = $ok && $result->analysis()['checks_complete'] && ! $result->hasAnalysisFailure() && $result->errors() === 0;
         $payload = [
             'v' => 1,
             'ok' => $ok,
+            'control' => $policy->result($ok),
             'cmd' => 'audit',
             'scope' => $this->scope($result->scope),
             ...($result->classification !== [] ? ['classification' => $result->classification] : []),
@@ -49,7 +53,7 @@ final readonly class AgentOutput
             ...($result->cacheNote() !== null ? ['cache' => $result->cacheStatus->value] : []),
             ...$this->findings($result->findings, $limit, $full),
             ...$this->suggestions($result->suggestions, $limit),
-            ...$this->analysis($result->analysisStatus, $result->notices, $limit),
+            ...$this->analysis($result->analysisStatus, $result->notices, $limit, $result),
             'next' => $ok ? ['continue'] : ['fix_findings', 'rerun:audit --agent'],
         ];
 
@@ -67,6 +71,7 @@ final readonly class AgentOutput
         return [
             'v' => 1,
             'ok' => $result->ok(),
+            'control' => $result->control(),
             'cmd' => 'guard',
             ...($result->target === null ? [] : ['target' => $result->target]),
             'doctor' => $result->doctor->ok() ? 'ok' : 'fail',
@@ -84,7 +89,7 @@ final readonly class AgentOutput
             ...$this->analysis(
                 $result->audit === null ? 'not_run' : ($result->audit->incomplete() ? 'incomplete' : $result->audit->analysisStatus),
                 $result->audit === null ? [] : $result->audit->notices,
-                $limit,
+                $limit, $result->audit,
             ),
             'next' => $result->ok()
                 ? ['continue']
@@ -141,12 +146,13 @@ final readonly class AgentOutput
     /**
      * @return array<string, mixed>
      */
-    public function error(string $cmd, string $message, string $code = 'E_COMMAND_FAILED'): array
+    public function error(string $cmd, string $message, string $code = 'E_COMMAND_FAILED', ControlPolicy $policy = ControlPolicy::Advisory): array
     {
         return [
             'v' => 1,
             'ok' => false,
             'cmd' => $cmd,
+            ...(in_array($cmd, ['audit', 'guard'], true) ? ['control' => $policy->result(false), 'analysis' => ['mode' => 'basic', 'status' => 'not_run', 'deep_run' => false, 'checks_complete' => false]] : []),
             'm' => $code,
             'msg' => $message,
             'next' => ['fix_command_error', 'rerun:'.$cmd.' --agent'],
@@ -270,6 +276,7 @@ final readonly class AgentOutput
             'v' => 1,
             'ok' => true,
             'cmd' => 'architecture-context',
+            'analysis' => $context->analysis,
             ...($context->classification !== [] ? ['classification' => $context->classification] : []),
             'subject' => [
                 'name' => $context->subject->name,
@@ -397,13 +404,14 @@ final readonly class AgentOutput
      * @param  array<int, AnalysisNotice>  $notices
      * @return array<string, mixed>
      */
-    private function analysis(string $status, array $notices, int $limit): array
+    private function analysis(string $status, array $notices, int $limit, ?ApplicationAuditResult $result = null): array
     {
         $visible = $limit === 0 ? [] : array_slice($notices, 0, $limit);
 
         return [
             'analysis' => [
-                'status' => $status,
+                ...($result?->analysis() ?? ['mode' => 'basic', 'checks_complete' => false, 'deep_run' => false]),
+                'status' => $result?->mode === AnalysisMode::Basic ? ($result->analysis()['checks_complete'] ? 'complete' : 'incomplete') : $status,
                 'notices' => array_map(fn (AnalysisNotice $notice): array => $notice->toArray(), $visible),
                 'total' => count($notices),
                 'truncated' => count($visible) < count($notices),
@@ -506,11 +514,12 @@ final readonly class AgentOutput
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit audit agent output',
             'type' => 'object',
-            'required' => ['v', 'ok', 'cmd', 'scope', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'next'],
+            'required' => ['v', 'ok', 'cmd', 'scope', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'control', 'next'],
             'properties' => [
                 'v' => ['const' => 1],
                 'ok' => ['type' => 'boolean'],
                 'cmd' => ['const' => 'audit'],
+                'control' => $this->controlSchema(),
                 'classification' => ['type' => 'object'],
                 'scope' => ['enum' => ['changed', 'all']],
                 'err' => ['type' => 'integer', 'minimum' => 0],
@@ -537,11 +546,12 @@ final readonly class AgentOutput
             '$schema' => 'https://json-schema.org/draft/2020-12/schema',
             'title' => 'Architecture Kit guard agent output',
             'type' => 'object',
-            'required' => ['v', 'ok', 'cmd', 'doctor', 'agents', 'audit', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'next'],
+            'required' => ['v', 'ok', 'cmd', 'doctor', 'agents', 'audit', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'control', 'next'],
             'properties' => [
                 'v' => ['const' => 1],
                 'ok' => ['type' => 'boolean'],
                 'cmd' => ['const' => 'guard'],
+                'control' => $this->controlSchema(),
                 'target' => ['type' => 'object'],
                 'doctor' => ['enum' => ['ok', 'fail']],
                 'agents' => ['enum' => ['ok', 'fail']],
@@ -1157,6 +1167,7 @@ final readonly class AgentOutput
                 'ok' => ['const' => true],
                 'cmd' => ['const' => 'architecture-context'],
                 'classification' => ['type' => 'object'],
+                'analysis' => ['type' => ['object', 'array']],
                 'subject' => [
                     'type' => 'object',
                     'required' => ['name', 'path', 'line', 'kind', 'role'],
@@ -1296,9 +1307,12 @@ final readonly class AgentOutput
             ],
             'analysis' => [
                 'type' => 'object',
-                'required' => ['status', 'notices', 'total', 'truncated'],
+                'required' => ['status', 'notices', 'total', 'truncated', 'mode', 'checks_complete', 'deep_run'],
                 'properties' => [
                     'status' => ['enum' => ['complete', 'incomplete', 'not_run']],
+                    'mode' => ['enum' => ['basic', 'deep']],
+                    'checks_complete' => ['type' => 'boolean'],
+                    'deep_run' => ['type' => 'boolean'],
                     'notices' => [
                         'type' => 'array',
                         'items' => [
@@ -1337,11 +1351,12 @@ final readonly class AgentOutput
                 $success,
                 [
                     'type' => 'object',
-                    'required' => ['v', 'ok', 'cmd', 'm', 'msg', 'next'],
+                    'required' => [...['v', 'ok', 'cmd', 'm', 'msg', 'next'], ...(in_array($command, ['audit', 'guard'], true) ? ['control', 'analysis'] : [])],
                     'properties' => [
                         'v' => ['const' => 1],
                         'ok' => ['const' => false],
                         'cmd' => ['const' => $command],
+                        ...(in_array($command, ['audit', 'guard'], true) ? ['control' => $this->controlSchema(), 'analysis' => ['type' => 'object', 'required' => ['mode', 'status', 'deep_run', 'checks_complete'], 'properties' => ['mode' => ['const' => 'basic'], 'status' => ['const' => 'not_run'], 'deep_run' => ['const' => false], 'checks_complete' => ['const' => false]], 'additionalProperties' => false]] : []),
                         'm' => ['type' => 'string'],
                         'msg' => ['type' => 'string'],
                         'next' => $this->stringListSchema(),
@@ -1350,6 +1365,16 @@ final readonly class AgentOutput
                 ],
             ],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function controlSchema(): array
+    {
+        return ['type' => 'object', 'required' => ['policy', 'blocking'], 'properties' => [
+            'policy' => ['enum' => ['advisory', 'enforce']], 'blocking' => ['type' => 'boolean'],
+        ], 'additionalProperties' => false];
     }
 
     /**

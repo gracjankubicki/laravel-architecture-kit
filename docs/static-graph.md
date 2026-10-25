@@ -4,6 +4,14 @@ The graph connects declarations and source-visible Laravel operations. Agents us
 
 Discovery reads source files. It does not boot the inspected application, load its autoloader, evaluate its configuration, run queries, dispatch jobs, or execute tests. A relationship describes a possible source-level transition. Ordinary method calls check source visibility, effective trait alias visibility, abstract declarations and static invocation compatibility. Invalid selections remain structural references with diagnostics, without a path into the method body. Resource effects recheck facade identity and ordered namespaced/global helper candidates against the current source index, including cached callers. Its evidence identifies the file and source location; `execution_proven` remains false.
 
+## Basic and Deep scope
+
+Basic is the default for both search aliases, context, graph, path, impact and reach. It retains source declarations and registrations without interpreting their full execution. Path reports `source_path`; semantic execution paths require explicit Deep. Unanalyzed Reach channel counts are `null`, not checked zeroes. Reports expose mode and completeness separately from pagination and display truncation. Important source gaps retain their file and cause.
+
+An agent asks the human before Deep, records consent with `analysis-consent`, and supplies `analysis_mode=deep` plus `task` on MCP or `--mode=deep --task=TASK` on supported CLI queries. Scope is repository/task bound and separate from runtime and custom PHP permissions. `full` never grants Deep. Use Basic after a refused Deep proposal. Source relationships and candidate tests remain evidence for inspection, not execution or coverage.
+
+The detailed semantic families described below are available under Deep. Static registrations and references remain available in Basic. No mode dispatches an endpoint or job.
+
 ## Source scope
 
 The default roots are `app`, `routes`, `bootstrap`, `config`, `database`, `resources/views`, and `tests`. Composer metadata identifies optional package versions. Unsafe roots, missing roots, unsupported shapes, and dynamic expressions produce diagnostics.

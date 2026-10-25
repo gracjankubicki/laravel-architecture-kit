@@ -54,6 +54,7 @@ final readonly class RevisionFacts
     /** @param array<string, array{fingerprint: string, entry: FileGraphEntry, shapes: array<string, string>}> $reuse */
     private static function extract(SourceSnapshot $source, RevisionConfiguration $configuration, array $reuse, ?AuditScope $scopeOverride, bool $includeExcluded): self
     {
+        AnalysisRuntime::stage('deep.revision.facts');
         $started = hrtime(true);
         $scope = $scopeOverride ?? $configuration->scope();
         $roles = new RoleClassifier($configuration->mappings() ?? new ClassificationMappings);

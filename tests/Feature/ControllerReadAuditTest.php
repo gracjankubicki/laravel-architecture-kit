@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
@@ -41,7 +42,7 @@ final class ControllerReadAuditTest extends TestCase
                 $entries[] = new RouteEntry(['GET'], 'missing', class: 'Vendor\\MissingController', method: 'show');
             }
             $routes = new RouteMap(entries: $entries, context: $context);
-            $graph = (new ProjectGraphLoader($files, $this->tempPath))->load();
+            $graph = (new ProjectGraphLoader($files, $this->tempPath, mode: AnalysisMode::Deep))->load();
             $audit = new ControllerReadAudit($files, $this->tempPath);
             $controllers = $audit->controllers($graph);
             self::assertCount(2, $controllers);
@@ -75,7 +76,7 @@ final class ControllerReadAuditTest extends TestCase
             new RouteEntry(['GET'], 'missing', class: '\\App\\Http\\Controllers\\MissingController', method: 'index'),
             new RouteEntry(['GET'], 'external', class: 'Vendor\\ExternalController', method: 'index'),
         ]);
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: RouteMap::fromSnapshot($map->snapshot()));
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: RouteMap::fromSnapshot($map->snapshot()), mode: AnalysisMode::Deep);
         self::assertSame('incomplete', $result->analysisStatus);
         $missing = array_values(array_filter($result->notices, fn ($notice) => $notice->code === 'A_SOURCE_UNAVAILABLE' && str_contains($notice->message, 'no controller source')));
         self::assertCount(2, $missing);
@@ -95,7 +96,7 @@ final class ControllerReadAuditTest extends TestCase
         ];
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers, Architecture::Actions], changedOnly: false, routes: new RouteMap(entries: $entries,
             context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => [], 'auth' => ['default' => 'reader', 'guards' => ['reader' => ['model' => 'App\\Models\\Reader', 'custom' => false], 'writer' => ['model' => 'App\\Models\\Writer', 'custom' => false]]]],
-        ));
+        ), mode: AnalysisMode::Deep);
         self::assertSame([], $result->notices);
         $writes = array_values(array_filter($result->suggestions, fn ($s) => $s->code === 'S_MOVE_WRITE_TO_ACTION'));
         self::assertSame(['write-a', 'write-b'], array_column(array_column($writes, 'route'), 'uri'));
@@ -110,7 +111,7 @@ final class ControllerReadAuditTest extends TestCase
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers, Architecture::Actions], changedOnly: false, routes: new RouteMap(
             ['app\\http\\controllers\\planningcontroller::show' => ['GET']],
             context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => [], 'aliases' => ['App' => $target]],
-        ));
+        ), mode: AnalysisMode::Deep);
         self::assertSame($unknown, $result->notices !== []);
         self::assertSame($write, in_array('S_MOVE_WRITE_TO_ACTION', array_column($result->suggestions, 'code'), true));
     }
@@ -131,7 +132,7 @@ final class ControllerReadAuditTest extends TestCase
             $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: new RouteMap(
                 ['app\\http\\controllers\\planningcontroller::show' => ['GET']],
                 context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => [], 'auth' => ['default' => 'web', 'guards' => ['web' => ['model' => 'App\\Models\\Invoice', 'custom' => false]]]],
-            ));
+            ), mode: AnalysisMode::Deep);
             self::assertSame($index === 1, $result->notices !== [], json_encode(array_map(fn ($n) => $n->toArray(), $result->notices)));
         }
     }
@@ -219,7 +220,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services, ...$extra],
             changedOnly: false,
             routes: new RouteMap(['app\http\controllers\planningcontroller::show' => $verbs]),
-        );
+            mode: AnalysisMode::Deep);
 
         $items = array_values(array_filter($result->findings, fn ($f) => $f->rule === 'thin-controller'));
         foreach ($result->suggestions as $suggestion) {
@@ -572,7 +573,7 @@ PHP);
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services], false,
             routes: new RouteMap(['app\http\controllers\planningcontroller::show' => ['GET'], 'app\http\controllers\planningcontroller::store' => ['POST']]),
-        );
+            mode: AnalysisMode::Deep);
         $this->assertSame([], $result->findings);
     }
 
@@ -618,7 +619,7 @@ PHP);
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services], false,
             routes: new RouteMap(unavailable: 'Test route bootstrap failure.'),
-        );
+            mode: AnalysisMode::Deep);
         $incomplete = array_values(array_filter($result->notices, fn ($f) => $f->code === 'A_ROUTE_CONTEXT_UNAVAILABLE'));
         $this->assertCount(1, $incomplete);
         $this->assertStringContainsString('Test route bootstrap failure.', $incomplete[0]->message);
@@ -630,7 +631,7 @@ PHP);
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services], false,
             routes: new RouteMap,
-        );
+            mode: AnalysisMode::Deep);
         $this->assertSame([], $result->findings);
     }
 
@@ -642,7 +643,7 @@ PHP);
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services], false,
             routes: new RouteMap(unavailable: 'Test route bootstrap failure.'),
-        );
+            mode: AnalysisMode::Deep);
         $this->assertCount(1, $result->notices);
         $this->assertSame('A_ROUTE_CONTEXT_UNAVAILABLE', $result->notices[0]->code);
         $this->assertSame('app/Http/Controllers/PlanningController.php', $result->notices[0]->path);
@@ -658,7 +659,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services],
             false,
             routes: new RouteMap(['app\http\controllers\planningcontroller::show' => ['GET']]),
-        );
+            mode: AnalysisMode::Deep);
         $this->assertSame('invalid-suppression', $result->findings[0]->rule);
         $this->assertCount(1, $result->suggestions);
     }
@@ -689,7 +690,7 @@ PHP);
     public function test_oversized_dependency_reports_incomplete_instead_of_succeeding(): void
     {
         $this->fixture('/*'.str_repeat('x', 100_001).'*/ return 1;');
-        $this->assertSame('A_SOURCE_UNAVAILABLE', $this->audit()[0]->code);
+        $this->assertSame('A_SOURCE_CHECK_INCOMPLETE', $this->audit()[0]->code);
     }
 
     public function test_read_advice_is_not_silenced_by_the_findings_baseline(): void
@@ -698,9 +699,9 @@ PHP);
         $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
         $enabled = [Architecture::ThinControllers, Architecture::Actions, Architecture::Services];
         $routes = new RouteMap(['app\http\controllers\planningcontroller::show' => ['GET']]);
-        $before = $audit->run($enabled, false, useBaseline: false, updateBaseline: true, routes: $routes);
+        $before = $audit->run($enabled, false, useBaseline: false, updateBaseline: true, routes: $routes, mode: AnalysisMode::Deep);
         $this->assertCount(1, $before->suggestions);
-        $after = $audit->run($enabled, false, useBaseline: true, routes: $routes);
+        $after = $audit->run($enabled, false, useBaseline: true, routes: $routes, mode: AnalysisMode::Deep);
         $this->assertSame([], $after->findings);
         $this->assertCount(1, $after->suggestions);
         $this->assertSame(0, $after->suppressedBaseline);
@@ -716,10 +717,10 @@ PHP);
         $cache = new ProjectGraphCache(new Filesystem, $this->tempPath);
         $enabled = [Architecture::ThinControllers, Architecture::Actions, Architecture::Services];
         $routes = new RouteMap(['app\http\controllers\planningcontroller::show' => ['GET']]);
-        $audit->run($enabled, false, cache: $cache, routes: $routes);
+        $audit->run($enabled, false, cache: $cache, routes: $routes, mode: AnalysisMode::Deep);
         $this->fixture('$invoice->save();');
         clearstatcache();
-        $result = $audit->run($enabled, true, cache: $cache, routes: $routes);
+        $result = $audit->run($enabled, true, cache: $cache, routes: $routes, mode: AnalysisMode::Deep);
         $effects = array_values(array_filter($result->suggestions, fn ($f) => $f->code === 'S_MOVE_WRITE_TO_ACTION'));
         $this->assertCount(1, $effects);
         $this->assertSame('app/Services/ViewService.php', $effects[0]->path);
@@ -751,7 +752,7 @@ PHP);
         $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services], true,
             routes: new RouteMap(['app\http\controllers\planningcontroller::show' => ['GET']]),
-        );
+            mode: AnalysisMode::Deep);
         $effects = array_values(array_filter($result->suggestions, fn ($f) => $f->code === 'S_MOVE_WRITE_TO_ACTION'));
         $this->assertCount(1, $effects);
     }

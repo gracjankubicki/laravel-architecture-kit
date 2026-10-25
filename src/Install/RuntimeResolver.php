@@ -89,7 +89,7 @@ final readonly class RuntimeResolver
             return [PHP_BINARY, dirname(__DIR__, 2).'/bin/architecture-kit', '--project', $context->rootPath, '--tool-home', $context->home, ...($context->profile === null ? [] : ['--profile', $context->profile]), 'guard', '--agent'];
         }
 
-        return $this->artisanCommand('architecture-kit:guard', ['--changed', '--strict', '--json']);
+        return $this->artisanCommand('architecture-kit:guard', ['--changed', '--json']);
     }
 
     /**

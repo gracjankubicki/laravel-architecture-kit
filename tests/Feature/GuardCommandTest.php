@@ -27,7 +27,7 @@ class GuardCommandTest extends TestCase
             }
         };
         $output = new BufferedOutput(formatter: $formatter);
-        Artisan::call('architecture-kit:guard', ['--agent' => true, '--full' => true], $output);
+        Artisan::call('architecture-kit:guard', ['--enforce' => true, '--agent' => true, '--full' => true], $output);
         $payload = json_decode(trim($output->fetch()), true, flags: JSON_THROW_ON_ERROR);
         self::assertSame('guard', $payload['cmd']);
         self::assertArrayHasKey('analysis', $payload);
@@ -56,29 +56,25 @@ final class DynamicGateway
 }
 PHP);
 
-        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--enforce' => true, '--agent' => true, '--strict' => true]));
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame('W_LARAVEL_AI_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
-        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--enforce' => true, '--agent' => true]));
     }
 
-    public function test_incomplete_test_analysis_warns_unless_explicitly_blocked(): void
+    public function test_basic_guard_does_not_run_deep_test_reachability_even_with_old_block_policy(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
-        $this->writeFile('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn']];");
-        $this->writeFile('tests/Feature/DynamicTest.php', "<?php it('dynamic', function () { \$this->get(\$url); });");
-        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
-        $payload = json_decode(trim(Artisan::output()), true);
-        $this->assertSame('ok', $payload['doctor']);
-        $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
-        $this->assertSame('incomplete', $payload['analysis']['status']);
-        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--strict' => true]));
-        $this->assertStringContainsString('Analysis is partial', Artisan::output());
         $this->writeFile('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn', 'incomplete_analysis' => 'block']];");
-        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--agent' => true]));
-        $blocked = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame('fail', $blocked['audit']);
-        $this->assertSame('incomplete', $blocked['analysis']['status']);
+        $this->writeFile('tests/Feature/DynamicTest.php', "<?php it('dynamic', function () { \$this->get(\$url); });");
+        self::assertSame(0, Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]));
+        $payload = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertTrue($payload['ok']);
+        self::assertSame('basic', $payload['analysis']['mode']);
+        self::assertTrue($payload['analysis']['checks_complete']);
+        self::assertFalse($payload['analysis']['deep_run']);
+        self::assertNotContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($payload['find'], 'm'));
+        self::assertFalse($payload['control']['blocking']);
     }
 
     public function test_guard_agent_output_reports_audit_findings_without_changing_json_contract(): void
@@ -106,7 +102,7 @@ final class DocumentController
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true, '--strict' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--agent' => true, '--strict' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(1, $exitCode);
@@ -116,7 +112,7 @@ PHP);
         $this->assertSame(['inline' => 0, 'baseline' => 0], $payload['sup']);
         $this->assertSame('E_THIN_CONTROLLER_MODEL_WRITE', $payload['find'][0]['m']);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true, '--strict' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true, '--strict' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -137,19 +133,19 @@ PHP);
         $this->assertNotFalse(ini_set('memory_limit', (string) ($baselineMemory + 32 * 1024 * 1024)));
 
         try {
-            $exitCode = Artisan::call('architecture-kit:guard');
+            $exitCode = Artisan::call('architecture-kit:guard --enforce');
             $humanOutput = Artisan::output();
 
             $this->assertSame(1, $exitCode);
             $this->assertStringContainsString('Audit memory budget exceeded', $humanOutput);
 
-            $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true]);
+            $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--agent' => true]);
             $payload = json_decode(trim(Artisan::output()), true);
 
             $this->assertSame(1, $exitCode);
             $this->assertSame('guard', $payload['cmd']);
-            $this->assertSame('E_COMMAND_FAILED', $payload['m']);
-            $this->assertStringContainsString('Audit memory budget exceeded', $payload['msg']);
+            $this->assertFalse($payload['analysis']['checks_complete']);
+            $this->assertStringContainsString('Audit memory budget exceeded', json_encode($payload['analysis']['notices']));
         } finally {
             ini_set('memory_limit', (string) $previousMemoryLimit);
         }
@@ -167,7 +163,7 @@ return [
 ];
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--agent' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(1, $exitCode);
@@ -180,7 +176,7 @@ PHP);
     {
         $this->writeCurrentResources([Architecture::Actions]);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
@@ -189,19 +185,21 @@ PHP);
         $this->assertStringContainsString('"audit"', $output);
     }
 
-    public function test_guard_shows_non_blocking_channels_even_on_success(): void
+    public function test_basic_guard_reports_scope_without_running_deep_advice(): void
     {
         $this->writeCurrentResources([Architecture::Actions]);
         $this->writeFile('app/Models/Invoice.php', '<?php namespace App\Models; final class Invoice extends \Illuminate\Database\Eloquent\Model {}');
         $this->writeFile('app/Http/Controllers/InvoiceController.php', '<?php namespace App\Http\Controllers; final class InvoiceController { public function show(\App\Models\Invoice $invoice) { $invoice->save(); } }');
         $this->withRoutes('<?php Illuminate\Support\Facades\Route::get("/invoices", [\App\Http\Controllers\InvoiceController::class, "show"]);');
 
-        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--strict' => true]));
-        $this->assertStringContainsString('Architectural suggestions', Artisan::output());
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--enforce' => true, '--strict' => true]));
+        $this->assertStringContainsString('Deep not run', Artisan::output());
 
-        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--json' => true, '--strict' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true, '--strict' => true]));
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame('S_MOVE_WRITE_TO_ACTION', $payload['audit']['suggestions']['items'][0]['code']);
+        $this->assertSame([], $payload['audit']['suggestions']['items']);
+        $this->assertSame('basic', $payload['audit']['analysis']['mode']);
+        $this->assertFalse($payload['audit']['analysis']['deep_run']);
         $this->assertContains($payload['audit']['analysis']['status'], ['complete', 'incomplete']);
     }
 
@@ -212,7 +210,7 @@ PHP);
 return ['enabled' => ['billing-workflows']];
 PHP);
 
-        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--json' => true]));
+        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]));
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
         $this->assertTrue($payload['audit']['skipped']);
         $this->assertSame('not_run', $payload['audit']['analysis']['status']);
@@ -254,7 +252,7 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -298,7 +296,7 @@ final class ForbiddenWorkflow
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
@@ -332,7 +330,7 @@ final class DocumentController
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
@@ -367,7 +365,7 @@ final class DocumentController
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--agent' => true]);
         $payload = json_decode(trim(Artisan::output()), true);
 
         $this->assertSame(0, $exitCode);
@@ -393,7 +391,7 @@ final class FortifyServiceProvider
 PHP);
         $this->writeFile('app/Exceptions/DocumentFailure.php', '<?php namespace App\Exceptions; final class DocumentFailure {}');
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--agent' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--agent' => true]);
         $payload = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame(1, $exitCode);
@@ -411,7 +409,7 @@ PHP);
         $files->ensureDirectoryExists($this->tempPath.'/.architecture-kit');
         $files->put($this->tempPath.'/.architecture-kit/baseline.json', '{broken');
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -423,7 +421,7 @@ PHP);
     {
         (new ArchitectureConfig($this->tempPath.'/config/architectures.php'))->write([Architecture::Actions]);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -456,7 +454,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('error thin-controller')
             ->assertExitCode(1);
     }
@@ -495,7 +493,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -522,7 +520,7 @@ final class ApproveDocument
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -560,11 +558,11 @@ final class StoreDocumentRequest extends FormRequest
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Findings: 0 error(s), 1 warning(s)')
             ->assertExitCode(0);
 
-        $this->artisan('architecture-kit:guard --strict')
+        $this->artisan('architecture-kit:guard --enforce --strict')
             ->expectsOutputToContain('warn  enums')
             ->assertExitCode(1);
     }
@@ -608,7 +606,7 @@ final class StoreDocumentRequest extends EmailVerificationRequest
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -676,7 +674,7 @@ final readonly class StoreDocumentData
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -709,7 +707,7 @@ final class DocumentResource extends JsonResource
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -748,7 +746,7 @@ final class DocumentResource extends JsonResource
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -789,7 +787,7 @@ final class DocumentResource extends JsonResource
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--strict' => true, '--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--strict' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -820,7 +818,7 @@ final class DocumentBuilder extends Builder
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -849,7 +847,7 @@ class DocumentReport
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -891,7 +889,7 @@ final class DocumentBuilder extends Builder
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -925,7 +923,7 @@ final readonly class StartDocumentPseudonymizationData
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -957,7 +955,7 @@ class DocumentPayload extends Model
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -1001,7 +999,7 @@ final readonly class StartDocumentPseudonymizationData
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1040,7 +1038,7 @@ final readonly class Money
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1069,7 +1067,7 @@ class MoneyValueObject extends Model
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -1114,7 +1112,7 @@ final readonly class Money
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1193,7 +1191,7 @@ final class DocumentResource extends JsonResource
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1216,7 +1214,7 @@ final class DocumentStatus
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -1259,7 +1257,7 @@ PHP);
         $this->git('add app/Http/Controllers/DocumentController.php');
         $this->git('commit -m feature');
 
-        $this->artisan('architecture-kit:guard --changed --base=main')
+        $this->artisan('architecture-kit:guard --enforce --changed --base=main')
             ->expectsOutputToContain('Audit: changed application files since main')
             ->expectsOutputToContain('error thin-controller')
             ->assertExitCode(1);
@@ -1312,7 +1310,7 @@ final class DocumentSummaryController
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -1358,7 +1356,7 @@ final class GenericAiGateway
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--strict' => true, '--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--strict' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -1408,7 +1406,7 @@ final class DocumentSummaryController
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1429,7 +1427,7 @@ final readonly class DocumentPseudonymizationService
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
@@ -1458,7 +1456,7 @@ final readonly class DocumentPseudonymizationService
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1503,7 +1501,7 @@ final readonly class DocumentPseudonymizationService
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);
@@ -1541,7 +1539,7 @@ final class DocumentPseudonymizationService
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1595,7 +1593,7 @@ final class DocumentSearchController
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard')
+        $this->artisan('architecture-kit:guard --enforce')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1625,7 +1623,7 @@ final class DocumentPseudonymizationService
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
@@ -1659,7 +1657,7 @@ final class DocumentController
 }
 PHP);
 
-        $this->artisan('architecture-kit:guard --strict')
+        $this->artisan('architecture-kit:guard --enforce --strict')
             ->expectsOutputToContain('Architecture guard passed.')
             ->assertExitCode(0);
     }
@@ -1681,7 +1679,7 @@ final class DocumentFailure
 }
 PHP);
 
-        $exitCode = Artisan::call('architecture-kit:guard', ['--json' => true]);
+        $exitCode = Artisan::call('architecture-kit:guard', ['--enforce' => true, '--json' => true]);
         $output = Artisan::output();
 
         $this->assertSame(1, $exitCode);

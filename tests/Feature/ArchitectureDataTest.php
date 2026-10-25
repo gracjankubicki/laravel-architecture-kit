@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
@@ -13,12 +14,15 @@ use GracjanKubicki\ArchitectureKit\Impact\ExecutionSources;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Impact;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureDataTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -38,7 +42,7 @@ final class ArchitectureDataTest extends TestCase
 
     private function inspectImpact(string $subject = 'Action::run', int $limit = 100, int $depth = 16, array $exclude = [], ?ProjectGraphCache $cache = null): array
     {
-        $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, $cache))->inspect($subject, $exclude, $limit, $depth);
+        $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, $cache, mode: AnalysisMode::Deep))->inspect($subject, $exclude, $limit, $depth);
         $this->assertTrue($result['ok'], json_encode($result));
 
         return $result;
@@ -205,19 +209,19 @@ final class ArchitectureDataTest extends TestCase
         symlink($this->tempPath.'/vendor', $this->tempPath.'/database');
         $result = $this->inspectImpact();
         $this->assertNotContains('secret', array_column($result['data']['outgoing'], 'table'));
-        $this->assertSame('E_IMPACT_OUT_OF_SCOPE', (new ArchitectureImpact(new Filesystem, $this->tempPath))->inspect('vendor/Evil.php')['m']);
+        $this->assertSame('E_IMPACT_OUT_OF_SCOPE', (new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->inspect('vendor/Evil.php')['m']);
     }
 
     public function test_cli_mcp_schema_and_change_modes_share_data_contract(): void
     {
         $this->fixture('Order::create([]);');
-        $this->assertSame(0, Artisan::call('architecture-kit:impact', ['subject' => 'Action::run', '--agent' => true, '--limit' => 100, '--depth' => 16]));
+        $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Action::run', '--agent' => true, '--limit' => 100, '--depth' => 16]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertTrue($this->has($cli['data']['outgoing'], 'orders', 'write'));
-        ArchitectureKitServer::tool(Impact::class, ['subject' => 'Action::run', 'limit' => 100, 'depth' => 16])->assertOk()->assertSee('"data"')->assertSee('orders');
+        ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'Action::run', 'limit' => 100, 'depth' => 16])->assertOk()->assertSee('"data"')->assertSee('orders');
         $this->assertArrayHasKey('data', ImpactSchema::get()['oneOf'][0]['properties']);
         foreach (['signature', 'delete'] as $mode) {
-            $result = (new ArchitectureImpact(new Filesystem, $this->tempPath))->inspect('Action::run', change: $mode);
+            $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->inspect('Action::run', change: $mode);
             $this->assertTrue($result['ok']);
             $this->assertArrayHasKey('data', $result);
             $this->assertFalse($result[$mode]['safe_to_change']);
@@ -377,7 +381,7 @@ final class ArchitectureDataTest extends TestCase
                 return parent::get($path, $lock);
             }
         };
-        $result = (new ArchitectureImpact($files, $this->tempPath))->inspect('Action::run');
+        $result = (new ArchitectureImpact($files, $this->tempPath, mode: AnalysisMode::Deep))->inspect('Action::run');
         $this->assertTrue($result['ok']);
         $this->assertNotContains($this->tempPath.'/.env', $files->reads);
         $this->assertNotContains($this->tempPath.'/private.txt', $files->reads);

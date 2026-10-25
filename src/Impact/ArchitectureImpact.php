@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -24,6 +27,7 @@ final readonly class ArchitectureImpact
         private ?ProjectGraphCache $cache = null,
         private array $cacheConfiguration = [],
         private bool $reachMode = false,
+        private AnalysisMode $mode = AnalysisMode::Basic,
     ) {}
 
     /** @param list<string> $exclude
@@ -31,6 +35,10 @@ final readonly class ArchitectureImpact
      */
     public function inspect(string $subject, array $exclude = [], int $limit = 20, int $depth = 4, ?string $change = null, ?string $signature = null, ?string $targetClass = null, ?string $targetPath = null, ?string $table = null, ?string $tableMatch = null, ?string $connection = null, ?string $operation = null): array
     {
+        if ($table !== null && $this->mode === AnalysisMode::Basic) {
+            return [...self::error('E_ANALYSIS_DEEP_REQUIRED', 'Table effects require explicit Deep analysis.'),
+                'analysis' => ['mode' => 'basic', 'checks_complete' => false, 'deep_run' => false]];
+        }
         if ($table !== null) {
             if (trim($table) === '' || strlen($table) > 512 || preg_match('/[\x00-\x1f\x7f]/', $table) || trim($subject) !== '' || $change !== null || $signature !== null || $targetClass !== null || $targetPath !== null) {
                 return self::error('E_IMPACT_TABLE_INVALID', 'Provide a non-empty table name without a symbol or change proposal.');
@@ -41,7 +49,8 @@ final readonly class ArchitectureImpact
             if ($limit < 0 || $limit > ($this->reachMode ? 1000 : 500) || $depth < 1 || $depth > 32) {
                 return self::error('E_IMPACT_LIMIT_INVALID', 'Use limit 0..500 and depth 1..32.');
             }
-            $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true);
+            $mapScope = AuditScope::package(array_values(array_unique([...$this->scope->directories, ...ProjectLayout::read($this->basePath)->graphSources()])));
+            $loader = new ProjectGraphLoader($this->files, $this->basePath, $mapScope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true, mode: $this->mode);
             $plan = $loader->plan($exclude);
             $graph = $loader->build($plan);
             $report = (new TableImpact)->inspect($this->files, $this->basePath, $graph, $exclude, $table, $tableMatch ?? 'exact', $connection, $operation, $limit, $depth);
@@ -50,7 +59,7 @@ final readonly class ArchitectureImpact
                 $report['status'] = $report['status'] === 'limit' ? 'limit' : 'incomplete';
             }
 
-            return ['v' => 1, 'cmd' => 'impact', 'ok' => true, 'table_report' => $report, 'cache' => $plan->cacheStatus->value, 'snapshot' => hash('xxh128', serialize($plan->signature->files).$report['source_signature']), 'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude], 'next' => ['Inspect usage source and each path condition. Unresolved boundaries are global, not proven table matches.', 'Increase limit/depth within 500/32 or inspect boundary symbols; no continuation pages.']];
+            return ['v' => 1, 'cmd' => 'impact', 'ok' => true, 'table_report' => $report, 'cache' => $plan->cacheStatus->value, 'snapshot' => hash('xxh128', serialize($plan->signature->files).$report['source_signature']), 'scope' => ['paths' => $mapScope->directories, 'audit_paths' => $this->scope->directories, 'exclude' => $exclude], 'next' => ['Inspect usage source and each path condition. Unresolved boundaries are global, not proven table matches.', 'Increase limit/depth within 500/32 or inspect boundary symbols; no continuation pages.']];
         }
         if ($tableMatch !== null || $connection !== null || $operation !== null) {
             return self::error('E_IMPACT_TABLE_FILTER_INVALID', 'Table filters require a table query.');
@@ -73,7 +82,8 @@ final readonly class ArchitectureImpact
         if ($limit < 0 || $limit > ($this->reachMode ? 1000 : 500) || $depth < 1 || $depth > 32) {
             return self::error('E_IMPACT_LIMIT_INVALID', 'Use limit 0..500 and depth 1..32.');
         }
-        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true);
+        $mapScope = AuditScope::package(array_values(array_unique([...$this->scope->directories, ...ProjectLayout::read($this->basePath)->graphSources()])));
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $mapScope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true, mode: $this->mode);
         $plan = $loader->plan($exclude);
         $graph = $loader->build($plan);
         [$selector, $method] = array_pad(explode('::', trim($subject), 2), 2, null);
@@ -171,8 +181,8 @@ final readonly class ArchitectureImpact
                 }
             }
         }
-        $incoming = $this->walk($root, $methodChannel ? $index : $classEdges, false, $limit, $depth, $roots, $fileEdges);
-        $outgoing = $this->walk($root, $methodChannel ? $index : $classEdges, true, $limit, $depth, $roots, $fileEdges);
+        $incoming = $this->walk($root, $methodChannel ? $index : $classEdges, false, 1000, $depth, $roots, $fileEdges);
+        $outgoing = $this->walk($root, $methodChannel ? $index : $classEdges, true, 1000, $depth, $roots, $fileEdges);
         $notices = $index->unresolved($root, $method);
         if ($this->reachMode) {
             array_push($notices, ...$index->notices, ...$incoming['boundaries'], ...$outgoing['boundaries']);
@@ -246,50 +256,58 @@ final readonly class ArchitectureImpact
         $hasRelationships = $incoming['resolved'] !== [] || $outgoing['resolved'] !== [] || $incoming['possible'] !== [] || $outgoing['possible'] !== [] || $incoming['references'] !== [] || $outgoing['references'] !== [];
         $classificationNames = $resolved['kind'] === 'file' ? array_map(static fn ($symbol) => $symbol->name, $graph->symbolsAt($resolved['path'])) : [$resolved['name']];
 
+        $displayTruncated = count($incoming['resolved']) > $limit || count($outgoing['resolved']) > $limit || count($incoming['possible']) > $limit || count($outgoing['possible']) > $limit;
         $result = [
             'v' => 1, 'ok' => true, 'cmd' => 'impact', 'subject' => $resolved,
             'classification' => ClassificationReport::graph($loader->classification, $graph, $limit, [...$classificationNames, ...array_column([...$incoming['resolved'], ...$incoming['possible'], ...$outgoing['resolved'], ...$outgoing['possible']], 'symbol')]),
-            'dependents' => $incoming['resolved'], 'dependencies' => $outgoing['resolved'],
-            'possible' => ['dependents' => $incoming['possible'], 'dependencies' => $outgoing['possible'], 'overrides' => array_slice($overrides, 0, $limit)],
+            'dependents' => array_slice($incoming['resolved'], 0, $limit), 'dependencies' => array_slice($outgoing['resolved'], 0, $limit),
+            'possible' => ['dependents' => array_slice($incoming['possible'], 0, $limit), 'dependencies' => array_slice($outgoing['possible'], 0, $limit), 'overrides' => array_slice($overrides, 0, $limit)],
             'references' => ['dependents' => $incoming['references'], 'dependencies' => $outgoing['references']],
             'class_context' => $context, 'tests' => array_slice($tests, 0, $limit),
-            'analysis' => ['status' => $truncated ? 'limit' : ($notices !== [] ? 'incomplete' : ($hasRelationships ? 'complete' : 'none')),
+            'analysis' => ['mode' => $this->mode->value, 'checks_complete' => $graph->checksComplete() && ! $index->limitReached() && $current->files === $plan->signature->files && ! $analysisBounded && ! $incoming['limited'] && ! $outgoing['limited'], 'deep_run' => $this->mode === AnalysisMode::Deep, 'status' => $truncated ? 'limit' : ($notices !== [] ? 'incomplete' : ($hasRelationships ? 'complete' : 'none')),
                 'notices' => array_slice($notices, 0, $limit), 'notice_total' => count($notices),
                 'limitations' => ['Static relationships do not prove runtime execution or absence of callers.', 'Framework dispatch, container bindings, macros, magic calls and callback bodies are not fully resolved.', 'Test candidates are not coverage or PASS.'],
-                'limit' => $limit, 'depth' => $depth, 'truncated' => $truncated,
+                'limit' => $limit, 'depth' => $depth, 'truncated' => $truncated || $displayTruncated, 'computed_counts' => ['direct' => count(array_filter($incoming['resolved'], static fn ($r) => count($r['via']) === 1)), 'indirect' => count(array_filter($incoming['resolved'], static fn ($r) => count($r['via']) > 1))],
                 'expand' => 'Rerun impact with a larger limit/depth within 500/32, or inspect the boundary symbols. No continuation pages.'],
             'cache' => $plan->cacheStatus->value, 'snapshot' => hash('xxh128', serialize($plan->signature->toArray()).($moveReport === null ? '' : serialize([$moveReport['autoload']['hash'], $moveReport['autoload']['state']]))),
-            'scope' => ['paths' => $this->scope->directories, 'exclude' => $exclude],
+            'scope' => ['paths' => $mapScope->directories, 'audit_paths' => $this->scope->directories, 'exclude' => $exclude],
             'next' => ['inspect_relationship_evidence', 'resolve_uncertain_calls_before_dependent_decisions', 'run_selected_tests', 'run:architecture-kit:guard --changed --agent'],
         ];
-        $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath, sourceOnly: true);
-        $httpSources = $httpDiscovery->discover($graph, $exclude);
-        $result['execution'] = (new HttpRouteImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpDiscovery, $httpSources);
-        $flow = (new ExecutionImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpSources);
-        $result['execution']['authorization'] = $flow['authorization'];
-        $result['execution']['flows'] = $flow['flows'];
-        $result['execution']['flow_analysis'] = $flow;
-        unset($result['execution']['flow_analysis']['flows'], $result['execution']['flow_analysis']['authorization']);
-        if ($flow['has_sources']) {
-            $result['execution']['has_sources'] = true;
-            $result['execution']['source_signature'] = hash('xxh128', $result['execution']['source_signature'].$flow['source_signature']);
-            $result['execution']['fresh'] = $result['execution']['fresh'] && $flow['fresh'];
-            $result['execution']['totals']['flows'] = $flow['totals']['flows'];
-            $result['execution']['truncated'] = $result['execution']['truncated'] || $flow['truncated'];
-            if ($flow['status'] === 'limit' || $result['execution']['status'] === 'limit') {
-                $result['execution']['status'] = 'limit';
-            } elseif ($flow['status'] === 'incomplete' || $result['execution']['status'] === 'incomplete') {
-                $result['execution']['status'] = 'incomplete';
-            } elseif ($flow['flows'] !== []) {
-                $result['execution']['status'] = 'complete';
+        if ($this->mode === AnalysisMode::Basic) {
+            $result['execution'] = ['status' => 'not_run', 'fresh' => true, 'truncated' => false, 'limitations' => ['Deep analysis was not run.'], 'routes' => [], 'flows' => [], 'unresolved' => [],
+                'authorization' => ['status' => 'not_run', 'fresh' => true, 'checks' => [], 'rules' => [], 'outgoing' => [], 'consumers' => [], 'unresolved' => []], 'flow_analysis' => ['status' => 'not_run', 'fresh' => true, 'unresolved' => []]];
+            $result['data'] = ['status' => 'not_run', 'fresh' => true, 'truncated' => false, 'limitations' => ['Deep analysis was not run.'], 'outgoing' => [], 'consumers' => [], 'unresolved' => []];
+        } else {
+            AnalysisRuntime::stage('deep.impact.effects');
+            $httpDiscovery = new HttpRouteDiscovery($this->files, $this->basePath, sourceOnly: true);
+            $httpSources = $httpDiscovery->discover($graph, $exclude);
+            $result['execution'] = (new HttpRouteImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpDiscovery, $httpSources);
+            $flow = (new ExecutionImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth, $httpSources);
+            $result['execution']['authorization'] = $flow['authorization'];
+            $result['execution']['flows'] = $flow['flows'];
+            $result['execution']['flow_analysis'] = $flow;
+            unset($result['execution']['flow_analysis']['flows'], $result['execution']['flow_analysis']['authorization']);
+            if ($flow['has_sources']) {
+                $result['execution']['has_sources'] = true;
+                $result['execution']['source_signature'] = hash('xxh128', $result['execution']['source_signature'].$flow['source_signature']);
+                $result['execution']['fresh'] = $result['execution']['fresh'] && $flow['fresh'];
+                $result['execution']['totals']['flows'] = $flow['totals']['flows'];
+                $result['execution']['truncated'] = $result['execution']['truncated'] || $flow['truncated'];
+                if ($flow['status'] === 'limit' || $result['execution']['status'] === 'limit') {
+                    $result['execution']['status'] = 'limit';
+                } elseif ($flow['status'] === 'incomplete' || $result['execution']['status'] === 'incomplete') {
+                    $result['execution']['status'] = 'incomplete';
+                } elseif ($flow['flows'] !== []) {
+                    $result['execution']['status'] = 'complete';
+                }
             }
-        }
-        if ($result['execution']['has_sources']) {
-            $result['snapshot'] = hash('xxh128', $result['snapshot'].$result['execution']['source_signature']);
-        }
-        $result['data'] = (new DataImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth);
-        if ($result['data']['has_sources']) {
-            $result['snapshot'] = hash('xxh128', $result['snapshot'].$result['data']['source_signature']);
+            if ($result['execution']['has_sources']) {
+                $result['snapshot'] = hash('xxh128', $result['snapshot'].$result['execution']['source_signature']);
+            }
+            $result['data'] = (new DataImpact)->inspect($this->files, $this->basePath, $graph, $resolved, $declaration, $exclude, $limit, $depth);
+            if ($result['data']['has_sources']) {
+                $result['snapshot'] = hash('xxh128', $result['snapshot'].$result['data']['source_signature']);
+            }
         }
         $changeReport = $signatureReport ?? $deleteReport ?? $moveReport;
         if ($changeReport !== null) {

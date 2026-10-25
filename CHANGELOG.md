@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+## v0.10.0 - 2026-10-25
+
+- Preserve incomplete graph-query status after traversal limits. Include Modules and Composer source roots in symbol context, while keeping configured file-audit paths separate and vendor unread.
+
+- Keep standalone Basic graphs fresh when external settings materialization differs from repository formatting, while detecting real source/settings changes. Quote newly generated Claude hook paths with spaces and require a concrete question for blocking information gaps or needed Deep consent.
+
+- Default CLI, MCP and hooks to Basic source analysis and advisory reaction, including existing profiles. Keep findings, incomplete checks and stale task results truthful; explicit enforce controls blocking independently of strict warnings and full output.
+- Keep Deep semantic analysis behind recorded repository/task consent, with separate runtime and custom-PHP permissions. Expose consent adapters in standalone CLI, Artisan and MCP without claiming human authentication.
+- Include project Modules, current call/interface incompatibilities, source relationships and candidate tests in Basic. Preserve first task beginnings through retries and resume, invalidate stale PASS, and keep skip unverified.
+- Report Basic scope and relevant source gaps; update agent instructions to investigate source, ask about missing decisions and hand off remaining failures. Preserve developer-owned hook files on reinstall.
+
 ## v0.9.3 - 2026-10-15
 
 - Let partial analysis warn by default in task control, MCP, hooks and guards. Add `audit.incomplete_analysis=block` to require completeness. Keep partial status, notices and analysis-only findings visible, including in strict guards; retain blocking architecture errors, ordinary strict warnings, audit failures and task freshness checks. Never recreate existing task beginnings.

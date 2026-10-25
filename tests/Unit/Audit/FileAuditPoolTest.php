@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Audit;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
@@ -43,6 +44,9 @@ final class FileAuditPoolTest extends TestCase
             $scope = new AuditScope;
             $facts = new AnalysisFactsCache('', '', null);
             $batch = FileAuditPool::collect($context, $paths, $enabled, $scope, $facts);
+            $deepBatch = FileAuditPool::collect($context, $paths, $enabled, $scope, $facts, AnalysisMode::Deep);
+            self::assertNotNull($deepBatch);
+            self::assertEquals($batch['app/User.php']->entry->impact, $deepBatch['app/User.php']->entry->impact);
             self::assertNotNull($batch);
             self::assertCount(count($paths), $batch);
             $classification = new ProjectClassification($files, $this->tempPath);
@@ -55,6 +59,8 @@ final class FileAuditPoolTest extends TestCase
                 $files->delete($absolute);
                 self::assertSame($classification->file($path), $restored->file($path));
             }
+            self::assertNotNull($batch['app/User.php']->entry->impact);
+            self::assertSame('App\\User', array_key_first($batch['app/User.php']->entry->impact->classes));
             self::assertNotEmpty($batch['app/Invalid.php']->findings);
             self::assertTrue($facts->hasNoFunctions($context->rootPath.'/app/User.php'));
             self::assertFalse($facts->hasNoFunctions($context->rootPath.'/app/Invalid.php'));

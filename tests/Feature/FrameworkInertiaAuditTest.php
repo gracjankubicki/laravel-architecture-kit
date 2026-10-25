@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
@@ -237,7 +238,7 @@ PHP);
             new RouteEntry(['GET', 'HEAD'], 'dangerous', class: 'App\\Http\\Controllers\\FrameworkController', method: 'show', middleware: ['dangerous-inertia']),
         ], context: $context);
 
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, routes: $routes);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, routes: $routes, mode: AnalysisMode::Deep);
         $missing = array_column(array_filter($result->findings, fn ($finding): bool => $finding->code === 'W_MISSING_TEST'), 'path');
 
         $this->assertNotContains('app/Actions/SafeSharedProp.php', $missing);
@@ -279,7 +280,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions],
             changedOnly: false,
             routes: $routes,
-        );
+            mode: AnalysisMode::Deep);
 
         $items = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
         foreach ($result->suggestions as $suggestion) {

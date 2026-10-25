@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
@@ -12,12 +13,15 @@ use GracjanKubicki\ArchitectureKit\Impact\ExecutionSources;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Impact;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureExecutionTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -41,7 +45,7 @@ final class ArchitectureExecutionTest extends TestCase
 
     private function inspectImpact(string $subject = 'Service::send', int $limit = 100, int $depth = 16): array
     {
-        $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect($subject, [], $limit, $depth);
+        $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect($subject, [], $limit, $depth);
         $this->assertTrue($result['ok'], json_encode($result));
 
         return $result;
@@ -283,7 +287,7 @@ final class ArchitectureExecutionTest extends TestCase
         $this->fixture();
         $files = new Filesystem;
         $cache = new ProjectGraphCache($files, $this->tempPath);
-        $query = fn () => (new ArchitectureImpact($files, $this->tempPath, new AuditScope, $cache))->inspect('Service::send', [], 100, 16);
+        $query = fn () => (new ArchitectureImpact($files, $this->tempPath, new AuditScope, $cache, mode: AnalysisMode::Deep))->inspect('Service::send', [], 100, 16);
         $before = $query();
         $warm = $query();
         $this->assertSame($before['execution'], $warm['execution']);
@@ -317,11 +321,11 @@ final class ArchitectureExecutionTest extends TestCase
     public function test_cli_mcp_schema_and_preflight_sections_share_additive_flows(): void
     {
         $this->fixture();
-        Artisan::call('architecture-kit:impact', ['subject' => 'Service::send', '--agent' => true, '--limit' => 100, '--depth' => 16]);
+        Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Service::send', '--agent' => true, '--limit' => 100, '--depth' => 16]);
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertTrue($cli['ok'], json_encode($cli));
         $this->assertNotEmpty($cli['execution']['flows']);
-        ArchitectureKitServer::tool(Impact::class, ['subject' => 'Service::send', 'limit' => 100, 'depth' => 16])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
+        ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'Service::send', 'limit' => 100, 'depth' => 16])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
         $schema = ImpactSchema::get()['oneOf'][0]['properties']['execution']['properties'];
         foreach (array_keys($cli['execution']) as $key) {
             $this->assertArrayHasKey($key, $schema);
@@ -329,7 +333,7 @@ final class ArchitectureExecutionTest extends TestCase
         $ordinary = $this->inspectImpact();
         foreach (['delete', 'signature', 'move'] as $change) {
             $subject = $change === 'move' ? 'Service' : 'Service::send';
-            $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect($subject, [], 100, 16, $change);
+            $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect($subject, [], 100, 16, $change);
             $this->assertNotEmpty($result['execution']['flows']);
             if ($change !== 'move') {
                 $this->assertSame($ordinary['dependents'], $result['dependents']);

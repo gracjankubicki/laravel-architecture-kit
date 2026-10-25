@@ -31,6 +31,8 @@ final readonly class ArchitectureContextResult
         public CacheStatus $cacheStatus = CacheStatus::Disabled,
         /** @var array<string, mixed> */
         public array $classification = [],
+        /** @var array<string, mixed> */
+        public array $analysis = [],
     ) {}
 
     /**

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
@@ -31,6 +33,8 @@ final class ImpactExtractor
 
     private bool $catalogMode = false;
 
+    private AnalysisMode $mode = AnalysisMode::Basic;
+
     /** @var array<string, bool> */
     private array $referenceScopes = [];
 
@@ -55,9 +59,13 @@ final class ImpactExtractor
         return $this->catalogReturns;
     }
 
-    public function extract(FileContext $file, bool $catalog = false): ImpactFacts
+    public function extract(FileContext $file, bool $catalog = false, AnalysisMode $mode = AnalysisMode::Basic): ImpactFacts
     {
+        $this->mode = $mode;
         $this->catalogMode = $catalog;
+        if ($mode === AnalysisMode::Deep && $catalog) {
+            AnalysisRuntime::stage('deep.calls.extract');
+        }
         $this->referenceScopes = $this->referenceNotices = [];
         $this->catalogReturns = [];
         $this->descriptorReceivers = [];
@@ -472,8 +480,9 @@ final class ImpactExtractor
                     ], $expr->getArgs());
                 }
             }
+            $deep = $this->mode === AnalysisMode::Deep;
             $saloonArguments = null;
-            if ($this->catalogMode && (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call'))
+            if (($this->catalogMode && $deep) && (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call'))
                 && ! $expr->isFirstClassCallable() && isset(CatalogSaloonOperations::PARAMETERS[strtolower($method ?? '')])) {
                 $saloonArguments = CatalogSaloonOperations::arguments(strtolower($method), $expr->getArgs());
                 $this->calls[$position]['saloon_request'] = ['valid' => $saloonArguments['valid'], 'receiver' => null,
@@ -482,12 +491,12 @@ final class ImpactExtractor
             if (! $expr->isFirstClassCallable()) {
                 foreach ($expr->getArgs() as $argumentPosition => $arg) {
                     $value = $this->expression($arg->value, $file, $class, $from, $parent, $properties, $vars);
-                    $poolRequests = $this->catalogMode && (Node::is($expr, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $expr)
+                    $poolRequests = ($this->catalogMode && $deep) && (Node::is($expr, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $expr)
                         && ($arg->name?->toString() ?? ($argumentPosition === 1 ? 'requests' : '')) === 'requests'
                         || (Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call'))
                         && in_array(strtolower($method ?? ''), ['pool', 'setrequests'], true)
                         && ($arg->name?->toString() ?? ($argumentPosition === 0 ? 'requests' : '')) === 'requests');
-                    if ($this->catalogMode && ! $arg->unpack && ! $arg->byRef
+                    if (($this->catalogMode && $deep) && ! $arg->unpack && ! $arg->byRef
                         && ($value['type'] !== null || isset($value['callable_name']))) {
                         $poolConstructor = Node::is($expr, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $expr);
                         $poolMethod = Node::is($expr, 'expression.method-call') || Node::is($expr, 'expression.nullsafe-method-call') ? strtolower($method ?? '') : '';
@@ -509,7 +518,7 @@ final class ImpactExtractor
                         && str_starts_with($value['type'] ?? '', '@return:') && isset($value['factory_call'])) {
                         $this->calls[$position]['saloon_pool_member_factory'] = ['receiver' => $value['type'], 'call' => $value['factory_call']];
                     }
-                    if ($this->catalogMode && Node::is($expr, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $expr)
+                    if (($this->catalogMode && $deep) && Node::is($expr, 'expression.new') && CatalogSaloonOperations::poolConstructor($file, $expr)
                         && ($arg->name?->toString() ?? ($argumentPosition === 0 ? 'connector' : '')) === 'connector') {
                         $this->calls[$position]['saloon_pool_connector'] = $value['type'];
                     }
@@ -519,37 +528,37 @@ final class ImpactExtractor
                     if ($saloonArguments !== null && $argumentPosition === 0) {
                         $this->calls[$position]['saloon_request']['mock_receiver'] = $value['type'];
                     }
-                    if ($this->catalogMode && Node::is($expr, 'expression.new') && count($expr->args) === 3
+                    if (($this->catalogMode && $deep) && Node::is($expr, 'expression.new') && count($expr->args) === 3
                         && ($arg->name?->toString() === 'gateway' || $arg->name === null && $argumentPosition === 0)
                         && ! $arg->unpack && ! $arg->byRef && $value['type'] !== null) {
                         $this->calls[$position]['provider_gateway_value'] = $value;
                     }
-                    if ($this->catalogMode && in_array(strtolower($method ?? ''), CatalogAiGateways::SETTERS, true) && $argumentPosition === 0
+                    if (($this->catalogMode && $deep) && in_array(strtolower($method ?? ''), CatalogAiGateways::SETTERS, true) && $argumentPosition === 0
                         && ! $arg->unpack && ! $arg->byRef && $value['type'] !== null) {
                         $this->calls[$position]['provider_gateway_value'] = $value;
                     }
-                    if ($this->catalogMode && strtolower($method ?? '') === 'ontoolinvocation' && $argumentPosition < 128
+                    if (($this->catalogMode && $deep) && strtolower($method ?? '') === 'ontoolinvocation' && $argumentPosition < 128
                         && ! $arg->unpack && ! $arg->byRef && $value['type'] !== null) {
                         $this->calls[$position]['gateway_callback_values'][$argumentPosition] = $value;
                     }
-                    $parameters = $this->catalogMode ? CatalogAiOperations::invocationParameters($method ?? '') : null;
-                    if ($this->catalogMode && $parameters !== null && ! $arg->unpack && ! $arg->byRef
+                    $parameters = ($this->catalogMode && $deep) ? CatalogAiOperations::invocationParameters($method ?? '') : null;
+                    if (($this->catalogMode && $deep) && $parameters !== null && ! $arg->unpack && ! $arg->byRef
                         && ($arg->name?->toString() ?? ($parameters[$argumentPosition] ?? null)) === 'attachments'
                         && isset($value['catalog_attachments'])) {
                         $this->calls[$position]['ai_attachments'] = $value['catalog_attachments'];
                     }
-                    if ($this->catalogMode && $parameters !== null && ! $arg->unpack && ! $arg->byRef
+                    if (($this->catalogMode && $deep) && $parameters !== null && ! $arg->unpack && ! $arg->byRef
                         && ($arg->name?->toString() ?? ($parameters[$argumentPosition] ?? null)) === 'attachments'
                         && str_starts_with($value['type'] ?? '', '@return:') && isset($value['factory_call'])) {
                         $this->calls[$position]['ai_attachment_factory'] = ['receiver' => $value['type'], 'call' => $value['factory_call']];
                     }
-                    if ($this->catalogMode && in_array(strtolower($method ?? ''), ['each', 'then', 'catch'], true) && count($expr->args) === 1
+                    if (($this->catalogMode && $deep) && in_array(strtolower($method ?? ''), ['each', 'then', 'catch'], true) && count($expr->args) === 1
                         && ! $arg->unpack && ($arg->name === null || $arg->name->toString() === 'callback') && ($value['type'] !== null || isset($value['callable_name']))) {
                         $this->calls[$position]['callback_value'] = $value;
                     }
                     // Application calls may mutate arguments by reference. Do not carry stale types.
                     if (Node::is($arg->value, 'expression.variable') && is_string($arg->value->name)) {
-                        $vars[$arg->value->name] = $this->catalogMode
+                        $vars[$arg->value->name] = ($this->catalogMode && $deep)
                             ? $this->argumentValue($value, $this->calls[$position], $expr, $class, $argumentPosition)
                             : $unknown;
                     }
@@ -563,7 +572,7 @@ final class ImpactExtractor
 
                 return $receiver;
             }
-            if ($this->catalogMode && $receiver['type'] !== null && $method !== null) {
+            if ($this->catalogMode && $this->mode === AnalysisMode::Deep && $receiver['type'] !== null && $method !== null) {
                 if (self::sourceLimit(0) !== null) {
                     $this->notices[] = ['line' => $expr->getStartLine(), 'reason' => 'Impact memory limit reached during extraction.'];
                     $this->limited = true;
@@ -641,10 +650,13 @@ final class ImpactExtractor
                     }
                 }
                 if (! $globalJson && Node::is($arg->value, 'expression.variable') && is_string($arg->value->name)) {
-                    $vars[$arg->value->name] = $this->argumentValue($value, $this->calls[$position], $expr, $class, $argPosition, $receiver);
+                    $vars[$arg->value->name] = $this->mode === AnalysisMode::Deep ? $this->argumentValue($value, $this->calls[$position], $expr, $class, $argPosition, $receiver) : $unknown;
                 }
             }
 
+            if ($this->mode === AnalysisMode::Basic) {
+                return $expr->isFirstClassCallable() ? $receiver : $unknown;
+            }
             $result = $expr->isFirstClassCallable() ? $receiver : ($receiver['type'] !== null
                 ? ['type' => '@return:'.json_encode([$receiver['type'], '__invoke', $receiver['exact']], JSON_THROW_ON_ERROR), 'exact' => false,
                     'catalog_origin' => max(0, $expr->getEndFilePos()),
@@ -700,7 +712,7 @@ final class ImpactExtractor
                 }
             }
         }
-        if ($this->catalogMode && Node::is($expr, 'expression.array') && CatalogSaloonOperations::poolMemberArray($expr)) {
+        if ($this->catalogMode && $this->mode === AnalysisMode::Deep && Node::is($expr, 'expression.array') && CatalogSaloonOperations::poolMemberArray($expr)) {
             $members = [];
             $complete = true;
             foreach ($expr->items as $item) {
@@ -757,7 +769,7 @@ final class ImpactExtractor
             }
         }
 
-        return $this->catalogMode && Node::is($expr, 'expression.array')
+        return $this->catalogMode && $this->mode === AnalysisMode::Deep && Node::is($expr, 'expression.array')
             ? [...$unknown, 'catalog_attachments' => CatalogAiAttachments::extract($file, $expr)] : $unknown;
     }
 

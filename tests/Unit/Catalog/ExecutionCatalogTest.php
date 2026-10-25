@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex;
@@ -510,10 +511,10 @@ PHP,
             $files[] = new FileContext($path, in_array($path, ComposerCatalogExtractor::FILES, true) ? $source : '<?php '.$source);
         }
 
-        $facts = (new ProjectGraphBuilder(catalog: true))->build($files)->catalogFacts;
+        $facts = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build($files)->catalogFacts;
         $this->assertStringNotContainsString('-secret', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts)));
 
-        return new CatalogIndex($facts);
+        return new CatalogIndex($facts, mode: AnalysisMode::Deep);
     }
 
     /** @return list<array<string, mixed>> */

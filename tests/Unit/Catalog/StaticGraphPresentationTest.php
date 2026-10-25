@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -19,7 +20,7 @@ final class StaticGraphPresentationTest extends TestCase
             'app/Provider.php' => 'use Illuminate\Support\Facades\View as V; V::composer(["billing.*", "other"], App\Composer::class); V::creator("billing.invoice", "App\\Creator@prepare"); V::composer("billing.invoice", App\PrivateComposer::class); throw new \Exception("execution-sentinel");',
             'app/Types.php' => 'namespace App; trait Composes { public function compose($view) { Service::run(); } } class Composer { use Composes; } class Creator { public function prepare($view) { Service::run(); } } class PrivateComposer { private function compose($view) {} } class Service { public static function run() {} } class Controller { public function index() { return view("billing.invoice"); } }',
             'resources/views/billing/invoice.blade.php' => '<h1>Invoice</h1>',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $composers = $this->edges($index, 'view-composer');
         $creators = $this->edges($index, 'view-creator');
         $this->assertCount(1, $composers);
@@ -42,7 +43,7 @@ final class StaticGraphPresentationTest extends TestCase
             'resources/views/cards/invoice.blade.php' => '<h1>Invoice</h1>',
             'resources/views/cards/notice.blade.php' => '<p>Notice</p>',
             'resources/views/components/forms/input.blade.php' => '<input />',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'component-render'));
         $this->assertCount(1, $this->edges($index, 'component-view'));
         $query = new GraphQuery($index);
@@ -65,9 +66,9 @@ final class StaticGraphPresentationTest extends TestCase
         $fixed = array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $fixed);
         $public = $this->facts(['app/Card.php' => 'namespace App; class Card extends \Illuminate\View\Component { public function render() { return view("card"); } }'])[0];
         $private = $this->facts(['app/Card.php' => 'namespace App; class Card extends \Illuminate\View\Component { private function render() { return view("card"); } }'])[0];
-        $this->assertCount(1, $this->edges(new CatalogIndex([...$fixed, $public]), 'component-render'));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, $private]), 'component-render'));
-        $this->assertSame([], $this->edges(new CatalogIndex($fixed), 'component-render'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([...$fixed, $public], mode: AnalysisMode::Deep), 'component-render'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, $private], mode: AnalysisMode::Deep), 'component-render'));
+        $this->assertSame([], $this->edges(new CatalogIndex($fixed, mode: AnalysisMode::Deep), 'component-render'));
     }
 
     public function test_decoy_component_and_source_facade_shadow_do_not_create_execution_links(): void
@@ -77,7 +78,7 @@ final class StaticGraphPresentationTest extends TestCase
             'app/Register.php' => '\Illuminate\Support\Facades\Blade::component(App\Card::class, "card");',
             'app/Card.php' => 'namespace App; class Card extends \Illuminate\View\Component { public function render() {} } class Decoy { public function render() {} }',
             'resources/views/page.blade.php' => '<x-card /><x-decoy />',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'component-render'));
         $this->assertNotEmpty($index->diagnostics);
     }
@@ -89,7 +90,7 @@ final class StaticGraphPresentationTest extends TestCase
             'app/Register.php' => '\\Illuminate\\Support\\Facades\\View::composer("page", fn () => App\\Service::run());',
             'app/Service.php' => 'namespace App; class Service { public static function run() {} }',
             'resources/views/page.blade.php' => '<h1>Page</h1>',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'view-composer'));
         $this->assertCount(1, $this->edges($index, 'references-view-callback'));
         $view = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'view' && $row['name'] === 'page'))[0];
@@ -118,7 +119,7 @@ class Action {
 SOURCE,
             'resources/views/mail/invoice.blade.php' => '<p>Invoice</p>',
             'resources/views/mail/plain.blade.php' => '<p>Plain</p>',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $send = $this->edges($index, 'sends-mail');
         $this->assertCount(3, $send);
         $this->assertSame([true, false, false], array_column(array_column($send, 'metadata'), 'queued'));
@@ -136,7 +137,7 @@ SOURCE,
 
     public function test_notification_via_is_preparation_even_when_delivery_is_queued(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Notifications.php' => 'namespace App; class Notice extends \\Illuminate\\Notifications\\Notification implements \\Illuminate\\Contracts\\Queue\\ShouldQueue { public function via($user) { return ["mail"]; } public function unrelated() {} } class Action { public function send($users) { \\Illuminate\\Support\\Facades\\Notification::send($users, new Notice); \\Illuminate\\Support\\Facades\\Notification::sendNow($users, new Notice); } }']));
+        $index = new CatalogIndex($this->facts(['app/Notifications.php' => 'namespace App; class Notice extends \\Illuminate\\Notifications\\Notification implements \\Illuminate\\Contracts\\Queue\\ShouldQueue { public function via($user) { return ["mail"]; } public function unrelated() {} } class Action { public function send($users) { \\Illuminate\\Support\\Facades\\Notification::send($users, new Notice); \\Illuminate\\Support\\Facades\\Notification::sendNow($users, new Notice); } }']), mode: AnalysisMode::Deep);
         $send = $this->edges($index, 'sends-notification');
         $this->assertSame([true, false], array_column(array_column($send, 'metadata'), 'queued'));
         $via = $this->edges($index, 'notification-channel-selection');
@@ -153,11 +154,11 @@ SOURCE,
         $caller = $this->facts(['app/Action.php' => '\\Illuminate\\Support\\Facades\\Mail::send(new App\\Message);'])[0];
         foreach ([true, false] as $queued) {
             $type = $this->facts(['app/Message.php' => 'namespace App; class Message extends \\Illuminate\\Mail\\Mailable '.($queued ? 'implements \\Illuminate\\Contracts\\Queue\\ShouldQueue' : '').' { public function content() {} }'])[0];
-            $index = new CatalogIndex([CatalogFacts::fromArray($caller->path, $caller->toArray()), $type]);
+            $index = new CatalogIndex([CatalogFacts::fromArray($caller->path, $caller->toArray()), $type], mode: AnalysisMode::Deep);
             $this->assertSame($queued, $this->edges($index, 'sends-mail')[0]['metadata']['queued']);
         }
         $decoy = $this->facts(['app/Message.php' => 'namespace App; class Message { public function content() {} }'])[0];
-        $index = new CatalogIndex([$caller, $decoy]);
+        $index = new CatalogIndex([$caller, $decoy], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'sends-mail'));
         $this->assertSame([], $this->edges($index, 'mail-delivery-hook'));
         $this->assertCount(1, $this->edges($index, 'references-mail-candidate'));
@@ -174,7 +175,7 @@ class Custom extends \Illuminate\Mail\Mailable { public function send($mailer) {
 class Service { public static function run() {} }
 \Illuminate\Support\Facades\Mail::send(new Shared);
 \Illuminate\Support\Facades\Mail::send(new Custom);
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $hooks = $this->edges($index, 'mail-delivery-hook');
         $this->assertCount(2, $hooks);
         $this->assertSame(['App\\Builds::build', 'App\\Custom::send'], array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $hooks));
@@ -201,7 +202,7 @@ class Notice extends \Illuminate\Notifications\Notification implements \Illumina
 class Action { public function send($users) { \Illuminate\Support\Facades\Notification::send($users, new Notice); } }
 SOURCE,
             'resources/views/notifications/notice.blade.php' => '<p>Notice</p>',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $hooks = $this->edges($index, 'notification-delivery-hook');
         $this->assertCount(2, $hooks);
         $this->assertSame(['toMail', 'toDatabase'], array_column(array_column($hooks, 'metadata'), 'hook'));
@@ -219,7 +220,7 @@ SOURCE,
 
     public function test_dynamic_via_and_private_channel_body_do_not_infer_delivery(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Notifications.php' => 'namespace App; class Dynamic extends \\Illuminate\\Notifications\\Notification { public function via($recipient) { return choose($recipient); } public function toMail($recipient) {} } class PrivateNotice extends \\Illuminate\\Notifications\\Notification { public function via($recipient) { return ["database"]; } private function toDatabase($recipient) {} public function toArray($recipient) {} } \\Illuminate\\Support\\Facades\\Notification::send($users, new Dynamic); \\Illuminate\\Support\\Facades\\Notification::sendNow($users, new PrivateNotice);']));
+        $index = new CatalogIndex($this->facts(['app/Notifications.php' => 'namespace App; class Dynamic extends \\Illuminate\\Notifications\\Notification { public function via($recipient) { return choose($recipient); } public function toMail($recipient) {} } class PrivateNotice extends \\Illuminate\\Notifications\\Notification { public function via($recipient) { return ["database"]; } private function toDatabase($recipient) {} public function toArray($recipient) {} } \\Illuminate\\Support\\Facades\\Notification::send($users, new Dynamic); \\Illuminate\\Support\\Facades\\Notification::sendNow($users, new PrivateNotice);']), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'notification-delivery-hook'));
         $this->assertNotEmpty($index->diagnostics);
     }
@@ -229,7 +230,7 @@ SOURCE,
         $caller = $this->facts(['app/Caller.php' => '\\Illuminate\\Support\\Facades\\Notification::send($users, new App\\Notice);'])[0];
         foreach (['toArray', 'toDatabase'] as $name) {
             $type = $this->facts(['app/Notice.php' => 'namespace App; class Notice extends \\Illuminate\\Notifications\\Notification { public function via($user) { return ["database"]; } public function '.$name.'($user) { return []; } }'])[0];
-            $index = new CatalogIndex([CatalogFacts::fromArray($caller->path, $caller->toArray()), $type]);
+            $index = new CatalogIndex([CatalogFacts::fromArray($caller->path, $caller->toArray()), $type], mode: AnalysisMode::Deep);
             $hook = $this->edges($index, 'notification-delivery-hook');
             $this->assertCount(1, $hook);
             $this->assertSame($name, $hook[0]['metadata']['hook']);
@@ -258,7 +259,7 @@ class Action {
  public function named() { event(Changed::class); }
  public function decoy() { event(new Decoy); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $hooks = $this->edges($index, 'broadcast-hook');
         $this->assertCount(4, $hooks);
         $this->assertSame(['broadcastWhen', 'broadcastOn', 'broadcastWith', 'broadcastOn'], array_column(array_column($hooks, 'metadata'), 'hook'));
@@ -273,7 +274,7 @@ SOURCE]));
 
     public function test_empty_broadcast_channel_return_does_not_reach_payload_hooks(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Event.php' => 'namespace App; class EmptyEvent implements \\Illuminate\\Contracts\\Broadcasting\\ShouldBroadcast { public function broadcastOn() { return []; } public function broadcastWith() { return []; } public function broadcastConnections() { return []; } } event(new EmptyEvent);']));
+        $index = new CatalogIndex($this->facts(['app/Event.php' => 'namespace App; class EmptyEvent implements \\Illuminate\\Contracts\\Broadcasting\\ShouldBroadcast { public function broadcastOn() { return []; } public function broadcastWith() { return []; } public function broadcastConnections() { return []; } } event(new EmptyEvent);']), mode: AnalysisMode::Deep);
         $hooks = $this->edges($index, 'broadcast-hook');
         $this->assertCount(1, $hooks);
         $this->assertSame('broadcastOn', $hooks[0]['metadata']['hook']);
@@ -284,7 +285,7 @@ SOURCE]));
         $index = new CatalogIndex($this->facts([
             'routes/channels.php' => '\\Illuminate\\Support\\Facades\\Broadcast::channel("orders.{id}", fn ($user, $id) => App\\Permission::check($user, $id), ["guards" => ["web", "admin"]]); \\Illuminate\\Support\\Facades\\Broadcast::channel("team.{id}", App\\ChannelAuth::class);',
             'app/Types.php' => 'namespace App; class Permission { public static function check($user, $id) {} } trait Joins { public function join($user, $id) { return Permission::check($user, $id); } } class ChannelAuth { use Joins; } class Changed implements \\Illuminate\\Contracts\\Broadcasting\\ShouldBroadcast { public function broadcastOn() { return []; } } class Action { public function emit() { event(new Changed); } }',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $subscriptions = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'broadcast-subscription'));
         $this->assertCount(2, $subscriptions);
         $this->assertSame(['web', 'admin'], $subscriptions[0]['metadata']['guards']);
@@ -306,7 +307,7 @@ SOURCE]));
 
     public function test_channel_auth_private_dynamic_and_lookalike_do_not_infer_callbacks(): void
     {
-        $index = new CatalogIndex($this->facts(['routes/channels.php' => 'class PrivateAuth { private function join($user) {} } class Broadcast { public static function channel($name, $callback) {} } \\Illuminate\\Support\\Facades\\Broadcast::channel("private", PrivateAuth::class); \\Illuminate\\Support\\Facades\\Broadcast::channel($dynamic, fn () => true); Broadcast::channel("decoy", fn () => true);']));
+        $index = new CatalogIndex($this->facts(['routes/channels.php' => 'class PrivateAuth { private function join($user) {} } class Broadcast { public static function channel($name, $callback) {} } \\Illuminate\\Support\\Facades\\Broadcast::channel("private", PrivateAuth::class); \\Illuminate\\Support\\Facades\\Broadcast::channel($dynamic, fn () => true); Broadcast::channel("decoy", fn () => true);']), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'channel-authorization'));
         $this->assertCount(1, array_filter($index->elements, fn ($row) => $row['kind'] === 'broadcast-subscription'));
         $this->assertNotEmpty($index->diagnostics);
@@ -317,11 +318,11 @@ SOURCE]));
         $registration = $this->facts(['routes/channels.php' => '\\Illuminate\\Support\\Facades\\Broadcast::channel("orders.{id}", App\\Auth::class);'])[0];
         foreach (['public', 'private'] as $visibility) {
             $type = $this->facts(['app/Auth.php' => 'namespace App; class Auth { '.$visibility.' function join($user, $id) {} }'])[0];
-            $index = new CatalogIndex([CatalogFacts::fromArray($registration->path, $registration->toArray()), $type]);
+            $index = new CatalogIndex([CatalogFacts::fromArray($registration->path, $registration->toArray()), $type], mode: AnalysisMode::Deep);
             $this->assertCount($visibility === 'public' ? 1 : 0, $this->edges($index, 'channel-authorization'));
         }
         $shadow = $this->facts(['app/Shadow.php' => 'namespace Illuminate\\Support\\Facades; class Broadcast {}'])[0];
-        $index = new CatalogIndex([$registration, $type, $shadow]);
+        $index = new CatalogIndex([$registration, $type, $shadow], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'channel-authorization'));
         $this->assertNotEmpty($index->diagnostics);
     }
@@ -340,7 +341,7 @@ class Changed implements \Illuminate\Contracts\Broadcasting\ShouldBroadcast { us
 class Action { public function emit() { event(new Changed); } }
 class Permission { public static function check() {} }
 SOURCE,
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $channels = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'broadcast-channel'));
         $this->assertSame(['private-orders.42', 'presence-orders.42', 'news', 'private-orders.42'], array_column($channels, 'name'));
         $this->assertCount(4, $this->edges($index, 'broadcast-channel-target'));
@@ -360,12 +361,12 @@ class Changed implements \Illuminate\Contracts\Broadcasting\ShouldBroadcast { pu
 class Decoy { public function broadcastOn() { return new \Illuminate\Broadcasting\Channel('decoy'); } }
 SOURCE]);
         $fixed = array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $fixed);
-        $index = new CatalogIndex($fixed);
+        $index = new CatalogIndex($fixed, mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'broadcast-channel-target'));
         $this->assertContains('broadcast_channel_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts(['app/Shadow.php' => 'namespace Illuminate\\Broadcasting; class Channel {}'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, $shadow]), 'broadcast-channel-target'));
-        $this->assertCount(1, $this->edges(new CatalogIndex($fixed), 'broadcast-channel-target'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, $shadow], mode: AnalysisMode::Deep), 'broadcast-channel-target'));
+        $this->assertCount(1, $this->edges(new CatalogIndex($fixed, mode: AnalysisMode::Deep), 'broadcast-channel-target'));
         $this->assertStringNotContainsString('secret', json_encode(array_map(fn ($row) => $row->toArray(), $fixed), JSON_THROW_ON_ERROR));
     }
 
@@ -393,7 +394,7 @@ SOURCE]);
             $files[] = new FileContext($path, str_ends_with($path, '.blade.php') ? $source : '<?php '.$source);
         }
 
-        return (new ProjectGraphBuilder(catalog: true))->build($files)->catalogFacts;
+        return (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build($files)->catalogFacts;
     }
 
     /** @return list<array<string, mixed>> */

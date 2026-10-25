@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
 use BackedEnum;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Analysis\EngineSettings;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
 use GracjanKubicki\ArchitectureKit\Classification\DeclaredConfiguration;
@@ -99,6 +101,66 @@ final class RepositoryContext
         if (! is_file($this->configPath)) {
             (new Filesystem)->replace($this->configPath, $body);
             chmod($this->configPath, 0600);
+        }
+    }
+
+    /** The local Artisan/MCP adapter uses the same external task consent store. */
+    public static function consentContext(): self
+    {
+        return self::current() ?? new self(
+            realpath(self::root()) ?: throw new RuntimeException('Project root is unavailable.'),
+            getenv('ARCHITECTURE_KIT_HOME') ?: getenv('HOME').'/.architecture-kit',
+        );
+    }
+
+    public static function requestedMode(mixed $value = 'basic', mixed $task = null): AnalysisMode
+    {
+        $mode = is_string($value) ? AnalysisMode::tryFrom($value) : null;
+        if ($mode === null) {
+            throw new RuntimeException('Analysis mode must be basic or deep.');
+        }
+        if ($mode === AnalysisMode::Deep) {
+            if (! is_string($task) || $task === '') {
+                throw new RuntimeException('Deep analysis requires a task and prior human consent.');
+            }
+            self::consentContext()->assertAnalysisMode($mode, $task);
+        }
+
+        return $mode;
+    }
+
+    /** Full revision and target assessment has no Basic implementation. */
+    public static function requiredDeep(mixed $value = 'basic', mixed $task = null): AnalysisMode
+    {
+        $mode = self::requestedMode($value, $task);
+        if ($mode !== AnalysisMode::Deep) {
+            throw new RuntimeException('This assessment requires explicit Deep mode, a task and prior human consent. Ask the user before granting analysis-consent.');
+        }
+
+        return $mode;
+    }
+
+    public function controlPolicy(): ControlPolicy
+    {
+        $control = $this->settings['control'] ?? [];
+        if (! is_array($control)) {
+            throw new RuntimeException('control must be a settings array.');
+        }
+        $value = $control['policy'] ?? 'advisory';
+        if (! is_string($value) || ($policy = ControlPolicy::tryFrom($value)) === null) {
+            throw new RuntimeException('control.policy must be advisory or enforce.');
+        }
+
+        return $policy;
+    }
+
+    public function assertAnalysisMode(AnalysisMode $mode, ?string $task): void
+    {
+        if ($mode === AnalysisMode::Deep) {
+            if ($task === null) {
+                throw new RuntimeException('Deep analysis requires a repository task and prior human consent.');
+            }
+            (new AnalysisConsent($this))->requireDeep($task);
         }
     }
 

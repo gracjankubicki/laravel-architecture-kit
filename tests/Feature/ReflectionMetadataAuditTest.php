@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
@@ -210,7 +211,7 @@ PHP);
 
         return (new ApplicationAudit($files, $this->tempPath))->run([Architecture::ThinControllers, Architecture::Actions], changedOnly: false,
             routes: new RouteMap(entries: [new RouteEntry(['GET'], 'probe', class: 'App\\Http\\Controllers\\ProbeController', method: 'show')],
-                context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => []]));
+                context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => []]), mode: AnalysisMode::Deep);
     }
 
     private function notices(ApplicationAuditResult $result): string

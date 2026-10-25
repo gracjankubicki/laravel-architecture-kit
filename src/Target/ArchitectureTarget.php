@@ -92,7 +92,7 @@ final readonly class ArchitectureTarget
 
             return ['v' => 1, 'cmd' => 'architecture-target', 'ok' => true, 'configured' => true,
                 'target' => [...TargetReference::identity($definition), 'source' => TargetDefinition::PATH, 'declarations' => $definition->values],
-                'source' => $snapshot->identity(), 'analysis' => ['fresh' => $fresh, 'complete' => $notices === [], 'structure_complete' => $facts->channels['structure'], 'audit_complete' => $audit['complete'], 'dependencies_complete' => $dependencyComplete, 'dependency_status' => $dependencyComplete ? 'complete' : 'requires_check',
+                'source' => $snapshot->identity(), 'analysis' => ['mode' => 'deep', 'deep_run' => true, 'checks_complete' => $complete, 'fresh' => $fresh, 'complete' => $notices === [], 'structure_complete' => $facts->channels['structure'], 'audit_complete' => $audit['complete'], 'dependencies_complete' => $dependencyComplete, 'dependency_status' => $dependencyComplete ? 'complete' : 'requires_check',
                     'scope' => $directories, 'total_is_lower_bound' => ! $facts->channels['structure'] || $evaluationLimited, 'display_truncated' => count($elements) > $limit || count($proposals) > $limit || count($notices) > $limit],
                 'gate' => ['mode' => $mode, 'only' => $onlyNew ? 'new' : 'all', 'issues' => $gateIssues, 'warnings' => $mode === 'warn' ? $gateIssues : 0, 'ok' => $gateOk, 'requires_check' => ! $complete],
                 'totals' => [...$counts, 'issues' => $issueTotal, 'audit_findings' => count($audit['findings']), 'notices' => count($notices)],

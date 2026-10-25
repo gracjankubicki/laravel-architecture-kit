@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
@@ -50,7 +51,7 @@ CODE);
         $this->putJson('/gh13-projects/1')->assertOk()->assertJson(['ok' => true]);
         $this->assertSame('after', $this->app['db']->table('gh13_projects')->where('id', 1)->value('name'));
         $this->write('tests/Feature/ProjectTest.php', "<?php it('updates', function () { \$this->putJson('/gh13-projects/1')->assertOk(); });");
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, routes: RouteMap::fromRoutes($this->app['router']->getRoutes()));
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, routes: RouteMap::fromRoutes($this->app['router']->getRoutes()), mode: AnalysisMode::Deep);
         $this->assertSame([], $result->findings);
     }
 
@@ -63,14 +64,14 @@ CODE);
         $files = new Filesystem;
         $cache = new ProjectGraphCache($files, $this->tempPath);
         $audit = new ApplicationAudit($files, $this->tempPath);
-        $run = fn ($cache) => $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache);
+        $run = fn ($cache) => $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache, mode: AnalysisMode::Deep);
         $disabled = $run(null);
         $cold = $run($cache);
         $warm = $run($cache);
         $this->assertNotSame([], $disabled->findings, 'Known unrelated finding anchors parity.');
         $this->assertEquals($disabled->findings, $cold->findings);
         $this->assertEquals($cold->findings, $warm->findings);
-        $loader = new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests']), $cache);
+        $loader = new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests']), $cache, impact: true, sourceOnly: true, mode: AnalysisMode::Deep);
         $plan = $loader->plan();
         $this->assertSame([], $plan->toParse);
         $this->assertCount(1, $plan->reusable['tests/Feature/ProjectTest.php']->testInvocations);
@@ -85,12 +86,12 @@ CODE);
         $this->write('app/Http/Controllers/ProjectController.php', '<?php namespace App\\Http\\Controllers; class ProjectController { public function update(): void {} }');
         $this->write('app/Services/DisabledService.php', '<?php namespace App\\Services; class DisabledService {}');
         $files = new Filesystem;
-        $before = (new ApplicationAudit($files, $this->tempPath))->run([], false, scope: new AuditScope(['app', 'tests']));
+        $before = (new ApplicationAudit($files, $this->tempPath))->run([], false, scope: new AuditScope(['app', 'tests']), mode: AnalysisMode::Deep);
         $this->write('tests/Feature/ProjectTest.php', "<?php it('updates', function () {".str_repeat("\$this->put('/projects/1');", 500).'});');
-        $after = (new ApplicationAudit($files, $this->tempPath))->run([], false, scope: new AuditScope(['app', 'tests']));
+        $after = (new ApplicationAudit($files, $this->tempPath))->run([], false, scope: new AuditScope(['app', 'tests']), mode: AnalysisMode::Deep);
         $this->assertNotSame([], $before->findings);
         $this->assertEquals($before->findings, $after->findings);
-        $graph = (new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests'])))->load();
+        $graph = (new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests']), mode: AnalysisMode::Deep))->load();
         $reads = new class extends Filesystem
         {
             public array $reads = [];
@@ -119,7 +120,7 @@ CODE);
         }
         $routes = new RouteMap(entries: [new RouteEntry(['PUT'], 'projects/{project}', class: 'App\\Http\\Controllers\\ProjectController', method: 'update')]);
         $cache = new ProjectGraphCache(new Filesystem, $this->tempPath);
-        (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache, routes: $routes);
+        (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache, routes: $routes, mode: AnalysisMode::Deep);
         $this->write('app/Http/Controllers/ProjectController.php', '<?php namespace App\\Http\\Controllers; class ProjectController { public function update(): void { /* edited */ } }');
         clearstatcache();
         $files = new class extends Filesystem
@@ -133,10 +134,10 @@ CODE);
                 return parent::get($path, $lock);
             }
         };
-        $warm = (new ApplicationAudit($files, $this->tempPath))->run([], true, missingTestLevel: MissingTestLevel::Warn, cache: $cache, routes: $routes);
+        $warm = (new ApplicationAudit($files, $this->tempPath))->run([], true, missingTestLevel: MissingTestLevel::Warn, cache: $cache, routes: $routes, mode: AnalysisMode::Deep);
         $this->assertSame([], $warm->findings);
         $this->assertNotContains($this->tempPath.'/tests/Feature/ProjectTest.php', $files->reads);
-        $disabled = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], true, missingTestLevel: MissingTestLevel::Warn, routes: $routes);
+        $disabled = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], true, missingTestLevel: MissingTestLevel::Warn, routes: $routes, mode: AnalysisMode::Deep);
         $this->assertEquals($disabled->findings, $warm->findings);
     }
 
@@ -155,20 +156,21 @@ CODE);
             $this->write(substr($generated->path, strlen($this->tempPath) + 1), $generated->contents);
         }
         $cache = new ProjectGraphCache(new Filesystem, $this->tempPath);
-        (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache);
+        (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache, mode: AnalysisMode::Deep);
         file_put_contents($this->tempPath.'/tests/Feature/ProjectTest.php', "\n// changed test only", FILE_APPEND);
         clearstatcache();
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], true, missingTestLevel: MissingTestLevel::Warn, cache: $cache);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], true, missingTestLevel: MissingTestLevel::Warn, cache: $cache, mode: AnalysisMode::Deep);
         $this->assertCount(1, $result->findings);
         $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $result->findings[0]->code);
         $this->assertSame('app/Http/Controllers/ProjectController.php', $result->findings[0]->path);
         $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--changed' => true, '--strict' => true, '--agent' => true]));
         $payload = json_decode(trim(Artisan::output()), true);
         $this->assertSame('ok', $payload['doctor']);
-        $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $payload['find'][0]['m']);
-        $this->assertSame('incomplete', $payload['analysis']['status']);
+        $this->assertSame('basic', $payload['analysis']['mode']);
+        $this->assertNotContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($payload['find'], 'm'));
+        $this->assertSame('complete', $payload['analysis']['status']);
         $this->write('config/architectures.php', "<?php return ['enabled' => ['actions'], 'audit' => ['missing_test' => 'warn', 'incomplete_analysis' => 'block']];");
-        $this->assertSame(1, Artisan::call('architecture-kit:guard', ['--changed' => true, '--strict' => true, '--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:guard', ['--changed' => true, '--strict' => true, '--agent' => true]));
     }
 
     public function test_changed_handler_keeps_diagnostic_from_unchanged_called_service(): void
@@ -181,7 +183,7 @@ CODE);
         }
         file_put_contents($this->tempPath.'/app/Http/Controllers/ProjectController.php', "\n// changed handler only", FILE_APPEND);
         $routes = new RouteMap(entries: [new RouteEntry(['PUT'], 'projects/{id}', class: 'App\\Http\\Controllers\\ProjectController', method: 'update')]);
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], true, missingTestLevel: MissingTestLevel::Warn, routes: $routes);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], true, missingTestLevel: MissingTestLevel::Warn, routes: $routes, mode: AnalysisMode::Deep);
         $this->assertCount(1, $result->findings);
         $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $result->findings[0]->code);
         $this->assertSame('app/Support/Worker.php', $result->findings[0]->path);
@@ -191,7 +193,7 @@ CODE);
     {
         $this->write('tests/Feature/PlainTest.php', '<?php class PlainTest extends \\PHPUnit\\Framework\\TestCase { public function test_call(): void { $this->get("/anything"); } }');
         $this->withRoutes("<?php file_put_contents(__DIR__.'/booted', 'yes');");
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep);
         $this->assertSame([], $result->findings);
         $this->assertFileDoesNotExist($this->tempPath.'/routes/booted');
     }

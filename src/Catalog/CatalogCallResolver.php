@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 
 /** Resolves cached source dispatch descriptors against the current declaration set. */
@@ -70,7 +72,7 @@ final class CatalogCallResolver
         $expanded = [];
         foreach ($calls as $call) {
             $this->limited = false;
-            $values = $call['kind'] === 'calls' && $call['metadata']['method'] === '__invoke'
+            $values = $this->index->mode === AnalysisMode::Deep && $call['kind'] === 'calls' && $call['metadata']['method'] === '__invoke'
                 ? $this->returnedValues($call['metadata']['receiver'], call: $call['metadata']['receiver_factory_call'] ?? null) : [];
             if ($values === []) {
                 $expanded[] = $call;
@@ -255,7 +257,9 @@ final class CatalogCallResolver
         $this->factoryVisits = 0;
         $prior = $this->limited;
         $this->limited = false;
-        $targets = $this->factoryProducers('@return:'.json_encode([$receiver, $method, $exact], JSON_THROW_ON_ERROR), $call);
+        $targets = $this->index->mode === AnalysisMode::Basic
+            ? $this->sourceInvocationTargets($receiver, $method, $exact, $call)
+            : $this->factoryProducers('@return:'.json_encode([$receiver, $method, $exact], JSON_THROW_ON_ERROR), $call);
         $limited = $this->limited;
         $this->limited = $prior || $limited;
 
@@ -269,6 +273,7 @@ final class CatalogCallResolver
      */
     private function factoryProducers(string $receiver, array $call, int $depth = 0): array
     {
+        AnalysisRuntime::stage('deep.calls.factory');
         if ($depth >= 16) {
             $this->limited = true;
 
@@ -320,21 +325,32 @@ final class CatalogCallResolver
 
             return array_values(array_unique($producers));
         }
+
+        return $this->sourceInvocationTargets($descriptor[0], $descriptor[1], $descriptor[2], $call);
+    }
+
+    /** Declaration lookup only. Never interprets a returned value or a callback factory.
+     * @param  array{creator: string, form: string, binding: ?string}  $call
+     * @return list<string>
+     */
+    private function sourceInvocationTargets(string $receiver, string $method, bool $exact, array $call): array
+    {
+        $producers = [];
         if ($call['form'] === 'function') {
-            $producers = array_values(array_filter($this->callables($descriptor[0], $descriptor[1], $descriptor[2]),
+            $producers = array_values(array_filter($this->callables($receiver, $method, $exact),
                 fn ($id) => in_array($this->index->elements[$id]['kind'], ['function', 'closure'], true)));
             if (count($producers) !== 1) {
                 $producers = [];
             }
         } else {
-            foreach ($this->types($descriptor[0]) as $type) {
+            foreach ($this->types($receiver) as $type) {
                 $bases = $this->index->namedTypes($type);
                 if (count($bases) !== 1) {
                     continue;
                 }
                 $base = $bases[0];
                 $trait = $this->index->elements[$base]['kind'] === 'trait';
-                $classes = [$base, ...(! $descriptor[2] || $trait && $call['binding'] !== null ? ($this->subtypes[$base] ?? []) : [])];
+                $classes = [$base, ...(! $exact || $trait && $call['binding'] !== null ? ($this->subtypes[$base] ?? []) : [])];
                 if (count($classes) > 1000) {
                     $this->limited = true;
                 }
@@ -343,7 +359,7 @@ final class CatalogCallResolver
                         continue;
                     }
                     $this->methodSelectionFailed = false;
-                    $selected = $this->sourceMethod($class, strtolower($descriptor[1]));
+                    $selected = $this->sourceMethod($class, strtolower($method));
                     if ($selected === null || $this->methodSelectionFailed) {
                         continue;
                     }
@@ -511,6 +527,7 @@ final class CatalogCallResolver
      */
     private function returnedValues(string $receiver, int $depth = 0, ?array $call = null, bool $checked = false, bool $complete = false): array
     {
+        AnalysisRuntime::stage('deep.calls.returns');
         if (! str_starts_with($receiver, '@return:')) {
             return [];
         }
@@ -644,6 +661,7 @@ final class CatalogCallResolver
     /** Source signature proof for preserving a variable after argument passing. */
     public function argumentReceiver(string $receiver, int $depth = 0): ?string
     {
+        AnalysisRuntime::stage('deep.calls.arguments');
         if ($depth === 0) {
             $this->argumentVisits = 0;
         }
@@ -788,6 +806,9 @@ final class CatalogCallResolver
         $exact = $returned['exact_receiver'];
         $context = ['creator' => '', 'form' => 'instance', 'binding' => null];
         if (str_starts_with($receiver, '@return:')) {
+            if ($this->index->mode === AnalysisMode::Basic) {
+                return null;
+            }
             $context['factory_call'] = $returned['factory_call'] ?? null;
         } elseif (str_starts_with($receiver, '@function:') || str_starts_with($receiver, '@closure:')) {
             $context['form'] = 'function';
@@ -948,6 +969,9 @@ final class CatalogCallResolver
             return array_values(array_unique($types));
         }
         if (str_starts_with($receiver, '@return:')) {
+            if ($this->index->mode === AnalysisMode::Basic) {
+                return [];
+            }
             $descriptor = $this->descriptor(substr($receiver, 8));
             if ($descriptor === null) {
                 return [];
@@ -1057,6 +1081,9 @@ final class CatalogCallResolver
             return true;
         }
         if (str_starts_with($receiver, '@return:')) {
+            if ($this->index->mode === AnalysisMode::Basic) {
+                return false;
+            }
             $descriptor = $this->descriptor(substr($receiver, 8));
 
             return $descriptor !== null && ! str_starts_with($descriptor[0], '@') && $this->index->namedTypes($descriptor[0]) === [];

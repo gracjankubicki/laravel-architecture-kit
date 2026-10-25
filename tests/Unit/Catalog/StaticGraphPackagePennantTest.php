@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -16,7 +17,7 @@ class StaticGraphPackagePennantTest extends TestCase
     /** @return list<CatalogFacts> */
     private function facts(string $source, string $path = 'app/Pennant.php'): array
     {
-        return (new ProjectGraphBuilder(catalog: true))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
+        return (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
     }
 
     private function package(string $version = '1.26.0', string $path = 'composer.lock'): CatalogFacts
@@ -55,7 +56,7 @@ SOURCE);
         $this->assertStringNotContainsString('activation-secret-sentinel', $json);
         $this->assertStringNotContainsString('source-only-sentinel', $json);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'defines-feature'));
         $this->assertCount(4, $this->edges($index, 'reads-feature'));
         $this->assertCount(2, $this->edges($index, 'changes-feature'));
@@ -71,7 +72,7 @@ SOURCE);
         $this->assertSame(['active', 'inactive'], array_column(array_column($callbacks, 'metadata'), 'feature_condition'));
         $this->assertContains('feature-definition', $index->elements[$index->namedTypes('App\\NewCheckout')[0]]['roles']);
         foreach ([[], [$this->package('99.0.0')], [$this->package(), $this->package('1.0.0', 'vendor/composer/installed.json')]] as $packages) {
-            $index = new CatalogIndex([...$facts, ...$packages]);
+            $index = new CatalogIndex([...$facts, ...$packages], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'reads-feature'));
             $this->assertSame([], $this->edges($index, 'feature-value-resolver'));
             $this->assertContains('package_pennant_analysis', array_column($index->diagnostics, 'code'));
@@ -89,13 +90,13 @@ Decoy::active('not-a-feature');
 \Laravel\Pennant\Feature::when('flag', true);
 \Laravel\Pennant\Feature::define('dynamic-resolver', $resolver);
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads-feature'));
         $this->assertSame([], $this->edges($index, 'feature-conditional-callback'));
         $this->assertSame([], $this->edges($index, 'feature-value-resolver'));
         $this->assertContains('package_pennant_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts('namespace Laravel\\Pennant; class Feature {}', 'app/Shadow.php');
-        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()]);
+        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'defines-feature'));
     }
 
@@ -103,14 +104,14 @@ SOURCE);
     {
         $caller = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $this->facts('\\Laravel\\Pennant\\Feature::active(\\App\\NewCheckout::class);', 'app/Controller.php'));
         $feature = $this->facts('namespace App; class NewCheckout { public function resolve($scope) {} }', 'app/Feature.php');
-        $index = new CatalogIndex([...$caller, ...$feature, $this->package()]);
+        $index = new CatalogIndex([...$caller, ...$feature, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'feature-value-resolver'));
         $edited = $this->facts('namespace App; class NewCheckout { private function resolve($scope) {} }', 'app/Feature.php');
-        $index = new CatalogIndex([...$caller, ...$edited, $this->package()]);
+        $index = new CatalogIndex([...$caller, ...$edited, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'feature-value-resolver'));
         $this->assertCount(1, $this->edges($index, 'reads-feature'));
         $limited = $this->facts('\\Laravel\\Pennant\\Feature::values(['.implode(',', array_fill(0, 129, "'flag'")).']);');
-        $index = new CatalogIndex([...$limited, $this->package()]);
+        $index = new CatalogIndex([...$limited, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads-feature'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
     }
@@ -123,7 +124,7 @@ class Feature { public function resolve($scope) {} }
 \Laravel\Pennant\Feature::define('constant-value', Feature::class);
 \Laravel\Pennant\Feature::define(Feature::class, false);
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'defines-feature'));
         $this->assertSame([], $this->edges($index, 'feature-value-resolver'));
     }

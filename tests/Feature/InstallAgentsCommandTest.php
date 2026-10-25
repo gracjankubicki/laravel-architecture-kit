@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Config\ArchitectureConfig;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
+use GracjanKubicki\ArchitectureKit\Install\Hooks\ClaudeHookWriter;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
@@ -43,7 +44,7 @@ class InstallAgentsCommandTest extends TestCase
         $this->assertStringContainsString('architecture-kit: runtime unavailable', $guard);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $codexHooks);
         $this->assertStringNotContainsString('_architectureKit', $codexHooks);
-        $this->assertStringContainsString('.architecture-kit/hooks/guard.sh claude', $claudeHooks);
+        $this->assertSame((new ClaudeHookWriter)->command(), json_decode($claudeHooks, true, flags: JSON_THROW_ON_ERROR)['hooks']['Stop'][0]['hooks'][0]['command']);
         $this->assertStringNotContainsString('_architectureKit', $claudeHooks);
         $this->assertStringContainsString('"codex"', $state);
         $this->assertStringContainsString('"claude_code"', $state);

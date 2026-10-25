@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
@@ -166,7 +167,7 @@ CODE);
 
     private function audit(RouteMap $routes): ApplicationAuditResult
     {
-        return (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, scope: new AuditScope(['app', 'tests']), missingTestLevel: MissingTestLevel::Warn, routes: $routes);
+        return (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, scope: new AuditScope(['app', 'tests']), missingTestLevel: MissingTestLevel::Warn, routes: $routes, mode: AnalysisMode::Deep);
     }
 
     private function write(string $path, string $contents): void

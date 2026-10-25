@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -27,10 +29,11 @@ class AuditChanged extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return [
+        return ['analysis_mode' => $schema->string()->enum(['basic', 'deep'])->default('basic')->description('Deep requires prior human consent recorded for task; full only controls report size.'), 'task' => $schema->string()->description('Task with previously recorded consent.'),
             'changed' => $schema->boolean()->default(true)->description('Audit changed files when true; inspect the full configured audit scope when false.'),
             'base' => $schema->string()->nullable()->description('Optional Git base revision for detecting changed files. Omit to use the normal working-tree comparison.'),
-            'strict' => $schema->boolean()->default(false)->description('Treat audit warnings as blocking when true. Inspect findings and incomplete analysis separately.'),
+            'enforce' => $schema->boolean()->default(false)->description('Explicit blocking policy, independent of strict warnings and analysis scope.'),
+            'strict' => $schema->boolean()->default(false)->description('Treat audit warnings as unsuccessful when true; blocking needs enforce. Inspect findings and incomplete analysis separately.'),
             'limit' => $schema->integer()->min(0)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'),
             'full' => $schema->boolean()->default(false)->description('Include the full report instead of the bounded agent summary when true.'),
         ];
@@ -38,18 +41,22 @@ class AuditChanged extends Tool
 
     public function handle(Request $request): ResponseFactory
     {
-        if (($message = $this->invalidInput($request, ['changed' => 'boolean', 'base' => 'string', 'strict' => 'boolean', 'limit' => 'integer', 'full' => 'boolean'])) !== null) {
+        if (($message = $this->invalidInput($request, ['enforce' => 'boolean', 'changed' => 'boolean', 'base' => 'string', 'strict' => 'boolean', 'limit' => 'integer', 'full' => 'boolean'])) !== null) {
             return $this->inputError('audit', $message);
         }
 
         $agent = new AgentOutput;
+        $policy = $request->get('enforce') === true ? ControlPolicy::Enforce : ControlPolicy::Advisory;
 
         try {
+            $mode = RepositoryContext::requestedMode($request->get('analysis_mode', 'basic'), $request->get('task'));
             $state = $this->projectState();
+            $policy = $request->get('enforce') === true ? ControlPolicy::Enforce : $state->controlPolicy;
             $audit = $this->audit(
                 state: $state,
                 changedOnly: $request->get('changed', true),
                 baseRef: $request->get('base'),
+                mode: $mode,
             );
             $strict = $request->get('strict', false);
 
@@ -58,6 +65,7 @@ class AuditChanged extends Tool
                 ok: $audit->errors() === 0 && (! $strict || $audit->warnings() === 0),
                 limit: $agent->limit($request->get('limit', 20)),
                 full: $request->get('full', false),
+                policy: $policy,
             );
             // The SDK serializes text and structured content for compatibility.
             // Release the audit objects and parser allocator pages first.
@@ -67,7 +75,7 @@ class AuditChanged extends Tool
 
             return Response::structured($payload);
         } catch (Throwable $exception) {
-            return Response::structured($agent->error('audit', $exception->getMessage()));
+            return Response::structured($agent->error('audit', $exception->getMessage(), policy: $policy));
         }
     }
 }

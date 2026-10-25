@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Context;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
@@ -14,6 +15,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
+use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use Illuminate\Filesystem\Filesystem;
 
 final readonly class ArchitectureContext
@@ -27,6 +29,7 @@ final readonly class ArchitectureContext
         private ?ProjectGraphCache $cache = null,
         /** @var array<int, string> */
         private array $cacheConfiguration = [],
+        private AnalysisMode $mode = AnalysisMode::Basic,
     ) {}
 
     /**
@@ -35,9 +38,9 @@ final readonly class ArchitectureContext
      */
     public function inspect(string $subject, array $enabled, array $exclude = [], int $limit = 20): ArchitectureContextResult
     {
-        // The same scope the audit reads. Answering from a narrower graph would report no
-        // dependents for a symbol the audit already reports findings about.
-        $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope, $this->cache, $this->cacheConfiguration);
+        // Map own sources even when their files are outside rule enforcement scope.
+        $mapScope = AuditScope::package(array_values(array_unique([...$this->scope->directories, ...ProjectLayout::read($this->basePath)->graphSources()])));
+        $loader = new ProjectGraphLoader($this->files, $this->basePath, $mapScope, $this->cache, $this->cacheConfiguration, sourceOnly: true, catalog: true, mode: $this->mode);
         $plan = $loader->plan($exclude);
         $graph = $loader->build($plan);
         $resolved = $this->resolve($graph, trim($subject));
@@ -79,6 +82,17 @@ final readonly class ArchitectureContext
 
         $next[] = 'run:architecture-kit:guard --changed --agent';
 
+        $notices = [];
+        foreach ($graph->catalogFacts as $facts) {
+            foreach ($facts->diagnostics as $diagnostic) {
+                $notices[] = [...$diagnostic->toArray(), 'path' => $facts->path];
+            }
+        }
+        $fresh = $loader->currentSignature($exclude)->toArray() === $plan->signature->toArray();
+        if (! $fresh) {
+            $notices[] = ['code' => 'changed_inputs', 'path' => '(project)', 'line' => 1, 'message' => 'Sources changed during analysis. Restart the query.'];
+        }
+
         return new ArchitectureContextResult(
             subject: $resolved,
             dependencies: $dependencies,
@@ -93,6 +107,9 @@ final readonly class ArchitectureContext
                 || count($inspect) < count($allInspect),
             cacheStatus: $plan->cacheStatus,
             classification: ClassificationReport::graph($loader->classification, $graph, $limit, [$resolved->name]),
+            analysis: ['mode' => $this->mode->value, 'deep_run' => $this->mode === AnalysisMode::Deep,
+                'checks_complete' => $graph->checksComplete() && $fresh, 'map_paths' => $mapScope->directories, 'configured_audit_paths' => $this->scope->directories, 'notices' => array_slice($notices, 0, $limit),
+                'total' => count($notices), 'truncated' => count($notices) > $limit],
         );
     }
 

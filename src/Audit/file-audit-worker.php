@@ -5,6 +5,7 @@ declare(strict_types=1);
 // The parent selects the tool autoloader. This worker never loads the inspected app.
 require $_SERVER['argv'][1];
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
@@ -25,6 +26,7 @@ try {
     RepositoryContext::activate($context);
     $files = new Filesystem;
     $scope = AuditScope::package($request['scope']);
+    $mode = AnalysisMode::from($request['mode']);
     $enabled = array_map(static fn (string $value): Architecture|string => Architecture::tryFrom($value) ?? $value, $request['enabled']);
     $facts = $request['facts'] === null ? null : new AnalysisFactsCache('', '', null);
     $facts?->merge($request['facts'] ?? []);
@@ -41,7 +43,7 @@ try {
             || ! str_starts_with((string) realpath($absolute), $context->rootPath.'/')) {
             throw new RuntimeException('Unsafe audit worker source.');
         }
-        $result = $audit->collectFile(new FileContext($path, $files->get($absolute)), $enabled, $rules, $classification, $scope, $facts);
+        $result = $audit->collectFile(new FileContext($path, $files->get($absolute)), $enabled, $rules, $classification, $scope, $facts, $mode);
         echo json_encode(['path' => $path, 'result' => $result->toArray($path)], JSON_THROW_ON_ERROR)."\n";
     }
     foreach ($facts?->chunks() ?? [] as $chunk) {

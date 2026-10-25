@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use RuntimeException;
 use Throwable;
 
 /** Client-specific protocol adapters, with no transcript or prompt persistence. */
 final readonly class AgentHooks
 {
-    public function __construct(private string $home, private ?string $profile = null, private ?string $project = null, private bool $runtimeRoutes = false) {}
+    public function __construct(private string $home, private ?string $profile = null, private ?string $project = null, private bool $runtimeRoutes = false, private ?ControlPolicy $policy = null) {}
 
     /** @param array<string, mixed> $input
      * @return array<string, mixed>
@@ -49,7 +50,8 @@ final readonly class AgentHooks
             if (! is_string($task)) {
                 throw new RuntimeException('Session task binding is corrupt.');
             }
-            $tasks = new TaskControl($context);
+            $policy = $this->policy ?? $context->controlPolicy();
+            $tasks = new TaskControl($context, $policy);
             if (in_array($event, ['SessionStart', 'UserPromptSubmit'], true)) {
                 $status = $tasks->status($task);
                 if ($status['status'] === 'missing') {
@@ -63,7 +65,7 @@ final readonly class AgentHooks
                 $sessions->update($sessionKey, static fn (array $old): array => [...$old, 'task' => $task, 'client' => $client, 'last_event' => $event, 'observed_at' => gmdate('c')]);
                 $state = StandaloneAudit::state($context);
                 $guideline = $state->resources->fullGuideline($state->enabled);
-                $text = 'Architecture Kit task '.$task.'. Status '.$status['status'].'. '.($status['reason'] ?? '').' Keep the same task through corrections/resume. Before editing read enabled-architectures and file-rules. Before finishing task-control check and inspect analysis: partial analysis warns unless audit.incomplete_analysis=block. New errors block verification; never repair other authors\' changes automatically. Start another task explicitly, not on every prompt. '.$guideline;
+                $text = 'Architecture Kit task '.$task.'. Status '.$status['status'].'. '.str_replace(' Do not edit until a valid beginning exists.', '', ($status['reason'] ?? '')).' Keep the same task through corrections/resume. Before editing read enabled-architectures and file-rules. Before finishing task-control check and inspect analysis. Basic analysis is advisory by default, including failed or incomplete checks. Try to correct new errors and report remaining errors and unverified checks in the handoff; never repair other authors\' changes automatically. Start another task explicitly, not on every prompt. '.$guideline;
                 if (strlen($text) > 16000) {
                     $text = substr($text, 0, 16000)."\nRead architecture-kit://guideline for the full selected guidance.";
                 }
@@ -75,16 +77,17 @@ final readonly class AgentHooks
             }
             $status = $tasks->check($task);
             $sessions->update($sessionKey, static fn (array $old): array => [...$old, 'last_event' => 'Stop', 'observed_at' => gmdate('c'), 'check_status' => $status['status']]);
-            $block = ! $status['ok'] && $status['status'] !== 'skipped' && ! $retry && ($status['attempts'] ?? 0) < 3;
-            $message = 'Architecture Kit: '.$status['status'].'. '.($status['reason'] ?? '').' Run audit --agent for evidence. Correct new errors or report the blocker. Explicit task skip stays unverified.';
+            $block = ($status['control']['blocking'] ?? false) && $status['status'] !== 'skipped' && ! $retry && ($status['attempts'] ?? 0) < 3;
+            $message = 'Architecture Kit: '.$status['status'].($status['ok'] ? '' : ' (unverified)').'. '.str_replace(' Do not edit until a valid beginning exists.', '', ($status['reason'] ?? '')).' Run audit --agent for evidence. Correct new errors or report the blocker. Explicit task skip stays unverified.';
 
             return $block ? ['decision' => 'block', 'reason' => $message] : ['systemMessage' => $message];
         } catch (Throwable $error) {
-            $message = 'Architecture Kit blocked/unverified: '.$error->getMessage();
+            $policy ??= $this->policy ?? ControlPolicy::Advisory;
+            $message = 'Architecture Kit unverified: '.$error->getMessage().'. Inspect source and report the remaining uncertainty in the handoff.';
 
             return $stop
-                ? ($retry ? ['systemMessage' => $message] : ['decision' => 'block', 'reason' => $message])
-                : ['hookSpecificOutput' => ['hookEventName' => $event, 'additionalContext' => $message.' Do not edit until a valid beginning exists.']];
+                ? ($policy === ControlPolicy::Enforce && ! $retry ? ['decision' => 'block', 'reason' => $message] : ['systemMessage' => $message])
+                : ['hookSpecificOutput' => ['hookEventName' => $event, 'additionalContext' => $message]];
         } finally {
             RepositoryContext::activate(null);
         }
@@ -115,7 +118,7 @@ final readonly class AgentHooks
         if (! in_array($client, ['codex', 'claude'], true)) {
             throw new RuntimeException('Supported clients are codex and claude.');
         }
-        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg($binary).' --tool-home '.escapeshellarg($this->home).' --project '.escapeshellarg($root).($this->profile === null ? '' : ' --profile '.escapeshellarg($this->profile)).($this->runtimeRoutes ? ' --runtime-routes' : '').' hook '.$client;
+        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg($binary).' --tool-home '.escapeshellarg($this->home).' --project '.escapeshellarg($root).($this->profile === null ? '' : ' --profile '.escapeshellarg($this->profile)).($this->runtimeRoutes ? ' --runtime-routes' : '').($this->policy === ControlPolicy::Enforce ? ' --enforce' : '').' hook '.$client;
         $hooks = [];
         foreach (['SessionStart', 'UserPromptSubmit', 'Stop'] as $event) {
             $hooks[$event] = [['hooks' => [['type' => 'command', 'command' => $command, 'timeout' => $this->runtimeRoutes ? 300 : 120]]]];

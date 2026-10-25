@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Install\Hooks\ClaudeHookWriter;
 use GracjanKubicki\ArchitectureKit\Install\Hooks\CodexHookWriter;
 use GracjanKubicki\ArchitectureKit\Install\Hooks\HookWriter;
 use GracjanKubicki\ArchitectureKit\Install\RuntimeResolver;
@@ -36,12 +37,12 @@ class AgentHookIntegrationTest extends TestCase
 
         $this->assertStringContainsString('Bootstrapped by Laravel Architecture Kit', $guard);
         $this->assertStringContainsString('Developer-owned after creation', $guard);
-        $this->assertStringContainsString('architecture-kit:guard --changed --strict --json', $guard);
+        $this->assertStringContainsString('architecture-kit:guard --changed --json', $guard);
         $this->assertStringContainsString('"Stop"', $codex);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $codex);
         $this->assertStringNotContainsString('_architectureKit', $codex);
         $this->assertStringContainsString('"Stop"', $claude);
-        $this->assertStringContainsString('.architecture-kit/hooks/guard.sh claude', $claude);
+        $this->assertSame((new ClaudeHookWriter)->command(), json_decode($claude, true, flags: JSON_THROW_ON_ERROR)['hooks']['Stop'][0]['hooks'][0]['command']);
         $this->assertStringNotContainsString('_architectureKit', $claude);
         $this->assertSame('755', substr(sprintf('%o', fileperms($this->tempPath.'/.architecture-kit/hooks/guard.sh')), -3));
     }
@@ -60,6 +61,21 @@ class AgentHookIntegrationTest extends TestCase
         $this->assertStringNotContainsString('Syntax error', $output);
         $this->assertStringNotContainsString('Illegal option', $output);
         $this->assertStringContainsString('architecture-kit:', $output);
+    }
+
+    public function test_exact_claude_command_runs_the_generated_guard_in_a_path_with_spaces(): void
+    {
+        $files = new Filesystem;
+        foreach (['repo', 'repo A'] as $name) {
+            $root = $this->tempPath.'/'.$name;
+            $files->ensureDirectoryExists($root);
+            // A real generated guard with no artisan must report runtime unavailable.
+            (new HookWriter($files, $root, new RuntimeResolver(['driver' => 'local', 'php' => PHP_BINARY])))->write([]);
+            $process = new Process(['/bin/sh', '-c', (new ClaudeHookWriter)->command()], $root, ['CLAUDE_PROJECT_DIR' => $root]);
+            $this->assertSame(0, $process->run(), $process->getErrorOutput());
+            $this->assertStringContainsString('architecture-kit: runtime unavailable', $process->getErrorOutput());
+            $this->assertStringNotContainsString('command not found', $process->getErrorOutput());
+        }
     }
 
     public function test_the_codex_command_lets_the_guard_shebang_choose_the_interpreter(): void
@@ -284,7 +300,7 @@ class AgentHookIntegrationTest extends TestCase
         }
     }
 
-    public function test_generated_hook_allows_a_valid_gate_and_fails_closed_when_runtime_is_unavailable(): void
+    public function test_generated_hook_allows_a_valid_gate_and_reports_unavailable_runtime_without_blocking(): void
     {
         $files = new Filesystem;
         $runner = $this->tempPath.'/fake-runtime.sh';
@@ -305,7 +321,8 @@ SH);
         ))->write([]);
 
         $guard = $files->get($this->tempPath.'/.architecture-kit/hooks/guard.sh');
-        $this->assertStringContainsString('case "$OUTPUT" in', $guard);
+        $this->assertStringContainsString('exit 0', $guard);
+        $this->assertStringContainsString('printf', $guard);
         $this->assertStringNotContainsString('| grep -q', $guard);
 
         $hook = new Process([$this->tempPath.'/.architecture-kit/hooks/guard.sh', 'codex'], $this->tempPath);
@@ -318,7 +335,7 @@ SH);
         ]);
         $failedHook->run();
 
-        $this->assertSame(9, $failedHook->getExitCode());
+        $this->assertSame(0, $failedHook->getExitCode());
         $this->assertStringContainsString('runtime unavailable', $failedHook->getErrorOutput());
 
         $failedClaudeHook = new Process([$this->tempPath.'/.architecture-kit/hooks/guard.sh', 'claude'], $this->tempPath, [
@@ -326,7 +343,7 @@ SH);
         ]);
         $failedClaudeHook->run();
 
-        $this->assertSame(2, $failedClaudeHook->getExitCode());
+        $this->assertSame(0, $failedClaudeHook->getExitCode());
         $this->assertStringContainsString('runtime unavailable', $failedClaudeHook->getErrorOutput());
     }
 }

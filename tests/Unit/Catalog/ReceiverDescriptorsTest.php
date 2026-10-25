@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -59,7 +60,7 @@ final class ReceiverDescriptorsTest extends TestCase
             $code = <<<'PHP'
 require $argv[1];
 $facts = \GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts::fromArray('app/Example.php', json_decode(file_get_contents($argv[2]), true, 512, JSON_THROW_ON_ERROR));
-$index = new \GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex([$facts]);
+$index = new \GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex([$facts], mode: \GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode::Deep);
 $targets = [];
 foreach ($index->relations as $row) {
     if ($row['kind'] === 'calls') {
@@ -85,7 +86,7 @@ require $argv[1];
 $n = (int) $argv[2];
 $source = '<?php namespace Probe; class Chain { public function handle(Builder $b) { return $b'.str_repeat($argv[3] === 'properties' ? '->step()->next' : '->step()', $n).'; } }';
 $extractor = new \GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
-$facts = $extractor->extract(new \GracjanKubicki\ArchitectureKit\Audit\FileContext('app/Probe.php', $source), true);
+$facts = $extractor->extract(new \GracjanKubicki\ArchitectureKit\Audit\FileContext('app/Probe.php', $source), true, \GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode::Deep);
 echo json_encode(['calls' => count($facts->calls), 'bytes' => strlen(json_encode($facts->toArray(), JSON_THROW_ON_ERROR)) + strlen(json_encode($extractor->descriptorReceivers(), JSON_THROW_ON_ERROR)), 'notices' => $facts->notices, 'peak' => memory_get_peak_usage(true)], JSON_THROW_ON_ERROR);
 PHP;
         $process = new Process([PHP_BINARY, '-d', 'memory_limit=64M', '-r', $code, dirname(__DIR__, 2).'/bootstrap.php', (string) $length, $properties ? 'properties' : 'methods']);
@@ -113,7 +114,7 @@ PHP;
     public function test_structure_limit_retains_earlier_calls_and_the_limit_location(): void
     {
         $source = '<?php namespace Probe; class Chain { public function handle(Builder $b) { $b->start();'."\n".str_repeat('$b->step();'."\n", 7000).'} }';
-        $facts = (new ImpactExtractor)->extract(new FileContext('app/Probe.php', $source), true);
+        $facts = (new ImpactExtractor)->extract(new FileContext('app/Probe.php', $source), true, AnalysisMode::Deep);
         $this->assertSame('start', $facts->calls[0]['method']);
         $this->assertGreaterThan(1, count($facts->calls));
         $this->assertLessThan(7001, count($facts->calls));
@@ -126,6 +127,6 @@ PHP;
     {
         $source = '<?php namespace App; class Builder { public self $next; public function step(): self { return $this; } public function finish() {} } class Caller { public function run(Builder $b) { $b->step()->next->step()->next->finish(); } }';
 
-        return array_values((new ProjectGraphBuilder(catalog: true))->build([new FileContext('app/Example.php', $source)])->catalogFacts)[0];
+        return array_values((new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('app/Example.php', $source)])->catalogFacts)[0];
     }
 }

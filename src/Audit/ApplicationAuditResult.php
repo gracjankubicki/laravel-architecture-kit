@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
 
 final readonly class ApplicationAuditResult
@@ -28,6 +29,12 @@ final readonly class ApplicationAuditResult
         public array $classification = [],
         /** Set only after standalone input hashes match at both ends of the audit. */
         public ?string $sourceFingerprint = null,
+        public AnalysisMode $mode = AnalysisMode::Basic,
+        public bool $checksComplete = true,
+        /** @var list<string> */
+        public array $graphScope = [],
+        /** @var list<string> */
+        public array $auditedPaths = [],
     ) {}
 
     /**
@@ -37,6 +44,13 @@ final readonly class ApplicationAuditResult
      * because an entry rejected on every run is otherwise indistinguishable from having
      * no cache at all, and the difference is twenty seconds per command.
      */
+    /** @return array{mode: string, checks_complete: bool, deep_run: bool} */
+    public function analysis(): array
+    {
+        return ['mode' => $this->mode->value, 'checks_complete' => $this->checksComplete && $this->analysisStatus !== 'incomplete',
+            'deep_run' => $this->mode === AnalysisMode::Deep];
+    }
+
     public function cacheNote(): ?string
     {
         return $this->cacheStatus->note();
@@ -52,7 +66,7 @@ final readonly class ApplicationAuditResult
 
     public function incomplete(): bool
     {
-        return $this->analysisStatus === 'incomplete' || $this->notices !== []
+        return ! $this->checksComplete || $this->analysisStatus === 'incomplete' || $this->notices !== []
             || count(array_filter($this->findings, static fn (AuditFinding $finding): bool => $finding->isIncompleteAnalysis())) > 0;
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex;
@@ -185,9 +186,9 @@ JSON;
             foreach ($sources as $path => $source) {
                 $files[] = new FileContext($path, $source);
             }
-            $facts = (new ProjectGraphBuilder(catalog: true))->build($files)->catalogFacts;
+            $facts = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build($files)->catalogFacts;
             $this->assertStringNotContainsString('-secret', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
-            $index = new CatalogIndex($facts);
+            $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
             $packages = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'composer-package'));
             $this->assertCount(2, $packages);
             $this->assertSame(['locked', 'installed'], array_column(array_column($packages, 'metadata'), 'state'));

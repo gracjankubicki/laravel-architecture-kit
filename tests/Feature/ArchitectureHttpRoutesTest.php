@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
@@ -12,12 +13,15 @@ use GracjanKubicki\ArchitectureKit\Impact\HttpRouteDiscovery;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Impact;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureHttpRoutesTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -41,7 +45,7 @@ final class ArchitectureHttpRoutesTest extends TestCase
     {
         $files ??= new Filesystem;
 
-        return (new ArchitectureImpact($files, $this->tempPath, new AuditScope, $cache ? new ProjectGraphCache($files, $this->tempPath) : null))->inspect($subject, $exclude, $limit, $depth, $change);
+        return (new ArchitectureImpact($files, $this->tempPath, new AuditScope, $cache ? new ProjectGraphCache($files, $this->tempPath) : null, mode: AnalysisMode::Deep))->inspect($subject, $exclude, $limit, $depth, $change);
     }
 
     private function execution(string $subject = 'Calculator::calculate'): array
@@ -481,14 +485,14 @@ final class ArchitectureHttpRoutesTest extends TestCase
     public function test_cli_mcp_and_schema_share_execution_report(): void
     {
         $this->fixture();
-        $this->assertSame(0, Artisan::call('architecture-kit:impact', ['subject' => 'Calculator::calculate', '--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Calculator::calculate', '--agent' => true]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
-        ArchitectureKitServer::tool(Impact::class, ['subject' => 'Calculator::calculate'])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
+        ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'Calculator::calculate'])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
         $properties = ImpactSchema::get()['oneOf'][0]['properties']['execution']['properties'];
         foreach ($cli['execution'] as $key => $value) {
             $this->assertArrayHasKey($key, $properties);
         }
-        $this->assertSame(0, Artisan::call('architecture-kit:impact', ['subject' => 'Calculator::calculate']));
+        $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Calculator::calculate']));
         $output = Artisan::output();
         $this->assertStringContainsString('/orders', $output);
         $this->assertStringContainsString('HTTP', $output);

@@ -87,10 +87,10 @@ final class StandaloneProcessTest extends TestCase
         $settings = json_decode(file_get_contents($registration['config']), true, flags: JSON_THROW_ON_ERROR);
         $settings['analysis']['engine'] = $settings['analysis']['engine'] === 'php' ? 'mago' : 'php';
         file_put_contents($registration['config'], json_encode($settings, JSON_THROW_ON_ERROR));
-        $checked = $this->cli(['task', 'check', 'engine-switch'], exit: 1);
+        $checked = $this->cli(['task', 'check', 'engine-switch'], exit: 0);
         self::assertSame('blocked', $checked['status']);
         self::assertFalse($checked['ok']);
-        $again = $this->cli(['task', 'begin', 'engine-switch'], exit: 1);
+        $again = $this->cli(['task', 'begin', 'engine-switch'], exit: 0);
         foreach (['begin_sources', 'begin_errors', 'fingerprint', 'created_at'] as $key) {
             self::assertSame($begin[$key], $again[$key]);
         }
@@ -145,7 +145,7 @@ final class StandaloneProcessTest extends TestCase
             $reports = $decisions = [];
             foreach (['off' => false, 'cold' => true, 'warm' => true] as $mode => $enabled) {
                 file_put_contents($registered['config'], json_encode(['analysis' => ['engine' => 'php'], 'enabled' => ['actions'], 'audit' => ['cache' => $enabled, 'missing_test' => 'off']], JSON_THROW_ON_ERROR));
-                $reports[$mode] = $this->cli(['audit', '--agent', '--full', '--limit=50000']);
+                $reports[$mode] = $this->deepAudit(['--full', '--limit=50000']);
                 self::assertSame($status, $reports[$mode]['analysis']['status']);
                 self::assertFalse($reports[$mode]['analysis']['truncated']);
                 $begin = $this->cli(['task', 'begin', $status.'-'.$mode], exit: 0);
@@ -166,9 +166,10 @@ final class StandaloneProcessTest extends TestCase
         mkdir($this->root.'/routes');
         file_put_contents($this->root.'/routes/web.php', '<?php use Illuminate\\Support\\Facades\\Route; Route::get("pełny/raport", [App\\Http\\Controllers\\Probe::class, "index"]);');
         file_put_contents($this->root.'/app/Http/Controllers/Probe.php', '<?php namespace App\\Http\\Controllers; class Probe { public function index() { '.str_repeat('\\Vendor\\Unknown::handle();'."\n", 100).' } }');
+        $this->cli(['analysis-consent', 'grant-deep', 'full-report', '--confirm']);
         $messages = [['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-03-26', 'capabilities' => [], 'clientInfo' => ['name' => 'full-report-test', 'version' => '1']]]];
         foreach (['audit-changed', 'audit-changed', 'guard', 'audit-changed', 'audit-changed'] as $index => $name) {
-            $messages[] = ['jsonrpc' => '2.0', 'id' => $index + 2, 'method' => 'tools/call', 'params' => ['name' => $name, 'arguments' => ['changed' => false, 'full' => true, 'limit' => 50000]]];
+            $messages[] = ['jsonrpc' => '2.0', 'id' => $index + 2, 'method' => 'tools/call', 'params' => ['name' => $name, 'arguments' => ['changed' => false, 'full' => true, 'limit' => 50000, ...($name === 'audit-changed' ? ['analysis_mode' => 'deep', 'task' => 'full-report'] : [])]]];
         }
         $process = $this->process(['mcp']);
         $process->setInput(implode("\n", array_map(json_encode(...), $messages))."\n");
@@ -180,39 +181,37 @@ final class StandaloneProcessTest extends TestCase
             $result = $response['result'];
             self::assertSame($result['structuredContent'], json_decode($result['content'][0]['text'], true, flags: JSON_THROW_ON_ERROR));
             self::assertFalse($result['structuredContent']['analysis']['truncated']);
-            self::assertGreaterThan(20, $result['structuredContent']['analysis']['total']);
+            if ($response['id'] === 4) {
+                self::assertSame('basic', $result['structuredContent']['analysis']['mode']);
+                self::assertSame(0, $result['structuredContent']['analysis']['total']);
+            } else {
+                self::assertSame('deep', $result['structuredContent']['analysis']['mode']);
+                self::assertGreaterThan(20, $result['structuredContent']['analysis']['total']);
+            }
         }
         self::assertSame($responses[1]['result'], $responses[2]['result']);
         self::assertSame($responses[1]['result'], $responses[4]['result']);
         self::assertSame($responses[1]['result'], $responses[5]['result']);
     }
 
-    public function test_incomplete_required_test_relationship_blocks_when_explicitly_configured(): void
+    public function test_basic_missing_test_errors_remain_advisory_without_automatic_reachability(): void
     {
         $settings = $this->cli(['init', 'actions']);
         file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["actions"],"audit":{"missing_test":"error","incomplete_analysis":"block"}}');
         mkdir($this->root.'/tests/Feature', 0700, true);
-        file_put_contents($this->root.'/tests/Feature/UnknownTest.php', "<?php it('runs unknown command', function () { \$this->artisan(\$unknown); });");
-        $audit = $this->cli(['audit', '--agent'], exit: 1);
-        self::assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit['find'], 'm'));
-        self::assertSame('blocked', $this->cli(['task', 'begin', 'incomplete'], exit: 1)['status']);
-        self::assertSame('blocked', $this->cli(['task', 'check', 'incomplete'], exit: 1)['status']);
-        self::assertFalse($this->cli(['guard', '--agent'], exit: 1)['ok']);
-
-        // Also cover a previously valid beginning becoming incomplete during edits.
-        unlink($this->root.'/tests/Feature/UnknownTest.php');
-        self::assertSame('blocked', $this->cli(['task', 'begin', 'incomplete'], exit: 1)['status']);
-        self::assertSame('started', $this->cli(['task', 'begin', 'becomes-incomplete'])['status']);
-        foreach (['codex', 'claude'] as $client) {
-            $this->cli(['task', 'begin', 'incomplete-'.$client]);
-        }
-        file_put_contents($this->root.'/tests/Feature/UnknownTest.php', "<?php it('runs unknown command', function () { \$this->artisan(\$unknown); });");
-        self::assertSame('blocked', $this->cli(['task', 'check', 'becomes-incomplete'], exit: 1)['status']);
-        foreach (['codex', 'claude'] as $client) {
-            $this->cli(['task', 'bind', 'incomplete-'.$client, '--client', $client, '--session', 'incomplete-'.$client]);
-            $stop = $this->hook($client, ['hook_event_name' => 'Stop', 'cwd' => $this->root, 'session_id' => 'incomplete-'.$client]);
-            self::assertSame('block', $stop['decision']);
-        }
+        file_put_contents($this->root.'/tests/Feature/UnknownTest.php', '<?php it("runs unknown command", function () { $this->artisan($unknown); });');
+        $audit = $this->cli(['audit', '--agent']);
+        self::assertSame('basic', $audit['analysis']['mode']);
+        self::assertFalse($audit['analysis']['deep_run']);
+        self::assertTrue($audit['analysis']['checks_complete']);
+        self::assertNotContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit['find'], 'm'));
+        self::assertGreaterThan(0, $audit['err']);
+        self::assertFalse($audit['control']['blocking']);
+        self::assertSame('started', $this->cli(['task', 'begin', 'incomplete'])['status']);
+        self::assertSame('pass', $this->cli(['task', 'check', 'incomplete'])['status']);
+        self::assertFalse($this->cli(['guard', '--agent'])['ok']);
+        $deep = $this->deepAudit();
+        self::assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($deep['find'], 'm'));
     }
 
     public function test_ordinary_missing_test_warnings_do_not_block_task_verification(): void
@@ -259,11 +258,11 @@ final class StandaloneProcessTest extends TestCase
         self::assertNotEmpty($begin['begin_errors']);
         self::assertSame('pass', $this->cli(['task', 'check', 'one'])['status']);
         file_put_contents($this->root.'/app/Actions/SendInvoice.php', "<?php\n\n\nnamespace App\\Actions; use Illuminate\\Http\\Request; class SendInvoice { public function handle(): void {} }");
-        self::assertSame('stale', $this->cli(['task', 'status', 'one'], exit: 1)['status']);
+        self::assertSame('stale', $this->cli(['task', 'status', 'one'], exit: 0)['status']);
         self::assertSame('pass', $this->cli(['task', 'check', 'one'])['status']);
         self::assertSame($begin['begin_sources'], $this->cli(['task', 'begin', 'one'])['begin_sources']);
         file_put_contents($this->root.'/app/Actions/Other.php', '<?php namespace App\\Actions; use Illuminate\\Http\\Request; class Other {}');
-        $failed = $this->cli(['task', 'check', 'one'], exit: 1);
+        $failed = $this->cli(['task', 'check', 'one'], exit: 0);
         self::assertSame('fail', $failed['status']);
         self::assertGreaterThan(0, $failed['new_errors']);
         unlink($this->root.'/app/Actions/Other.php');
@@ -271,9 +270,9 @@ final class StandaloneProcessTest extends TestCase
         $shared = $this->root.'/.architecture-kit';
         mkdir($shared);
         file_put_contents($shared.'/settings.json', '{"analysis":{"engine":"php"},"enabled":["services"]}');
-        self::assertSame('blocked', $this->cli(['task', 'check', 'one'], exit: 1)['status']);
+        self::assertSame('blocked', $this->cli(['task', 'check', 'one'], exit: 0)['status']);
         self::assertFalse($this->cli(['task', 'skip', 'one', '--confirm'])['ok']);
-        self::assertSame('blocked', $this->cli(['task', 'check', 'missing'], exit: 1)['status']);
+        self::assertSame('blocked', $this->cli(['task', 'check', 'missing'], exit: 0)['status']);
     }
 
     public function test_profiles_are_explicit_and_mutations_require_opt_in(): void
@@ -283,11 +282,12 @@ final class StandaloneProcessTest extends TestCase
         $config['analysis'] = ['engine' => 'php'];
         file_put_contents($profile['config'], json_encode($config, JSON_THROW_ON_ERROR));
         $this->action(true);
-        self::assertGreaterThan(0, $this->cli(['audit', '--agent'], exit: 1)['err']);
+        self::assertGreaterThan(0, $this->cli(['audit', '--agent'], exit: 0)['err']);
         self::assertSame(0, $this->cli(['audit', '--agent', '--profile', 'personal'])['err']);
         $blocked = $this->process(['make', 'actions', 'Other']);
         $blocked->run();
-        self::assertNotSame(0, $blocked->getExitCode());
+        self::assertSame(0, $blocked->getExitCode());
+        self::assertStringContainsString('allow-write', $blocked->getOutput().$blocked->getErrorOutput());
         self::assertFileDoesNotExist($this->root.'/app/Actions/Other.php');
         $write = $this->process(['make', 'actions', 'Other', '--allow-write']);
         $write->run();
@@ -295,7 +295,8 @@ final class StandaloneProcessTest extends TestCase
         self::assertFileExists($this->root.'/app/Actions/Other.php');
         $inside = $this->process(['init', '--tool-home', $this->root.'/hidden']);
         $inside->run();
-        self::assertSame(2, $inside->getExitCode());
+        self::assertSame(0, $inside->getExitCode());
+        self::assertStringContainsString('outside', $inside->getErrorOutput());
         self::assertDirectoryDoesNotExist($this->root.'/hidden');
     }
 
@@ -305,11 +306,12 @@ final class StandaloneProcessTest extends TestCase
         file_put_contents($this->root.'/config/architectures.php', '<?php file_put_contents(__DIR__."/executed", "1"); return ["enabled" => []];');
         $process = $this->process(['audit', '--agent']);
         $process->run();
-        self::assertSame(2, $process->getExitCode());
+        self::assertSame(0, $process->getExitCode());
+        self::assertStringContainsString('false', $process->getErrorOutput());
         self::assertFileDoesNotExist($this->root.'/config/executed');
     }
 
-    public function test_both_hook_protocols_begin_once_block_errors_and_preserve_resume(): void
+    public function test_both_hook_protocols_begin_once_report_advisory_errors_and_preserve_resume(): void
     {
         foreach (['codex', 'claude'] as $client) {
             $input = ['hook_event_name' => 'SessionStart', 'source' => 'startup', 'session_id' => $client, 'cwd' => $this->root];
@@ -317,7 +319,8 @@ final class StandaloneProcessTest extends TestCase
             self::assertStringContainsString('Status started', $start['hookSpecificOutput']['additionalContext']);
             $this->action(true);
             $stop = $this->hook($client, [...$input, 'hook_event_name' => 'Stop']);
-            self::assertSame('block', $stop['decision']);
+            self::assertArrayNotHasKey('decision', $stop);
+            self::assertStringContainsString('unverified', $stop['systemMessage']);
             $retry = $this->hook($client, [...$input, 'hook_event_name' => 'Stop', 'stop_hook_active' => true]);
             self::assertArrayNotHasKey('decision', $retry);
             self::assertStringContainsString('fail', $retry['systemMessage']);
@@ -382,11 +385,11 @@ final class StandaloneProcessTest extends TestCase
         mkdir($this->root.'/routes', 0700, true);
         file_put_contents($this->root.'/app/Http/Controllers/InvoiceController.php', '<?php namespace App\\Http\\Controllers; class InvoiceController { public function index() { return "ok"; } }');
         file_put_contents($this->root.'/routes/web.php', '<?php use Illuminate\\Support\\Facades\\Route; Route::get("/invoices", [App\\Http\\Controllers\\InvoiceController::class, "index"]); Route::get("/dynamic", $handler);');
-        $audit = $this->cli(['audit', '--agent']);
+        $audit = $this->deepAudit();
         self::assertSame('incomplete', $audit['analysis']['status']);
         self::assertContains('A_ROUTE_SOURCE_UNRESOLVED', array_column($audit['analysis']['notices'], 'code'));
-        self::assertSame('blocked', $this->cli(['task', 'begin', 'dynamic-http'], exit: 1)['status']);
-        self::assertFalse($this->cli(['guard', '--agent'], exit: 1)['ok']);
+        self::assertSame('started', $this->cli(['task', 'begin', 'dynamic-http'], exit: 0)['status']);
+        self::assertTrue($this->cli(['guard', '--agent'])['ok']);
     }
 
     public function test_missing_static_route_handler_blocks_task_without_executing_vendor(): void
@@ -399,15 +402,15 @@ final class StandaloneProcessTest extends TestCase
         file_put_contents($this->root.'/vendor/autoload.php', '<?php file_put_contents(__DIR__."/executed", "yes");');
         file_put_contents($this->root.'/app/Http/Controllers/InvoiceController.php', '<?php namespace App\\Http\\Controllers; class InvoiceController { public function index() { return "ok"; } }');
         file_put_contents($this->root.'/routes/web.php', '<?php use Illuminate\\Support\\Facades\\Route; Route::get("/invoices", [App\\Http\\Controllers\\InvoiceController::class, "index"]); Route::get("/missing", [App\\Http\\Controllers\\MissingController::class, "index"]); Route::get("/external", [Vendor\\ExternalController::class, "index"]);');
-        $audit = $this->cli(['audit', '--agent']);
+        $audit = $this->deepAudit();
         self::assertSame('incomplete', $audit['analysis']['status']);
         $notices = array_values(array_filter($audit['analysis']['notices'], fn ($notice) => $notice['code'] === 'A_SOURCE_UNAVAILABLE'));
         self::assertCount(2, $notices);
         self::assertSame(['missing', 'external'], array_column(array_column($notices, 'route'), 'uri'));
         self::assertSame('routes/web.php', $notices[0]['route']['source']['path']);
-        self::assertSame('blocked', $this->cli(['task', 'begin', 'missing-http'], exit: 1)['status']);
-        self::assertSame('blocked', $this->cli(['task', 'check', 'missing-http'], exit: 1)['status']);
-        self::assertFalse($this->cli(['guard', '--agent'], exit: 1)['ok']);
+        self::assertSame('started', $this->cli(['task', 'begin', 'missing-http'], exit: 0)['status']);
+        self::assertSame('pass', $this->cli(['task', 'check', 'missing-http'], exit: 0)['status']);
+        self::assertTrue($this->cli(['guard', '--agent'])['ok']);
         self::assertFileDoesNotExist($this->root.'/vendor/executed');
     }
 
@@ -425,13 +428,13 @@ final class StandaloneProcessTest extends TestCase
         file_put_contents($this->root.'/bootstrap/app.php', '<?php file_put_contents('.var_export($counter, true).', "boot\\n", FILE_APPEND); return \\Illuminate\\Foundation\\Application::configure(basePath: dirname(__DIR__))->withRouting(using: function () { app("router")->get("dynamic-".random_int(1, 10000), [\\App\\Http\\Controllers\\InvoiceController::class, "index"]); })->create();');
         file_put_contents($this->root.'/bootstrap/providers.php', '<?php return [];');
         $before = $this->files();
-        self::assertSame('incomplete', $this->cli(['audit', '--agent'])['analysis']['status']);
+        self::assertSame('incomplete', $this->deepAudit()['analysis']['status']);
         self::assertFileDoesNotExist($counter);
-        self::assertSame('complete', $this->cli(['--runtime-routes', 'audit', '--agent'])['analysis']['status']);
+        self::assertSame('complete', $this->deepAudit(['--runtime-routes'])['analysis']['status']);
         self::assertSame('started', $this->cli(['--runtime-routes', 'task', 'begin', 'runtime'])['status']);
         self::assertSame('pass', $this->cli(['--runtime-routes', 'task', 'check', 'runtime'])['status']);
-        self::assertSame('stale', $this->cli(['task', 'status', 'runtime'], exit: 1)['status']);
-        self::assertCount(3, file($counter));
+        self::assertSame('stale', $this->cli(['task', 'status', 'runtime'], exit: 0)['status']);
+        self::assertCount(1, file($counter));
         $export = $this->cli(['--runtime-routes', 'integration', 'export', 'codex']);
         self::assertContains('--runtime-routes', $export['mcp']['args']);
         $hooks = json_decode(file_get_contents($export['directory'].'/hooks.json'), true, flags: JSON_THROW_ON_ERROR);
@@ -444,19 +447,20 @@ final class StandaloneProcessTest extends TestCase
 
     public function test_runtime_bootstrap_failure_and_invalid_settings_never_pass_task_verification(): void
     {
-        self::assertSame('blocked', $this->cli(['--runtime-routes', 'task', 'begin', 'runtime-failed'], exit: 1)['status']);
-        self::assertFalse($this->cli(['--runtime-routes', 'guard', '--agent'], exit: 1)['ok']);
+        self::assertSame('started', $this->cli(['--runtime-routes', 'task', 'begin', 'runtime-failed'], exit: 0)['status']);
+        self::assertTrue($this->cli(['--runtime-routes', 'guard', '--agent'])['ok']);
+        self::assertFalse($this->deepAudit(['--runtime-routes'])['analysis']['checks_complete']);
         $settings = $this->cli(['init', 'actions']);
         file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["actions"],"runtime":{"routes":{"driver":"docker-compose","service":"invalid;touch /tmp/unwanted"}}}');
-        self::assertSame('blocked', $this->cli(['--runtime-routes', 'task', 'begin', 'invalid-runtime'], exit: 1)['status']);
+        self::assertSame('started', $this->cli(['--runtime-routes', 'task', 'begin', 'invalid-runtime'], exit: 0)['status']);
         file_put_contents($settings['config'], '{"analysis":{"engine":"php"},"enabled":["actions"],"rules":["Fixture\\\\CustomRule"]}');
         $custom = $this->process(['--runtime-routes', 'audit', '--agent']);
         $custom->run();
-        self::assertSame(1, $custom->getExitCode());
+        self::assertSame(0, $custom->getExitCode());
         self::assertStringContainsString('--allow-execution', $custom->getOutput().$custom->getErrorOutput());
         $false = $this->process(['--runtime-routes=false', 'audit', '--agent']);
         $false->run();
-        self::assertSame(2, $false->getExitCode());
+        self::assertSame(0, $false->getExitCode());
         self::assertStringContainsString('bare --runtime-routes', $false->getErrorOutput());
     }
 
@@ -473,20 +477,20 @@ final class StandaloneProcessTest extends TestCase
                 $settings['audit']['incomplete_analysis'] = 'block';
             } // The first run deliberately uses an existing profile without the new setting.
             file_put_contents($registration['config'], json_encode($settings, JSON_THROW_ON_ERROR));
-            $blocked = $policy === 'block';
+            $blocked = false; // Old completeness settings do not enable Deep or Enforce.
             $begin = $this->cli(['task', 'begin', $policy], exit: $blocked ? 1 : 0);
             self::assertSame($blocked ? 'blocked' : 'started', $begin['status']);
             $checked = $this->cli(['task', 'check', $policy], exit: $blocked ? 1 : 0);
             self::assertSame($blocked ? 'blocked' : 'pass', $checked['status']);
             $guard = $this->cli(['guard', '--agent', '--strict'], exit: $blocked ? 1 : 0);
             self::assertSame(! $blocked, $guard['ok']);
-            self::assertSame('incomplete', $guard['analysis']['status']);
-            self::assertNotEmpty($guard['analysis']['notices']);
+            self::assertSame('complete', $guard['analysis']['status']);
+            self::assertSame([], $guard['analysis']['notices']);
             if (! $blocked) {
-                self::assertSame('incomplete', $begin['begin_analysis']['status']);
-                self::assertSame('warn', $checked['analysis']['policy']);
-                self::assertGreaterThan(0, $checked['analysis']['notice_total']);
-                self::assertStringContainsString('Analysis is partial', $checked['reason']);
+                self::assertSame('complete', $begin['begin_analysis']['status']);
+                self::assertSame($policy, $checked['analysis']['policy']);
+                self::assertSame(0, $checked['analysis']['notice_total']);
+                self::assertFalse($checked['analysis']['deep_run']);
             }
             $mcp = $this->mcp([
                 ['name' => 'task-control', 'arguments' => ['action' => 'begin', 'task' => 'mcp-'.$policy]],
@@ -496,18 +500,19 @@ final class StandaloneProcessTest extends TestCase
             self::assertSame($blocked ? 'blocked' : 'started', $mcp[0]['status']);
             self::assertSame($blocked ? 'blocked' : 'pass', $mcp[1]['status']);
             self::assertSame(! $blocked, $mcp[2]['ok']);
-            self::assertSame('incomplete', $mcp[2]['analysis']['status']);
+            self::assertSame('complete', $mcp[2]['analysis']['status']);
             foreach (['codex', 'claude'] as $client) {
                 $input = ['hook_event_name' => 'SessionStart', 'source' => 'startup', 'cwd' => $this->root, 'session_id' => $policy.'-'.$client];
                 $start = $this->hook($client, $input);
                 self::assertStringContainsString('Status '.($blocked ? 'blocked' : 'started'), $start['hookSpecificOutput']['additionalContext']);
                 $stop = $this->hook($client, [...$input, 'hook_event_name' => 'Stop']);
                 if ($blocked) {
-                    self::assertSame('block', $stop['decision']);
+                    self::assertArrayNotHasKey('decision', $stop);
+                    self::assertStringContainsString('unverified', $stop['systemMessage']);
                 } else {
                     self::assertArrayNotHasKey('decision', $stop);
-                    self::assertStringContainsString('partial', $start['hookSpecificOutput']['additionalContext']);
-                    self::assertStringContainsString('partial', $stop['systemMessage']);
+                    self::assertStringContainsString('Basic', $start['hookSpecificOutput']['additionalContext']);
+                    self::assertStringContainsString('pass', $stop['systemMessage']);
                 }
             }
         }
@@ -524,18 +529,18 @@ final class StandaloneProcessTest extends TestCase
         file_put_contents($this->root.'/routes/web.php', '<?php use Illuminate\\Support\\Facades\\Route; Route::get("dynamic", $handler);');
         $checked = $this->cli(['task', 'check', 'partial-after-edit']);
         self::assertSame('pass', $checked['status']);
-        self::assertSame('incomplete', $checked['analysis']['status']);
+        self::assertSame('complete', $checked['analysis']['status']);
         $this->action(true);
-        $failed = $this->cli(['task', 'check', 'partial-after-edit'], exit: 1);
+        $failed = $this->cli(['task', 'check', 'partial-after-edit'], exit: 0);
         self::assertSame('fail', $failed['status']);
         self::assertGreaterThan(0, $failed['new_errors']);
-        self::assertSame('incomplete', $failed['analysis']['status']);
+        self::assertSame('complete', $failed['analysis']['status']);
         $registration = $this->cli(['init', 'actions']);
         $settings = json_decode(file_get_contents($registration['config']), true, flags: JSON_THROW_ON_ERROR);
         $settings['audit']['incomplete_analysis'] = 'block';
         file_put_contents($registration['config'], json_encode($settings, JSON_THROW_ON_ERROR));
-        self::assertSame('blocked', $this->cli(['task', 'check', 'partial-after-edit'], exit: 1)['status']);
-        $again = $this->cli(['task', 'begin', 'partial-after-edit'], exit: 1);
+        self::assertSame('blocked', $this->cli(['task', 'check', 'partial-after-edit'], exit: 0)['status']);
+        $again = $this->cli(['task', 'begin', 'partial-after-edit'], exit: 0);
         self::assertSame($begin['begin_errors'], $again['begin_errors']);
         self::assertSame($begin['begin_sources'], $again['begin_sources']);
         self::assertSame($begin['begin_analysis'], $again['begin_analysis']);
@@ -547,12 +552,20 @@ final class StandaloneProcessTest extends TestCase
         $settings = json_decode(file_get_contents($registration['config']), true, flags: JSON_THROW_ON_ERROR);
         $settings['audit']['incomplete_analysis'] = 'ignore';
         file_put_contents($registration['config'], json_encode($settings, JSON_THROW_ON_ERROR));
-        $begin = $this->cli(['task', 'begin', 'invalid-policy'], exit: 1);
+        $begin = $this->cli(['task', 'begin', 'invalid-policy'], exit: 0);
         self::assertSame('blocked', $begin['status']);
         self::assertStringContainsString('warn, block', $begin['reason']);
-        $guard = $this->cli(['guard', '--agent'], exit: 1);
+        $guard = $this->cli(['guard', '--agent'], exit: 0);
         self::assertFalse($guard['ok']);
-        self::assertStringContainsString('warn, block', $guard['msg']);
+        self::assertFalse($guard['analysis']['checks_complete']);
+        self::assertStringContainsString('warn, block', json_encode($guard['analysis']['notices']));
+    }
+
+    private function deepAudit(array $options = []): array
+    {
+        $this->cli(['analysis-consent', 'grant-deep', 'semantic', '--confirm']);
+
+        return $this->cli(['audit', '--agent', '--mode=deep', '--task=semantic', ...$options]);
     }
 
     private function mcp(array $calls): array

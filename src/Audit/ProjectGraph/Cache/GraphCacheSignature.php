@@ -12,12 +12,10 @@ namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache;
  * just added, and nothing in the output would say so. Correctness is the whole job here;
  * the speed follows from it.
  *
- * File state is `mtime` and size rather than a content hash. Measured on an application
- * with 11566 files, stat costs 0.02s against 1.58s for hashing, and the cost is paid on
- * every run including the ones that hit the cache. The gap it leaves is narrow and named:
- * content changed while both `mtime` and size stayed identical. Git, editors and agents
- * writing a file all move `mtime`; `rsync -a`, an archive unpacked with its timestamps and
- * `touch -r` do not, which is what the clear command is for.
+ * ProjectGraphLoader records mtime, size and the source SHA256 hash. Equal-stat
+ * edits therefore invalidate a contribution too. The stat() helper is only the
+ * metadata component; callers constructing signatures directly supply their own
+ * file state. Analysis mode also belongs in configuration identity.
  */
 final readonly class GraphCacheSignature
 {

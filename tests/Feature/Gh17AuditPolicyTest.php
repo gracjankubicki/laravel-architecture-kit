@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
@@ -135,7 +136,7 @@ PHP);
             $enabled,
             changedOnly: false,
             routes: $routes ?? new RouteMap(['app\http\controllers\planningcontroller::show' => $verbs]),
-        );
+            mode: AnalysisMode::Deep);
     }
 
     private function writeFixture(): void

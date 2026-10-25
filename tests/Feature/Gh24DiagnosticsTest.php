@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
@@ -47,7 +48,7 @@ final class Gh24DiagnosticsTest extends TestCase
             [Architecture::ThinControllers, Architecture::Actions, Architecture::Services],
             changedOnly: false,
             routes: new RouteMap(['app\\http\\controllers\\probecontroller::show' => ['GET']]),
-        );
+            mode: AnalysisMode::Deep);
     }
 
     #[DataProvider('knownCalls')]
@@ -99,7 +100,9 @@ final class Gh24DiagnosticsTest extends TestCase
     {
         $this->fixture('return \App\Models\LargeResource::missing();');
         $this->write('app/Models/LargeResource.php', '<?php namespace App\Models; /*'.str_repeat('x', 100_000).'*/ class LargeResource {}');
-        $notices = $this->audit()->notices;
+        $allNotices = $this->audit()->notices;
+        $this->assertContains('A_SOURCE_CHECK_INCOMPLETE', array_column($allNotices, 'code'));
+        $notices = array_values(array_filter($allNotices, fn ($notice) => $notice->code !== 'A_SOURCE_CHECK_INCOMPLETE'));
         $this->assertCount(1, $notices);
         $this->assertSame('source_budget', $notices[0]->reason);
         $this->assertSame('A_SOURCE_UNAVAILABLE', $notices[0]->code);
@@ -121,10 +124,12 @@ final class Gh24DiagnosticsTest extends TestCase
         $this->write('app/Http/Middleware/LargeResource.php', '<?php namespace App\Http\Middleware; /*'.str_repeat('x', 100_000).'*/ class LargeResource {}');
         $routes = new RouteMap(entries: [new RouteEntry(['GET'], 'probe', class: 'App\\Http\\Controllers\\ProbeController', method: 'show', middleware: ['large'])],
             context: ['status' => 'known', 'providers' => [], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => ['large' => 'App\\Http\\Middleware\\LargeResource'], 'packageVersions' => []]);
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: $routes);
-        $this->assertCount(1, $result->notices);
-        $this->assertSame('source_budget', $result->notices[0]->reason);
-        $this->assertSame('A_SOURCE_UNAVAILABLE', $result->notices[0]->code);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: $routes, mode: AnalysisMode::Deep);
+        $this->assertFalse($result->analysis()['checks_complete']);
+        $notices = array_values(array_filter($result->notices, fn ($notice) => $notice->code !== 'A_SOURCE_CHECK_INCOMPLETE'));
+        $this->assertCount(1, $notices);
+        $this->assertSame('source_budget', $notices[0]->reason);
+        $this->assertSame('A_SOURCE_UNAVAILABLE', $notices[0]->code);
     }
 
     #[DataProvider('frameworkCallables')]
@@ -135,15 +140,20 @@ final class Gh24DiagnosticsTest extends TestCase
             $this->write('app/Providers/FortifyServiceProvider.php', '<?php namespace App\Providers; class FortifyServiceProvider { public function boot() { \Laravel\Fortify\Fortify::authenticateThrough(fn () => [\App\Auth\SourceLimitSql::class]); } }');
             $routes = new RouteMap(entries: [new RouteEntry(['POST'], 'login', class: 'Laravel\\Fortify\\Http\\Controllers\\AuthenticatedSessionController', method: 'store')],
                 context: ['status' => 'known', 'providers' => ['App\\Providers\\FortifyServiceProvider'], 'middleware' => [], 'middlewareGroups' => [], 'middlewareAliases' => [], 'packageVersions' => ['laravel/fortify' => '1.x']]);
-            $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: $routes);
+            $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([Architecture::ThinControllers], changedOnly: false, routes: $routes, mode: AnalysisMode::Deep);
         } else {
             $this->fixture($kind === 'lazy' ? 'return \Inertia\Inertia::lazy([\App\Auth\SourceLimitSql::class, "build"]);'
                 : 'return \Inertia\Inertia::render("Page", ["value" => [\App\Auth\SourceLimitSql::class, "build"]]);');
             $result = $this->audit();
         }
-        $this->assertCount(1, $result->notices);
-        $this->assertSame($oversized ? 'source_budget' : 'unresolved_call', $result->notices[0]->reason);
-        $this->assertSame($oversized ? 'A_SOURCE_UNAVAILABLE' : 'A_CALL_UNRESOLVED', $result->notices[0]->code);
+        if ($oversized) {
+            $this->assertFalse($result->analysis()['checks_complete']);
+            $this->assertContains('A_SOURCE_CHECK_INCOMPLETE', array_column($result->notices, 'code'));
+        }
+        $notices = array_values(array_filter($result->notices, fn ($notice) => $notice->code !== 'A_SOURCE_CHECK_INCOMPLETE'));
+        $this->assertCount(1, $notices);
+        $this->assertSame($oversized ? 'source_budget' : 'unresolved_call', $notices[0]->reason);
+        $this->assertSame($oversized ? 'A_SOURCE_UNAVAILABLE' : 'A_CALL_UNRESOLVED', $notices[0]->code);
     }
 
     public static function frameworkCallables(): iterable

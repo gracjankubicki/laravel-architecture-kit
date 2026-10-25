@@ -218,25 +218,13 @@ RUNTIME_LABEL="$label"
 $invocation
 STATUS=\$?
 
-if [ "\$STATUS" -eq 0 ]; then
-    exit 0
-fi
-
-case "\$OUTPUT" in
-    *'"ok"'*) ;;
-    *)
-        echo "architecture-kit: runtime unavailable (\$RUNTIME_LABEL failed)." >&2
-        echo "Start the project runtime and retry, e.g. docker compose up -d." >&2
-        ;;
-esac
-
+# Analysis output is evidence even when advisory guard exits successfully.
 printf '%s\\n' "\$OUTPUT" >&2
-
-if [ "\$MODE" = "claude" ]; then
-    exit 2
+if [ "\$STATUS" -ne 0 ]; then
+    echo "architecture-kit: runtime unavailable or guard failed; analysis unverified (\$RUNTIME_LABEL). Inspect source and report this gap in the handoff." >&2
 fi
-
-exit "\$STATUS"
+# Advisory does not convert failed analysis to PASS and never blocks completion.
+exit 0
 SH;
     }
 
@@ -273,7 +261,7 @@ MD;
     {
         return [
             'label' => addcslashes(implode(' ', $this->runtime->commandPrefix()), '"\\$`'),
-            'invocation' => $this->runtime->shellArray('RUNNER')."\n".'OUTPUT="$("${RUNNER[@]}" artisan architecture-kit:guard --changed --strict --json 2>&1)"',
+            'invocation' => $this->runtime->shellArray('RUNNER')."\n".'OUTPUT="$("${RUNNER[@]}" artisan architecture-kit:guard --changed --json 2>&1)"',
         ];
     }
 }

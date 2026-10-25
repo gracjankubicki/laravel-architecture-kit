@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Reach\ReachReports;
 use Illuminate\Filesystem\Filesystem;
@@ -12,7 +13,7 @@ use Throwable;
 /** A saved proposal report is paged without rebuilding hypothetical state. */
 final readonly class ImpactPages
 {
-    public function __construct(private Filesystem $files, private string $base) {}
+    public function __construct(private Filesystem $files, private string $base, private AnalysisMode $mode = AnalysisMode::Basic) {}
 
     /** @return array<string, mixed> */
     public function inspect(string $subject = '', int $limit = 20, int $depth = 4, ?string $change = null, ?string $signature = null, ?string $targetClass = null, ?string $targetPath = null, ?string $reportId = null, int $page = 1): array
@@ -21,7 +22,7 @@ final readonly class ImpactPages
             return ArchitectureImpact::error('E_IMPACT_PAGE_INPUT', 'Start at page 1 with a subject and proposal. Continue using only report_id, page and display limit.');
         }
         try {
-            $store = new ReachReports($this->files, $this->base);
+            $store = new ReachReports($this->files, $this->base, $this->mode);
             if ($reportId !== null) {
                 $saved = $store->load($reportId);
                 if (! is_array($saved['impact'] ?? null)) {
@@ -31,7 +32,7 @@ final readonly class ImpactPages
             } else {
                 $settings = DiscoverySettings::load($this->files, $this->base);
                 $before = $store->signature($settings->exclude);
-                $result = (new ArchitectureImpact($this->files, $this->base, $settings->scope, $settings->cache, $settings->fingerprint, reachMode: true))->inspect($subject, $settings->exclude, 1000, $depth, $change, $signature, $targetClass, $targetPath);
+                $result = (new ArchitectureImpact($this->files, $this->base, $settings->scope, $settings->cache, $settings->fingerprint, reachMode: true, mode: $this->mode))->inspect($subject, $settings->exclude, 1000, $depth, $change, $signature, $targetClass, $targetPath);
                 if (! $result['ok']) {
                     return $result;
                 }

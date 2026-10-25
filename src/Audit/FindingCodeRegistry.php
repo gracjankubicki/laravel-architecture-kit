@@ -8,6 +8,7 @@ final readonly class FindingCodeRegistry
 {
     /** @var array<string, array{title: string, why: string, fix: string}> */
     private const RULE_CATALOG = [
+        'signature-compatibility' => ['title' => 'Source signature mismatch', 'why' => 'Declared contracts and recognized calls must agree.', 'fix' => 'Update the call or implementation.'],
         'unknown-role' => ['title' => 'Unknown architectural layer', 'why' => 'The project enabled reporting for elements without a recognized layer.', 'fix' => 'Declare the intended role or verify the existing directory convention.'],
         'actions' => ['title' => 'Action boundary violation', 'why' => 'Actions define named application use cases and must keep framework adapters out of workflow code.', 'fix' => 'Move adapter concerns out of the Action and keep the use case explicit.'],
         'api-resource' => ['title' => 'API Resource boundary violation', 'why' => 'Resources must format loaded data rather than query or load it.', 'fix' => 'Load data before creating the Resource and keep presentation-only mapping here.'],
@@ -42,6 +43,7 @@ final readonly class FindingCodeRegistry
 
     /** @var array<string, array{rule: string, title: string, why: string, fix: string}> */
     private const CODE_CATALOG = [
+        'E_SIGNATURE_COMPATIBILITY' => ['rule' => 'signature-compatibility', 'title' => 'Source signature mismatch', 'why' => 'A current call or implementation contradicts a declared contract.', 'fix' => 'Update the arguments or implementation to accept the declared contract.'],
         'E_FORTIFY_CONTRACT_MISMATCH' => [
             'rule' => 'fortify',
             'title' => 'Fortify target implements the wrong contract',

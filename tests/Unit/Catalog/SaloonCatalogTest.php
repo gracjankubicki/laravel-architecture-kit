@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -33,7 +34,7 @@ final class SaloonCatalogTest extends TestCase
         foreach ($sources as $path => $source) {
             $files[] = new FileContext($path, '<?php '.$source);
         }
-        $facts = (new ProjectGraphBuilder(catalog: true))->build($files)->catalogFacts;
+        $facts = (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build($files)->catalogFacts;
         $facts[] = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', json_encode(['packages' => [
             ['name' => 'saloonphp/saloon', 'version' => $version],
         ]], JSON_THROW_ON_ERROR)));
@@ -44,7 +45,7 @@ final class SaloonCatalogTest extends TestCase
     /** @param array<string, string> $sources */
     private function index(array $sources, string $version = '4.0.0'): CatalogIndex
     {
-        return new CatalogIndex($this->facts($sources, $version), fn ($path) => isset($sources[$path]) ? '<?php '.$sources[$path] : null);
+        return new CatalogIndex($this->facts($sources, $version), fn ($path) => isset($sources[$path]) ? '<?php '.$sources[$path] : null, mode: AnalysisMode::Deep);
     }
 
     /** @return list<array<string, mixed>> */
@@ -448,7 +449,7 @@ class Action {
 PHP);
         $facts = $this->facts($sources);
         $this->assertStringNotContainsString('-secret', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
-        $index = new CatalogIndex($facts, fn ($path) => isset($sources[$path]) ? '<?php '.$sources[$path] : null);
+        $index = new CatalogIndex($facts, fn ($path) => isset($sources[$path]) ? '<?php '.$sources[$path] : null, mode: AnalysisMode::Deep);
         $sends = $this->sends($index);
         $this->assertCount(3, $sends);
         $this->assertSame(['send', 'sendasync', 'sendandretry'], array_column(array_column($sends, 'metadata'), 'mode'));
@@ -519,7 +520,7 @@ PHP));
         $facts = $this->facts($sources);
         $changed = $sources;
         $changed['app/Integrations/Invoice.php'] = str_replace('invoices?', 'archives?', $sources['app/Integrations/Invoice.php']);
-        $stale = new CatalogIndex($facts, fn ($path) => isset($changed[$path]) ? '<?php '.$changed[$path] : null);
+        $stale = new CatalogIndex($facts, fn ($path) => isset($changed[$path]) ? '<?php '.$changed[$path] : null, mode: AnalysisMode::Deep);
         $this->assertSame([], $this->sends($stale));
         $this->assertContains('changed_inputs', array_column($stale->diagnostics, 'code'));
         $newFacts = $this->facts($changed);
@@ -528,7 +529,7 @@ PHP));
                 $facts[$position] = array_values(array_filter($newFacts, fn ($row) => $row->path === $fact->path))[0];
             }
         }
-        $fresh = new CatalogIndex($facts, fn ($path) => isset($changed[$path]) ? '<?php '.$changed[$path] : null);
+        $fresh = new CatalogIndex($facts, fn ($path) => isset($changed[$path]) ? '<?php '.$changed[$path] : null, mode: AnalysisMode::Deep);
         $this->assertSame('https://billing.test/api/archives', $fresh->elements[$this->sends($fresh)[0]['to']]['name']);
     }
 
@@ -673,7 +674,7 @@ PHP);
         $sources['app/Integrations/Invoice.php'] = 'namespace App; class Invoice extends \\Saloon\\Http\\Request { public function resolveEndpoint() { return "https://uploads.test/file"; } }';
         $sources['app/Permits.php'] = 'namespace App; trait Permits { public bool $allowBaseUrlOverride = true; }';
         $facts = $this->facts($sources);
-        $index = new CatalogIndex($facts, fn ($path) => isset($sources[$path]) ? '<?php '.$sources[$path] : null);
+        $index = new CatalogIndex($facts, fn ($path) => isset($sources[$path]) ? '<?php '.$sources[$path] : null, mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->sends($index));
         $property = $index->names[strtolower('App\\Permits::$allowBaseUrlOverride')][0];
         $this->assertSame('no_path_in_analyzed_graph', (new GraphQuery($index))->query($index->names[strtolower('App\\Action::run')][0], 'path', $property, 8)['status']);
@@ -684,7 +685,7 @@ PHP);
                 $facts[$position] = $updated;
             }
         }
-        $this->assertSame([], $this->sends(new CatalogIndex($facts, fn ($path) => isset($sources[$path]) ? '<?php '.$sources[$path] : null)));
+        $this->assertSame([], $this->sends(new CatalogIndex($facts, fn ($path) => isset($sources[$path]) ? '<?php '.$sources[$path] : null, mode: AnalysisMode::Deep)));
     }
 
     public function test_dynamic_private_static_and_conflicting_override_flags_remain_unresolved(): void

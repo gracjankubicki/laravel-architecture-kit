@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
@@ -44,6 +45,7 @@ final readonly class ProjectGraphLoader
         private bool $catalog = false,
         /** @var Closure(string): void|null */
         private ?Closure $onParse = null,
+        private AnalysisMode $mode = AnalysisMode::Basic,
     ) {
         $this->classification = RoleClassifier::forProject($files, $basePath);
     }
@@ -175,7 +177,7 @@ final readonly class ProjectGraphLoader
      */
     public function build(GraphBuildPlan $plan, array $parsedSources = []): ProjectGraphSnapshot
     {
-        $builder = new ProjectGraphBuilder(roles: $this->classification, impact: $this->impact, catalog: $this->catalog, basePath: $this->basePath);
+        $builder = new ProjectGraphBuilder(roles: $this->classification, impact: $this->impact, catalog: $this->catalog, basePath: $this->basePath, mode: $this->mode);
         $entries = $plan->reusable;
 
         foreach ($plan->toParse as $path) {
@@ -295,7 +297,7 @@ final readonly class ProjectGraphLoader
     private function signatureFor(array $scanned): GraphCacheSignature
     {
         return GraphCacheSignature::create(
-            [PackageFingerprint::current(), AnalysisRuntime::session()->fingerprint(), $this->classification->mappings->fingerprint(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : []), ...($this->catalog ? ['catalog-v1'] : [])],
+            [PackageFingerprint::current(), AnalysisRuntime::session()->fingerprint(), $this->classification->mappings->fingerprint(), implode(',', $this->scope->directories), ...$this->configuration, ...($this->impact ? ['impact-v3'] : []), ...($this->catalog ? ['catalog-v1'] : []), 'analysis-mode:'.$this->mode->value],
             array_map(static fn (array $file): string => $file[1], $scanned),
         );
     }

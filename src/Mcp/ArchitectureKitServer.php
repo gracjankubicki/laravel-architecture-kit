@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Mcp;
 use GracjanKubicki\ArchitectureKit\ArchitectureKit;
 use GracjanKubicki\ArchitectureKit\Mcp\Resources\AnalysisEngineResource;
 use GracjanKubicki\ArchitectureKit\Mcp\Resources\ArchitectureGuidelineResource;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\AnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureContext;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureGraph;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureRules;
@@ -45,6 +46,7 @@ class ArchitectureKitServer extends Server
     protected string $instructions = ToolGuidance::SERVER_INSTRUCTIONS;
 
     protected array $tools = [
+        AnalysisConsent::class,
         EnabledArchitectures::class,
         ArchitectureRules::class,
         ArchitectureContext::class,

@@ -4,18 +4,53 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogSettings;
 use GracjanKubicki\ArchitectureKit\Context\GraphQuery;
 use GracjanKubicki\ArchitectureKit\Context\GraphSource;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureGraph;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureSearch;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\Path;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Laravel\Mcp\Server\Transport\FakeTransporter;
 
 final class StaticGraphMcpTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
+    public function test_mcp_keeps_query_limits_and_source_incompleteness_in_analysis_metadata(): void
+    {
+        $files = new Filesystem;
+        foreach (CatalogSettings::ROOTS as $root) {
+            $files->ensureDirectoryExists($this->tempPath.'/'.$root);
+        }
+        $files->put($this->tempPath.'/app/A.php', '<?php namespace App; class A { public static function run() { B::run(); } }');
+        $files->put($this->tempPath.'/app/B.php', '<?php namespace App; class B { public static function run() { C::run(); } }');
+        $files->put($this->tempPath.'/app/C.php', '<?php namespace App; class C { public static function run() {} }');
+        $args = ['subject' => 'App\\C', 'mode' => 'impact'];
+        ArchitectureKitServer::tool(ArchitectureGraph::class, [...$args, 'depth' => 1])->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('analysis.mode', 'basic')->where('analysis.deep_run', false)->where('analysis.checks_complete', false)
+                ->where('result.traversal_complete', false)->where('result.counts.basis', 'lower_bound')
+                ->where('analysis_complete', false)->has('diagnostics.summary.traversal_limit')->etc());
+        ArchitectureKitServer::tool(ArchitectureGraph::class, [...$args, 'depth' => 20])->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('analysis.mode', 'basic')->where('analysis.deep_run', false)->where('analysis.checks_complete', true)
+                ->where('result.traversal_complete', true)->where('analysis_complete', true)->etc());
+        // The other public GraphQuery consumer already composes source AND query completeness.
+        ArchitectureKitServer::tool(Path::class, ['from' => 'App\\A::run', 'to' => 'App\\C::run', 'depth' => 1])->assertOk()
+            ->assertStructuredContent(fn ($json) => $json->where('analysis.checks_complete', false)->where('source_path.traversal_complete', false)->etc());
+        $files->put($this->tempPath.'/app/Broken.php', '<?php class Broken {');
+        ArchitectureKitServer::tool(ArchitectureGraph::class, [...$args, 'depth' => 20])->assertOk()
+            ->assertStructuredContent(fn ($json) => $json
+                ->where('analysis.checks_complete', false)->where('result.traversal_complete', true)
+                ->where('analysis_complete', false)->has('diagnostics.summary.parse_error')->etc());
+    }
+
     public function test_invalid_graph_and_search_arguments_are_input_errors_not_source_failures(): void
     {
         foreach ([
@@ -52,6 +87,8 @@ final class StaticGraphMcpTest extends TestCase
 
     public function test_mixed_laravel_flow_is_available_through_mcp_with_queue_and_schedule_evidence(): void
     {
+        AnalysisRuntime::activate(
+            AnalysisRuntime::session()->withMode(AnalysisMode::Deep));
         $files = new Filesystem;
         $sources = [
             'routes/web.php' => 'use Illuminate\\Support\\Facades\\Route; Route::post("pay", [App\\Controller::class, "pay"])->name("billing.pay");',
@@ -68,15 +105,16 @@ final class StaticGraphMcpTest extends TestCase
             $files->ensureDirectoryExists(dirname($this->tempPath.'/'.$path));
             $files->put($this->tempPath.'/'.$path, '<?php '.$source);
         }
+        $this->grantSemanticConsent();
         $source = new GraphSource($files, $this->tempPath);
         $first = $source->load();
         $index = $first['index'];
         $names = array_column($index->elements, 'id', 'name');
         $route = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'route'))[0];
         $task = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'scheduled-task'))[0];
-        ArchitectureKitServer::tool(ArchitectureSearch::class, ['query' => 'billing.pay', 'kind' => 'route'])
+        ArchitectureKitServer::tool(ArchitectureSearch::class, [...$this->deepMcp(), 'query' => 'billing.pay', 'kind' => 'route'])
             ->assertOk()->assertStructuredContent(fn ($json) => $json->where('result.match_count', 1)->where('result.candidates.0.id', $route['id'])->etc());
-        ArchitectureKitServer::tool(ArchitectureGraph::class, ['subject' => $route['id'], 'mode' => 'path', 'target' => $names['App\\Receipt::handle'], 'depth' => 8])
+        ArchitectureKitServer::tool(ArchitectureGraph::class, [...$this->deepMcp(), 'subject' => $route['id'], 'mode' => 'path', 'target' => $names['App\\Receipt::handle'], 'depth' => 8])
             ->assertOk()->assertStructuredContent(fn ($json) => $json->where('status', 'found')
             ->where('result.records.0.relations', function ($edges) {
                 $edges = $edges->toArray();
@@ -91,7 +129,7 @@ final class StaticGraphMcpTest extends TestCase
 
                 return true;
             })->etc());
-        ArchitectureKitServer::tool(ArchitectureGraph::class, ['subject' => $route['id'], 'mode' => 'path', 'target' => $names['App\\Receipt::handle'], 'depth' => 4])
+        ArchitectureKitServer::tool(ArchitectureGraph::class, [...$this->deepMcp(), 'subject' => $route['id'], 'mode' => 'path', 'target' => $names['App\\Receipt::handle'], 'depth' => 4])
             ->assertOk()->assertStructuredContent(fn ($json) => $json->where('status', 'unavailable')->where('result.traversal_complete', false)
             ->where('diagnostics.summary.traversal_limit', 1)->etc());
         $query = new GraphQuery($index);

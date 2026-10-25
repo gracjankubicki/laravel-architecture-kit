@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Query;
 use GracjanKubicki\ArchitectureKit\Audit\Framework\FrameworkContext;
@@ -54,6 +55,7 @@ final class MethodAnalyzer
 
     public function analyze(string $class, string $method): MethodEffects
     {
+        AnalysisRuntime::stage('deep.method-analyzer');
         $this->result = new MethodEffects;
         $this->nodes = $this->calls = 0;
         $this->active = [];

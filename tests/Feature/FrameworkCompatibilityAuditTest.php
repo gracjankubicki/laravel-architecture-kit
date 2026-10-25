@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
@@ -27,7 +28,7 @@ PHP);
         $audit = new ApplicationAudit($files, $this->tempPath);
         $routes = $this->routes();
         $cache = new ProjectGraphCache($files, $this->tempPath);
-        $run = fn ($graphCache) => $audit->run([Architecture::ThinControllers, Architecture::Actions], false, cache: $graphCache, routes: $routes);
+        $run = fn ($graphCache) => $audit->run([Architecture::ThinControllers, Architecture::Actions], false, cache: $graphCache, routes: $routes, mode: AnalysisMode::Deep);
 
         $off = $run(null);
         $cold = $run($cache);
@@ -53,7 +54,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions],
             changedOnly: true,
             routes: $this->routes(),
-        );
+            mode: AnalysisMode::Deep);
 
         $this->assertContains('S_MOVE_WRITE_TO_ACTION', array_column($result->suggestions, 'code'));
     }

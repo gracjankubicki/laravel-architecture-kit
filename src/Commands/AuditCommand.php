@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Commands;
 
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Audit\AnalysisNotice;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\AuditSuggestion;
@@ -20,19 +21,21 @@ class AuditCommand extends Command
     protected $signature = 'architecture-kit:audit
         {--changed : Audit only changed and untracked application files when git is available}
         {--base= : Git base ref for changed-file audit, for example origin/main}
+        {--enforce : Explicitly block on unsuccessful analysis}
         {--strict : Treat warnings as failures}
         {--update-baseline : Write the current findings to .architecture-kit/baseline.json before applying baseline suppression}
         {--no-baseline : Ignore .architecture-kit/baseline.json for this audit run}
         {--agent : Output token-efficient JSON for AI agents}
         {--limit=20 : Maximum findings shown in --agent output}
         {--full : Include full finding messages in --agent output}
-        {--schema : Output the JSON Schema for --agent output}';
+        {--schema : Output the JSON Schema for --agent output} {--mode=basic : Analysis scope basic or deep; deep needs prior task consent} {--task= : Task with recorded Deep consent}';
 
     protected $description = 'Audit application code against enabled Architecture Kit rules.';
 
     public function handle(Filesystem $files): int
     {
         $agent = new AgentOutput;
+        $policy = $this->option('enforce') ? ControlPolicy::Enforce : ControlPolicy::Advisory;
 
         if ((bool) $this->option('schema')) {
             $this->writeJson($agent->schema('audit'));
@@ -44,28 +47,30 @@ class AuditCommand extends Command
             $message = 'The --changed and --update-baseline options cannot be used together. Use --update-baseline without --changed, or run --changed without --update-baseline.';
 
             if ((bool) $this->option('agent')) {
-                $this->writeJson($agent->error('audit', $message));
+                $this->writeJson($agent->error('audit', $message, policy: $policy));
 
-                return self::FAILURE;
+                return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
             }
 
             $this->error($message);
 
-            return self::FAILURE;
+            return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
         }
 
         try {
+            $mode = RepositoryContext::requestedMode($this->option('mode'), $this->option('task'));
             $state = ProjectState::load($files, dirname(__DIR__, 2), RepositoryContext::root());
+            $policy = $this->option('enforce') ? ControlPolicy::Enforce : $state->controlPolicy;
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
-                $this->writeJson($agent->error('audit', $exception->getMessage()));
+                $this->writeJson($agent->error('audit', $exception->getMessage(), policy: $policy));
 
-                return self::FAILURE;
+                return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
             }
 
             $this->error($exception->getMessage());
 
-            return self::FAILURE;
+            return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
         }
 
         $audit = new ApplicationAudit($files, RepositoryContext::root());
@@ -82,20 +87,21 @@ class AuditCommand extends Command
                 missingTestLevel: $state->missingTestLevel,
                 cache: $state->graphCache,
                 cacheConfiguration: $state->graphConfiguration(),
+                mode: $mode,
             );
         } catch (Throwable $exception) {
             if ((bool) $this->option('agent')) {
-                $this->writeJson($agent->error('audit', $exception->getMessage()));
+                $this->writeJson($agent->error('audit', $exception->getMessage(), policy: $policy));
 
-                return self::FAILURE;
+                return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
             }
 
             $this->error($exception->getMessage());
 
-            return self::FAILURE;
+            return $policy === ControlPolicy::Enforce ? self::FAILURE : self::SUCCESS;
         }
 
-        $ok = $result->errors() === 0
+        $ok = $result->analysis()['checks_complete'] && ! $result->hasAnalysisFailure() && $result->errors() === 0
             && (! (bool) $this->option('strict') || $result->warnings() === 0);
 
         if ((bool) $this->option('agent')) {
@@ -105,13 +111,14 @@ class AuditCommand extends Command
                 limit: $agent->limit($this->option('limit')),
                 full: (bool) $this->option('full'),
                 baselineUpdated: (bool) $this->option('update-baseline'),
+                policy: $policy,
             ));
 
-            return $ok ? self::SUCCESS : self::FAILURE;
+            return $policy->result($ok)['blocking'] ? self::FAILURE : self::SUCCESS;
         }
 
         $this->info('Architecture Kit Application Audit');
-        $this->line('Scope: '.$result->scope);
+        $this->line('Scope: '.$result->scope.'; analysis '.$mode->value.'; deep '.($mode->value === 'deep' ? 'run' : 'not run').'; policy '.$policy->value);
 
         if ($result->cacheNote() !== null) {
             $this->warn($result->cacheNote());
@@ -125,7 +132,7 @@ class AuditCommand extends Command
             $this->line('No architecture violations found.');
             $this->line(sprintf('Suppressed: %d inline, %d baseline', $result->suppressedInline, $result->suppressedBaseline));
 
-            return self::SUCCESS;
+            return $policy->result($ok)['blocking'] ? self::FAILURE : self::SUCCESS;
         }
 
         foreach ($result->findings as $finding) {
@@ -147,7 +154,7 @@ class AuditCommand extends Command
         ));
         $this->line(sprintf('Suppressed: %d inline, %d baseline', $result->suppressedInline, $result->suppressedBaseline));
 
-        return $ok ? self::SUCCESS : self::FAILURE;
+        return $policy->result($ok)['blocking'] ? self::FAILURE : self::SUCCESS;
     }
 
     /** @param array<int, AuditSuggestion> $suggestions */

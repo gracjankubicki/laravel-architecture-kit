@@ -46,7 +46,6 @@ final readonly class DiscoverySettings
         if (! self::safe($base, $path)) {
             throw new InvalidArgumentException('Analysis configuration crosses an unsafe path or symlink.');
         }
-        $context = RepositoryContext::forRoot($base);
         $absoluteConfig = RepositoryContext::configurationPath($base);
         $stat = self::stat($absoluteConfig);
         $audit = [];
@@ -55,7 +54,9 @@ final readonly class DiscoverySettings
             if (($stat[1] ?? 0) > 100000) {
                 throw new InvalidArgumentException('Analysis configuration exceeds 100 KB.');
             }
-            $sourceFile = new FileContext($path, $files->get($absoluteConfig), $onParse, newestSyntax: true);
+            // An external literal materialization is a settings input, not parsed repo PHP.
+            $sourcePath = $absoluteConfig === $base.'/'.$path ? $path : $absoluteConfig;
+            $sourceFile = new FileContext($sourcePath, $files->get($absoluteConfig), $onParse, newestSyntax: true);
             $ast = $sourceFile->syntax();
             if ($ast === null) {
                 throw new InvalidArgumentException('Analysis configuration could not be parsed: '.$sourceFile->parseError());

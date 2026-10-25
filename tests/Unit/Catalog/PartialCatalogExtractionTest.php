@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogDiagnostic;
@@ -116,7 +117,7 @@ class OrdersController { public function show() {} }
 class Saved {}
 class Listener { public function handle(Saved $event) {} }
 SOURCE);
-        $index = new CatalogIndex((new ProjectGraphBuilder(catalog: true))->build([$source, $declarations])->catalogFacts);
+        $index = new CatalogIndex((new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([$source, $declarations])->catalogFacts, mode: AnalysisMode::Deep);
         foreach (['route-handler', 'registers-binding', 'provides', 'event-dispatch', 'event-listener'] as $kind) {
             $edges = array_values(array_filter($index->relations, fn ($edge) => $edge['kind'] === $kind));
             $this->assertCount(1, $edges, $kind);

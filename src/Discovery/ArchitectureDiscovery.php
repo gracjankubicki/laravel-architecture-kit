@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Discovery;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
+use GracjanKubicki\ArchitectureKit\Context\GraphSource;
 use GracjanKubicki\ArchitectureKit\Impact\ExecutionLinks;
 use GracjanKubicki\ArchitectureKit\Impact\ExecutionSources;
 use GracjanKubicki\ArchitectureKit\Impact\HttpRouteDiscovery;
@@ -20,7 +23,7 @@ final class ArchitectureDiscovery
 
     public const KINDS = ['class', 'interface', 'trait', 'enum', 'method', 'file', 'route', 'command', 'job', 'controller', 'model', 'action', 'query', 'service', 'listener', 'event', 'policy', 'request', 'resource', 'test', 'data', 'value-object', 'exception', 'builder', 'port', 'provider'];
 
-    public function __construct(private readonly Filesystem $files, private readonly string $basePath) {}
+    public function __construct(private readonly Filesystem $files, private readonly string $basePath, private readonly AnalysisMode $mode = AnalysisMode::Basic) {}
 
     /** @return array<string, mixed> */
     public function search(string $query = '', ?string $kind = null, int $limit = 20): array
@@ -34,9 +37,13 @@ final class ArchitectureDiscovery
             return self::error('E_SEARCH_QUERY', 'Provide a name/path fragment or a kind filter.');
         }
         try {
+            if ($this->mode === AnalysisMode::Basic) {
+                return $this->basicSearch($query, $kind, $limit);
+            }
+            AnalysisRuntime::stage('deep.discovery.execution');
             $settings = DiscoverySettings::load($this->files, $this->basePath);
             $exclude = [...$settings->exclude, 'vendor/*'];
-            $loader = new ProjectGraphLoader($this->files, $this->basePath, $settings->scope, $settings->cache, $settings->fingerprint, impact: true, sourceOnly: true);
+            $loader = new ProjectGraphLoader($this->files, $this->basePath, $settings->scope, $settings->cache, $settings->fingerprint, impact: true, sourceOnly: true, mode: $this->mode);
             $plan = $loader->plan($exclude);
             $graph = $loader->build($plan);
             $httpSource = new HttpRouteDiscovery($this->files, $this->basePath, sourceOnly: true);
@@ -125,15 +132,57 @@ final class ArchitectureDiscovery
                     $matches[] = [...$row, 'exact' => $exact];
                 }
             }
-            usort($matches, fn ($a, $b) => [$a['exact'] ? 0 : 1, strtolower($a['name']), $a['kind'], $a['path'], $a['line'], $a['id']] <=> [$b['exact'] ? 0 : 1, strtolower($b['name']), $b['kind'], $b['path'], $b['line'], $b['id']]);
+            usort($matches, fn ($a, $b) => [$a['exact'] ? 0 : 1, $a['kind'] === 'file' ? 1 : 0, strtolower($a['name']), $a['kind'], $a['path'], $a['line'], $a['id']] <=> [$b['exact'] ? 0 : 1, $b['kind'] === 'file' ? 1 : 0, strtolower($b['name']), $b['kind'], $b['path'], $b['line'], $b['id']]);
             $limited = $limited || $this->candidateLimited;
             $fresh = $sources->fresh() && $httpSource->freshness()['fresh'] && $loader->currentSignature($exclude)->files === $plan->signature->files && DiscoverySettings::stat(RepositoryContext::configurationPath($this->basePath)) === $settings->configStat;
             $total = count($matches);
 
-            return ['v' => 1, 'cmd' => 'search', 'ok' => true, 'query' => $query, 'kind' => $kind, 'candidates' => array_slice($matches, 0, $limit), 'total' => $total, 'total_is_lower_bound' => $limited, 'ambiguous' => $total > 1, 'truncated' => $total > $limit, 'status' => $limited ? 'limit' : (! $fresh ? 'stale' : ($notices !== [] ? 'incomplete' : ($total === 0 ? 'no_matches' : 'found'))), 'limited' => $limited, 'fresh' => $fresh, 'notices' => array_slice($notices, 0, $limit), 'notice_total' => count($notices), 'cache' => $plan->cacheStatus->value, 'analysis' => ['scope' => $settings->scope->directories, 'source_signature' => $facts['signature'], 'limitations' => ['Only supported static PHP and Laravel declarations are recognized.', 'Dynamic or unrecognized sources remain notices; results do not prove runtime execution.', 'Freshness uses path/mtime/size; same-stat edits are outside this guarantee.', 'No fuzzy search or automatic candidate selection. Use the returned selector with impact/path; tables use impact table searches.']]];
+            return ['v' => 1, 'cmd' => 'search', 'ok' => true, 'query' => $query, 'kind' => $kind, 'candidates' => array_slice($matches, 0, $limit), 'total' => $total, 'total_is_lower_bound' => $limited, 'ambiguous' => $total > 1, 'truncated' => $total > $limit, 'status' => $limited ? 'limit' : (! $fresh ? 'stale' : ($notices !== [] ? 'incomplete' : ($total === 0 ? 'no_matches' : 'found'))), 'limited' => $limited, 'fresh' => $fresh, 'notices' => array_slice($notices, 0, $limit), 'notice_total' => count($notices), 'cache' => $plan->cacheStatus->value, 'analysis' => ['mode' => 'deep', 'checks_complete' => $fresh && ! $limited, 'deep_run' => true, 'scope' => $settings->scope->directories, 'source_signature' => $facts['signature'], 'limitations' => ['Only supported static PHP and Laravel declarations are recognized.', 'Dynamic or unrecognized sources remain notices; results do not prove runtime execution.', 'Freshness uses path/mtime/size; same-stat edits are outside this guarantee.', 'No fuzzy search or automatic candidate selection. Use the returned selector with impact/path; tables use impact table searches.']]];
         } catch (Throwable $exception) {
             return self::error('E_SEARCH_FAILED', $exception->getMessage());
         }
+    }
+
+    /** @return array<string, mixed> */
+    private function basicSearch(string $query, ?string $kind, int $limit): array
+    {
+        $source = (new GraphSource($this->files, $this->basePath, mode: AnalysisMode::Basic))->load();
+        $rows = [];
+        foreach ($source['index']->elements as $element) {
+            $kinds = array_values(array_unique([$element['kind'], ...$element['roles']]));
+            $name = $element['name'];
+            if ($kind !== null && ! in_array($kind, $kinds, true)) {
+                continue;
+            }
+            $fields = [$name, $element['path']];
+            foreach (['uri', 'name', 'route_name'] as $key) {
+                if (is_string($element['metadata'][$key] ?? null)) {
+                    $fields[] = $element['metadata'][$key];
+                }
+            }
+            if ($query !== '' && ! array_filter($fields, static fn ($field) => stripos($field, $query) !== false)) {
+                continue;
+            }
+            $symbol = in_array($element['kind'], ['class', 'interface', 'trait', 'enum', 'method'], true);
+            $rows[] = ['id' => $element['id'], 'name' => $name, 'kind' => $element['kind'], 'kinds' => $kinds,
+                'path' => $element['path'], 'line' => $element['line'], 'selector' => $symbol ? $name : $element['path'],
+                'selector_scope' => $symbol ? 'symbol' : 'file', 'supported' => true,
+                'notes' => ['Source declaration or candidate; execution and passing tests are not proved.'],
+                'aliases' => [], 'classification' => $element['metadata']['classification'] ?? [],
+                'exact' => (bool) array_filter($fields, static fn ($field) => strcasecmp($field, $query) === 0)];
+        }
+        usort($rows, static fn ($a, $b) => [$a['exact'] ? 0 : 1, $a['kind'] === 'file' ? 1 : 0, strtolower($a['name']), $a['kind'], $a['path'], $a['line'], $a['id']] <=> [$b['exact'] ? 0 : 1, $b['kind'] === 'file' ? 1 : 0, strtolower($b['name']), $b['kind'], $b['path'], $b['line'], $b['id']]);
+        $notices = $source['index']->diagnostics;
+        $complete = $source['analysis']['checks_complete'];
+
+        return ['v' => 1, 'cmd' => 'search', 'ok' => true, 'query' => $query, 'kind' => $kind,
+            'candidates' => array_slice($rows, 0, $limit), 'total' => count($rows), 'total_is_lower_bound' => ! $complete,
+            'ambiguous' => count($rows) > 1, 'truncated' => count($rows) > $limit,
+            'status' => $source['changed'] ? 'stale' : (! $complete ? 'incomplete' : ($rows === [] ? 'no_matches' : 'found')),
+            'limited' => ! $complete, 'fresh' => ! $source['changed'], 'notices' => array_slice($notices, 0, $limit),
+            'notice_total' => count($notices), 'cache' => null,
+            'analysis' => [...$source['analysis'], 'scope' => $source['scope'], 'source_signature' => $source['snapshot'],
+                'limitations' => ['Basic source map; Deep execution analysis not run. Candidate tests are not coverage or PASS.', 'Read relevant source for unresolved relationships. Ask the user when missing information prevents a correct change.']]];
     }
 
     /** @param array<string, mixed> $class

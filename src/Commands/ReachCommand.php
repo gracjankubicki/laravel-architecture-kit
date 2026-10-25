@@ -12,7 +12,7 @@ use Illuminate\Filesystem\Filesystem;
 
 final class ReachCommand extends Command
 {
-    protected $signature = 'architecture-kit:reach {subject? : Class, method or project PHP file} {--limit=20 : Display rows per section, 0..500} {--depth=4 : Analysis depth, 1..32} {--report= : Read a saved report without a subject} {--page=1 : Page of the same report} {--agent : Output JSON} {--schema : Output JSON Schema}';
+    protected $signature = 'architecture-kit:reach {subject? : Class, method or project PHP file} {--limit=20 : Display rows per section, 0..500} {--depth=4 : Analysis depth, 1..32} {--report= : Read a saved report without a subject} {--page=1 : Page of the same report} {--agent : Output JSON} {--schema : Output JSON Schema} {--mode=basic : Analysis scope basic or deep; deep needs prior task consent} {--task= : Task with recorded Deep consent}';
 
     protected $description = 'Count recognized reach in both directions and page one immutable source report.';
 
@@ -23,10 +23,15 @@ final class ReachCommand extends Command
 
             return self::SUCCESS;
         }
-        $numbers = [(string) $this->option('limit'), (string) $this->option('depth'), (string) $this->option('page')];
-        $result = count(array_filter($numbers, 'ctype_digit')) === 3
-            ? (new ArchitectureReach($files, RepositoryContext::root()))->inspect((string) $this->argument('subject'), (int) $numbers[0], (int) $numbers[1], $this->option('report'), (int) $numbers[2])
-            : ArchitectureReach::error('E_REACH_INPUT', 'Use integer limit, depth and page.');
+        try {
+            $mode = RepositoryContext::requestedMode($this->option('mode'), $this->option('task'));
+            $numbers = [(string) $this->option('limit'), (string) $this->option('depth'), (string) $this->option('page')];
+            $result = count(array_filter($numbers, 'ctype_digit')) === 3
+                ? (new ArchitectureReach($files, RepositoryContext::root(), $mode))->inspect((string) $this->argument('subject'), (int) $numbers[0], (int) $numbers[1], $this->option('report'), (int) $numbers[2])
+                : ArchitectureReach::error('E_REACH_INPUT', 'Use integer limit, depth and page.');
+        } catch (\Throwable $error) {
+            $result = ArchitectureReach::error('E_ANALYSIS_UNAVAILABLE', $error->getMessage());
+        }
         if ($this->option('agent')) {
             $this->line(json_encode($result, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         } elseif (! $result['ok']) {

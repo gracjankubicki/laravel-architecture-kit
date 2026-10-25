@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
@@ -30,7 +31,7 @@ final class FrameworkFortifyAuditTest extends TestCase
             $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run(
                 [Architecture::ThinControllers, Architecture::Actions], false,
                 routes: $this->routes([new RouteEntry(['GET', 'HEAD'], 'login', class: 'Laravel\\Fortify\\Http\\Controllers\\AuthenticatedSessionController', method: 'create')]),
-            );
+                mode: AnalysisMode::Deep);
             if ($known) {
                 $this->assertNotEmpty($result->suggestions);
                 $this->assertSame([], $result->notices);
@@ -76,7 +77,7 @@ PHP);
             routes: $this->routes([
                 new RouteEntry(['POST'], 'register', class: 'Laravel\\Fortify\\Http\\Controllers\\RegisteredUserController', method: 'store'),
             ]),
-        );
+            mode: AnalysisMode::Deep);
 
         $missing = array_values(array_filter($result->findings, fn ($finding): bool => $finding->code === 'W_MISSING_TEST'));
         $paths = array_column($missing, 'path');
@@ -96,7 +97,7 @@ PHP);
             routes: $this->routes([
                 new RouteEntry(['GET', 'HEAD'], 'login', class: 'Laravel\\Fortify\\Http\\Controllers\\AuthenticatedSessionController', method: 'create'),
             ]),
-        );
+            mode: AnalysisMode::Deep);
 
         $this->assertNotContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($result->findings, 'code'));
         $missingPaths = array_column(array_filter($result->findings, fn ($finding): bool => $finding->code === 'W_MISSING_TEST'), 'path');
@@ -122,7 +123,7 @@ PHP);
             routes: $this->routes([
                 new RouteEntry(['POST'], 'login', class: 'Laravel\\Fortify\\Http\\Controllers\\AuthenticatedSessionController', method: 'store'),
             ]),
-        );
+            mode: AnalysisMode::Deep);
 
         $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($result->findings, 'code'));
     }
@@ -152,7 +153,7 @@ PHP);
             routes: $this->routes([
                 new RouteEntry(['POST'], 'login', class: 'Laravel\\Fortify\\Http\\Controllers\\AuthenticatedSessionController', method: 'store'),
             ]),
-        );
+            mode: AnalysisMode::Deep);
         $missing = array_column(array_filter($result->findings, fn ($finding): bool => $finding->code === 'W_MISSING_TEST'), 'path');
 
         $this->assertNotContains('app/Auth/CustomStage.php', $missing);
@@ -182,7 +183,7 @@ PHP);
             routes: $this->routes([
                 new RouteEntry(['POST'], 'login', class: 'Laravel\\Fortify\\Http\\Controllers\\AuthenticatedSessionController', method: 'store'),
             ]),
-        );
+            mode: AnalysisMode::Deep);
 
         $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($result->findings, 'code'));
     }
@@ -222,7 +223,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions],
             changedOnly: false,
             routes: $routes,
-        );
+            mode: AnalysisMode::Deep);
 
         $items = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
         foreach ($result->suggestions as $suggestion) {

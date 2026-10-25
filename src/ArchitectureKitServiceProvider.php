@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit;
 
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
 use GracjanKubicki\ArchitectureKit\Analysis\EngineSettings;
+use GracjanKubicki\ArchitectureKit\Commands\AnalysisConsentCommand;
 use GracjanKubicki\ArchitectureKit\Commands\ArchitectureContextCommand;
 use GracjanKubicki\ArchitectureKit\Commands\AuditCommand;
 use GracjanKubicki\ArchitectureKit\Commands\CacheClearCommand;
@@ -59,6 +60,7 @@ class ArchitectureKitServiceProvider extends ServiceProvider
         ], 'architectures-config');
 
         $this->commands([
+            AnalysisConsentCommand::class,
             EngineCommand::class,
             ArchitectureContextCommand::class,
             ImpactCommand::class,

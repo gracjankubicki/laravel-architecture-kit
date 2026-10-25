@@ -56,7 +56,7 @@ final class SourceIndex
 
     public function inScope(string $name): bool
     {
-        return $this->graph->symbol($name) !== null;
+        return $this->graph->symbol($name) !== null || $this->recordSkippedSource(ltrim($name, '\\'));
     }
 
     private const FRAMEWORK_PARENTS = [
@@ -98,7 +98,12 @@ final class SourceIndex
         if ($symbol !== null) {
             $this->paths[$symbol->path] = true;
         }
-        if ($symbol === null || ! $this->safe($symbol->path) || ! $this->files->isFile($this->basePath.'/'.$symbol->path)) {
+        if ($symbol === null) {
+            $this->recordSkippedSource($name);
+
+            return null;
+        }
+        if (! $this->safe($symbol->path) || ! $this->files->isFile($this->basePath.'/'.$symbol->path)) {
             return null;
         }
         $this->read($name, $symbol->path);
@@ -118,6 +123,20 @@ final class SourceIndex
             return null;
         }
         $this->auxiliary[$key] = true;
+        $candidates = $this->auxiliaryCandidates($name);
+        if (count($candidates) !== 1) {
+            $this->unavailable[$key] = 'Auxiliary source is missing, unsafe or ambiguous for '.$name;
+
+            return null;
+        }
+        $this->read($name, array_key_first($candidates));
+
+        return $this->classes[$key];
+    }
+
+    /** @return array<string, true> */
+    private function auxiliaryCandidates(string $name): array
+    {
         if ($this->autoloadPaths === null) {
             $this->autoloadPaths = ['App\\' => ['app/'], 'Database\\Factories\\' => ['database/factories/']];
             $this->paths['composer.json'] = true;
@@ -163,14 +182,36 @@ final class SourceIndex
             }
             break;
         }
+
+        return $candidates;
+    }
+
+    /** A missing declaration may have been omitted by a known graph source budget.
+     * Never parse the candidate or infer its existence from its symbol spelling.
+     */
+    private function recordSkippedSource(string $name): bool
+    {
+        $candidates = $this->auxiliaryCandidates($name);
         if (count($candidates) !== 1) {
-            $this->unavailable[$key] = 'Auxiliary source is missing, unsafe or ambiguous for '.$name;
-
-            return null;
+            return false;
         }
-        $this->read($name, array_key_first($candidates));
+        $path = array_key_first($candidates);
+        foreach ($this->graph->impactFacts as $facts) {
+            if ($facts->path !== $path) {
+                continue;
+            }
+            foreach ($facts->notices as $notice) {
+                if (preg_match('/(?:source size limit|memory limit)/i', $notice['reason'])) {
+                    $key = strtolower($name);
+                    $this->unavailableCodes[$key] = 'source_budget';
+                    $this->unavailable[$key] = 'Source or memory budget exceeded for '.$name.' at candidate source '.$path.'. Its declaration was not analyzed.';
 
-        return $this->classes[$key];
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function safe(string $path): bool

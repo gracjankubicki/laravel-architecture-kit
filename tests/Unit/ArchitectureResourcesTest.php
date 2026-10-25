@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityResult;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiCompatibilityStatus;
 use GracjanKubicki\ArchitectureKit\LaravelAi\LaravelAiProfile;
+use GracjanKubicki\ArchitectureKit\Mcp\ToolGuidance;
 use GracjanKubicki\ArchitectureKit\Resources\ArchitectureResources;
 use Illuminate\Filesystem\Filesystem;
 use PhpParser\ParserFactory;
@@ -40,6 +41,18 @@ class ArchitectureResourcesTest extends TestCase
         foreach ([$resources->guideline($enabled)->contents, $resources->fullGuideline($enabled), $resources->architectureGuideline(Architecture::Actions, $enabled), $resources->skills($enabled)['actions']->contents] as $text) {
             $this->assertStringContainsString('class role alone does not require a separate test', $text);
             $this->assertStringContainsString('static class references do not prove execution or meaningful assertions', $text);
+        }
+    }
+
+    public function test_generated_guidance_requires_concrete_questions_for_blocking_gaps_and_needed_deep(): void
+    {
+        $resources = $this->resources();
+        foreach ([$resources->guideline([Architecture::Actions])->contents, $resources->fullGuideline([Architecture::Actions]), ToolGuidance::BOOST_INSTRUCTIONS] as $text) {
+            $this->assertStringContainsString('ask one concrete question; listing gaps is insufficient', $text);
+            $this->assertStringContainsString('If Deep is needed, ask a concrete consent question first', $text);
+            $this->assertStringContainsString('After approval record analysis-consent per repo/task', $text);
+            $this->assertStringContainsString('refusal leaves Basic available', $text);
+            $this->assertStringContainsString('exit 0 is not PASS', $text);
         }
     }
 

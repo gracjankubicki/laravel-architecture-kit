@@ -287,7 +287,7 @@ final class ArchitectureResources
     private function globalRules(): string
     {
         return $this->packageContents(<<<'MARKDOWN'
-This project MUST follow the enabled Architecture Kit patterns globally.
+This project MUST follow the enabled Architecture Kit patterns globally. Basic is the default source map and local-rule scope, including existing profiles. Full only expands output. Before Deep analysis ask the human for consent for this repository and task, record it with analysis-consent, then use analysis_mode=deep and task on MCP or --mode=deep --task on CLI. Refusal leaves Basic search available. Consent never grants runtime or custom PHP execution. For a relevant source-map gap, search and read the files, cite a concrete file and relationship or state the uncertainty. Ask a concrete question when missing information prevents choosing a correct change. Candidate tests are not coverage, execution or PASS. Try to correct new errors and report remaining failures and unverified checks; advisory permits completion. Enforce is an explicit separate policy.
 
 Project classification and organization proposals:
 
@@ -303,8 +303,8 @@ Before changing application architecture:
 - Load the listed Architecture Kit skill before implementing or refactoring code for that architecture.
 - Before finishing a code change, run `php artisan architecture-kit:guard --changed --strict`.
 - In CI or after committing, run `php artisan architecture-kit:guard --changed --base=origin/main --strict`.
-- You MUST fix all Architecture Kit guard errors before final response.
-- Do not claim the work is done while the guard reports errors.
+- Try to fix new Architecture Kit errors. Report remaining errors and unverified checks in the final handoff.
+- State what was checked, what remains and why. Advisory permits continuing even when analysis failed; it never means PASS.
 
 Architecture folder purity:
 

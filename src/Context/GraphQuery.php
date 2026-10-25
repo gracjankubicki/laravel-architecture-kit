@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Context;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogKinds;
 
 /** Directed queries share the catalog's adjacency indexes, never a second source scan. */
 final readonly class GraphQuery
 {
-    public function __construct(private CatalogIndex $index, private int $maxNodes = 5000, private int $maxEdges = 25000) {}
+    public function __construct(private CatalogIndex $index, private int $maxNodes = 5000, private int $maxEdges = 25000, private bool $shortNames = false) {}
 
     /** @return array<string, mixed> */
     public function query(string $subject, string $mode = 'context', ?string $target = null, int $depth = 4): array
     {
-        $base = ['status' => 'invalid_input', 'records' => [], 'mode' => $mode, 'traversal_complete' => true,
+        $base = ['analysis' => ['mode' => $this->index->mode->value, 'deep_run' => $this->index->mode === AnalysisMode::Deep, 'checks_complete' => false], 'status' => 'invalid_input', 'records' => [], 'mode' => $mode, 'traversal_complete' => true,
             'counts' => ['basis' => 'exact_in_analyzed_graph', 'direct' => 0, 'indirect' => 0],
             'budgets' => ['nodes' => $this->maxNodes, 'edges' => $this->maxEdges, 'depth' => $mode === 'context' ? 1 : $depth]];
         if (trim($subject) === '' || ! in_array($mode, ['context', 'path', 'impact'], true) || $depth < 1 || $depth > 20
@@ -29,18 +30,21 @@ final readonly class GraphQuery
         }
         $id = $subjects[0];
         $base['subject'] = $this->index->elements[$id];
+        $base['analysis']['checks_complete'] = $this->index->checksComplete();
         if ($mode === 'context') {
             $records = [];
             $neighbors = [];
             foreach (array_unique([...($this->index->out[$id] ?? []), ...($this->index->in[$id] ?? [])]) as $position) {
                 if (count($records) >= $this->maxEdges) {
                     $base['traversal_complete'] = false;
+                    $base['analysis']['checks_complete'] = false;
                     break;
                 }
                 $edge = $this->index->relations[$position];
                 $neighbor = $edge['from'] === $id ? $edge['to'] : $edge['from'];
                 if (! isset($neighbors[$neighbor]) && count($neighbors) >= $this->maxNodes) {
                     $base['traversal_complete'] = false;
+                    $base['analysis']['checks_complete'] = false;
                     break;
                 }
                 $neighbors[$neighbor] = true;
@@ -67,11 +71,13 @@ final readonly class GraphQuery
         $seedResult = $mode === 'impact' ? $this->changeSeeds($id) : ['seeds' => [$id], 'complete' => true];
         $seeds = $seedResult['seeds'];
         $base['traversal_complete'] = $seedResult['complete'];
+        $base['analysis']['checks_complete'] = $base['analysis']['checks_complete'] && $seedResult['complete'];
         $seen = [];
         $queue = [];
         foreach ($seeds as $seed) {
             if (count($seen) >= $this->maxNodes) {
                 $base['traversal_complete'] = false;
+                $base['analysis']['checks_complete'] = false;
                 break;
             }
             $seen[$seed] = ['distance' => 0, 'previous' => null, 'edge' => null, 'seed' => $seed];
@@ -87,6 +93,7 @@ final readonly class GraphQuery
             foreach ($positions as $position) {
                 if (++$edges > $this->maxEdges) {
                     $base['traversal_complete'] = false;
+                    $base['analysis']['checks_complete'] = false;
                     break 2;
                 }
                 $edge = $this->index->relations[$position];
@@ -99,6 +106,7 @@ final readonly class GraphQuery
                 }
                 if ($distance >= $depth || count($seen) >= $this->maxNodes) {
                     $base['traversal_complete'] = false;
+                    $base['analysis']['checks_complete'] = false;
 
                     continue;
                 }
@@ -146,8 +154,11 @@ final readonly class GraphQuery
         }
         $matches = [];
         foreach ($this->index->elements as $id => $element) {
+            $short = substr($element['name'], (int) strrpos('\\'.$element['name'], '\\'));
             if ($element['kind'] === 'file' && $element['path'] === $selector
-                || in_array($element['kind'], ['class', 'interface', 'trait', 'enum'], true) && strcasecmp($element['name'], ltrim($selector, '\\')) === 0) {
+                || in_array($element['kind'], ['method', 'class', 'interface', 'trait', 'enum'], true)
+                    && (strcasecmp($element['name'], ltrim($selector, '\\')) === 0
+                        || $this->shortNames && ! str_contains(ltrim($selector, '\\'), '\\') && strcasecmp($short, $selector) === 0)) {
                 $matches[] = $id;
             }
         }

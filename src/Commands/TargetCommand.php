@@ -9,10 +9,11 @@ use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
 use GracjanKubicki\ArchitectureKit\Target\TargetDefinition;
 use GracjanKubicki\ArchitectureKit\Target\TargetSchema;
 use Illuminate\Console\Command;
+use Throwable;
 
 final class TargetCommand extends Command
 {
-    protected $signature = 'architecture-kit:target {subject? : Class, method or future PHP file} {--limit=50 : Display 0..500 rows per channel} {--agent : Output JSON} {--schema : Output JSON Schema}';
+    protected $signature = 'architecture-kit:target {subject? : Class, method or future PHP file} {--limit=50 : Display 0..500 rows per channel} {--mode=basic : Full assessment requires deep and prior consent} {--task= : Consented task for Deep assessment} {--agent : Output JSON} {--schema : Output JSON Schema}';
 
     protected $description = 'Compare source architecture with declared target and propose migration without writes.';
 
@@ -23,8 +24,14 @@ final class TargetCommand extends Command
 
             return self::SUCCESS;
         }
+        try {
+            RepositoryContext::requiredDeep($this->option('mode'), $this->option('task'));
+        } catch (Throwable $exception) {
+            $result = ArchitectureTarget::error('E_TARGET_CONSENT', $exception->getMessage());
+            $result['analysis'] = ['mode' => 'basic', 'status' => 'not_run', 'deep_run' => false, 'checks_complete' => false];
+        }
         $limit = (string) $this->option('limit');
-        $result = ctype_digit($limit)
+        $result ??= ctype_digit($limit)
             ? (new ArchitectureTarget(RepositoryContext::root()))->inspect((string) $this->argument('subject'), (int) $limit)
             : ArchitectureTarget::error('E_TARGET_INPUT', 'Limit must be an integer 0..500.');
         if ($this->option('agent')) {

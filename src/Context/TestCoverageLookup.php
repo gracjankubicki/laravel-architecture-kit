@@ -54,7 +54,7 @@ final readonly class TestCoverageLookup
         $covered = [];
 
         foreach ($this->pathsDependingOn($testSources, [$symbol]) as $path => $_) {
-            $covered[$path] = ['path' => $path, 'coverage' => self::DIRECT, 'via' => null];
+            $covered[$path] = ['path' => $path, 'coverage' => self::DIRECT, 'via' => null, 'basis' => 'direct_source_reference', 'test_candidate' => true, 'proves_coverage' => false, 'test_executed' => false];
         }
 
         // One hop out: a test driving a service that uses the symbol still exercises it,
@@ -69,7 +69,7 @@ final readonly class TestCoverageLookup
                 continue;
             }
 
-            $covered[$path] = ['path' => $path, 'coverage' => self::INDIRECT, 'via' => $via];
+            $covered[$path] = ['path' => $path, 'coverage' => self::INDIRECT, 'via' => $via, 'basis' => 'indirect_source_reference', 'test_candidate' => true, 'proves_coverage' => false, 'test_executed' => false];
         }
 
         ksort($covered);

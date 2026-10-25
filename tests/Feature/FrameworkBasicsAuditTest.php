@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
@@ -63,7 +64,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions],
             changedOnly: false,
             routes: new RouteMap(['app\\http\\controllers\\frameworkcontroller::show' => ['POST']]),
-        );
+            mode: AnalysisMode::Deep);
 
         $this->assertSame([], array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller')));
     }
@@ -99,7 +100,7 @@ PHP);
                     'packageVersions' => [],
                 ],
             ),
-        );
+            mode: AnalysisMode::Deep);
 
         $items = array_values(array_filter($result->findings, fn ($finding): bool => $finding->rule === 'thin-controller'));
         foreach ($result->suggestions as $suggestion) {

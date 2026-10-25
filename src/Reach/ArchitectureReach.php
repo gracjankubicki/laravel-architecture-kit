@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Reach;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
@@ -13,7 +14,7 @@ use Throwable;
 /** Bounded analysis followed by independently sized pages of one immutable report. */
 final readonly class ArchitectureReach
 {
-    public function __construct(private Filesystem $files, private string $base) {}
+    public function __construct(private Filesystem $files, private string $base, private AnalysisMode $mode = AnalysisMode::Basic) {}
 
     /** @return array<string, mixed> */
     public function inspect(string $subject = '', int $limit = 20, int $depth = 4, ?string $reportId = null, int $page = 1): array
@@ -22,7 +23,7 @@ final readonly class ArchitectureReach
             return self::error('E_REACH_INPUT', 'Use limit 0..500, depth 1..32, page >=1. Continuation requires report_id without subject; new analysis starts at page 1.');
         }
         try {
-            $store = new ReachReports($this->files, $this->base);
+            $store = new ReachReports($this->files, $this->base, $this->mode);
             if ($reportId !== null) {
                 $saved = $store->load($reportId);
                 if (($saved['cmd'] ?? null) !== 'reach') {
@@ -33,7 +34,7 @@ final readonly class ArchitectureReach
             }
             $settings = DiscoverySettings::load($this->files, $this->base);
             $before = $store->signature($settings->exclude);
-            $report = (new ArchitectureImpact($this->files, $this->base, $settings->scope, $settings->cache, $settings->fingerprint, reachMode: true))->inspect($subject, $settings->exclude, 1000, $depth);
+            $report = (new ArchitectureImpact($this->files, $this->base, $settings->scope, $settings->cache, $settings->fingerprint, reachMode: true, mode: $this->mode))->inspect($subject, $settings->exclude, 1000, $depth);
             $report['cmd'] = 'reach';
             if (! $report['ok']) {
                 return $report;
@@ -105,7 +106,7 @@ final readonly class ArchitectureReach
         $bounded = $crossingsLimited || $report['reach']['code_limited'] || $report['execution']['status'] === 'limit' || $report['data']['status'] === 'limit';
         $fresh = $fresh && $report['reach']['fresh'] && $report['execution']['fresh'] && $report['data']['fresh'];
 
-        return ['counts' => ['code' => $code, 'execution_entries' => array_map('count', $entries), 'data_operations' => $data],
+        return ['counts' => ['code' => $code, 'execution_entries' => $this->mode === AnalysisMode::Deep ? array_map('count', $entries) : null, 'data_operations' => $this->mode === AnalysisMode::Deep ? $data : null],
             'units' => ['code' => $report['subject']['kind'] === 'file' ? 'unique class/method/file symbols per certainty and direction' : (isset($report['subject']['requested_method']) ? 'unique method symbols per certainty and direction' : 'unique class symbols per certainty and direction'), 'execution_entries' => 'unique source entry declarations per certainty; dispatch is not execution', 'data_operations' => 'unique source operation IDs per direction; table is not execution adjacency'],
             'layer_crossings' => array_values($crossings), 'layer_crossings_limited' => $crossingsLimited, 'total_is_lower_bound' => $bounded || ! $fresh,
             'fresh' => $fresh, 'status' => $bounded ? 'limit' : (! $fresh || $report['analysis']['notice_total'] > 0 || $report['execution']['status'] === 'incomplete' || $report['data']['status'] === 'incomplete' ? 'incomplete' : 'complete'),

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogAiGatewayTypes;
@@ -29,7 +30,7 @@ class StaticGraphPackageAiTest extends TestCase
             $body .= '$gateway = new '.$channel.'Gateway; '.$provider.'->use'.$channel.'Gateway(gateway: $gateway); $gateway->marker();';
         }
         $source .= 'function run(\\Laravel\\Ai\\Providers\\OpenAiProvider $openai, \\Laravel\\Ai\\Providers\\JinaProvider $jina) { '.$body.' }';
-        $index = new CatalogIndex([...$this->facts($source), $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$this->facts($source), $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $markers = array_filter($index->relations, fn ($edge) => $edge['kind'] === 'calls' && str_ends_with($index->elements[$edge['to']]['name'] ?? '', 'Gateway::marker'));
         $this->assertCount(8, $markers);
         $this->assertCount(8, $this->edges($index, 'passes-ai-provider-gateway'));
@@ -57,7 +58,7 @@ function run(Safe $provider, ByReference $custom) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'passes-ai-provider-gateway'));
         $this->assertCount(1, $this->edges($index, 'calls-ai-gateway'));
     }
@@ -77,7 +78,7 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $typed) {
     $exactGateway->getFile(null, null);
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $operations = $this->edges($index, 'calls-ai-gateway');
         $this->assertCount(1, $operations);
         $this->assertSame(10, $operations[0]['line']);
@@ -95,10 +96,10 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $provider) {
 }
 SOURCE);
         $count = fn ($index) => count(array_filter($index->relations, fn ($edge) => $edge['kind'] === 'calls' && ($index->elements[$edge['to']]['name'] ?? null) === 'App\\Gateway::marker'));
-        $this->assertSame(1, $count(new CatalogIndex([...$facts, $this->package()])));
-        $this->assertSame(0, $count(new CatalogIndex($facts)));
-        $this->assertSame(0, $count(new CatalogIndex([...$facts, $this->package('0.12.0')])));
-        $this->assertSame(0, $count(new CatalogIndex([...$facts, $this->package(reference: str_repeat('a', 40))])));
+        $this->assertSame(1, $count(new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep)));
+        $this->assertSame(0, $count(new CatalogIndex($facts, mode: AnalysisMode::Deep)));
+        $this->assertSame(0, $count(new CatalogIndex([...$facts, $this->package('0.12.0')], mode: AnalysisMode::Deep)));
+        $this->assertSame(0, $count(new CatalogIndex([...$facts, $this->package(reference: str_repeat('a', 40))], mode: AnalysisMode::Deep)));
     }
 
     public function test_fluent_channel_history_limit_is_explicit_without_selecting_an_arbitrary_gateway(): void
@@ -113,7 +114,7 @@ SOURCE);
         }
         $source .= 'function fileChoice($choice) { '.$fileReturns.' } function audioChoice($choice) { '.$audioReturns.' }';
         $source .= 'function run(\\Laravel\\Ai\\Providers\\OpenAiProvider $provider, $choice) { $provider->useFileGateway(fileChoice($choice))->useAudioGateway(audioChoice($choice))->fileGateway(); }';
-        $index = new CatalogIndex([...$this->facts($source), $this->package()]);
+        $index = new CatalogIndex([...$this->facts($source), $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'uses-ai-provider-setter-gateway'));
         $selections = $this->edges($index, 'selects-ai-provider-gateway');
         $this->assertCount(1, $selections);
@@ -139,7 +140,7 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $provider) {
     $provider->useFileGateway(gateway(false))->useAudioGateway(new Audio)->fileGateway()->getFile(null, null);
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $links = $this->edges($index, 'uses-ai-provider-setter-gateway');
         $this->assertCount(4, $links);
         $this->assertSame(['App\\First', 'App\\Second', 'App\\First', 'App\\Second'], array_column(array_column($links, 'metadata'), 'gateway_type'));
@@ -159,7 +160,7 @@ SOURCE);
     public function test_aggregate_gateway_inherits_only_verified_channel_contracts_and_respects_source_shadow(string $version, string $reference): void
     {
         $facts = $this->facts('namespace App; class Gateway implements \\Laravel\\Ai\\Contracts\\Gateway\\Gateway {} class Fake {}');
-        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $prefix = 'Laravel\\Ai\\Contracts\\Gateway\\';
         $text = version_compare($version, '0.9.0', '<') ? 'Text' : 'StepText';
         foreach (['Audio', 'Embedding', 'Image', 'Transcription', $text] as $channel) {
@@ -171,7 +172,7 @@ SOURCE);
         }
         $this->assertFalse(CatalogAiGatewayTypes::matches($index, 'App\\Fake', $prefix.$text.'Gateway', $version));
         $shadow = $this->facts('namespace Laravel\\Ai\\Contracts\\Gateway; interface Gateway {}');
-        $shadowed = new CatalogIndex([...$facts, ...$shadow, $this->package($version, reference: $reference)]);
+        $shadowed = new CatalogIndex([...$facts, ...$shadow, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $this->assertFalse(CatalogAiGatewayTypes::matches($shadowed, 'App\\Gateway', $prefix.$text.'Gateway', $version));
     }
 
@@ -185,7 +186,7 @@ function run() {
     (new \Laravel\Ai\Providers\OpenAiProvider(new Gateway, [], null))->useTextGateway(new Gateway)->imageGateway();
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'uses-ai-provider-setter-gateway'));
         $fallback = $this->edges($index, 'uses-ai-provider-constructor-gateway');
         $this->assertCount(1, $fallback);
@@ -217,7 +218,7 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $provider, Override $custom) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $links = $this->edges($index, 'uses-ai-provider-setter-gateway');
         $this->assertCount(3, $links);
         $this->assertCount(3, $this->edges($index, 'calls-ai-gateway'));
@@ -260,7 +261,7 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $parameter) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $links = $this->edges($index, 'uses-ai-provider-constructor-gateway');
         $this->assertCount(5, $links);
         $this->assertSame(['App\\GatewayA', 'App\\GatewayA', 'App\\GatewayB', 'App\\GatewayB', 'App\\GatewayA'], array_column(array_column($links, 'metadata'), 'gateway_type'));
@@ -302,7 +303,7 @@ function run(Untyped $untyped, Typed $typed, $remote) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'calls-ai-gateway'));
         $links = $this->edges($index, 'uses-ai-provider-selected-gateway');
         $this->assertCount(2, $links);
@@ -330,7 +331,7 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $provider, \Laravel\Ai\Contrac
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'calls-ai-gateway'));
         $links = $this->edges($index, 'uses-ai-provider-selected-gateway');
         $this->assertCount(2, $links);
@@ -358,7 +359,7 @@ function run(\Laravel\Ai\Contracts\Providers\FileProvider $provider) {
     $provider->fileGateway(mode: null);
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $selected = $this->edges($index, 'selects-ai-provider-gateway');
         $hasAzureFiles = version_compare($version, '0.9.0', '>=');
         $this->assertCount($hasAzureFiles ? 4 : 3, $selected);
@@ -390,7 +391,7 @@ function run(\Laravel\Ai\Providers\AzureOpenAiProvider $sdk, Base $base) {
     (new \Laravel\Ai\Providers\AzureOpenAiProvider([], null))->textGateway();
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(7, $this->edges($index, 'selects-ai-provider-gateway'));
         $factories = $this->edges($index, 'invokes-ai-provider-gateway-factory');
         $this->assertCount(4, $factories);
@@ -419,7 +420,7 @@ function run(\Laravel\Ai\Contracts\Providers\FileProvider $provider) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $selected = $this->edges($index, 'selects-ai-provider-gateway');
         $this->assertCount(3, $selected);
         $source = $this->edges($index, 'invokes-ai-provider-getter');
@@ -444,7 +445,7 @@ SOURCE);
             $facts = [...$facts, ...$this->facts($source, 'app/Providers'.$file.'.php')];
         }
         $facts = [...$facts, ...$this->facts('namespace App; function run(\\Laravel\\Ai\\Providers\\OpenAiProvider $provider) { $provider->fileGateway(); }', 'app/Consumer.php')];
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1001, $this->edges($index, 'selects-ai-provider-gateway'));
         $this->assertCount(1000, $this->edges($index, 'invokes-ai-provider-getter'));
         $this->assertContains('AI provider source subtype candidates exceeded their 1000-class budget.', array_column($index->diagnostics, 'message'));
@@ -462,7 +463,7 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $provider) {
     (new \Laravel\Ai\Providers\OpenAiProvider(null, [], null))->fileGateway();
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(6, $this->edges($index, 'selects-ai-provider-gateway'));
         $this->assertCount(4, $this->edges($index, 'invokes-ai-provider-getter'));
         $selected = $this->edges($index, 'selects-ai-provider-gateway');
@@ -476,7 +477,7 @@ SOURCE);
             $source .= 'class Override'.$type.' extends Base { public function fileGateway() { return null; } }';
         }
         $source .= 'function run(Base $provider) { '.str_repeat('$provider->fileGateway();', 410).' }';
-        $index = new CatalogIndex([...$this->facts($source), $this->package()]);
+        $index = new CatalogIndex([...$this->facts($source), $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(4096, $this->edges($index, 'selects-ai-provider-gateway'));
         $this->assertContains('AI provider getter selections exceeded their source budget.', array_column($index->diagnostics, 'message'));
     }
@@ -494,7 +495,7 @@ function run(Base $provider) {
     (new Base([], [], null))->fileGateway();
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $selected = $this->edges($index, 'selects-ai-provider-gateway');
         $this->assertCount(6, $selected);
         $standard = array_values(array_filter($selected, fn ($edge) => $edge['metadata']['runtime_standard_provider_required']));
@@ -514,7 +515,7 @@ SOURCE);
     {
         $consumer = $this->facts('namespace App; function run(\\Laravel\\Ai\\Providers\\OpenAiProvider $provider) { $provider->fileGateway(); }', 'app/Consumer.php');
         $shadow = $this->facts('namespace Laravel\\Ai\\Gateway\\OpenAi; class OpenAiFileGateway {}', 'app/Gateway.php');
-        $index = new CatalogIndex([...$consumer, ...$shadow, $this->package()]);
+        $index = new CatalogIndex([...$consumer, ...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $selected = $this->edges($index, 'selects-ai-provider-gateway');
         $this->assertCount(1, $selected);
         $this->assertNull($selected[0]['metadata']['default_gateway_candidate']);
@@ -522,7 +523,7 @@ SOURCE);
         $this->assertFalse($selected[0]['metadata']['default_creation_requires_unconfigured_channel']);
         $this->assertContains('AI provider default gateway class is source-shadowed.', array_column($index->diagnostics, 'message'));
         $this->assertSame([], $this->edges($index, 'invokes-ai-provider-gateway-factory'));
-        $plain = new CatalogIndex([...$consumer, $this->package()]);
+        $plain = new CatalogIndex([...$consumer, $this->package()], mode: AnalysisMode::Deep);
         $selected = $this->edges($plain, 'selects-ai-provider-gateway');
         $this->assertFalse($selected[0]['metadata']['default_gateway_resolution_required']);
         $this->assertSame('Laravel\\Ai\\Gateway\\OpenAi\\OpenAiFileGateway', $selected[0]['metadata']['default_gateway_candidate']['type']);
@@ -552,7 +553,7 @@ function run(Own $provider, Variadic $variadic, \Laravel\Ai\Providers\GeminiProv
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(5, $this->edges($index, 'selects-ai-provider-gateway'));
         $invoked = $this->edges($index, 'invokes-ai-provider-getter');
         $this->assertCount(5, $invoked);
@@ -581,7 +582,7 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $openai, \Laravel\Ai\Providers
     $mistral->audioGateway();
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $expected = ['Laravel\\Ai\\Gateway\\OpenAi\\OpenAiFileGateway', 'Laravel\\Ai\\Gateway\\Gemini\\GeminiStoreGateway'];
         if (version_compare($version, '0.9.0', '>=')) {
             $expected[] = 'Laravel\\Ai\\Gateway\\AzureOpenAi\\AzureOpenAiFileGateway';
@@ -610,7 +611,7 @@ class Own extends \Laravel\Ai\Providers\AzureOpenAiProvider {
 }
 function run(Own $provider) { $provider->textGateway(); }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $selected = $this->edges($index, 'selects-ai-provider-gateway');
         $this->assertCount(1, $selected);
         $this->assertNull($selected[0]['metadata']['default_gateway_candidate']);
@@ -623,7 +624,7 @@ SOURCE);
         $this->assertFalse($factory[0]['metadata']['execution_proven']);
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts('namespace Laravel\\Ai\\Gateway\\AzureOpenAi; class AzureOpenAiGateway {}', 'app/AzureShadow.php');
-        $withShadow = new CatalogIndex([...$facts, ...$shadow, $this->package()]);
+        $withShadow = new CatalogIndex([...$facts, ...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $factory = $this->edges($withShadow, 'invokes-ai-provider-gateway-factory');
         $this->assertCount(1, $factory);
         $this->assertSame('App\\Own::azureGateway', $withShadow->elements[$factory[0]['to']]['name']);
@@ -633,7 +634,7 @@ SOURCE);
     {
         foreach (['private function azureGateway() {}', 'protected static function azureGateway() {}', 'protected function azureGateway($required) {}', 'abstract protected function azureGateway();'] as $method) {
             $facts = $this->facts('namespace App; abstract class Own extends \\Laravel\\Ai\\Providers\\AzureOpenAiProvider { '.$method.' } function run(Own $provider) { $provider->textGateway(); }');
-            $index = new CatalogIndex([...$facts, $this->package()]);
+            $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'invokes-ai-provider-gateway-factory'));
             $selected = $this->edges($index, 'selects-ai-provider-gateway');
             $this->assertCount(1, $selected);
@@ -649,7 +650,7 @@ SOURCE);
             $calls = str_repeat('$provider->fileGateway();', 64);
             $facts = [...$facts, ...$this->facts('namespace App; function run'.$file.'(\\Laravel\\Ai\\Providers\\OpenAiProvider $provider) { '.$calls.' }', 'app/Consumer'.$file.'.php')];
         }
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(4096, $this->edges($index, 'selects-ai-provider-gateway'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
     }
@@ -676,7 +677,7 @@ function run(\Laravel\Ai\Providers\OpenAiProvider $standard, Own $inherited, Ove
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'selects-ai-provider-gateway');
         $this->assertCount(4, $edges);
         $standard = array_values(array_filter($edges, fn ($edge) => $edge['metadata']['runtime_standard_provider_required']));
@@ -692,7 +693,7 @@ SOURCE);
         $this->assertSame('App\\Override::fileGateway', $index->elements[$source[0]['to']]['name']);
         $this->assertTrue($source[0]['metadata']['source_method_body_controls_selection']);
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
-        $this->assertSame([], $this->edges(new CatalogIndex($facts), 'selects-ai-provider-gateway'));
+        $this->assertSame([], $this->edges(new CatalogIndex($facts, mode: AnalysisMode::Deep), 'selects-ai-provider-gateway'));
     }
 
     public function test_provider_getter_source_shapes_survive_cache_without_claiming_gateway_execution(): void
@@ -725,7 +726,7 @@ SOURCE);
         $this->assertSame([], $sites[0]->metadata['arguments']);
         $this->assertSame([['name' => 'unexpected', 'unpack' => false, 'by_ref' => false, 'callback' => null]], $sites[7]->metadata['arguments']);
         $this->assertStringNotContainsString('getter-private-value', json_encode(array_map(fn ($fact) => $fact->toArray(), $cached), JSON_THROW_ON_ERROR));
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'calls-ai-gateway'));
         $this->assertSame([], $this->edges($index, 'passes-ai-provider-gateway'));
     }
@@ -745,7 +746,7 @@ function run(Gateway $gateway, Override $override) {
 }
 SOURCE);
         foreach (['0.8.0', '0.8.1'] as $version) {
-            $index = new CatalogIndex([...$facts, $this->package($version)]);
+            $index = new CatalogIndex([...$facts, $this->package($version)], mode: AnalysisMode::Deep);
             $registered = $this->edges($index, 'registers-ai-gateway-callback');
             $executed = $this->edges($index, 'ai-gateway-tool-callback');
             $passed = $this->edges($index, 'passes-ai-gateway-callback');
@@ -767,7 +768,7 @@ SOURCE);
                 $this->assertArrayNotHasKey('runtime_tool_invocation_required', $edge['metadata']);
             }
         }
-        $modern = new CatalogIndex([...$facts, $this->package()]);
+        $modern = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($modern, 'ai-gateway-tool-callback'));
     }
 
@@ -775,7 +776,7 @@ SOURCE);
     {
         $name = str_repeat('x', 1001);
         $facts = $this->facts('namespace App; function run($events) { new \\Laravel\\Ai\\Providers\\CohereProvider('.$name.': [], events: $events); }');
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'constructs-ai-provider'));
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
         $this->assertStringNotContainsString($name, json_encode([$facts, $index], JSON_THROW_ON_ERROR));
@@ -800,7 +801,7 @@ class Override extends Own { public function __construct($config, $events) {} }
 SOURCE;
             $facts = $this->facts($source);
             $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-            $index = new CatalogIndex([...$facts, $this->package($version)]);
+            $index = new CatalogIndex([...$facts, $this->package($version)], mode: AnalysisMode::Deep);
             $constructors = $this->edges($index, 'constructs-ai-provider');
             $this->assertCount(version_compare($version, '0.9.0.0', '<') ? 13 : 14, $constructors);
             $this->assertSame([], $this->edges($index, 'passes-ai-provider-gateway'));
@@ -839,7 +840,7 @@ function own(Own $provider, Override $override) {
 }
 SOURCE;
             $facts = $this->facts($source);
-            $index = new CatalogIndex([...$facts, $this->package($version)]);
+            $index = new CatalogIndex([...$facts, $this->package($version)], mode: AnalysisMode::Deep);
             $bindings = $this->edges($index, 'passes-ai-provider-gateway');
             $this->assertCount(version_compare($version, '0.9.0.0', '<') ? 19 : 20, $bindings);
             $constructors = array_values(array_filter($bindings, fn ($edge) => $edge['metadata']['method'] === '__construct'));
@@ -868,7 +869,7 @@ class AudioGateway implements \Laravel\Ai\Contracts\Gateway\AudioGateway {}
 class EmbeddingGateway implements \Laravel\Ai\Contracts\Gateway\EmbeddingGateway {}
 SOURCE);
         foreach (['0.8.1' => 0, '0.9.0' => 1, '0.10.2' => 1, '0.10.3' => 2, '0.11.0' => 4, '0.11.1' => 6, '0.11.2' => 6] as $version => $count) {
-            $index = new CatalogIndex([...$facts, $this->package($version)]);
+            $index = new CatalogIndex([...$facts, $this->package($version)], mode: AnalysisMode::Deep);
             $this->assertCount($count, $this->edges($index, 'passes-ai-provider-gateway'));
         }
     }
@@ -896,7 +897,7 @@ function run(\Laravel\Ai\Gateway\OpenAi\OpenAiGateway $openai, \Laravel\Ai\Gatew
 }
 SOURCE);
         foreach (array_keys(CatalogPackageVersions::AI_REFERENCES) as $version) {
-            $index = new CatalogIndex([...$facts, $this->package($version)]);
+            $index = new CatalogIndex([...$facts, $this->package($version)], mode: AnalysisMode::Deep);
             $this->assertCount(7, $this->edges($index, 'calls-ai-gateway'));
             $this->assertCount(2, $this->edges($index, 'invokes-ai-gateway-method'));
             $this->assertCount(2, $this->edges($index, 'passes-ai-provider-gateway'));
@@ -905,11 +906,11 @@ SOURCE);
             $this->assertStringNotContainsString('"private"', json_encode($index, JSON_THROW_ON_ERROR));
         }
         $shadow = $this->facts('namespace Laravel\Ai\Gateway\OpenAi; class OpenAiFileGateway {}', 'app/Shadow.php');
-        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()]);
+        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $calls = $this->edges($index, 'calls-ai-gateway');
         $this->assertCount(4, $calls);
         $this->assertCount(1, $this->edges($index, 'passes-ai-provider-gateway'));
-        $this->assertSame([], $this->edges(new CatalogIndex($facts), 'calls-ai-gateway'));
+        $this->assertSame([], $this->edges(new CatalogIndex($facts, mode: AnalysisMode::Deep), 'calls-ai-gateway'));
     }
 
     public function test_provider_inherited_constructor_gateway_binding_preserves_argument_shape_and_source_provenance(): void
@@ -939,7 +940,7 @@ function run($events, $unknown) {
 SOURCE);
         foreach (array_keys(CatalogPackageVersions::AI_REFERENCES) as $version) {
             $roundtrip = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-            $index = new CatalogIndex([...$roundtrip, $this->package($version)]);
+            $index = new CatalogIndex([...$roundtrip, $this->package($version)], mode: AnalysisMode::Deep);
             $bindings = $this->edges($index, 'passes-ai-provider-gateway');
             $this->assertCount(2, $bindings);
             $this->assertCount(2, $this->edges($index, 'references-ai-provider-gateway'));
@@ -978,7 +979,7 @@ function run(Standard $standard, Child $child, Override $override, PrivateOverri
 }
 SOURCE);
         foreach (array_keys(CatalogPackageVersions::AI_REFERENCES) as $version) {
-            $index = new CatalogIndex([...$facts, $this->package($version)]);
+            $index = new CatalogIndex([...$facts, $this->package($version)], mode: AnalysisMode::Deep);
             $bindings = $this->edges($index, 'passes-ai-provider-gateway');
             $this->assertCount(4, $bindings);
             $this->assertCount(1, $this->edges($index, 'invokes-ai-provider-setter'));
@@ -998,7 +999,7 @@ SOURCE);
             $source .= $number === 0 ? ' class Gateway implements \\Laravel\\Ai\\Contracts\\Gateway\\FileGateway {}' : '';
             array_push($facts, ...$this->facts($source, 'app/Provider'.$number.'.php'));
         }
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(4096, $this->edges($index, 'passes-ai-provider-gateway'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
     }
@@ -1013,7 +1014,7 @@ SOURCE);
                     .'function run'.$channel.'(\\Laravel\\Ai\\Contracts\\Providers\\'.$channel.'Provider $provider) { $provider->use'.$channel.'Gateway(gateway: new '.$channel.'Gateway); }';
             }
             $facts = $this->facts($source);
-            $index = new CatalogIndex([...$facts, $this->package($version)]);
+            $index = new CatalogIndex([...$facts, $this->package($version)], mode: AnalysisMode::Deep);
             $bindings = $this->edges($index, 'passes-ai-provider-gateway');
             $this->assertCount(8, $bindings);
             $this->assertCount(8, $this->edges($index, 'references-ai-provider-gateway'));
@@ -1047,7 +1048,7 @@ function run(Provider $provider, Custom $custom, Fake $fake, $unknown) {
     $provider->useFileGateway(gateway: new Gateway, other: 'private-value');
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $bindings = $this->edges($index, 'passes-ai-provider-gateway');
         $this->assertCount(2, $bindings);
         $this->assertCount(1, $this->edges($index, 'invokes-ai-provider-setter'));
@@ -1058,8 +1059,8 @@ SOURCE);
         $this->assertFalse($bindings[1]['metadata']['runtime_standard_provider_required']);
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
         $this->assertStringNotContainsString('private-value', json_encode($index, JSON_THROW_ON_ERROR));
-        $this->assertSame([], $this->edges(new CatalogIndex($facts), 'passes-ai-provider-gateway'));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, $this->package('0.12.0')]), 'passes-ai-provider-gateway'));
+        $this->assertSame([], $this->edges(new CatalogIndex($facts, mode: AnalysisMode::Deep), 'passes-ai-provider-gateway'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$facts, $this->package('0.12.0')], mode: AnalysisMode::Deep), 'passes-ai-provider-gateway'));
     }
 
     public function test_gateway_first_class_and_returned_closures_respect_source_visibility_and_return_provenance(): void
@@ -1089,7 +1090,7 @@ function run(\Laravel\Ai\Contracts\Gateway\TextGateway $gateway, Service $servic
 }
 SOURCE);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package('0.8.1')]);
+        $index = new CatalogIndex([...$facts, $this->package('0.8.1')], mode: AnalysisMode::Deep);
         $callbacks = $this->edges($index, 'ai-gateway-tool-callback');
         $this->assertCount(7, $callbacks);
         $this->assertCount(7, $this->edges($index, 'registers-ai-gateway-callback'));
@@ -1138,7 +1139,7 @@ function run(\Laravel\Ai\Contracts\Gateway\TextGateway $gateway, $unknown) {
 class Service { public static function before() {} public static function after() {} }
 SOURCE);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package('0.8.1')]);
+        $index = new CatalogIndex([...$facts, $this->package('0.8.1')], mode: AnalysisMode::Deep);
         $callbacks = $this->edges($index, 'ai-gateway-tool-callback');
         $this->assertCount(6, $callbacks);
         $this->assertCount(6, $this->edges($index, 'registers-ai-gateway-callback'));
@@ -1168,7 +1169,7 @@ class Service { public static function before() {} public static function after(
 SOURCE);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
         foreach (['0.8.0', '0.8.1'] as $version) {
-            $index = new CatalogIndex([...$facts, $this->package($version)]);
+            $index = new CatalogIndex([...$facts, $this->package($version)], mode: AnalysisMode::Deep);
             $registered = $this->edges($index, 'registers-ai-gateway-callback');
             $callbacks = $this->edges($index, 'ai-gateway-tool-callback');
             $passed = $this->edges($index, 'passes-ai-gateway-callback');
@@ -1192,7 +1193,7 @@ SOURCE);
             $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
             $this->assertStringNotContainsString('private-callback-name', json_encode([$facts, $index], JSON_THROW_ON_ERROR));
         }
-        $modern = new CatalogIndex([...$facts, $this->package()]);
+        $modern = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($modern, 'registers-ai-gateway-callback'));
         $this->assertSame([], $this->edges($modern, 'ai-gateway-tool-callback'));
         $this->assertSame([], $this->edges($modern, 'passes-ai-gateway-callback'));
@@ -1222,7 +1223,7 @@ function run(Child $renamed, Aliased $aliased, Variadic $variadic, $provider) {
 }
 SOURCE);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'calls-ai-gateway');
         $this->assertCount(6, $edges);
         $this->assertCount(6, $this->edges($index, 'invokes-ai-gateway-method'));
@@ -1245,7 +1246,7 @@ SOURCE);
                 .str_repeat('$gateway->getFile(null, "private");', $count).' }';
             array_push($facts, ...$this->facts($source, 'app/Gateway'.$number.'.php'));
         }
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(4096, $this->edges($index, 'calls-ai-gateway'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
     }
@@ -1256,7 +1257,7 @@ SOURCE);
 namespace Laravel\Ai\Contracts\Gateway { interface AudioGateway { public function generateAudio($provider, $model, $text, $voice); } }
 namespace App { function run(\Laravel\Ai\Contracts\Gateway\Gateway $root, $provider) { $root->generateAudio($provider, 'private', 'private', 'private'); } }
 SOURCE);
-        $index = new CatalogIndex([...$shadow, $this->package()]);
+        $index = new CatalogIndex([...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'calls-ai-gateway'));
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
         $facts = $this->facts(<<<'SOURCE'
@@ -1264,12 +1265,12 @@ namespace App;
 class Custom implements \Laravel\Ai\Contracts\Gateway\FileGateway { public function getFile($provider, $fileId) {} }
 function run(Custom $gateway, $provider) { $gateway->getFile($provider, 'private'); }
 SOURCE);
-        $unknown = new CatalogIndex([...$facts, $this->package('0.12.0')]);
+        $unknown = new CatalogIndex([...$facts, $this->package('0.12.0')], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($unknown, 'calls-ai-gateway'));
         $this->assertNotContains('ai-gateway', $unknown->elements[$unknown->namedTypes('App\\Custom')[0]]['roles']);
         $this->assertContains('package_ai_analysis', array_column($unknown->diagnostics, 'code'));
         $oversized = 'namespace App; function run(\\Laravel\\Ai\\Contracts\\Gateway\\FileGateway $gateway) { $gateway->getFile('.implode(',', array_fill(0, 129, 'null')).'); }';
-        $index = new CatalogIndex([...$this->facts($oversized), $this->package()]);
+        $index = new CatalogIndex([...$this->facts($oversized), $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'calls-ai-gateway'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
     }
@@ -1284,7 +1285,7 @@ function run(\Laravel\Ai\Contracts\Gateway\FileGateway $gateway, $provider) {
     $gateway->getFile($provider, 'private');
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'calls-ai-gateway'));
         $this->assertContains('unresolved_dispatch', array_column($index->diagnostics, 'code'));
     }
@@ -1337,7 +1338,7 @@ function run(Files $files, \Laravel\Ai\Contracts\Gateway\StoreGateway $stores,
 }
 SOURCE);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $legacy = version_compare($version, '0.9.0.0', '<');
         $edges = $this->edges($index, 'calls-ai-gateway');
         $this->assertCount($legacy ? 19 : 18, $edges);
@@ -1354,7 +1355,7 @@ SOURCE);
         foreach (['file-secret', 'store-secret', 'model-secret', 'text-secret', 'voice-secret', 'prompt-secret', 'inputs-secret', 'documents-secret', 'query-secret', 'instructions-secret', 'invocation-secret'] as $secret) {
             $this->assertStringNotContainsString($secret, $serialized);
         }
-        $absent = new CatalogIndex($facts);
+        $absent = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($absent, 'calls-ai-gateway'));
         $this->assertNotContains('ai-gateway', $absent->elements[$absent->namedTypes('App\\Child')[0]]['roles']);
     }
@@ -1396,7 +1397,7 @@ function run(Agent $agent, Factory $factory, $condition) {
 }
 SOURCE, 'app/Consumer.php');
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), [...$producer, ...$consumer]);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'uses-ai-attachment');
         $this->assertCount(8, $edges);
         foreach ($edges as $edge) {
@@ -1427,7 +1428,7 @@ function run(Agent $agent) {
     $agent->queue('private', $copy);
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $uses = $this->edges($index, 'uses-ai-attachment');
         $this->assertCount(2, $uses);
         $this->assertSame($uses[0]['to'], $uses[1]['to']);
@@ -1485,7 +1486,7 @@ function branch(Agent $agent, $condition, $unknown) {
 }
 SOURCE);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'uses-ai-attachment');
         $this->assertCount(4, $edges);
         foreach ($edges as $edge) {
@@ -1526,7 +1527,7 @@ SOURCE);
         $array = str_replace(['D', 'I'], ['\\Laravel\\Ai\\Files\\Document::fromString("private-content")', '\\Laravel\\Ai\\Files\\Image::fromPath("private-path")'], $array);
         $source = 'namespace App; class Agent implements \\Laravel\\Ai\\Contracts\\Agent { use \\Laravel\\Ai\\Promptable; public function instructions(): string { return ""; } } function run(Agent $agent, $key, $unknown) { $agent->prompt("private", '.$array.'); }';
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $this->facts($source));
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $types = array_map(fn ($edge) => substr($index->elements[$edge['to']]['metadata']['file_type'], strlen('Laravel\\Ai\\Files\\')), $this->edges($index, 'uses-ai-attachment'));
         $this->assertSame($expected, $types);
         $serialized = json_encode([$facts, $index], JSON_THROW_ON_ERROR);
@@ -1540,7 +1541,7 @@ SOURCE);
         $items = array_fill(0, 128, '\\Laravel\\Ai\\Files\\Document::fromString("private")');
         $items[] = '0 => $unknown';
         $source = 'namespace App; class Agent implements \\Laravel\\Ai\\Contracts\\Agent { use \\Laravel\\Ai\\Promptable; public function instructions(): string { return ""; } } function run(Agent $agent, $unknown) { $agent->prompt("private", ['.implode(',', $items).']); }';
-        $index = new CatalogIndex([...$this->facts($source), $this->package()]);
+        $index = new CatalogIndex([...$this->facts($source), $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'uses-ai-attachment'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
     }
@@ -1569,7 +1570,7 @@ function run(Agent $agent, Decoy $decoy, $dynamic) {
 throw new \RuntimeException('source-only-secret');
 SOURCE);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $video = version_compare($version, '0.10.0.0', '>=');
         $this->assertCount($video ? 5 : 4, $this->edges($index, 'uses-ai-attachment'));
         $this->assertCount($video ? 5 : 4, $this->edges($index, 'prepares-ai-attachment'));
@@ -1583,7 +1584,7 @@ SOURCE);
             $this->assertStringNotContainsString($secret, $serialized);
         }
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
-        $absent = new CatalogIndex($facts);
+        $absent = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($absent, 'uses-ai-attachment'));
     }
 
@@ -1596,13 +1597,13 @@ class Agent implements \Laravel\Ai\Contracts\Agent { use \Laravel\Ai\Promptable;
 function run(Agent $agent) { $agent->prompt('private', [\Laravel\Ai\Files\Document::fromString('private')]); }
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'uses-ai-attachment'));
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
         foreach ([128, 129] as $count) {
             $source = 'namespace App; class Agent implements \\Laravel\\Ai\\Contracts\\Agent { use \\Laravel\\Ai\\Promptable; public function instructions(): string { return ""; } } function run(Agent $agent) { $agent->prompt("private", ['
                 .implode(',', array_fill(0, $count, '\\Laravel\\Ai\\Files\\Document::fromString("private")')).']); }';
-            $index = new CatalogIndex([...$this->facts($source), $this->package()]);
+            $index = new CatalogIndex([...$this->facts($source), $this->package()], mode: AnalysisMode::Deep);
             $this->assertCount(128, $this->edges($index, 'uses-ai-attachment'));
             $this->assertSame($count === 129, in_array('catalog_limit', array_column($index->diagnostics, 'code'), true));
         }
@@ -1633,7 +1634,7 @@ function consume(Agent $agent, Factory $factory) {
 }
 function typedAfterCycle(\Laravel\Ai\Responses\StreamableAgentResponse $response) { $response->then(fn ($value) => null); }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $then = $this->edges($index, 'ai-response-then');
         $known = array_values(array_filter($then, fn ($edge) => ! ($edge['metadata']['agent_origin_unknown'] ?? false)));
         $typed = array_values(array_filter($then, fn ($edge) => $edge['metadata']['agent_origin_unknown'] ?? false));
@@ -1658,7 +1659,7 @@ SOURCE);
             $source = 'namespace App; class Agent implements \\Laravel\\Ai\\Contracts\\Agent { use \\Laravel\\Ai\\Promptable; public function instructions(): string { return ""; } }'
                 .' class Factory { public static function response(Agent $agent, $condition) { '.implode(' ', $returns).' } }'
                 .' function consume() { Factory::response(new Agent, $condition)->then(fn ($response) => null); }';
-            $index = new CatalogIndex([...$this->facts($source), $this->package()]);
+            $index = new CatalogIndex([...$this->facts($source), $this->package()], mode: AnalysisMode::Deep);
             $this->assertCount(128, $this->edges($index, 'ai-response-then'));
             $messages = array_column($index->diagnostics, 'message');
             $limit = 'AI response factories exceed their source candidate budget.';
@@ -1699,7 +1700,7 @@ function consume(Agent $agent) {
 }
 SOURCE, 'app/Consumer.php');
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), [...$factory, ...$consumer]);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $callbacks = [...$this->edges($index, 'ai-response-then'), ...$this->edges($index, 'ai-response-catch')];
         $this->assertCount(4, $callbacks, json_encode(array_map(fn ($edge) => [$index->elements[$index->elements[$edge['from']]['parent']]['name'], $edge['kind']], $callbacks), JSON_THROW_ON_ERROR));
         foreach ($callbacks as $edge) {
@@ -1750,7 +1751,7 @@ function invalid(Stream $stream, Queued $queued, Decoy $decoy, Custom $custom) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $callbacks = [...$this->edges($index, 'ai-response-then'), ...$this->edges($index, 'ai-response-each'), ...$this->edges($index, 'ai-response-catch')];
         $this->assertCount(7, $callbacks);
         foreach ($callbacks as $edge) {
@@ -1760,7 +1761,7 @@ SOURCE);
             $this->assertContains($index->elements[$edge['from']]['name'], ['App\\stream', 'App\\queued', 'App\\stored', 'App\\inherited']);
         }
         $this->assertSame([], $this->edges($index, 'invokes-ai-agent'));
-        $absent = new CatalogIndex($cached);
+        $absent = new CatalogIndex($cached, mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($absent, 'ai-response-then'));
     }
 
@@ -1790,7 +1791,7 @@ function run(Agent $agent) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $then = $this->edges($index, 'ai-response-then');
         $names = array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $then);
         sort($names);
@@ -1835,7 +1836,7 @@ function run(Agent $agent) {
 }
 SOURCE, 'app/Consumer.php');
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), [...$factories, ...$consumer]);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $then = $this->edges($index, 'ai-response-then');
         $this->assertCount(4, $then);
         foreach ($then as $edge) {
@@ -1885,7 +1886,7 @@ function run(Agent $agent, Service $service) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $names = array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $this->edges($index, 'ai-response-then'));
         sort($names);
         $this->assertSame(['App\\Service::finish', 'App\\Service::finish', 'App\\Service::finish', 'App\\finish', 'finish'], $names);
@@ -1936,7 +1937,7 @@ function run(Agent $agent, Service $service) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $then = $this->edges($index, 'ai-response-then');
         $this->assertCount(6, $then);
         $names = array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $then);
@@ -1982,7 +1983,7 @@ function run(Agent $agent, Service $service) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'ai-response-then');
         $names = array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $edges);
         sort($names);
@@ -2004,7 +2005,7 @@ SOURCE, 'app/Caller.php');
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $caller);
         foreach (['public', 'private'] as $visibility) {
             $service = $this->facts('namespace App; class Service { '.$visibility.' static function finish($response) {} }', 'app/Service.php');
-            $index = new CatalogIndex([...$cached, ...$service, $this->package()]);
+            $index = new CatalogIndex([...$cached, ...$service, $this->package()], mode: AnalysisMode::Deep);
             $edges = $this->edges($index, 'ai-response-then');
             $this->assertCount($visibility === 'public' ? 1 : 0, $edges);
             if ($edges !== []) {
@@ -2013,7 +2014,7 @@ SOURCE, 'app/Caller.php');
                 $this->assertSame('app/Service.php', $index->elements[$edges[0]['to']]['path']);
             }
         }
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'ai-response-then'));
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
     }
@@ -2056,7 +2057,7 @@ function unbound(Agent $agent) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'ai-response-then');
         $names = array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $edges);
         sort($names);
@@ -2088,7 +2089,7 @@ function run(Agent $agent, Service $service) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $then = $this->edges($index, 'ai-response-then');
         $names = array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $then);
         sort($names);
@@ -2121,7 +2122,7 @@ function run(Agent $agent) {
 }
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $then = $this->edges($index, 'ai-response-then');
         $names = array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $then);
         sort($names);
@@ -2152,7 +2153,7 @@ function run(Agent $agent) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $then = $this->edges($index, 'ai-response-then');
         $this->assertCount(3, $then);
         $this->assertCount(1, $this->edges($index, 'ai-response-each'));
@@ -2187,7 +2188,7 @@ function run(Agent $agent, Decoy $decoy) {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $then = $this->edges($index, 'ai-response-then');
         $this->assertCount(3, $then);
         $this->assertCount(1, $this->edges($index, 'ai-response-each'));
@@ -2202,7 +2203,7 @@ SOURCE);
         $serialized = json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('stream-private', $serialized);
         $this->assertStringNotContainsString('queue-private', $serialized);
-        $index = new CatalogIndex($cached);
+        $index = new CatalogIndex($cached, mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'ai-response-then'));
     }
 
@@ -2212,7 +2213,7 @@ SOURCE);
             $source = 'namespace App; class Agent implements \\Laravel\\Ai\\Contracts\\Agent { use \\Laravel\\Ai\\Promptable; public function instructions(): string { return ""; } } function run(Agent $agent) { $agent->stream("secret")'
                 .str_repeat('->then(fn ($response) => null)', $count).'; }';
             $facts = $this->facts($source);
-            $index = new CatalogIndex([...$facts, $this->package()]);
+            $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
             $edges = $this->edges($index, 'ai-response-then');
             $this->assertCount(16, $edges);
             $this->assertCount(16, array_unique(array_column($edges, 'to')));
@@ -2249,7 +2250,7 @@ function run(Agent $agent, Decoy $decoy) {
 class Service { public static function delta() {} public static function complete() {} public static function success() {} public static function failure() {} public static function invalid() {} }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $each = $this->edges($index, 'ai-response-each');
         $then = $this->edges($index, 'ai-response-then');
         $catch = $this->edges($index, 'ai-response-catch');
@@ -2271,7 +2272,7 @@ SOURCE);
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
         $this->assertStringNotContainsString('callback-secret', json_encode($index->relations, JSON_THROW_ON_ERROR));
         $shadow = $this->facts('namespace Laravel\\Ai\\Responses; class StreamableAgentResponse {}', 'app/Shadow.php');
-        $index = new CatalogIndex([...$cached, ...$shadow, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, ...$shadow, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'ai-response-each'));
         $this->assertCount(1, $this->edges($index, 'ai-response-then'));
     }
@@ -2279,7 +2280,7 @@ SOURCE);
     /** @return list<CatalogFacts> */
     private function facts(string $source, string $path = 'app/Ai.php'): array
     {
-        return (new ProjectGraphBuilder(catalog: true))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
+        return (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
     }
 
     private function package(string $version = '0.11.2', string $path = 'composer.lock', ?string $reference = null): CatalogFacts
@@ -2339,7 +2340,7 @@ SOURCE);
             $this->assertStringNotContainsString($secret, $serialized);
         }
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$facts, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $this->assertContains('ai-agent', $index->elements[$index->namedTypes('App\\Agent')[0]]['roles']);
         $this->assertContains('ai-tool', $index->elements[$index->namedTypes('App\\Lookup')[0]]['roles']);
         $this->assertCount(4, $this->edges($index, 'starts-ai-invocation'));
@@ -2363,7 +2364,7 @@ SOURCE);
             $this->assertSame($reference, $edge['metadata']['package_sources'][0]['source_reference']);
         }
         foreach ([[], [$this->package('99.0.0')], [$this->package(), $this->package('0.8.0', 'vendor/composer/installed.json')]] as $packages) {
-            $index = new CatalogIndex([...$facts, ...$packages]);
+            $index = new CatalogIndex([...$facts, ...$packages], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'invokes-ai-agent'));
             $this->assertSame([], $this->edges($index, 'ai-selected-tool-handler'));
             $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
@@ -2390,12 +2391,12 @@ function consumer(Agent $agent, Override $override, Decoy $decoy) {
     $agent->stream('valid');
 }
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'invokes-ai-agent'));
         $this->assertSame([], $this->edges($index, 'ai-selected-tool-handler'));
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts('namespace Laravel\\Ai; trait Promptable {}', 'app/Shadow.php');
-        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()]);
+        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'invokes-ai-agent'));
     }
 
@@ -2420,7 +2421,7 @@ class ParentAgent implements AgentContract, \Laravel\Ai\Contracts\HasTools {
 }
 SOURCE);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $selected = $this->edges($index, 'ai-selected-agent');
         $this->assertCount(1, $selected);
         $this->assertSame('App\\Child', $index->elements[$selected[0]['to']]['name']);
@@ -2436,7 +2437,7 @@ SOURCE);
         $this->assertSame([], $this->edges($index, 'ai-selected-tool-handler'));
         $this->assertStringNotContainsString('nested-secret-sentinel', json_encode($index->relations, JSON_THROW_ON_ERROR));
         $shadow = $this->facts('namespace Laravel\\Ai\\Tools; class AgentTool {}', 'app/Shadow.php');
-        $index = new CatalogIndex([...$cached, ...$shadow, $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, ...$shadow, $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'ai-selected-agent'));
         $this->assertSame([], $this->edges($index, 'ai-selected-agent-instructions'));
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
@@ -2455,13 +2456,13 @@ function consumer(Agent $agent) { return $agent->prompt('secret'); }
 SOURCE, 'app/Agent.php');
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $agent);
         $tool = $this->facts('namespace App; class Tool implements \\Laravel\\Ai\\Contracts\\Tool { public function handle($request) {} }', 'app/Tool.php');
-        $index = new CatalogIndex([...$cached, ...$tool, $this->package()]);
+        $index = new CatalogIndex([...$cached, ...$tool, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'ai-selected-tool-handler'));
         $decoy = $this->facts('namespace App; class Tool { public function handle($request) {} }', 'app/Tool.php');
-        $index = new CatalogIndex([...$cached, ...$decoy, $this->package()]);
+        $index = new CatalogIndex([...$cached, ...$decoy, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'ai-selected-tool-handler'));
         $private = $this->facts('namespace App; class Tool implements \\Laravel\\Ai\\Contracts\\Tool { private function handle($request) {} }', 'app/Tool.php');
-        $index = new CatalogIndex([...$cached, ...$private, $this->package()]);
+        $index = new CatalogIndex([...$cached, ...$private, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'ai-selected-tool-handler'));
         $this->assertCount(1, $this->edges($index, 'invokes-ai-agent'));
     }
@@ -2488,7 +2489,7 @@ SOURCE);
         $serialized = json_encode($stored, JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('secretRuntimeCondition', $serialized);
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $handlers = $this->edges($index, 'ai-selected-tool-handler');
         $this->assertCount(3, $handlers);
         $partial = 0;
@@ -2532,7 +2533,7 @@ SOURCE;
         foreach ([128, 129] as $count) {
             $facts = $this->facts(sprintf($source, implode(',', array_fill(0, $count, 'new Tool()'))));
             $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-            $index = new CatalogIndex([...$cached, $this->package()]);
+            $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
             $this->assertCount($count === 128 ? 1 : 0, $this->edges($index, 'ai-selected-tool-handler'));
             if ($count === 129) {
                 $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
@@ -2563,25 +2564,25 @@ class Agent implements \Laravel\Ai\Contracts\Agent, \Laravel\Ai\Contracts\HasToo
     public function instructions(): string { return ''; }
 }
 SOURCE;
-        $index = new CatalogIndex([...$cached, ...$this->facts(sprintf($source, 'public'), 'app/Agent.php'), $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, ...$this->facts(sprintf($source, 'public'), 'app/Agent.php'), $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $handlers = $this->edges($index, 'ai-selected-tool-handler');
         $this->assertCount(1, $handlers);
         $this->assertSame('App\\Tool::handle', $index->elements[$handlers[0]['to']]['name']);
         $this->assertSame('app/Supplies.php', $handlers[0]['path']);
         $this->assertFalse($handlers[0]['metadata']['tool_return_path_choice_required']);
         foreach (['private', 'protected'] as $visibility) {
-            $index = new CatalogIndex([...$cached, ...$this->facts(sprintf($source, $visibility), 'app/Agent.php'), $this->package($version, reference: $reference)]);
+            $index = new CatalogIndex([...$cached, ...$this->facts(sprintf($source, $visibility), 'app/Agent.php'), $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'ai-selected-tool-handler'));
             $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
         }
-        $index = new CatalogIndex([...$cached, ...$this->facts(sprintf($source, 'public'), 'app/Agent.php')]);
+        $index = new CatalogIndex([...$cached, ...$this->facts(sprintf($source, 'public'), 'app/Agent.php')], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'ai-selected-tool-handler'));
         $unqualified = str_replace('Supplies::available', 'available', sprintf($source, 'public'));
-        $index = new CatalogIndex([...$cached, ...$this->facts($unqualified, 'app/Agent.php'), $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$cached, ...$this->facts($unqualified, 'app/Agent.php'), $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'ai-selected-tool-handler'));
         $conflicting = str_replace('available', 'prompt', $unqualified);
         $conflictingTrait = $this->facts('namespace App; trait Supplies { public function prompt($prompt): iterable { return [new Tool()]; } } class Tool implements \\Laravel\\Ai\\Contracts\\Tool { public function handle($request) {} }', 'app/Supplies.php');
-        $index = new CatalogIndex([...$conflictingTrait, ...$this->facts($conflicting, 'app/Agent.php'), $this->package($version, reference: $reference)]);
+        $index = new CatalogIndex([...$conflictingTrait, ...$this->facts($conflicting, 'app/Agent.php'), $this->package($version, reference: $reference)], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'ai-selected-tool-handler'));
         $this->assertContains('package_ai_analysis', array_column($index->diagnostics, 'code'));
     }

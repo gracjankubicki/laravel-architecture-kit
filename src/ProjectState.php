@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit;
 
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\CustomRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\MissingTestLevel;
@@ -41,6 +42,7 @@ final readonly class ProjectState
         public MissingTestLevel $missingTestLevel,
         public ?ProjectGraphCache $graphCache,
         public bool $blockIncompleteAnalysis,
+        public ControlPolicy $controlPolicy,
     ) {}
 
     public static function load(Filesystem $files, string $packagePath, string $basePath): self
@@ -75,6 +77,7 @@ final readonly class ProjectState
             $config->missingTestLevel(),
             $config->graphCache(),
             $config->blocksIncompleteAnalysis(),
+            $config->controlPolicy(),
         );
     }
 

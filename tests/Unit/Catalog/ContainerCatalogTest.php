@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex;
@@ -13,7 +14,7 @@ final class ContainerCatalogTest extends TestCase
 {
     private function index(string $source): CatalogIndex
     {
-        return new CatalogIndex((new ProjectGraphBuilder(catalog: true))->build([new FileContext('app/Example.php', '<?php '.$source)])->catalogFacts);
+        return new CatalogIndex((new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext('app/Example.php', '<?php '.$source)])->catalogFacts, mode: AnalysisMode::Deep);
     }
 
     /** @return list<array<string, mixed>> */

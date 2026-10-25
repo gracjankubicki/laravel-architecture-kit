@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Config;
 
+use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\ArchitectureCatalog;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
@@ -134,6 +135,20 @@ final class ArchitectureConfig
             $this->projectPath(),
             is_string($cache) && trim($cache) !== '' ? $cache : ProjectGraphCache::DIRECTORY,
         );
+    }
+
+    public function controlPolicy(): ControlPolicy
+    {
+        $control = $this->config()['control'] ?? [];
+        if (! is_array($control)) {
+            throw new InvalidArgumentException('control must be a settings array.');
+        }
+        $value = $control['policy'] ?? 'advisory';
+        if (! is_string($value) || ($policy = ControlPolicy::tryFrom($value)) === null) {
+            throw new InvalidArgumentException('control.policy must be advisory or enforce.');
+        }
+
+        return $policy;
     }
 
     public function blocksIncompleteAnalysis(): bool

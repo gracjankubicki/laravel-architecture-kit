@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Reach;
 
 use DirectoryIterator;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
@@ -21,7 +22,7 @@ final readonly class ReachReports
 
     private const MAX_BYTES = 16000000;
 
-    public function __construct(private Filesystem $files, private string $base) {}
+    public function __construct(private Filesystem $files, private string $base, private AnalysisMode $mode = AnalysisMode::Basic) {}
 
     /** @param list<string> $exclude
      * @return array<string, list<int>>
@@ -67,6 +68,7 @@ final readonly class ReachReports
         if (($context = RepositoryContext::forRoot($this->base)) !== null) {
             $states['@configuration:'.$context->fingerprint()] = [];
         }
+        $states['@analysis-mode:'.$this->mode->value] = [];
         ksort($states);
 
         return $states;

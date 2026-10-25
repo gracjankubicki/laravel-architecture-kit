@@ -4,18 +4,22 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Impact;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureTableTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $source): void
     {
         $files = new Filesystem;
@@ -33,7 +37,7 @@ final class ArchitectureTableTest extends TestCase
 
     private function inspectImpact(string $table = 'orders', ?string $match = null, ?string $connection = null, ?string $operation = null, int $limit = 100, int $depth = 16, array $exclude = [], ?ProjectGraphCache $cache = null): array
     {
-        $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, $cache))->inspect('', $exclude, $limit, $depth, table: $table, tableMatch: $match, connection: $connection, operation: $operation);
+        $result = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, $cache, mode: AnalysisMode::Deep))->inspect('', $exclude, $limit, $depth, table: $table, tableMatch: $match, connection: $connection, operation: $operation);
         $this->assertTrue($result['ok'], json_encode($result));
 
         return $result;
@@ -228,7 +232,7 @@ final class ArchitectureTableTest extends TestCase
         $files->ensureDirectoryExists($this->tempPath.'/routes');
         symlink($this->tempPath.'/.env', $this->tempPath.'/routes/Secret.php');
         $this->write('routes/web.php', 'include ".env"; \\Illuminate\\Support\\Facades\\Route::get("/orders", [App\\Action::class, "run"]);');
-        $report = (new ArchitectureImpact($files, $this->tempPath, new AuditScope(['app', 'vendor'])))->inspect('', table: 'orders')['table_report'];
+        $report = (new ArchitectureImpact($files, $this->tempPath, new AuditScope(['app', 'vendor']), mode: AnalysisMode::Deep))->inspect('', table: 'orders')['table_report'];
         $this->assertNotContains($this->tempPath.'/.env', $files->reads);
         $this->assertNotContains($this->tempPath.'/app/Secret.php', $files->reads);
         $this->assertNotContains($this->tempPath.'/routes/Secret.php', $files->reads);
@@ -282,7 +286,7 @@ final class ArchitectureTableTest extends TestCase
 
     public function test_invalid_and_conflicting_inputs_are_errors_before_analysis(): void
     {
-        $impact = new ArchitectureImpact(new Filesystem, $this->tempPath);
+        $impact = new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep);
         foreach ([['table' => ''], ['table' => "orders\0"], ['table' => 'orders', 'change' => 'delete'], ['table' => 'orders', 'tableMatch' => 'glob'], ['table' => 'orders', 'connection' => 'crm'], ['table' => 'orders', 'operation' => 'select'], ['tableMatch' => 'contains'], ['table' => 'orders', 'limit' => 501]] as $options) {
             $this->assertFalse($impact->inspect('', ...$options)['ok'], json_encode($options));
         }
@@ -292,21 +296,21 @@ final class ArchitectureTableTest extends TestCase
     public function test_cli_mcp_and_schema_share_table_contract_and_preserve_legacy(): void
     {
         $this->fixture('DB::connection("crm")->table("orders")->get();');
-        $this->assertSame(0, Artisan::call('architecture-kit:impact', ['--table' => 'orders', '--connection' => 'named:crm', '--operation' => 'read', '--agent' => true, '--limit' => 100, '--depth' => 16]));
+        $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), '--table' => 'orders', '--connection' => 'named:crm', '--operation' => 'read', '--agent' => true, '--limit' => 100, '--depth' => 16]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame($this->inspectImpact(connection: 'named:crm', operation: 'read')['table_report'], $cli['table_report']);
-        ArchitectureKitServer::tool(Impact::class, ['table' => 'orders', 'connection' => 'named:crm', 'operation' => 'read', 'limit' => 100, 'depth' => 16])->assertOk()->assertSee('"table_report"')->assertSee('orders');
-        ArchitectureKitServer::tool(Impact::class, ['table' => ['orders']])->assertSee('E_INVALID_TOOL_INPUT');
-        $this->assertSame(0, Artisan::call('architecture-kit:impact', ['--table' => 'orders']));
+        ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'table' => 'orders', 'connection' => 'named:crm', 'operation' => 'read', 'limit' => 100, 'depth' => 16])->assertOk()->assertSee('"table_report"')->assertSee('orders');
+        ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'table' => ['orders']])->assertSee('E_INVALID_TOOL_INPUT');
+        $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), '--table' => 'orders']));
         $this->assertStringContainsString('app/Action.php', Artisan::output());
-        $this->assertSame(1, Artisan::call('architecture-kit:impact', ['subject' => 'Order', '--table' => 'orders', '--agent' => true]));
+        $this->assertSame(1, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Order', '--table' => 'orders', '--agent' => true]));
         $schema = ImpactSchema::get()['oneOf'][2];
         $this->assertSame([], array_diff(array_keys($cli), array_keys($schema['properties'])));
         $this->assertSame([], array_diff($schema['required'], array_keys($cli)));
         $reportSchema = $schema['properties']['table_report'];
         $this->assertSame([], array_diff(array_keys($cli['table_report']), array_keys($reportSchema['properties'])));
         $this->assertSame([], array_diff($reportSchema['required'], array_keys($cli['table_report'])));
-        $this->assertArrayHasKey('data', (new ArchitectureImpact(new Filesystem, $this->tempPath))->inspect('Action::run'));
+        $this->assertArrayHasKey('data', (new ArchitectureImpact(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->inspect('Action::run'));
     }
 
     private function assertContinuous(array $via): void

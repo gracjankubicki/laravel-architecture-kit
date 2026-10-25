@@ -15,9 +15,10 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
+use Throwable;
 
 #[Name('revision-diff')]
-#[Description('Compare architecture from Git to working sources or between two Git revisions. Read separate symbol, structural, HTTP, execution and DATA differences with source witnesses, certainty and conditions. Each state uses its own source-only configuration unless shared_config explicitly selects before/after. Unknown historical settings never fall back to current configuration. Scope loss is not deletion. Confirm candidate identities with manual_pairs. Requires a project Git checkout. No checkout, source execution, cache writes or architecture quality/runtime verdict. Inspect partial analysis, notices, lower bounds and source freshness; rerun stale working inputs.')]
+#[Description('Requires explicit analysis_mode=deep, task and prior human consent. Ask the user before granting analysis-consent. Compare architecture from Git to working sources or between two Git revisions. Read separate symbol, structural, HTTP, execution and DATA differences with source witnesses, certainty and conditions. Each state uses its own source-only configuration unless shared_config explicitly selects before/after. Unknown historical settings never fall back to current configuration. Scope loss is not deletion. Confirm candidate identities with manual_pairs. Requires a project Git checkout. No checkout, source execution, cache writes or architecture quality/runtime verdict. Inspect partial analysis, notices, lower bounds and source freshness; rerun stale working inputs.')]
 #[IsReadOnly]
 final class RevisionDiff extends Tool
 {
@@ -25,7 +26,7 @@ final class RevisionDiff extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['from' => $schema->string()->required()->description('Git revision providing the previous architecture snapshot.'), 'to' => $schema->string()->default('working')->description('Git comparison revision or working for current source files.'),
+        return ['analysis_mode' => $schema->string()->enum(['basic', 'deep'])->default('basic')->description('Full assessment requires deep; Basic returns not_run.'), 'task' => $schema->string()->description('Task with prior human consent for Deep assessment.'), 'from' => $schema->string()->required()->description('Git revision providing the previous architecture snapshot.'), 'to' => $schema->string()->default('working')->description('Git comparison revision or working for current source files.'),
             'shared_config' => $schema->string()->enum(['before', 'after'])->description('Explicitly use the before or after settings for both states. Omit to analyze each state with its own settings.'), 'manual_pairs' => $schema->object()->description('Explicit mapping from old symbol identities to new identities. Confirm candidate pairs before supplying this mapping.'),
             'limit' => $schema->integer()->min(0)->max(500)->default(50)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.')];
     }
@@ -42,6 +43,12 @@ final class RevisionDiff extends Tool
 
     public function handle(Request $request): ResponseFactory
     {
+        try {
+            RepositoryContext::requiredDeep($request->get('analysis_mode', 'basic'), $request->get('task'));
+        } catch (Throwable $exception) {
+            return Response::structured([...ArchitectureRevisionDiff::error('E_REVISION_CONSENT', $exception->getMessage()),
+                'analysis' => ['mode' => 'basic', 'status' => 'not_run', 'deep_run' => false, 'checks_complete' => false]]);
+        }
         $invalid = $this->invalidInput($request, ['from' => 'string', 'to' => 'string', 'shared_config' => 'string', 'limit' => 'integer']);
         $pairs = $request->get('manual_pairs', []);
         if ($invalid !== null || ! is_array($pairs)) {

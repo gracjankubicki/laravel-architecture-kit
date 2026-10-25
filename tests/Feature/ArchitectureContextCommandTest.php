@@ -14,6 +14,72 @@ use Illuminate\Support\Facades\Artisan;
 
 final class ArchitectureContextCommandTest extends TestCase
 {
+    public function test_cli_and_mcp_context_include_modules_and_composer_roots_without_vendor(): void
+    {
+        $this->writeConfig([Architecture::Actions]);
+        $this->writeFile('app/Discount.php', '<?php namespace App; class Discount {}');
+        $this->writeFile('Modules/Billing/User.php', '<?php namespace Modules\\Billing; class User { public function use(\\App\\Discount $d) {} }');
+        $this->writeFile('extras/User.php', '<?php namespace Extra; class User { public function use(\\App\\Discount $d) {} }');
+        $this->writeFile('vendor/private/VendorUser.php', '<?php namespace Vendor; class VendorUser { public function use(\\App\\Discount $d) {} }');
+        $this->writeFile('Modules/vendor/Hidden.php', '<?php namespace Vendor; class Hidden { public function use(\\App\\Discount $d) {} }');
+        $composer = json_decode(file_get_contents($this->tempPath.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        foreach ([false, true] as $mapped) {
+            $data = $composer;
+            if ($mapped) {
+                $data['autoload']['psr-4'] = ['Modules\\' => 'Modules/', 'Extra\\' => 'extras/'];
+            }
+            $this->writeFile('composer.json', json_encode($data, JSON_THROW_ON_ERROR));
+            $exit = Artisan::call('architecture-kit:context', ['subject' => 'App\\Discount', '--agent' => true]);
+            $output = Artisan::output();
+            $this->assertSame(0, $exit, $output);
+            $cli = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertContains('Modules\\Billing\\User', array_column($cli['dependents'], 'symbol'));
+            $this->assertSame($mapped, in_array('Extra\\User', array_column($cli['dependents'], 'symbol'), true));
+            $this->assertNotContains('Vendor\\VendorUser', array_column($cli['dependents'], 'symbol'));
+            $this->assertNotContains('Vendor\\Hidden', array_column($cli['dependents'], 'symbol'));
+            $this->assertSame(['app'], $cli['analysis']['configured_audit_paths']);
+            $this->assertContains('Modules', $cli['analysis']['map_paths']);
+            $this->assertTrue($cli['analysis']['checks_complete']);
+            ArchitectureKitServer::tool(ArchitectureContext::class, ['subject' => 'App\\Discount'])->assertOk()
+                ->assertStructuredContent(fn ($json) => $json->where('subject', $cli['subject'])->where('dependents', $cli['dependents'])
+                    ->where('analysis.configured_audit_paths', ['app'])->where('analysis.map_paths', $cli['analysis']['map_paths'])->etc());
+            foreach (['Modules\\Billing\\User', 'Modules/Billing/User.php', ...($mapped ? ['Extra\\User'] : [])] as $subject) {
+                $this->assertSame(0, Artisan::call('architecture-kit:context', ['subject' => $subject, '--agent' => true]));
+                $module = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+                $this->assertContains('App\\Discount', array_column($module['dependencies'], 'symbol'));
+                ArchitectureKitServer::tool(ArchitectureContext::class, ['subject' => $subject])->assertOk()
+                    ->assertStructuredContent(fn ($json) => $json->where('subject', $module['subject'])->where('dependencies', $module['dependencies'])->etc());
+            }
+            foreach (['Vendor\\VendorUser', 'Vendor\\Hidden'] as $subject) {
+                $this->assertSame(1, Artisan::call('architecture-kit:context', ['subject' => $subject, '--agent' => true]));
+                $this->assertSame('E_CONTEXT_SUBJECT_NOT_FOUND', json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR)['m']);
+                ArchitectureKitServer::tool(ArchitectureContext::class, ['subject' => $subject])->assertOk()
+                    ->assertStructuredContent(fn ($json) => $json->where('ok', false)->where('m', 'E_CONTEXT_SUBJECT_NOT_FOUND')->etc());
+            }
+        }
+    }
+
+    public function test_mapping_helpers_does_not_enable_file_audit_rules_on_them(): void
+    {
+        $settings = ['enabled' => ['actions'], 'audit' => ['classification' => ['roles' => [['path' => 'Modules', 'role' => 'application', 'kind' => 'action']]]]];
+        $this->writeRawConfig('<?php return '.var_export($settings, true).';');
+        $this->writeFile('app/Actions/AppAction.php', '<?php namespace App\\Actions; class AppAction { public function one() {} public function two() {} }');
+        $this->writeFile('Modules/ModuleAction.php', '<?php namespace Modules; class ModuleAction { public function one() {} public function two() {} }');
+        $this->assertSame(0, Artisan::call('architecture-kit:context', ['subject' => 'Modules\\ModuleAction', '--agent' => true]));
+        $context = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(['app'], $context['analysis']['configured_audit_paths']);
+        $this->assertContains('Modules', $context['analysis']['map_paths']);
+        $this->assertSame(0, Artisan::call('architecture-kit:audit', ['--agent' => true, '--full' => true]));
+        $audit = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertContains('app/Actions/AppAction.php', array_column($audit['find'], 'p'));
+        $this->assertNotContains('Modules/ModuleAction.php', array_column($audit['find'], 'p'));
+        $settings['audit']['paths'] = ['Modules'];
+        $this->writeRawConfig('<?php return '.var_export($settings, true).';');
+        $this->assertSame(0, Artisan::call('architecture-kit:audit', ['--agent' => true, '--full' => true]));
+        $expanded = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertContains('Modules/ModuleAction.php', array_column($expanded['find'], 'p')); // Positive control needs explicit audit scope.
+    }
+
     public function test_cli_resolves_fqcn_and_path_with_deterministic_bounded_agent_output(): void
     {
         $this->writeFixture();
@@ -342,6 +408,10 @@ PHP);
             'path' => 'tests/Feature/FetchDocumentTest.php',
             'coverage' => 'direct',
             'via' => null,
+            'basis' => 'direct_source_reference',
+            'test_candidate' => true,
+            'proves_coverage' => false,
+            'test_executed' => false,
         ]], $payload['tests']);
         $this->assertContains('run_tests:tests/Feature/FetchDocumentTest.php', $payload['next']);
     }

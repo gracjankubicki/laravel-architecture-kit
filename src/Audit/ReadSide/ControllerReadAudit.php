@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ReadSide;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\AnalysisNotice;
 use GracjanKubicki\ArchitectureKit\Audit\AuditFinding;
@@ -37,6 +38,7 @@ final readonly class ControllerReadAudit
      */
     public function analyze(ProjectGraphSnapshot $graph, array $enabled, ?array $focusPaths, ?RouteMap $routes): ControllerAnalysisResult
     {
+        AnalysisRuntime::stage('deep.controller-read');
         $controllers = $this->controllers($graph);
         if ($routes === null && $controllers === []) {
             return new ControllerAnalysisResult(status: ControllerAnalysisResult::NOT_RUN);

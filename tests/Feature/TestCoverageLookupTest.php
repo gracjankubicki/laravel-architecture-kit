@@ -34,7 +34,7 @@ PHP);
 
         $coverage = $this->lookup('App\\Actions\\SendInvoice');
 
-        $this->assertSame([['path' => 'tests/Feature/SendInvoiceTest.php', 'coverage' => 'direct', 'via' => null]], $coverage);
+        $this->assertSame([['path' => 'tests/Feature/SendInvoiceTest.php', 'coverage' => 'direct', 'via' => null, 'basis' => 'direct_source_reference', 'test_candidate' => true, 'proves_coverage' => false, 'test_executed' => false]], $coverage);
     }
 
     public function test_a_test_reaching_the_symbol_through_another_class_is_reported_as_indirect(): void

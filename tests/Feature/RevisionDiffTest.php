@@ -7,6 +7,8 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\RevisionDiff;
 use GracjanKubicki\ArchitectureKit\Revision\ArchitectureRevisionDiff;
+use GracjanKubicki\ArchitectureKit\Revision\RevisionDiffSchema;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
@@ -14,9 +16,12 @@ use Symfony\Component\Process\Process;
 
 final class RevisionDiffTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     public function test_dirty_working_sources_cli_and_mcp_preserve_git_and_do_not_execute_code(): void
     {
         $this->fixture();
+        $this->grantSemanticConsent();
         $this->write('app/Run.php', '<?php namespace App; file_put_contents(__DIR__."/executed", "bad"); class Run { public function run() { Other::changed(); } }');
         $status = $this->git('status', '--porcelain');
         $head = $this->git('rev-parse', 'HEAD');
@@ -26,11 +31,15 @@ final class RevisionDiffTest extends TestCase
         $this->assertSame('working', $report['sources']['after']['state']);
         $this->assertTrue($report['analysis']['fresh']);
         $this->assertGreaterThan(0, $report['totals']['structure']);
-        $this->assertSame(0, Artisan::call('architecture-kit:revision-diff', ['from' => 'HEAD', '--agent' => true]));
+        $this->assertSame(0, Artisan::call('architecture-kit:revision-diff', [...$this->deepCli(), 'from' => 'HEAD', '--agent' => true]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+        $schema = RevisionDiffSchema::get()['oneOf'][0];
+        $this->assertSame([], array_values(array_diff($schema['required'], array_keys($cli))));
+        $this->assertSame([], array_values(array_diff(array_keys($cli), array_keys($schema['properties']))));
+        $this->assertFalse($schema['additionalProperties']);
         unset($report['metrics'], $cli['metrics']);
         $this->assertSame($report, $cli);
-        ArchitectureKitServer::tool(RevisionDiff::class, ['from' => 'HEAD'])->assertOk()
+        ArchitectureKitServer::tool(RevisionDiff::class, [...$this->deepMcp(), 'from' => 'HEAD'])->assertOk()
             ->assertStructuredContent(fn ($json) => $json->where('cmd', 'revision-diff')->where('totals.structure', $report['totals']['structure'])->etc());
         $this->assertSame($head, $this->git('rev-parse', 'HEAD'));
         $this->assertSame($index, $this->git('ls-files', '--stage'));

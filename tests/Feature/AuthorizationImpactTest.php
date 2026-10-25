@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
@@ -14,12 +15,15 @@ use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Impact;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\Path;
 use GracjanKubicki\ArchitectureKit\Reach\ArchitectureReach;
+use GracjanKubicki\ArchitectureKit\Tests\Support\DeepAnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 final class AuthorizationImpactTest extends TestCase
 {
+    use DeepAnalysisConsent;
+
     private function write(string $path, string $code): void
     {
         $files = new Filesystem;
@@ -40,7 +44,7 @@ final class AuthorizationImpactTest extends TestCase
 
     private function path(string $from, string $to): array
     {
-        return (new ArchitecturePath(new Filesystem, $this->tempPath, new AuditScope))->inspect($from, $to, [], 100, 12);
+        return (new ArchitecturePath(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect($from, $to, [], 100, 12);
     }
 
     public function test_policy_method_is_precise_and_wrapper_is_a_real_path(): void
@@ -49,7 +53,7 @@ final class AuthorizationImpactTest extends TestCase
         $r = $this->path('InvoiceController::update', 'InvoicePolicy::update');
         $this->assertTrue($r['execution']['found'], json_encode($r));
         $this->assertFalse($this->path('InvoiceController::update', 'InvoicePolicy::delete')['execution']['found']);
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $this->assertNotEmpty($impact['execution']['flows'], json_encode($impact));
         $this->assertStringContainsString('authorization-policy', json_encode($impact['execution']['flows']));
         $this->assertFalse($this->path('InvoiceController::show', 'InvoicePolicy::update')['execution']['found']);
@@ -88,7 +92,7 @@ final class AuthorizationImpactTest extends TestCase
         $this->write('app/EditInvoice.php', 'namespace App; class EditInvoice extends \Illuminate\Foundation\Http\FormRequest { public function authorize() { return \Illuminate\Support\Facades\Gate::allows("update", \App\Models\Invoice::class); } }');
         $this->write('app/InvoiceController.php', 'namespace App; class InvoiceController { public function update(EditInvoice $request) {} public function show() {} }');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::put("/invoices", [\App\InvoiceController::class,"update"]); Route::get("/invoices", [\App\InvoiceController::class,"show"]);');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('EditInvoice::authorize', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('EditInvoice::authorize', [], 100, 12);
         $this->assertCount(1, $impact['execution']['flows'], json_encode($impact));
         $this->assertSame(['PUT'], $impact['execution']['flows'][0]['entry']['route']['verbs']);
         $this->assertFalse($this->path('InvoiceController::show', 'EditInvoice::authorize')['execution']['found']);
@@ -154,12 +158,12 @@ final class AuthorizationImpactTest extends TestCase
         $this->fixture();
         $this->write('app/InvoiceController.php', 'namespace App; class InvoiceController { use \Illuminate\Foundation\Auth\Access\AuthorizesRequests; public function __construct() { $this->authorizeResource(\App\Models\Invoice::class); } public function update(\App\Models\Invoice $invoice) {} public function show(\App\Models\Invoice $invoice) {} }');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::put("/invoices/{invoice}", [\App\InvoiceController::class,"update"]);');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $this->assertCount(1, $impact['execution']['flows'], json_encode($impact));
         $this->write('app/AccessMiddleware.php', 'namespace App; class AccessMiddleware { public function handle($request, $next) { \Illuminate\Support\Facades\Gate::authorize("update", \App\Models\Invoice::class); return $next($request); } }');
         $this->write('bootstrap/app.php', 'use Illuminate\Foundation\Application; return Application::configure()->withMiddleware(function (\Illuminate\Foundation\Configuration\Middleware $middleware) { $middleware->alias(["invoice-access" => \App\AccessMiddleware::class]); })->create();');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::put("/invoices/{invoice}", [\App\InvoiceController::class,"update"])->middleware("invoice-access");');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $this->assertStringContainsString('http-middleware', json_encode($impact['execution']['flows']));
     }
 
@@ -167,11 +171,11 @@ final class AuthorizationImpactTest extends TestCase
     {
         $this->fixture();
         $this->write('app/Second.php', 'namespace App; class Second { public function run() { \Illuminate\Support\Facades\Gate::authorize("update", \App\Models\Invoice::class); } }');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $summary = array_values(array_filter($impact['execution']['authorization']['rules'], fn ($rule) => $rule['kind'] === 'authorization-policy'));
         $this->assertCount(1, $summary);
         $this->assertSame(3, $summary[0]['recognized_site_count']);
-        $reach = new ArchitectureReach(new Filesystem, $this->tempPath);
+        $reach = new ArchitectureReach(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep);
         $r = $reach->inspect('InvoicePolicy::update', 1, 12);
         $this->assertTrue($r['ok'], json_encode($r));
         $id = $r['reach']['pagination']['report_id'];
@@ -181,7 +185,7 @@ final class AuthorizationImpactTest extends TestCase
         $this->assertTrue($second['ok']);
         $this->write('app/Second.php', 'namespace App; class Second { public function run() {} }');
         $this->assertSame('E_REACH_REPORT', $reach->inspect('', 1, 12, $id, 2)['m']);
-        $limited = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoiceAccess::ensureCanEdit', [], 0, 1);
+        $limited = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoiceAccess::ensureCanEdit', [], 0, 1);
         $this->assertTrue($limited['execution']['authorization']['total_is_lower_bound']);
     }
 
@@ -189,15 +193,15 @@ final class AuthorizationImpactTest extends TestCase
     {
         $this->fixture();
         $this->write('config/architectures.php', 'return ["enabled" => ["actions"], "audit" => ["cache" => false]];');
-        $this->assertSame(0, Artisan::call('architecture-kit:impact', ['subject' => 'InvoicePolicy::update', '--agent' => true, '--depth' => 12]));
+        $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'InvoicePolicy::update', '--agent' => true, '--depth' => 12]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
-        ArchitectureKitServer::tool(Impact::class, ['subject' => 'InvoicePolicy::update', 'depth' => 12])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
-        $this->assertSame(0, Artisan::call('architecture-kit:path', ['from' => 'InvoiceAccess::ensureCanEdit', 'to' => 'InvoicePolicy::update', '--agent' => true, '--depth' => 12]));
+        ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'InvoicePolicy::update', 'depth' => 12])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
+        $this->assertSame(0, Artisan::call('architecture-kit:path', [...$this->deepCli(), 'from' => 'InvoiceAccess::ensureCanEdit', 'to' => 'InvoicePolicy::update', '--agent' => true, '--depth' => 12]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
-        ArchitectureKitServer::tool(Path::class, ['from' => 'InvoiceAccess::ensureCanEdit', 'to' => 'InvoicePolicy::update', 'depth' => 12])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
+        ArchitectureKitServer::tool(Path::class, [...$this->deepMcp(), 'from' => 'InvoiceAccess::ensureCanEdit', 'to' => 'InvoicePolicy::update', 'depth' => 12])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
         $this->write('config/architectures.php', 'file_put_contents(__DIR__."/executed", "bad"); return [];');
-        $this->assertSame(1, Artisan::call('architecture-kit:impact', ['subject' => 'InvoicePolicy::update', '--agent' => true]));
-        ArchitectureKitServer::tool(Path::class, ['from' => 'InvoiceAccess', 'to' => 'InvoicePolicy'])->assertSee('E_PATH_FAILED');
+        $this->assertSame(1, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'InvoicePolicy::update', '--agent' => true]));
+        ArchitectureKitServer::tool(Path::class, [...$this->deepMcp(), 'from' => 'InvoiceAccess', 'to' => 'InvoicePolicy'])->assertSee('E_PATH_FAILED');
         $this->assertFileDoesNotExist($this->tempPath.'/config/executed');
     }
 
@@ -219,11 +223,11 @@ final class AuthorizationImpactTest extends TestCase
         $this->fixture();
         $this->write('app/EditInvoice.php', 'namespace App; class EditInvoice extends \Illuminate\Foundation\Http\FormRequest { public function authorize() { return $this->user()->can("update", \App\Models\Invoice::class); } }');
         $this->write('app/InvoiceController.php', 'namespace App; class InvoiceController { public function update(EditInvoice $request, \App\Models\Invoice $invoice) {} public function show() {} }');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoiceController::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoiceController::update', [], 100, 12);
         $this->assertSame(2, $impact['execution']['authorization']['totals']['outgoing'], json_encode($impact));
         $this->assertCount(2, $impact['execution']['authorization']['checks']);
         $this->assertStringContainsString('InvoicePolicy::update', json_encode($impact['execution']['authorization']['rules']));
-        $other = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoiceController::show', [], 100, 12);
+        $other = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoiceController::show', [], 100, 12);
         $this->assertSame([], $other['execution']['authorization']['checks']);
     }
 
@@ -246,7 +250,7 @@ final class AuthorizationImpactTest extends TestCase
         $this->fixture();
         $this->write('app/InvoiceController.php', 'namespace App; class InvoiceController { use \Illuminate\Foundation\Auth\Access\AuthorizesRequests; public function unrelated() { $this->authorizeResource(\App\Models\Invoice::class); } public function update(\App\Models\Invoice $invoice) {} public function show() {} }');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::put("/invoices/{invoice}", [\App\InvoiceController::class, "update"]);');
-        $r = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $r = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $this->assertSame([], $r['execution']['flows']);
     }
 
@@ -256,7 +260,7 @@ final class AuthorizationImpactTest extends TestCase
         $this->write('app/Other.php', 'namespace App; class Other {}');
         $this->write('app/InvoiceController.php', 'namespace App; class InvoiceController { use \Illuminate\Foundation\Auth\Access\AuthorizesRequests; public function __construct() { $this->authorizeResource([\App\Models\Invoice::class, Other::class], ["invoice", "other"]); } public function update(\App\Models\Invoice $invoice, Other $other) {} }');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::put("/invoices/{invoice}/{other}", [\App\InvoiceController::class, "update"]);');
-        $r = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoiceController::update', [], 100, 12);
+        $r = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoiceController::update', [], 100, 12);
         $check = $r['execution']['authorization']['checks'][0];
         $this->assertSame(['App\\Models\\Invoice', 'App\\Other'], array_column($check['arguments'], 'class'));
         $this->assertStringContainsString('InvoicePolicy::update', json_encode($r['execution']['authorization']['rules']));
@@ -290,10 +294,10 @@ final class AuthorizationImpactTest extends TestCase
         $this->fixture();
         $this->write('app/EditInvoice.php', 'namespace App; class EditInvoice extends \Illuminate\Foundation\Http\FormRequest { public function authorize() { return \Illuminate\Support\Facades\Gate::allows("update", \App\Models\Invoice::class); } }');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::post("/closure", function (\App\EditInvoice $request) {}); Route::post("/arrow", fn (\App\EditInvoice $request) => true); Route::get("/unrelated", fn () => true);');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('EditInvoice::authorize', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('EditInvoice::authorize', [], 100, 12);
         $this->assertCount(2, $impact['execution']['flows'], json_encode($impact));
         $this->assertSame(['/closure', '/arrow'], array_column(array_column(array_column($impact['execution']['flows'], 'entry'), 'route'), 'uri'));
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $this->assertCount(2, $impact['execution']['flows']);
         $this->assertStringNotContainsString('/unrelated', json_encode($impact['execution']['flows']));
     }
@@ -302,7 +306,7 @@ final class AuthorizationImpactTest extends TestCase
     {
         $this->fixture();
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::post("/closure/{invoice}", function (\App\Models\Invoice $invoice) {})->can("update", "invoice"); Route::post("/arrow/{invoice}", fn (\App\Models\Invoice $invoice) => true)->middleware("can:update,invoice"); Route::get("/unrelated", fn () => true);');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $this->assertCount(2, $impact['execution']['flows'], json_encode($impact));
         $this->assertSame(['/closure/{invoice}', '/arrow/{invoice}'], array_column(array_column(array_column($impact['execution']['flows'], 'entry'), 'route'), 'uri'));
     }
@@ -334,7 +338,7 @@ final class AuthorizationImpactTest extends TestCase
         $this->write('app/OtherRequest.php', 'namespace App; class OtherRequest extends \Illuminate\Foundation\Http\FormRequest { public function authorize() { return true; } }');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::post("/union", fn (\App\EditInvoice|\App\OtherRequest $request) => true);');
         foreach (['EditInvoice::authorize', 'OtherRequest::authorize'] as $subject) {
-            $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect($subject, [], 100, 12);
+            $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect($subject, [], 100, 12);
             $this->assertSame([], $impact['execution']['flows']);
             $this->assertStringContainsString('not a resolvable named class type', json_encode($impact['execution']['flow_analysis']['unresolved']));
         }
@@ -344,12 +348,12 @@ final class AuthorizationImpactTest extends TestCase
     {
         $this->fixture();
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::post("/union/{invoice}", fn (\App\Models\Invoice|int $invoice) => true)->can("update", "invoice");');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $this->assertSame([], $impact['execution']['flows']);
         $this->assertStringContainsString('argument binding is unresolved', json_encode($impact['execution']['flow_analysis']['unresolved']));
         $this->write('app/InvoiceController.php', 'namespace App; class InvoiceController { public function update(\App\Models\Invoice|int $invoice) {} }');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::post("/union/{invoice}", [\App\InvoiceController::class, "update"])->can("update", "invoice");');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('InvoicePolicy::update', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('InvoicePolicy::update', [], 100, 12);
         $this->assertSame([], $impact['execution']['flows']);
     }
 
@@ -358,7 +362,7 @@ final class AuthorizationImpactTest extends TestCase
         $this->fixture();
         $this->write('app/EditInvoice.php', 'namespace App; class EditInvoice extends \Illuminate\Foundation\Http\FormRequest { public function authorize() { return true; } }');
         $this->write('routes/web.php', 'use Illuminate\Support\Facades\Route; Route::post("/nullable", fn (?\App\EditInvoice $request) => true); Route::post("/named-null", fn (\App\EditInvoice|null $request) => true);');
-        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope))->inspect('EditInvoice::authorize', [], 100, 12);
+        $impact = (new ArchitectureImpact(new Filesystem, $this->tempPath, new AuditScope, mode: AnalysisMode::Deep))->inspect('EditInvoice::authorize', [], 100, 12);
         $this->assertCount(2, $impact['execution']['flows'], json_encode($impact));
     }
 }

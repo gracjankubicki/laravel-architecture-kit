@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\AnalysisFactsCache;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
@@ -19,7 +20,7 @@ final class FileAuditPool
      * @param  list<Architecture|string>  $enabled
      * @return array<string, AuditedFile>|null Null requires the ordinary serial path.
      */
-    public static function collect(RepositoryContext $context, array $paths, array $enabled, AuditScope $scope, ?AnalysisFactsCache $facts): ?array
+    public static function collect(RepositoryContext $context, array $paths, array $enabled, AuditScope $scope, ?AnalysisFactsCache $facts, AnalysisMode $mode = AnalysisMode::Basic): ?array
     {
         $autoload = WorkerAutoloader::path($context);
         if ($autoload === null || ! function_exists('proc_open')) {
@@ -39,7 +40,7 @@ final class FileAuditPool
             foreach ($jobs as $index => $job) {
                 $request = ['root' => $context->rootPath, 'home' => $context->home, 'profile' => $context->profile,
                     'execute' => $context->execute, 'runtime_routes' => $context->runtimeRoutes,
-                    'paths' => $job, 'scope' => $scope->directories,
+                    'paths' => $job, 'mode' => $mode->value, 'scope' => $scope->directories,
                     'enabled' => array_map(static fn (Architecture|string $value): string => $value instanceof Architecture ? $value->value : $value, $enabled),
                     'facts' => $facts?->export()];
                 // Workers produce audit data, never a test coverage report. Disable

@@ -18,8 +18,12 @@ use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitectureRecommendation;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
+use GracjanKubicki\ArchitectureKit\Revision\ArchitectureRevisionDiff;
+use GracjanKubicki\ArchitectureKit\Revision\RevisionDiffSchema;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldFile;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldPlan;
+use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
+use GracjanKubicki\ArchitectureKit\Target\TargetSchema;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradeGuide;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlan;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlanStep;
@@ -35,10 +39,26 @@ class AgentOutputSchemaTest extends TestCase
         $this->assertSame('https://json-schema.org/draft/2020-12/schema', $schema['$schema']);
         $this->assertSame('Architecture Kit audit agent output', $schema['title']);
         $this->assertCount(2, $schema['oneOf']);
-        $this->assertSame(['v', 'ok', 'cmd', 'scope', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'next'], $schema['oneOf'][0]['required']);
-        $this->assertSame(['v', 'ok', 'cmd', 'm', 'msg', 'next'], $schema['oneOf'][1]['required']);
+        $this->assertSame(['v', 'ok', 'cmd', 'scope', 'err', 'warn', 'sup', 'trunc', 'suggestions', 'analysis', 'control', 'next'], $schema['oneOf'][0]['required']);
+        $this->assertSame(['v', 'ok', 'cmd', 'm', 'msg', 'next', 'control', 'analysis'], $schema['oneOf'][1]['required']);
         $this->assertSame('audit', $schema['oneOf'][0]['properties']['cmd']['const']);
         $this->assertSame('audit', $schema['oneOf'][1]['properties']['cmd']['const']);
+    }
+
+    public function test_revision_and_target_errors_accept_only_truthful_optional_not_run_metadata(): void
+    {
+        foreach ([
+            [RevisionDiffSchema::get(), ArchitectureRevisionDiff::error('E_REVISION_INPUT', 'Invalid input.')],
+            [TargetSchema::get(), ArchitectureTarget::error('E_TARGET_INPUT', 'Invalid input.')],
+        ] as [$schema, $error]) {
+            $this->assertTrue($this->matchesSchema($error, $schema));
+            $denied = [...$error, 'analysis' => ['mode' => 'basic', 'status' => 'not_run', 'deep_run' => false, 'checks_complete' => false]];
+            $this->assertTrue($this->matchesSchema($denied, $schema));
+            foreach (['mode' => 'deep', 'status' => 'complete', 'deep_run' => true, 'checks_complete' => true, 'unexpected' => true] as $key => $value) {
+                $this->assertFalse($this->matchesSchema([...$denied, 'analysis' => [...$denied['analysis'], $key => $value]], $schema));
+            }
+            $this->assertFalse($this->matchesSchema([...$denied, 'unexpected' => true], $schema));
+        }
     }
 
     public function test_all_agent_schemas_have_versioned_command_contracts(): void

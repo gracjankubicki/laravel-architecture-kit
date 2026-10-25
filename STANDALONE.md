@@ -2,6 +2,26 @@
 
 The standalone executable reads Laravel applications and standalone Composer packages using its own dependencies. Configuration, graph cache, saved reports, task beginnings and generated integration files stay outside that repository. Installing the executable does not enable AI hooks or change any agent settings.
 
+
+## Basic analysis and advisory control
+
+Basic is the default on CLI, MCP and hooks, including existing profiles. It maps project source, including Modules, checks local architecture rules and demonstrated call/interface mismatches, and lists candidate tests. Vendor is a boundary. Candidates and relationships do not prove execution, test coverage or business correctness.
+
+Read `analysis.mode`, `analysis.checks_complete`, `analysis.deep_run` and the real `ok`/status. `control.blocking` independently describes the reaction. Errors, timeouts, missing beginnings and stale results remain failed or unverified. Advisory permits continuing and completing a turn with an explicit handoff of remaining errors and unverified checks. Try to fix new errors first. For an important gap, search and read source, cite the file and relationship or describe uncertainty. Ask the human when missing information prevents choosing a correct change.
+
+`--strict` changes warning evaluation. `--full` expands the report. Neither enables Deep or blocking. Use `--enforce` on audit/guard/task, MCP `enforce=true`, or explicit `control.policy=enforce` for blocking. `audit.incomplete_analysis=block` affects analysis completeness, and does not enable Enforce or Deep. Guard and task control check Basic. Skip remains `ok:false` and keeps its existing ability to release completion, including in enforced hooks.
+
+Deep preserves semantic execution/effect analysis in the same package. Agents must ask the human before using it, then record the obtained consent for one repository and task. Standalone examples:
+
+```sh
+architecture-kit analysis-consent grant-deep TASK --confirm
+architecture-kit audit --agent --mode=deep --task=TASK
+architecture-kit impact 'App\Service::run' --agent --mode=deep --task=TASK
+```
+
+For local Artisan use `php artisan architecture-kit:analysis-consent TASK --confirm`, then add `--mode=deep --task=TASK` to audit, search, context, impact, path or reach. Full revision-diff and target assessment require explicit Deep and consent as well. Guard audit stays Basic; adding --target requires Deep and a consented task. file-rules reads only target declarations in Basic, with full assessment marked not_run, and reports invalid declarations without losing ordinary rules. MCP uses `analysis-consent` with `task` and `confirm=true`, then `analysis_mode=deep` and the same `task`. On architecture-graph, `mode=context|path|impact` still selects the query; `analysis_mode` selects Basic or Deep. Retry/resume retain consent. Another task or repository needs another grant. A confirmation flag records the caller statement and does not authenticate a human. Refusal leaves ordinary reading and Basic search available. Deep never grants runtime routes or custom PHP execution.
+
+
 ## Install an isolated global tool
 
 The tool process requires PHP 8.3 or newer and the extensions required by Laravel Framework and Composer. Its PHP version is separate from the application's PHP version. Static parsing of a project does not certify compatibility with an older Laravel release.
@@ -121,7 +141,7 @@ The export has `active: false`. `integration status codex` or `integration statu
 
 ## Keep one beginning throughout a task
 
-At a fresh `SessionStart` with source `startup`, the hook captures the existing audit findings before edits and injects the selected guidance. Existing uncommitted changes are included. Subsequent prompts, corrections and resumed sessions retain this beginning. A resumed or compacted session without a known beginning is blocked; it cannot invent a baseline after edits.
+At a fresh `SessionStart` with source `startup`, the hook captures the existing audit findings before edits and injects the selected guidance. Existing uncommitted changes are included. Subsequent prompts, corrections and resumed sessions retain this beginning. A resumed or compacted session without a known beginning remains unverified and reports that gap; it cannot invent a baseline after edits. Advisory permits continuing source inspection.
 
 The agent can also use the standalone MCP `task-control` tool. CLI equivalents are:
 
@@ -148,9 +168,9 @@ Set `audit.incomplete_analysis` to `block` to require complete analysis. The onl
 }
 ```
 
-The same key works in shared settings and `config/architectures.php`. Task control, MCP and both clients' hooks use this policy. Standalone and Artisan guards use it too, including with `--strict`. The guard still reports every warning; strict mode blocks ordinary architecture warnings, while the five built-in analysis-only warnings follow the selected completeness policy. Raw `audit` retains its existing finding counters and exit rules.
+The same key works in shared settings and `config/architectures.php`. Task control, MCP and both clients' hooks use this policy. Standalone and Artisan guards use it too, including with `--strict`. The guard still reports every warning; strict mode marks ordinary architecture warnings unsuccessful; only explicit Enforce blocks, while the five built-in analysis-only warnings follow the selected completeness policy. Raw `audit` preserves finding counters; advisory exit 0 does not mean PASS.
 
-Missing beginnings, changed configuration/tool policy, unreadable required inputs and audit failures never produce PASS. A source-discovery limit that returns a partial report follows the completeness policy; a failed audit cannot pass. Changing the policy or upgrading the tool does not recreate old task beginnings. A failed beginning remains unavailable, and an incompatible beginning requires a new explicitly approved task boundary before edits. The Stop hook asks for correction once in a turn, and limits failed checks across attempts. When another continuation would loop, it releases the turn with an explicit failure message; the task remains unverified. Report the blocker rather than treating released completion as a passed audit.
+Missing beginnings, changed configuration/tool policy, unreadable required inputs and audit failures never produce PASS. A source-discovery limit that returns a partial report follows the completeness policy; a failed audit cannot pass. Changing the policy or upgrading the tool does not recreate old task beginnings. A failed beginning remains unavailable, and an incompatible beginning requires a new explicitly approved task boundary before edits. The Stop hook reports failures without blocking by default. Explicit Enforce asks for correction and retains existing retry/attempt limits. When another continuation would loop, it releases the turn with an explicit failure message; the task remains unverified. Report the blocker rather than treating released completion as a passed audit.
 
 A human can explicitly skip a known task:
 
@@ -162,7 +182,7 @@ A skipped task remains `ok: false`, `status: skipped`. It does not certify code 
 
 ## Execution and repository writes
 
-Default analysis does not load the application's PHP autoloader, configuration or bootstrap. Controller checks use project-local route declarations, including groups, providers and included files, through the existing bounded source discovery. Source candidates carry their location and do not prove runtime registration. Unresolved handlers, declarations, missing sources and discovery limits retain recognized routes and mark analysis partial. They warn by default and block task verification when `audit.incomplete_analysis` is `block`. Runtime framework facts remain unavailable; calls that require them can still make an endpoint analysis incomplete. Static search, relationships and guidance remain available.
+Default analysis does not load the application's PHP autoloader, configuration or bootstrap. In explicit Deep, controller checks use project-local route declarations, including groups, providers and included files, through bounded source discovery. Source candidates carry their location and do not prove runtime registration. Unresolved handlers, declarations, missing sources and discovery limits retain recognized routes and mark analysis partial. They warn by default and block task verification when `audit.incomplete_analysis` is `block`. Runtime framework facts remain unavailable; calls that require them can still make an endpoint analysis incomplete. Static search, relationships and guidance remain available.
 
 `--allow-execution` opts into runtime route discovery in a child process. It does not install the package into the application or override unsupported runtime requirements. Custom PHP rules require this flag and must be available to the tool's autoloader; unavailable rules produce an error rather than being silently omitted. The tool does not mix an arbitrary application's autoloader into its host process.
 
@@ -190,9 +210,9 @@ The default driver starts the application's bootstrap in a separate PHP process.
 
 The Compose driver runs `docker compose -f docker-compose.yml exec -T -u <user> <service> php` from the selected repository. Both runtime drivers pass the parent PHP memory limit and disable PCOV collection only in the route process. It streams the tool-owned snapshot worker through stdin, without installing the package or copying files into the application. It does not start or recreate containers. Package, service and route cache paths use a temporary directory outside the repository and are cleaned at process shutdown. Application bootstrap still executes providers and application code, which can have its own side effects. The worker does not instantiate controllers or dispatch endpoints.
 
-Each audit starts route registration after source analysis, then immediately drains the process output. Large snapshots cannot remain blocked on a full pipe while source files are analyzed, and the source phase does not consume the 30 second registration budget. Registration and source analysis run sequentially.
+Each explicit Deep audit with separate runtime permission starts route registration after source analysis, then immediately drains the process output. Large snapshots cannot remain blocked on a full pipe while source files are analyzed, and the source phase does not consume the 30 second registration budget. Registration and source analysis run sequentially.
 
-Each audit gets a fresh snapshot for the selected application environment. It does not certify all deployments or prove that an endpoint executed. Failure, invalid settings, a 30 second timeout or more than 8 MB of output keeps verification blocked. Exporting with this option preserves it in both MCP and hooks and sets the hook timeout to 300 seconds. Exporting without it keeps source-only hooks and their existing 120 second timeout. Changing this option or the profile invalidates earlier task comparisons; it never refreshes their beginning automatically.
+Each permitted Deep runtime audit gets a fresh snapshot for the selected application environment. Basic task and guard checks do not request runtime snapshots. It does not certify all deployments or prove that an endpoint executed. Failure, invalid settings, a 30 second timeout or more than 8 MB of output keeps analysis unverified. Advisory still permits completion. Exporting with this option preserves it in both MCP and hooks and sets the hook timeout to 300 seconds. Exporting without it keeps source-only hooks and their existing 120 second timeout. Changing this option or the profile invalidates earlier task comparisons; it never refreshes their beginning automatically.
 
 Enum and Ports and Adapters rules index file names once per audit, without retaining application syntax or persisting the index between audits. Controller analysis normalizes fully qualified handler identities and reuses bounded syntax only within the current audit. Each handler and middleware combination is analysed once, while every route retains its own witness and HTTP-verb checks. Source limits and memory thresholds remain enforced; optional cached syntax is discarded under memory pressure. Runtime context includes observed class aliases, not guesses based on short names. Project implementations take precedence over framework descriptions. Missing or out-of-scope route handlers retain their witnesses and make endpoint analysis incomplete. External dependency methods remain unresolved when their sources are outside the audited graph, and an incomplete result follows `audit.incomplete_analysis`, warning by default or blocking when explicitly configured.
 
@@ -226,3 +246,7 @@ Official integration contracts:
 - [Codex hooks](https://learn.chatgpt.com/docs/hooks)
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks)
 - [Claude Code settings](https://code.claude.com/docs/en/settings)
+
+## Candidate, publication, upgrade and activation
+
+Local tests produce a candidate, not an installed integration. After independent QA and final review, publication and release version need separate authorization. Upgrading the isolated global tool is another explicit step; preserve the selected profiles and external task state. Activation for a named repository/client needs separate authorization and actual readback of the installed version, selected repository/profile, MCP registration and hook configuration. Verify a real client event and a source-only query afterward. Exported settings or historical observations do not prove current activation. Do not overwrite developer-owned scripts or change CRM/Glenross while preparing the candidate. Runtime/bootstrap permissions remain separate from activation.

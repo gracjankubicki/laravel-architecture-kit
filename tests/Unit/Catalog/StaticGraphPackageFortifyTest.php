@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
@@ -16,7 +17,7 @@ class StaticGraphPackageFortifyTest extends TestCase
     /** @return list<CatalogFacts> */
     private function facts(string $source, string $path = 'app/Fortify.php'): array
     {
-        return (new ProjectGraphBuilder(catalog: true))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
+        return (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build([new FileContext($path, '<?php '.$source)])->catalogFacts;
     }
 
     private function package(string $version = '1.39.0', string $path = 'composer.lock'): CatalogFacts
@@ -57,7 +58,7 @@ throw new \RuntimeException('source-only-secret-sentinel');
 SOURCE);
         $this->assertStringNotContainsString('source-only-secret-sentinel', json_encode(array_map(fn ($fact) => $fact->toArray(), $facts), JSON_THROW_ON_ERROR));
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(8, $this->edges($index, 'registers-fortify-extension'));
         $actions = $this->edges($index, 'fortify-action-handler');
         $this->assertCount(4, $actions);
@@ -77,7 +78,7 @@ SOURCE);
             $this->assertNotEmpty($edge['metadata']['package_sources']);
         }
         foreach ([[], [$this->package('99.0.0')], [$this->package(), $this->package('1.0.0', 'vendor/composer/installed.json')]] as $packages) {
-            $index = new CatalogIndex([...$facts, ...$packages]);
+            $index = new CatalogIndex([...$facts, ...$packages], mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'fortify-action-handler'));
             $this->assertSame([], $this->edges($index, 'fortify-request-callback'));
             $this->assertContains('package_fortify_analysis', array_column($index->diagnostics, 'code'));
@@ -97,13 +98,13 @@ SOURCE, 'app/Actions.php');
         $cached = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), [...$routes, ...$actions]);
         foreach (['First', 'Second'] as $selected) {
             $registrations = $this->facts('\\Laravel\\Fortify\\Fortify::createUsersUsing(\\App\\'.$selected.'::class);', 'app/Provider.php');
-            $index = new CatalogIndex([...$cached, ...$registrations, $this->package()]);
+            $index = new CatalogIndex([...$cached, ...$registrations, $this->package()], mode: AnalysisMode::Deep);
             $this->assertCount(1, $this->edges($index, 'fortify-extension-dispatch'));
             $handlers = $this->edges($index, 'fortify-action-handler');
             $this->assertCount(1, $handlers);
             $this->assertSame('App\\'.$selected.'::create', $index->elements[$handlers[0]['to']]['name']);
         }
-        $index = new CatalogIndex([...$cached, $this->package()]);
+        $index = new CatalogIndex([...$cached, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'fortify-extension-dispatch'));
     }
 
@@ -123,12 +124,12 @@ Decoy::createUsersUsing(First::class);
 \Laravel\Fortify\Fortify::createUsersUsing(Second::class);
 \Laravel\Fortify\Fortify::authenticateThrough(fn () => $dynamic);
 SOURCE);
-        $index = new CatalogIndex([...$facts, $this->package()]);
+        $index = new CatalogIndex([...$facts, $this->package()], mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'fortify-action-handler'));
         $this->assertSame([], $this->edges($index, 'fortify-authentication-stage'));
         $this->assertContains('package_fortify_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts('namespace Laravel\\Fortify; class Fortify {}', 'app/Shadow.php');
-        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()]);
+        $index = new CatalogIndex([...$facts, ...$shadow, $this->package()], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'registers-fortify-extension'));
     }
 }

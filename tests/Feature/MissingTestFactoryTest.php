@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAuditResult;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
@@ -32,7 +33,10 @@ CODE);
         $this->write('app/Models/BaseModel.php', '<?php namespace App\\Models; class BaseModel extends \\Illuminate\\Database\\Eloquent\\Model {} /*'.str_repeat('x', 100_001).'*/');
         $result = $this->audit();
         $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($result->findings, 'code'));
+        $this->assertContains('A_SOURCE_CHECK_INCOMPLETE', array_column($result->notices, 'code'));
         $this->assertStringContainsString('Source or memory budget exceeded for App\\Models\\BaseModel', implode(' ', array_column($result->findings, 'message')));
+        $this->assertFalse($result->analysis()['checks_complete']);
+        $this->assertContains('app/Models/BaseModel.php', array_column($result->notices, 'path'));
     }
 
     public function test_model_inheritance_depth_budget_is_reported(): void
@@ -133,7 +137,7 @@ CODE);
             (new Process($command, $this->tempPath))->mustRun();
         }
         file_put_contents($this->tempPath.'/app/Models/User.php', "\n// changed model only", FILE_APPEND);
-        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], true, scope: new AuditScope(['app', 'database', 'tests']), missingTestLevel: MissingTestLevel::Warn);
+        $result = (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], true, scope: new AuditScope(['app', 'database', 'tests']), missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep);
         $this->assertCount(1, $result->findings);
         $this->assertSame('W_MISSING_TEST_ANALYSIS_INCOMPLETE', $result->findings[0]->code);
         $this->assertSame('tests/Feature/UserTest.php', $result->findings[0]->path);
@@ -186,15 +190,15 @@ CODE);
         $cache = new ProjectGraphCache($files, $this->tempPath);
         $audit = new ApplicationAudit($files, $this->tempPath);
         $scope = new AuditScope(['app', 'database/factories']);
-        $run = fn ($cache) => $audit->run([], false, scope: $scope, missingTestLevel: MissingTestLevel::Warn, cache: $cache);
+        $run = fn ($cache) => $audit->run([], false, scope: $scope, missingTestLevel: MissingTestLevel::Warn, cache: $cache, mode: AnalysisMode::Deep);
         $disabled = $run(null);
         $this->assertSame(['database/factories/OtherFactory.php'], array_column($disabled->findings, 'path'));
         $this->assertEquals($disabled->findings, $run($cache)->findings);
         $this->assertEquals($disabled->findings, $run($cache)->findings);
-        $graph = (new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests', 'database/factories'])))->load();
+        $graph = (new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests', 'database/factories']), mode: AnalysisMode::Deep))->load();
         $this->assertNull($graph->symbol('Illuminate\\Foundation\\Auth\\User'));
-        $this->assertSame([], $audit->run([], false, scope: $scope)->findings);
-        $appOnly = $audit->run([], false, missingTestLevel: MissingTestLevel::Warn);
+        $this->assertSame([], $audit->run([], false, scope: $scope, mode: AnalysisMode::Deep)->findings);
+        $appOnly = $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep);
         $this->assertNotContains('database/factories/OtherFactory.php', array_column($appOnly->findings, 'path'));
     }
 
@@ -204,11 +208,11 @@ CODE);
         $files = new Filesystem;
         $audit = new ApplicationAudit($files, $this->tempPath);
         $cache = new ProjectGraphCache($files, $this->tempPath);
-        $run = fn ($cache) => $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache);
+        $run = fn ($cache) => $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, cache: $cache, mode: AnalysisMode::Deep);
         $this->assertSame([], $run(null)->findings);
         $this->assertSame([], $run($cache)->findings);
         $this->assertSame([], $run($cache)->findings);
-        $graph = (new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests']), $cache))->load();
+        $graph = (new ProjectGraphLoader($files, $this->tempPath, new AuditScope(['app', 'tests']), $cache, mode: AnalysisMode::Deep))->load();
         $this->assertNull($graph->symbol('Database\\Factories\\UserFactory'));
         $this->write('database/factories/UserFactory.php', '<?php namespace Database\\Factories; throw new \\RuntimeException("Do not execute"); class UserFactory {}');
         $changed = $run($cache);
@@ -227,9 +231,9 @@ CODE);
         $this->write('support/UserFactory.php', '<?php namespace Fixture; throw new \\RuntimeException("Do not execute"); class UserFactory extends BaseFactory {}');
         $this->write('support/BaseFactory.php', '<?php namespace Fixture; class BaseFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}');
         $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
-        $this->assertSame([], $audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings);
+        $this->assertSame([], $audit->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep)->findings);
         $this->write('support/BaseFactory.php', '<?php namespace Fixture; class BaseFactory {}');
-        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep)->findings, 'code'));
     }
 
     public function test_auxiliary_missing_parse_budget_and_ambiguous_sources_are_incomplete(): void
@@ -238,16 +242,16 @@ CODE);
         $audit = new ApplicationAudit(new Filesystem, $this->tempPath);
         foreach (['<?php invalid syntax', '<?php /*'.str_repeat('x', 100_001).'*/'] as $source) {
             $this->write('database/factories/UserFactory.php', $source);
-            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep)->findings, 'code'));
         }
         $source = '<?php namespace Database\\Factories; class UserFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}';
         $this->write('database/factories/UserFactory.php', $source);
         $this->write('support/UserFactory.php', $source);
         $this->write('composer.json', json_encode(['autoload-dev' => ['psr-4' => ['Database\\Factories\\' => ['database/factories/', 'support/']]]], JSON_THROW_ON_ERROR));
-        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep)->findings, 'code'));
         foreach (['../outside/', 'vendor/factories/', '/tmp/factories/'] as $directory) {
             $this->write('composer.json', json_encode(['autoload-dev' => ['psr-4' => ['Database\\Factories\\' => $directory]]], JSON_THROW_ON_ERROR));
-            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep)->findings, 'code'));
         }
     }
 
@@ -260,14 +264,14 @@ CODE);
             file_put_contents($outside, '<?php namespace Database\\Factories; class UserFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}');
             unlink($this->tempPath.'/database/factories/UserFactory.php');
             symlink($outside, $this->tempPath.'/database/factories/UserFactory.php');
-            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+            $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep)->findings, 'code'));
         } finally {
             unlink($this->tempPath.'/database/factories/UserFactory.php');
             unlink($outside);
         }
         $this->write('database/factories/UserFactory.php', '<?php namespace Database\\Factories; class UserFactory extends \\Illuminate\\Database\\Eloquent\\Factories\\Factory {}');
         $this->write('composer.json', '{"autoload-dev":{"psr-4":123}}');
-        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn)->findings, 'code'));
+        $this->assertContains('W_MISSING_TEST_ANALYSIS_INCOMPLETE', array_column($audit->run([], false, missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep)->findings, 'code'));
     }
 
     private function authFixture(string $parent = 'Authenticatable', string $imports = 'use Illuminate\\Foundation\\Auth\\User as Authenticatable;', bool $intermediate = false, string $body = ''): void
@@ -292,7 +296,7 @@ CODE);
 
     private function audit(): ApplicationAuditResult
     {
-        return (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, scope: new AuditScope(['app', 'database', 'tests']), missingTestLevel: MissingTestLevel::Warn);
+        return (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false, scope: new AuditScope(['app', 'database', 'tests']), missingTestLevel: MissingTestLevel::Warn, mode: AnalysisMode::Deep);
     }
 
     private function write(string $path, string $contents): void

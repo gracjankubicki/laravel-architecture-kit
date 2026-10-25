@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogElement;
@@ -23,7 +24,7 @@ final class StaticGraphDataTest extends TestCase
         ]);
         $serialized = json_encode(array_map(fn ($row) => $row->toArray(), $facts));
         $this->assertStringNotContainsString('credential-secret', $serialized);
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $maps = $this->edges($index, 'maps-table');
         $this->assertCount(4, $maps);
         $tables = [];
@@ -41,7 +42,7 @@ final class StaticGraphDataTest extends TestCase
 
     public function test_dynamic_getters_and_connections_do_not_fall_back_to_conventions(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Models.php' => 'namespace App; class Dynamic extends \\Illuminate\\Database\\Eloquent\\Model { public function getTable() { return env("TABLE"); } } class DynamicConnection extends \\Illuminate\\Database\\Eloquent\\Model { public function getConnectionName() { return unknown(); } } class Invalid extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "https://host?credential=secret"; }']));
+        $index = new CatalogIndex($this->facts(['app/Models.php' => 'namespace App; class Dynamic extends \\Illuminate\\Database\\Eloquent\\Model { public function getTable() { return env("TABLE"); } } class DynamicConnection extends \\Illuminate\\Database\\Eloquent\\Model { public function getConnectionName() { return unknown(); } } class Invalid extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "https://host?credential=secret"; }']), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'maps-table'));
         $this->assertCount(3, array_filter($index->diagnostics, fn ($row) => $row['code'] === 'data_analysis'));
     }
@@ -51,17 +52,17 @@ final class StaticGraphDataTest extends TestCase
         $child = $this->facts(['app/Child.php' => 'namespace App; class Child extends Base {}'])[0];
         foreach (['old_rows', 'new_rows'] as $table) {
             $parent = $this->facts(['app/Base.php' => 'namespace App; class Base extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "'.$table.'"; }'])[0];
-            $index = new CatalogIndex([$parent, CatalogFacts::fromArray($child->path, $child->toArray())]);
+            $index = new CatalogIndex([$parent, CatalogFacts::fromArray($child->path, $child->toArray())], mode: AnalysisMode::Deep);
             $maps = $this->edges($index, 'maps-table');
             $this->assertCount(2, $maps);
             $this->assertSame($table, $index->elements[$maps[1]['to']]['name']);
         }
-        $this->assertSame([], $this->edges(new CatalogIndex([$child]), 'maps-table'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$child], mode: AnalysisMode::Deep), 'maps-table'));
     }
 
     public function test_same_table_on_distinct_connections_has_distinct_identity(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Models.php' => 'namespace App; class A extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "rows"; protected $connection = "a"; } class B extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "rows"; protected $connection = "b"; }']));
+        $index = new CatalogIndex($this->facts(['app/Models.php' => 'namespace App; class A extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "rows"; protected $connection = "a"; } class B extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "rows"; protected $connection = "b"; }']), mode: AnalysisMode::Deep);
         $maps = $this->edges($index, 'maps-table');
         $this->assertCount(2, $maps);
         $this->assertNotSame($maps[0]['to'], $maps[1]['to']);
@@ -70,7 +71,7 @@ final class StaticGraphDataTest extends TestCase
 
     public function test_source_model_shadow_does_not_prove_framework_mapping(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Model.php' => 'namespace Illuminate\\Database\\Eloquent; class Model {}', 'app/User.php' => 'namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model {}']));
+        $index = new CatalogIndex($this->facts(['app/Model.php' => 'namespace Illuminate\\Database\\Eloquent; class Model {}', 'app/User.php' => 'namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model {}']), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'maps-table'));
         $this->assertNotEmpty($index->diagnostics);
     }
@@ -81,7 +82,7 @@ final class StaticGraphDataTest extends TestCase
             'app/Base1.php' => 'namespace App; class Base extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "first"; }',
             'app/Base2.php' => 'namespace App; class Base extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "second"; }',
             'app/Child.php' => 'namespace App; class Child extends Base {} trait A { public function getTable() { return "a"; } } trait B { public function getTable() { return "b"; } } class Adapted extends \\Illuminate\\Database\\Eloquent\\Model { use A, B { A::getTable insteadof B; } }',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $maps = $this->edges($index, 'maps-table');
         $this->assertCount(1, $maps);
         $this->assertSame('App\\Adapted', $index->elements[$maps[0]['from']]['name']);
@@ -101,7 +102,7 @@ class Aliased extends \Illuminate\Database\Eloquent\Model { use Connection { get
 class Conflict extends \Illuminate\Database\Eloquent\Model { use A, B; }
 class InvalidVisibility extends \Illuminate\Database\Eloquent\Model { use A { getTable as protected; } }
 class Action { public function run() { Order::count(); Aliased::count(); Conflict::count(); InvalidVisibility::count(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $maps = $this->edges($index, 'maps-table');
         $this->assertCount(2, $maps);
         $this->assertSame(['second_rows', 'alias_rows'], array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $maps));
@@ -121,12 +122,12 @@ SOURCE]));
         foreach (['A' => 'first_rows', 'B' => 'second_rows'] as $chosen => $table) {
             $other = $chosen === 'A' ? 'B' : 'A';
             $model = $this->facts(['app/Order.php' => 'namespace App; class Order extends \\Illuminate\\Database\\Eloquent\\Model { use A, B { '.$chosen.'::getTable insteadof '.$other.'; } }'])[0];
-            $index = new CatalogIndex([...$fixed, CatalogFacts::fromArray($model->path, $model->toArray())]);
+            $index = new CatalogIndex([...$fixed, CatalogFacts::fromArray($model->path, $model->toArray())], mode: AnalysisMode::Deep);
             $reads = $this->edges($index, 'reads');
             $this->assertCount(1, $reads);
             $this->assertSame($table, $index->elements[$reads[0]['to']]['name']);
         }
-        $this->assertSame([], $this->edges(new CatalogIndex([$fixed[0]]), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$fixed[0]], mode: AnalysisMode::Deep), 'reads'));
     }
 
     public function test_cached_arbitrary_getter_and_cast_aliases_decode_only_selected_source_returns(): void
@@ -151,7 +152,7 @@ SOURCE,
             $reads[] = $path;
 
             return isset($sources[$path]) ? '<?php '.$sources[$path] : null;
-        });
+        }, mode: AnalysisMode::Deep);
         $model = $index->elements[$index->names['app\\order'][0]];
         $this->assertTrue($model['metadata']['casts_resolved']);
         $this->assertSame(['decimal', 'array'], array_column($model['metadata']['declared_casts'], 'cast'));
@@ -162,7 +163,7 @@ SOURCE,
         $this->assertCount(1, $this->edges($index, 'reads'));
         $this->assertSame(['app/Names.php'], array_values(array_unique($reads)));
         $this->assertStringNotContainsString('credential-payload-secret', json_encode([$index->elements, $index->relations], JSON_THROW_ON_ERROR));
-        $changed = new CatalogIndex($facts, fn ($path) => isset($sources[$path]) ? '<?php '.str_replace('Custom_', 'Other_', $sources[$path]) : null);
+        $changed = new CatalogIndex($facts, fn ($path) => isset($sources[$path]) ? '<?php '.str_replace('Custom_', 'Other_', $sources[$path]) : null, mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($changed, 'reads'));
         $this->assertContains('changed_inputs', array_column($changed->diagnostics, 'code'));
     }
@@ -180,7 +181,7 @@ trait DynamicNames { public function name() { return "Orders{$tenant}"; } }
 class DynamicOrder extends \Illuminate\Database\Eloquent\Model { use DynamicNames { name as getTable; } }
 SOURCE;
         $facts = $this->facts(['app/Names.php' => $source]);
-        $index = new CatalogIndex($facts, fn ($path) => '<?php '.$source);
+        $index = new CatalogIndex($facts, fn ($path) => '<?php '.$source, mode: AnalysisMode::Deep);
         $maps = $this->edges($index, 'maps-table');
         $this->assertCount(1, $maps);
         $this->assertSame('Orders_A', $index->elements[$maps[0]['to']]['name']);
@@ -192,7 +193,7 @@ SOURCE;
     {
         $facts = $this->facts(['app/Names.php' => 'namespace App; trait Names { public function name() { return "orders"; } } class Order extends \\Illuminate\\Database\\Eloquent\\Model { use Names { name as getTable; } }']);
         foreach ([fn ($path) => null, fn ($path) => str_repeat('a', 2 * 1024 * 1024 + 1), fn ($path) => throw new \RuntimeException('unavailable')] as $reader) {
-            $index = new CatalogIndex($facts, $reader);
+            $index = new CatalogIndex($facts, $reader, mode: AnalysisMode::Deep);
             $this->assertSame([], $this->edges($index, 'maps-table'));
             $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'data_analysis'));
         }
@@ -267,7 +268,7 @@ class Queries {
   Database::table('orders')->customMacro()->delete();
  }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $reads = $this->edges($index, 'reads');
         $writes = $this->edges($index, 'writes');
         $this->assertCount(3, $reads);
@@ -288,7 +289,7 @@ SOURCE]));
         $action = $this->facts(['app/Action.php' => 'namespace App; class Action { public function run() { User::where("active", true)->get(); User::create(["value" => "payload-secret"]); Decoy::get(); } }'])[0];
         foreach (['old_users', 'new_users'] as $table) {
             $model = $this->facts(['app/User.php' => 'namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model { protected $table = "'.$table.'"; } class Decoy { public static function get() {} }'])[0];
-            $index = new CatalogIndex([$model, CatalogFacts::fromArray($action->path, $action->toArray())]);
+            $index = new CatalogIndex([$model, CatalogFacts::fromArray($action->path, $action->toArray())], mode: AnalysisMode::Deep);
             $reads = $this->edges($index, 'reads');
             $writes = $this->edges($index, 'writes');
             $this->assertCount(1, $reads);
@@ -296,7 +297,7 @@ SOURCE]));
             $this->assertSame($table, $index->elements[$reads[0]['to']]['name']);
             $this->assertSame('app/User.php', $reads[0]['metadata']['selector_sources'][0]['path']);
         }
-        $this->assertSame([], $this->edges(new CatalogIndex([$action]), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$action], mode: AnalysisMode::Deep), 'reads'));
     }
 
     public function test_schema_and_sql_keep_effect_kind_without_serializing_query_payload(): void
@@ -311,7 +312,7 @@ D::statement("UPDATE orders SET secret = 'query-secret'");
 D::select($dynamic);
 SOURCE]);
         $this->assertStringNotContainsString('query-secret', json_encode(array_map(fn ($row) => $row->toArray(), $facts)));
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $this->assertCount(3, $this->edges($index, 'changes-schema'));
         $this->assertCount(1, $this->edges($index, 'reads'));
         $this->assertCount(1, $this->edges($index, 'writes'));
@@ -323,7 +324,7 @@ SOURCE]);
         $index = new CatalogIndex($this->facts([
             'app/DB.php' => 'namespace Illuminate\\Support\\Facades; class DB { public static function table($name) {} }',
             'app/Run.php' => 'namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model { public static function get() {} } class Run { public function run() { \\Illuminate\\Support\\Facades\\DB::table("orders")->get(); User::get(); } }',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads'));
         $this->assertNotEmpty($index->diagnostics);
     }
@@ -334,7 +335,7 @@ SOURCE]);
             'routes/web.php' => '\\Illuminate\\Support\\Facades\\Route::get("orders", [App\\Controller::class, "index"]);',
             'app/Controller.php' => 'namespace App; class Controller { public function index() { return (new Action)->run(); } } class Action { public function run() { return Order::get(); } }',
             'app/Order.php' => 'namespace App; class Order extends \\Illuminate\\Database\\Eloquent\\Model {}',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $route = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'route'))[0];
         $table = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'table'))[0];
         $query = new GraphQuery($index);
@@ -348,7 +349,7 @@ SOURCE]);
 
     public function test_unpacked_query_arguments_and_oversized_sql_identifiers_are_explicit(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Run.php' => '\\Illuminate\\Support\\Facades\\DB::table("orders")->get(...$args); \\illuminate\\support\\facades\\db::table("orders")->count(); \\Illuminate\\Support\\Facades\\DB::select("SELECT * FROM '.str_repeat('a', 257).'");']));
+        $index = new CatalogIndex($this->facts(['app/Run.php' => '\\Illuminate\\Support\\Facades\\DB::table("orders")->get(...$args); \\illuminate\\support\\facades\\db::table("orders")->count(); \\Illuminate\\Support\\Facades\\DB::select("SELECT * FROM '.str_repeat('a', 257).'");']), mode: AnalysisMode::Deep);
         $reads = $this->edges($index, 'reads');
         $this->assertCount(1, $reads);
         $this->assertSame('count', $reads[0]['metadata']['operation']);
@@ -367,7 +368,7 @@ trait CommonCasts { protected $casts = ['amount' => Currency::class, 'enabled' =
 class Base extends \Illuminate\Database\Eloquent\Model { use CommonCasts; }
 SOURCE,
             'app/Child.php' => 'namespace App; class Child extends Base { protected function casts(): array { return ["amount" => Other::class.":credential-secret", "name" => "string"]; } } class Decoy { protected $casts = ["amount" => Other::class]; }',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $child = $index->elements[$index->namedTypes('App\\Child')[0]];
         $casts = array_column($child['metadata']['declared_casts'], null, 'attribute');
         $this->assertSame('App\\Other', $casts['amount']['cast']);
@@ -397,7 +398,7 @@ class Order extends \Illuminate\Database\Eloquent\Model { use A, B { B::casts in
 class Override extends Order { protected function casts() { return ['amount' => 'float']; } }
 class Conflict extends \Illuminate\Database\Eloquent\Model { use A, B; }
 class PrivateCast extends \Illuminate\Database\Eloquent\Model { use A { casts as private; } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         foreach (['Order' => 'string', 'Override' => 'float'] as $name => $cast) {
             $model = $index->elements[$index->names[strtolower('App\\'.$name)][0]];
             $this->assertTrue($model['metadata']['casts_resolved']);
@@ -420,7 +421,7 @@ SOURCE]));
         foreach (['A' => 'int', 'B' => 'string'] as $chosen => $cast) {
             $other = $chosen === 'A' ? 'B' : 'A';
             $model = $this->facts(['app/Order.php' => 'namespace App; class Order extends \\Illuminate\\Database\\Eloquent\\Model { use A, B { '.$chosen.'::casts insteadof '.$other.'; } }'])[0];
-            $index = new CatalogIndex([$traits, CatalogFacts::fromArray($model->path, $model->toArray())]);
+            $index = new CatalogIndex([$traits, CatalogFacts::fromArray($model->path, $model->toArray())], mode: AnalysisMode::Deep);
             $declaration = $index->elements[$index->names['app\\order'][0]];
             $this->assertTrue($declaration['metadata']['casts_resolved']);
             $this->assertSame($cast, $declaration['metadata']['declared_casts'][0]['cast']);
@@ -429,7 +430,7 @@ SOURCE]));
 
     public function test_dynamic_cast_map_is_not_replaced_by_the_property_and_decoys_do_not_get_casts(): void
     {
-        $index = new CatalogIndex($this->facts(['app/Models.php' => 'namespace App; class Cast implements \\Illuminate\\Contracts\\Database\\Eloquent\\Castable { public static function castUsing(array $arguments) {} } class User extends \\Illuminate\\Database\\Eloquent\\Model { protected $casts = ["name" => Cast::class]; protected function casts() { return unknown(); } } class Decoy { protected $casts = ["name" => Cast::class]; }']));
+        $index = new CatalogIndex($this->facts(['app/Models.php' => 'namespace App; class Cast implements \\Illuminate\\Contracts\\Database\\Eloquent\\Castable { public static function castUsing(array $arguments) {} } class User extends \\Illuminate\\Database\\Eloquent\\Model { protected $casts = ["name" => Cast::class]; protected function casts() { return unknown(); } } class Decoy { protected $casts = ["name" => Cast::class]; }']), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'uses-cast'));
         $user = $index->elements[$index->namedTypes('App\\User')[0]];
         $this->assertFalse($user['metadata']['casts_resolved']);
@@ -443,8 +444,8 @@ SOURCE]));
         $model = $this->facts(['app/User.php' => 'namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model { protected $casts = ["name" => Value::class]; }'])[0];
         $good = $this->facts(['app/Value.php' => 'namespace App; class Value implements \\Illuminate\\Contracts\\Database\\Eloquent\\Castable { public static function castUsing(array $arguments) {} }'])[0];
         $bad = $this->facts(['app/Value.php' => 'namespace App; class Value {}'])[0];
-        $this->assertCount(1, $this->edges(new CatalogIndex([$good, CatalogFacts::fromArray($model->path, $model->toArray())]), 'uses-cast'));
-        $index = new CatalogIndex([$bad, $model]);
+        $this->assertCount(1, $this->edges(new CatalogIndex([$good, CatalogFacts::fromArray($model->path, $model->toArray())], mode: AnalysisMode::Deep), 'uses-cast'));
+        $index = new CatalogIndex([$bad, $model], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'uses-cast'));
         $this->assertCount(1, $this->edges($index, 'references-cast'));
         $this->assertNotEmpty($index->diagnostics);
@@ -469,7 +470,7 @@ SOURCE]));
         $index = new CatalogIndex($this->facts([
             'app/Shadow.php' => 'namespace Illuminate\\Contracts\\Database\\Eloquent; interface Castable {}',
             'app/Model.php' => 'namespace App; class Cast implements \\Illuminate\\Contracts\\Database\\Eloquent\\Castable {} class User extends \\Illuminate\\Database\\Eloquent\\Model { protected $casts = ["name" => Cast::class]; }',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'uses-cast'));
         $this->assertCount(1, $this->edges($index, 'references-cast'));
         $this->assertNotEmpty($index->diagnostics);
@@ -495,7 +496,7 @@ class Customer extends Model {} class Product extends Model {} class Delivery ex
 class OrderProduct extends Pivot {}
 class Decoy { public function customer() { return $this->belongsTo(Customer::class); } }
 SOURCE,
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $this->assertCount(5, $this->edges($index, 'references-related-model'));
         foreach ($this->edges($index, 'references-relation-table') as $edge) {
             $this->assertSame(['kind' => 'named', 'name' => 'tenant'], $index->elements[$edge['to']]['metadata']['connection']);
@@ -523,7 +524,7 @@ class Product extends \Illuminate\Database\Eloquent\Model {}
 class Override extends \Illuminate\Database\Eloquent\Model { public function belongsTo($class) {} public function product() { return $this->belongsTo(Product::class); } }
 class Dynamic extends \Illuminate\Database\Eloquent\Model { public function product() { return $this->belongsTo($this->class); } public function morph() { return $this->morphTo(Product::class); } public function products() { return $this->belongsToMany(Product::class, $this->tableName); } }
 class Custom extends \Illuminate\Database\Eloquent\Model { public function joiningTable($class) { return config('pivot.table'); } public function products() { return $this->belongsToMany(Product::class); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertCount(2, $this->edges($index, 'references-related-model'));
         $pivots = array_filter($this->edges($index, 'references-relation-table'), fn ($row) => ($row['metadata']['table_role'] ?? null) === 'pivot');
         $this->assertSame([], array_values($pivots));
@@ -537,14 +538,14 @@ SOURCE]));
         $before = $this->facts(['app/Customer.php' => 'namespace App; class Customer extends \Illuminate\Database\Eloquent\Model { protected $table = "customers"; }']);
         $after = $this->facts(['app/Customer.php' => 'namespace App; class Customer extends \Illuminate\Database\Eloquent\Model { protected $table = "archived_customers"; }']);
         foreach ([[$before, 'customers'], [$after, 'archived_customers']] as [$facts, $table]) {
-            $index = new CatalogIndex([...$fixed, ...$facts]);
+            $index = new CatalogIndex([...$fixed, ...$facts], mode: AnalysisMode::Deep);
             $edges = $this->edges($index, 'references-relation-table');
             $this->assertCount(1, $edges);
             $this->assertSame($table, $index->elements[$edges[0]['to']]['name']);
         }
-        $this->assertSame([], $this->edges(new CatalogIndex($fixed), 'references-related-model'));
+        $this->assertSame([], $this->edges(new CatalogIndex($fixed, mode: AnalysisMode::Deep), 'references-related-model'));
         $shadow = $this->facts(['app/Shadow.php' => 'namespace Illuminate\Database\Eloquent; class Model {}']);
-        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, ...$before, ...$shadow]), 'references-related-model'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, ...$before, ...$shadow], mode: AnalysisMode::Deep), 'references-related-model'));
     }
 
     public function test_legacy_and_attribute_accessors_have_structural_callback_links_and_verified_roles(): void
@@ -565,7 +566,7 @@ class User extends \Illuminate\Database\Eloquent\Model {
 }
 class Service { public static function read() {} public static function write() {} }
 class Decoy { protected function code(): Field { return Field::get(fn () => Service::read()); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertCount(4, $this->edges($index, 'declares-accessor'));
         $this->assertCount(3, $this->edges($index, 'declares-mutator'));
         $this->assertCount(3, $this->edges($index, 'registers-accessor-callback'));
@@ -601,7 +602,7 @@ class Action {
     public function compound(User $user) { $user->legacy_name .= 'suffix'; }
 }
 class Helper { public static function read() {} public static function write() {} }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertCount(5, $this->edges($index, 'invokes-accessor'));
         $this->assertCount(3, $this->edges($index, 'invokes-mutator'));
         $this->assertCount(2, $this->edges($index, 'invokes-attribute-definition'));
@@ -638,7 +639,7 @@ class Action {
     public function references(User $user) { $alias =& $user; $alias = new Decoy; $user->name; }
     public function escaped(User $user) { unknown($user); $user->name; }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'invokes-accessor'));
         $this->assertSame([], $this->edges($index, 'invokes-mutator'));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'eloquent_attribute_analysis'));
@@ -649,10 +650,10 @@ SOURCE]));
         $consumer = $this->facts(['app/Consumer.php' => 'namespace App; class Action { public function __construct(public User $user) {} public function read() { return $this->user->name; } }'])[0];
         $consumer = CatalogFacts::fromArray($consumer->path, $consumer->toArray());
         $model = $this->facts(['app/User.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { public function getNameAttribute($value) { return $value; } }'])[0];
-        $this->assertCount(1, $this->edges(new CatalogIndex([$consumer, $model]), 'invokes-accessor'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([$consumer, $model], mode: AnalysisMode::Deep), 'invokes-accessor'));
         $edited = $this->facts(['app/User.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { public function getOtherAttribute($value) { return $value; } }'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer, $edited]), 'invokes-accessor'));
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer]), 'invokes-accessor'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer, $edited], mode: AnalysisMode::Deep), 'invokes-accessor'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer], mode: AnalysisMode::Deep), 'invokes-accessor'));
     }
 
     public function test_explicit_attribute_methods_use_framework_dispatch_and_never_store_key_or_value_payloads(): void
@@ -680,7 +681,7 @@ class Action {
 SOURCE]);
         $this->assertStringNotContainsString('credential-secret', json_encode($facts[0]->toArray(), JSON_THROW_ON_ERROR));
         $this->assertStringNotContainsString('credential-key-secret', json_encode($facts[0]->toArray(), JSON_THROW_ON_ERROR));
-        $index = new CatalogIndex([CatalogFacts::fromArray($facts[0]->path, $facts[0]->toArray())]);
+        $index = new CatalogIndex([CatalogFacts::fromArray($facts[0]->path, $facts[0]->toArray())], mode: AnalysisMode::Deep);
         $readOwners = array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'invokes-accessor'));
         $writeOwners = array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'invokes-mutator'));
         $this->assertSame(['App\Action::read', 'App\Action::read', 'App\Action::magic', 'App\Action::bypass'], $readOwners);
@@ -704,7 +705,7 @@ class Action {
     public function reference(User $user) { $callback = function () use (&$user) { $user = new Decoy; }; $callback(); $user->name; }
 }
 class StaticModel extends User { public static function callback() { $callback = function () { return $this->name; }; } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'invokes-accessor');
         $this->assertCount(4, $edges);
         $methods = array_filter($edges, fn ($edge) => $index->elements[$edge['from']]['kind'] === 'method');
@@ -725,7 +726,7 @@ SOURCE]));
         $fact = $this->facts(['app/UnionLimit.php' => 'namespace App; function inspect('.implode('|', $types).' $model) { return $model->name; }'])[0];
         $this->assertFalse($fact->cacheable());
         $this->assertContains('catalog_limit', array_map(fn ($row) => $row->code, $fact->diagnostics));
-        $this->assertSame([], $this->edges(new CatalogIndex([$fact]), 'invokes-accessor'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$fact], mode: AnalysisMode::Deep), 'invokes-accessor'));
     }
 
     public function test_cached_attribute_access_descriptor_rejects_arbitrary_payload_fields(): void
@@ -764,7 +765,7 @@ class Action {
     public function visible(Visible $user) { return $user->toArray(); }
 }
 class Helper { public static function read() {} }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'serializes-through-accessor');
         $this->assertCount(9, $edges);
         $this->assertCount(5, $this->edges($index, 'invokes-attribute-definition'));
@@ -805,7 +806,7 @@ class Action {
     public function mutated(User $user) { $alias = $user; $user->setHidden(['name']); $alias->toArray(); }
     public function bypass(Override $user) { $user->attributesToArray(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'serializes-through-accessor');
         $this->assertCount(1, $edges);
         $this->assertSame('App\Action::bypass', $index->elements[$edges[0]['from']]['name']);
@@ -820,9 +821,9 @@ SOURCE]));
             $model = $this->facts(['app/User.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { protected $hidden = ['.($hidden ? '"name", ' : '').'"credential-key-secret"]; public function getNameAttribute($value) { return $value; } }'])[0];
             $this->assertStringNotContainsString('credential-key-secret', json_encode($model->toArray(), JSON_THROW_ON_ERROR));
             $model = CatalogFacts::fromArray($model->path, $model->toArray());
-            $this->assertCount($hidden ? 0 : 1, $this->edges(new CatalogIndex([$consumer, $model]), 'serializes-through-accessor'));
+            $this->assertCount($hidden ? 0 : 1, $this->edges(new CatalogIndex([$consumer, $model], mode: AnalysisMode::Deep), 'serializes-through-accessor'));
         }
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer]), 'serializes-through-accessor'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer], mode: AnalysisMode::Deep), 'serializes-through-accessor'));
     }
 
     public function test_serialization_selector_budget_is_explicit_and_keeps_partial_facts_noncacheable(): void
@@ -831,14 +832,14 @@ SOURCE]));
         $fact = $this->facts(['app/SelectorBudget.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { protected $appends = ['.$selectors.']; public function getNameAttribute($value) {} } class Action { public function run(User $user) { $user->toArray(); } }'])[0];
         $this->assertFalse($fact->cacheable());
         $this->assertContains('catalog_limit', array_map(fn ($row) => $row->code, $fact->diagnostics));
-        $this->assertSame([], $this->edges(new CatalogIndex([$fact]), 'serializes-through-accessor'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$fact], mode: AnalysisMode::Deep), 'serializes-through-accessor'));
     }
 
     public function test_serialization_candidate_expansion_has_an_explicit_composition_budget(): void
     {
         $methods = implode(' ', array_map(fn ($i) => 'public function getField'.$i.'Attribute($value) { return $value; }', range(1, 70)));
         $calls = str_repeat('$user->toArray(); ', 60);
-        $index = new CatalogIndex($this->facts(['app/SerializationBudget.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { '.$methods.' } class Action { public function run(User $user) { '.$calls.' } }']));
+        $index = new CatalogIndex($this->facts(['app/SerializationBudget.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { '.$methods.' } class Action { public function run(User $user) { '.$calls.' } }']), mode: AnalysisMode::Deep);
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
         $edges = $this->edges($index, 'serializes-through-accessor');
         $this->assertNotEmpty($edges);
@@ -872,7 +873,7 @@ SOURCE]);
         $facts = [CatalogFacts::fromArray($facts[0]->path, $facts[0]->toArray())];
         foreach (['v12.41.1', 'v13.0.0', 'v13.2.0', 'v13.3.0', 'v13.18.0'] as $version) {
             $composer = (new ComposerCatalogExtractor)->extract(new FileContext('composer.lock', json_encode(['packages' => [['name' => 'laravel/framework', 'version' => $version]]], JSON_THROW_ON_ERROR)));
-            $index = new CatalogIndex([...$facts, $composer]);
+            $index = new CatalogIndex([...$facts, $composer], mode: AnalysisMode::Deep);
             $owners = array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'serializes-through-accessor'));
             $this->assertSame(in_array($version, ['v13.3.0', 'v13.18.0'], true) ? ['App\Action::nearest', 'App\Action::trait'] : ['App\Action::inherited', 'App\Action::nearest', 'App\Action::trait'], $owners, $version);
             foreach ($this->edges($index, 'serializes-through-accessor') as $edge) {
@@ -909,14 +910,14 @@ class Action {
 SOURCE]);
         $package = fn ($path, $version) => (new ComposerCatalogExtractor)->extract(new FileContext($path, json_encode(['packages' => [['name' => 'laravel/framework', 'version' => $version]]], JSON_THROW_ON_ERROR)));
         $locked = $package('composer.lock', 'v13.18.0');
-        $index = new CatalogIndex([...$facts, $locked]);
+        $index = new CatalogIndex([...$facts, $locked], mode: AnalysisMode::Deep);
         $owners = array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'serializes-through-accessor'));
         $this->assertSame(['App\Action::lookalike', 'App\Action::attributed'], $owners);
         $shadow = $this->facts(['app/Shadow.php' => 'namespace Illuminate\Database\Eloquent\Attributes; class Hidden {}']);
-        $index = new CatalogIndex([...$facts, ...$shadow, $locked]);
+        $index = new CatalogIndex([...$facts, ...$shadow, $locked], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'serializes-through-accessor'));
         foreach ([[], [$package('vendor/composer/installed.json', 'v13.0.0')]] as $other) {
-            $index = new CatalogIndex([...$facts, ...($other === [] ? [] : [$locked]), ...$other]);
+            $index = new CatalogIndex([...$facts, ...($other === [] ? [] : [$locked]), ...$other], mode: AnalysisMode::Deep);
             $this->assertCount(1, $this->edges($index, 'serializes-through-accessor'));
             $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'eloquent_serialization_analysis'));
         }
@@ -949,7 +950,7 @@ class Action {
     public function snake(Snake $user) { return $user->toArray(); }
     public function exact(Exact $user) { return $user->toArray(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $names = [];
         foreach ($this->edges($index, 'serializes-through-accessor') as $edge) {
             $names[$index->elements[$edge['from']]['name']][] = $edge['metadata']['attribute'];
@@ -977,7 +978,7 @@ class User extends \Illuminate\Database\Eloquent\Model {
     public function GETUnusedNameATTRIBUTE($value) { return $value; }
 }
 class Action { public function run(User $user) { return $user->toArray(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $attributes = [];
         foreach ($this->edges($index, 'serializes-through-accessor') as $edge) {
             $attributes[$edge['metadata']['attribute']] = $edge['metadata']['appended'];
@@ -1014,7 +1015,7 @@ class Action {
 SOURCE]);
         $this->assertStringNotContainsString('private-selector-secret', json_encode($facts[0]->toArray(), JSON_THROW_ON_ERROR));
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $names = [];
         foreach ($this->edges($index, 'serializes-through-accessor') as $edge) {
             $names[$index->elements[$edge['from']]['name']][] = $edge['metadata']['attribute'];
@@ -1056,7 +1057,7 @@ class Action {
     public function localCallback(User $user) { $callback = function () use ($user) { $user->makeHidden('name'); $user->setHidden([]); $user->toArray(); }; }
     public function named(User $user) { $user->makeHiddenIf(attributes: ['name'], condition: false); $user->toArray(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $names = [];
         foreach ($this->edges($index, 'serializes-through-accessor') as $edge) {
             $names[] = $index->elements[$edge['from']]['name'];
@@ -1078,7 +1079,7 @@ SOURCE]));
             foreach (['name', 'email'] as $getter) {
                 $model = $this->facts(['app/User.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { public function get'.ucfirst($getter).'Attribute($value) { return $value; } }'])[0];
                 $model = CatalogFacts::fromArray($model->path, $model->toArray());
-                $this->assertCount($field === $getter ? 0 : 1, $this->edges(new CatalogIndex([$consumer, $model]), 'serializes-through-accessor'));
+                $this->assertCount($field === $getter ? 0 : 1, $this->edges(new CatalogIndex([$consumer, $model], mode: AnalysisMode::Deep), 'serializes-through-accessor'));
             }
         }
     }
@@ -1106,7 +1107,7 @@ class Action {
 SOURCE]);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
         $this->assertStringNotContainsString('payload-secret', json_encode($facts[0]->toArray(), JSON_THROW_ON_ERROR));
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'serializes-through-accessor');
         $this->assertSame(['App\Action::global', 'App\Action::fallback', 'App\Action::imported', 'App\Action::fluent', 'App\Action::nested', 'App\Action::nested'],
             array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $edges));
@@ -1115,7 +1116,7 @@ SOURCE]);
             $this->assertFalse($edge['metadata']['execution_proven']);
         }
         $shadow = $this->facts(['app/Shadow.php' => 'namespace App; function json_encode($value) { return []; }']);
-        $index = new CatalogIndex([...$facts, ...$shadow]);
+        $index = new CatalogIndex([...$facts, ...$shadow], mode: AnalysisMode::Deep);
         $this->assertSame(['App\Action::global', 'App\Action::imported', 'App\Action::fluent', 'App\Action::nested', 'App\Action::nested'],
             array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'serializes-through-accessor')));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => str_contains($row['message'], 'shadowed')));
@@ -1126,10 +1127,10 @@ SOURCE]);
         $source = 'namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model { public function getNameAttribute($value) { return $value; } } '
             .'class Action { public function budget(User $user) { return \\json_encode(['.implode(', ', array_fill(0, 129, '$user')).']); } '
             .'public function referenced(User $user) { return \\json_encode([&$user]); } }';
-        $index = new CatalogIndex($this->facts(['app/JsonLimit.php' => $source]));
+        $index = new CatalogIndex($this->facts(['app/JsonLimit.php' => $source]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'serializes-through-accessor'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
-        $reference = new CatalogIndex($this->facts(['app/JsonRef.php' => 'namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model { public function getNameAttribute($value) {} } class Action { public function run(User $user) { return \\json_encode([&$user]); } }']));
+        $reference = new CatalogIndex($this->facts(['app/JsonRef.php' => 'namespace App; class User extends \\Illuminate\\Database\\Eloquent\\Model { public function getNameAttribute($value) {} } class Action { public function run(User $user) { return \\json_encode([&$user]); } }']), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($reference, 'serializes-through-accessor'));
         $this->assertContains('attribute_binding_analysis', array_column($reference->diagnostics, 'code'));
     }
@@ -1160,7 +1161,7 @@ class Action {
 }
 SOURCE]);
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $facts);
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $names = [];
         foreach ($this->edges($index, 'serializes-through-accessor') as $edge) {
             $name = $index->elements[$edge['from']]['name'];
@@ -1172,15 +1173,15 @@ SOURCE]);
         }
         $this->assertSame(['App\Action::helper', 'App\Action::plain', 'App\Action::facade', 'App\Action::make', 'App\Action::constructed', 'App\Action::nested', 'App\Action::nestedOverride'], $names);
         $shadow = $this->facts(['app/ShadowHelper.php' => 'namespace App; function response($content = null) { return new Decoy; }']);
-        $index = new CatalogIndex([...$facts, ...$shadow]);
+        $index = new CatalogIndex([...$facts, ...$shadow], mode: AnalysisMode::Deep);
         $this->assertSame(['App\Action::plain', 'App\Action::facade', 'App\Action::make', 'App\Action::constructed', 'App\Action::nestedOverride'],
             array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'serializes-through-accessor')));
         $shadow = $this->facts(['app/ShadowResponse.php' => 'namespace Illuminate\Http; class JsonResponse {}']);
-        $index = new CatalogIndex([...$facts, ...$shadow]);
+        $index = new CatalogIndex([...$facts, ...$shadow], mode: AnalysisMode::Deep);
         $this->assertSame(['App\Action::plain', 'App\Action::make'],
             array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'serializes-through-accessor')));
         $binding = $this->facts(['app/ResponseProvider.php' => 'namespace App; class CustomFactory {} class ResponseProvider extends \\Illuminate\\Support\\ServiceProvider { public function register() { $this->app->bind(\\Illuminate\\Contracts\\Routing\\ResponseFactory::class, CustomFactory::class); } }']);
-        $index = new CatalogIndex([...$facts, ...$binding]);
+        $index = new CatalogIndex([...$facts, ...$binding], mode: AnalysisMode::Deep);
         $this->assertSame(['App\Action::constructed'],
             array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'serializes-through-accessor')));
     }
@@ -1206,7 +1207,7 @@ class Service { public function run(User $user): User { return $user; } }
 SOURCE,
         ];
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $this->facts($sources));
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $names = [];
         foreach ($this->edges($index, 'serializes-through-accessor') as $edge) {
             $name = $index->elements[$edge['from']]['name'];
@@ -1230,7 +1231,7 @@ SOURCE,
             array_map(fn ($edge) => $index->elements[$edge['to']]['name'], $this->edges($index, 'invokes-response-conversion')));
         $changedRoutes = $this->facts(['routes/web.php' => 'use Illuminate\\Support\\Facades\\Route; Route::get("/unused", [App\\Controller::class, "unused"]);'])[0];
         $changedRoutes = CatalogFacts::fromArray($changedRoutes->path, $changedRoutes->toArray());
-        $index = new CatalogIndex([...array_filter($facts, fn ($fact) => $fact->path !== 'routes/web.php'), $changedRoutes]);
+        $index = new CatalogIndex([...array_filter($facts, fn ($fact) => $fact->path !== 'routes/web.php'), $changedRoutes], mode: AnalysisMode::Deep);
         $this->assertSame(['App\Controller::unused'], array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'serializes-through-accessor')));
     }
 
@@ -1263,7 +1264,7 @@ class Action {
 }
 SOURCE];
         $facts = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $this->facts($sources));
-        $index = new CatalogIndex($facts);
+        $index = new CatalogIndex($facts, mode: AnalysisMode::Deep);
         $edges = $this->edges($index, 'serializes-through-accessor');
         $this->assertSame(['App\Action::factory', 'App\Action::concrete', 'App\Action::json', 'App\Action::content', 'App\Action::property', 'App\Action::variable', 'App\Action::nested'],
             array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $edges));
@@ -1273,7 +1274,7 @@ SOURCE];
             $this->assertFalse($edge['metadata']['execution_proven']);
         }
         $shadow = $this->facts(['app/ResponseHelper.php' => 'namespace App; function response() { return new Decoy; }']);
-        $index = new CatalogIndex([...$facts, ...$shadow]);
+        $index = new CatalogIndex([...$facts, ...$shadow], mode: AnalysisMode::Deep);
         $this->assertNotContains('App\Action::variable', array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'serializes-through-accessor')));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'eloquent_serialization_analysis'));
     }
@@ -1285,7 +1286,7 @@ SOURCE];
         foreach ([true, false] as $snake) {
             $model = $this->facts(['app/User.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { public static $snakeAttributes = '.($snake ? 'true' : 'false').'; public function getFullNameAttribute($value) { return $value; } }'])[0];
             $model = CatalogFacts::fromArray($model->path, $model->toArray());
-            $edge = $this->edges(new CatalogIndex([$consumer, $model]), 'serializes-through-accessor')[0];
+            $edge = $this->edges(new CatalogIndex([$consumer, $model], mode: AnalysisMode::Deep), 'serializes-through-accessor')[0];
             $this->assertSame($snake ? 'full_name' : 'fullName', $edge['metadata']['attribute']);
             $this->assertSame($snake, $edge['metadata']['snake_attributes']);
         }
@@ -1304,15 +1305,15 @@ class User extends \Illuminate\Database\Eloquent\Model {
  public static function getStaticAttribute() { return Service::read(); }
 }
 class Service { public static function read() {} }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'registers-accessor-callback'));
         $this->assertCount(2, $this->edges($index, 'declares-model-attribute'));
         $this->assertContains('eloquent_attribute_analysis', array_column($index->diagnostics, 'code'));
         $shadow = $this->facts(['app/Shadow.php' => 'namespace Illuminate\Database\Eloquent\Casts; class Attribute {}']);
         $fixed = $this->facts(['app/User.php' => 'class User extends \Illuminate\Database\Eloquent\Model { protected function name(): \Illuminate\Database\Eloquent\Casts\Attribute { return \Illuminate\Database\Eloquent\Casts\Attribute::get(fn () => 1); } }']);
         $fixed = array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $fixed);
-        $this->assertCount(1, $this->edges(new CatalogIndex($fixed), 'registers-accessor-callback'));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, ...$shadow]), 'registers-accessor-callback'));
+        $this->assertCount(1, $this->edges(new CatalogIndex($fixed, mode: AnalysisMode::Deep), 'registers-accessor-callback'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, ...$shadow], mode: AnalysisMode::Deep), 'registers-accessor-callback'));
     }
 
     public function test_cached_attribute_trait_selection_tracks_current_model_override(): void
@@ -1321,9 +1322,9 @@ SOURCE]));
         $fixed = array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $fixed);
         $before = $this->facts(['app/User.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { use Names; }']);
         $after = $this->facts(['app/User.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model { use Names; protected function name() { return "payload-secret"; } }']);
-        $this->assertCount(1, $this->edges(new CatalogIndex([...$fixed, ...$before]), 'registers-accessor-callback'));
-        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, ...$after]), 'registers-accessor-callback'));
-        $this->assertSame([], $this->edges(new CatalogIndex($fixed), 'registers-accessor-callback'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([...$fixed, ...$before], mode: AnalysisMode::Deep), 'registers-accessor-callback'));
+        $this->assertSame([], $this->edges(new CatalogIndex([...$fixed, ...$after], mode: AnalysisMode::Deep), 'registers-accessor-callback'));
+        $this->assertSame([], $this->edges(new CatalogIndex($fixed, mode: AnalysisMode::Deep), 'registers-accessor-callback'));
     }
 
     public function test_factory_model_selectors_and_create_write_candidate_without_make_write(): void
@@ -1341,7 +1342,7 @@ class MethodFactory extends \Illuminate\Database\Eloquent\Factories\Factory { pu
 class Decoy { protected $model = User::class; }
 SOURCE,
             'routes/web.php' => '\Illuminate\Support\Facades\Route::post("users", [App\Controller::class, "create"]);',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $links = $this->edges($index, 'references-factory-model');
         $this->assertCount(3, $links);
         $this->assertSame(['App\User', 'App\User', 'App\User'], array_map(fn ($row) => $index->elements[$row['to']]['name'], $links));
@@ -1360,7 +1361,7 @@ SOURCE,
             'app/User.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model {}',
             'database/seeders/UserSeeder.php' => 'namespace Database\Seeders; class UserSeeder extends \Illuminate\Database\Seeder { public function run() { \App\User::create(["password" => "payload-secret"]); } } class Decoy { public function run() {} }',
             'database/migrations/create_users.php' => 'return new class extends \Illuminate\Database\Migrations\Migration { public function up() { \Illuminate\Support\Facades\Schema::create("users", fn ($table) => $table->string("name")); } public function down() { \Illuminate\Support\Facades\Schema::dropIfExists("users"); } }; throw new \Exception("execution-sentinel");',
-        ]));
+        ]), mode: AnalysisMode::Deep);
         $seeders = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'database-seeder'));
         $migrations = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'database-migration'));
         $this->assertCount(1, $seeders);
@@ -1384,7 +1385,7 @@ class User extends \Illuminate\Database\Eloquent\Model {}
 class DynamicFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = SOME_MODEL; }
 class OverrideFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; public function create($attributes = []) {} }
 class Action { public function run() { DynamicFactory::new()->create(); OverrideFactory::new()->create(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'writes'));
         $this->assertContains('database_lifecycle_analysis', array_column($index->diagnostics, 'code'));
     }
@@ -1405,7 +1406,7 @@ class DynamicFactory extends \Illuminate\Database\Eloquent\Factories\Factory { p
 class RepeatedFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; }
 #[FactoryModel(User::class, User::class)]
 class ExtraFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $links = $this->edges($index, 'references-factory-model');
         $this->assertCount(1, $links);
         $this->assertSame('App\NamedFactory', $index->elements[$links[0]['from']]['name']);
@@ -1418,7 +1419,7 @@ SOURCE]));
 class StaticSeeder extends \Illuminate\Database\Seeder { public static function run() {} }
 class PrivateSeeder extends \Illuminate\Database\Seeder { private function run() {} }
 class StaticMigration extends \Illuminate\Database\Migrations\Migration { public static function up() {} protected function down() {} }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'seeder-entry'));
         $this->assertCount(1, $this->edges($index, 'migration-entry'));
         $this->assertCount(2, array_filter($index->diagnostics, fn ($row) => $row['code'] === 'database_lifecycle_analysis'));
@@ -1439,7 +1440,7 @@ class Action { public function create() { User::factory()->create(); Attributed:
 class Decoy extends \Illuminate\Database\Eloquent\Model { protected static $factory = UserFactory::class; }
 class Overridden extends User { public static function factory() { return unknown(); } }
 class Dynamic extends User { protected static function newFactory() { return unknown(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $links = $this->edges($index, 'references-model-factory');
         $this->assertCount(3, $links);
         $this->assertSame(['App\User', 'App\Attributed', 'App\Selected'], array_map(fn ($row) => $index->elements[$row['from']]['name'], $links));
@@ -1460,20 +1461,20 @@ SOURCE]));
         foreach (['old_users', 'new_users'] as $table) {
             $factory = $this->facts(['database/factories/UserFactory.php' => 'namespace Database\Factories; class UserFactory extends \Illuminate\Database\Eloquent\Factories\Factory {}'])[0];
             $override = $this->facts(['app/User.php' => 'namespace Domain\Models; class User extends \Illuminate\Database\Eloquent\Model { use \Illuminate\Database\Eloquent\Factories\HasFactory; protected $table = "'.$table.'"; }'])[0];
-            $index = new CatalogIndex([$composer, $override, $factory]);
+            $index = new CatalogIndex([$composer, $override, $factory], mode: AnalysisMode::Deep);
             $links = $this->edges($index, 'references-model-factory');
             $this->assertCount(1, $links);
             $this->assertSame('Database\Factories\UserFactory', $index->elements[$links[0]['to']]['name']);
             $this->assertCount(1, $this->edges($index, 'references-factory-model'));
         }
-        $this->assertSame([], $this->edges(new CatalogIndex([$composer, $model]), 'references-model-factory'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$composer, $model], mode: AnalysisMode::Deep), 'references-model-factory'));
         $factory = $this->facts(['database/factories/UserFactory.php' => 'namespace Database\Factories; class UserFactory extends \Illuminate\Database\Eloquent\Factories\Factory {}'])[0];
         $dynamicNaming = $this->facts(['app/Provider.php' => '\Illuminate\Database\Eloquent\Factories\Factory::guessFactoryNamesUsing(fn ($model) => unknown());'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$composer, $model, $factory, $dynamicNaming]), 'references-model-factory'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$composer, $model, $factory, $dynamicNaming], mode: AnalysisMode::Deep), 'references-model-factory'));
         $shadow = $this->facts(['app/HasFactory.php' => 'namespace Illuminate\Database\Eloquent\Factories; trait HasFactory {}'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$composer, $model, $factory, $shadow]), 'references-model-factory'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$composer, $model, $factory, $shadow], mode: AnalysisMode::Deep), 'references-model-factory'));
         $changed = $this->facts(['database/factories/UserFactory.php' => 'namespace Database\Factories; class UserFactory {}'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$composer, $model, $changed]), 'references-model-factory'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$composer, $model, $changed], mode: AnalysisMode::Deep), 'references-model-factory'));
     }
 
     public function test_use_factory_model_override_applies_only_to_attribute_instantiation_context(): void
@@ -1484,7 +1485,7 @@ namespace App;
 class User extends \Illuminate\Database\Eloquent\Model { use \Illuminate\Database\Eloquent\Factories\HasFactory; }
 class SharedFactory extends \Illuminate\Database\Eloquent\Factories\Factory {}
 class Action { public function attributed() { User::factory()->create(); } public function direct() { SharedFactory::new()->create(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $writes = array_values(array_filter($this->edges($index, 'writes'), fn ($row) => ($row['metadata']['operation'] ?? null) === 'factory-create'));
         $this->assertCount(1, $writes);
         $this->assertSame('users', $index->elements[$writes[0]['to']]['name']);
@@ -1503,7 +1504,7 @@ throw new \Exception('execution-sentinel');
 SOURCE]);
         $this->assertStringNotContainsString('payload-secret', json_encode(array_map(fn ($row) => $row->toArray(), $facts), JSON_THROW_ON_ERROR));
         $cached = array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $facts);
-        $index = new CatalogIndex($cached);
+        $index = new CatalogIndex($cached, mode: AnalysisMode::Deep);
         $calls = $this->edges($index, 'calls-seeder');
         $this->assertCount(5, $calls);
         $once = array_values(array_filter($calls, fn ($row) => $row['metadata']['operation'] === 'callonce'))[0];
@@ -1526,7 +1527,7 @@ class Resolver extends \Illuminate\Database\Seeder { protected function resolve(
 class Invoked extends \Illuminate\Database\Seeder { public function __invoke() {} public function run() {} }
 class StaticScope extends \Illuminate\Database\Seeder { public static function run() { $this->call(Target::class); } }
 class ParentSeeder extends \Illuminate\Database\Seeder { public function run() { $this->call(Invoked::class); (static function () { $this->call(Target::class); })(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'calls-seeder'));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'database_lifecycle_analysis'));
     }
@@ -1536,21 +1537,21 @@ SOURCE]));
         $parent = $this->facts(['database/seeders/Parent.php' => 'namespace Database\Seeders; class ParentSeeder extends \Illuminate\Database\Seeder { public function run() { $this->call(Target::class); } }'])[0];
         $parent = CatalogFacts::fromArray($parent->path, $parent->toArray());
         $target = $this->facts(['database/seeders/Target.php' => 'namespace Database\Seeders; class Target extends \Illuminate\Database\Seeder { public function run() {} }'])[0];
-        $this->assertCount(1, $this->edges(new CatalogIndex([$parent, $target]), 'calls-seeder'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([$parent, $target], mode: AnalysisMode::Deep), 'calls-seeder'));
         $changed = $this->facts(['database/seeders/Target.php' => 'namespace Database\Seeders; class Target extends \Illuminate\Database\Seeder { protected function run() {} }'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$parent, $changed]), 'calls-seeder'));
-        $this->assertSame([], $this->edges(new CatalogIndex([$parent]), 'calls-seeder'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$parent, $changed], mode: AnalysisMode::Deep), 'calls-seeder'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$parent], mode: AnalysisMode::Deep), 'calls-seeder'));
         $shadow = $this->facts(['app/Seeder.php' => 'namespace Illuminate\Database; class Seeder {}'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$parent, $target, $shadow]), 'calls-seeder'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$parent, $target, $shadow], mode: AnalysisMode::Deep), 'calls-seeder'));
         $large = $this->facts(['database/seeders/Large.php' => 'class Large extends \Illuminate\Database\Seeder { public function run() { $this->call(['.implode(',', array_fill(0, 129, '\Database\Seeders\Target::class')).']); } }'])[0];
         $this->assertFalse($large->cacheable());
         $this->assertContains('catalog_limit', array_column(array_map(fn ($row) => $row->toArray(), $large->diagnostics), 'code'));
-        $this->assertSame([], $this->edges(new CatalogIndex([$large, $target]), 'calls-seeder'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$large, $target], mode: AnalysisMode::Deep), 'calls-seeder'));
     }
 
     public function test_anonymous_seeder_this_calls_keep_exact_closure_ownership(): void
     {
-        $index = new CatalogIndex($this->facts(['database/seeders/Anonymous.php' => 'class Target extends \Illuminate\Database\Seeder { public function run() {} } return new class extends \Illuminate\Database\Seeder { public function run() { (function () { $this->call(Target::class); })(); } };']));
+        $index = new CatalogIndex($this->facts(['database/seeders/Anonymous.php' => 'class Target extends \Illuminate\Database\Seeder { public function run() {} } return new class extends \Illuminate\Database\Seeder { public function run() { (function () { $this->call(Target::class); })(); } };']), mode: AnalysisMode::Deep);
         $calls = $this->edges($index, 'calls-seeder');
         $this->assertCount(1, $calls);
         $this->assertSame('closure', $index->elements[$calls[0]['from']]['kind']);
@@ -1574,7 +1575,7 @@ class Action {
 throw new \Exception('execution-sentinel');
 SOURCE]);
         $this->assertStringNotContainsString('payload-secret', json_encode(array_map(fn ($row) => $row->toArray(), $facts), JSON_THROW_ON_ERROR));
-        $index = new CatalogIndex(array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $facts));
+        $index = new CatalogIndex(array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $facts), mode: AnalysisMode::Deep);
         $this->assertCount(5, $this->edges($index, 'invokes-factory-callback'));
         $this->assertCount(4, $this->edges($index, 'invokes-factory-definition'));
         $factoryWrites = array_values(array_filter($this->edges($index, 'writes'), fn ($row) => ($row['metadata']['operation'] ?? null) === 'factory-create'));
@@ -1600,7 +1601,7 @@ class Decoy { public static function new() {} }
 class SourceFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; public function afterCreating($callback) {} }
 class NormalFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; }
 class Action { public function run() { Decoy::new()->afterCreating(fn () => unknown())->create(); SourceFactory::new()->afterCreating(fn () => unknown())->create(); NormalFactory::new()->afterCreating(wrong: fn () => unknown())->create(); NormalFactory::new()->afterCreating(...unknown())->create(); NormalFactory::new()->state(unknown())->create(); NormalFactory::new()->custom()->afterCreating(fn () => unknown())->create(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'invokes-factory-callback'));
         $this->assertSame([], $this->edges($index, 'writes'));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'database_lifecycle_analysis'));
@@ -1619,7 +1620,7 @@ class Action {
     public function attributes() { UserFactory::new()->create(attributes: fn () => DB::table('attribute_states')->get()); }
     public function invalidBinding() { UserFactory::new()->state(static fn () => DB::table('static_states')->get())->create(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertCount(3, $this->edges($index, 'invokes-factory-callback'));
         $query = new GraphQuery($index);
         $tableId = fn ($name) => array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'table' && $row['name'] === $name))[0]['id'];
@@ -1645,7 +1646,7 @@ namespace App;
 class Action { public function create() { User::factory()->create(); } public function make() { UserFactory::new()->make(); } public function clear() { UserFactory::new()->withoutAfterMaking()->withoutAfterCreating()->create(); } }
 SOURCE,
         ]);
-        $index = new CatalogIndex(array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $facts));
+        $index = new CatalogIndex(array_map(fn ($row) => CatalogFacts::fromArray($row->path, $row->toArray()), $facts), mode: AnalysisMode::Deep);
         $this->assertCount(3, $this->edges($index, 'invokes-factory-configuration'));
         $this->assertCount(6, $this->edges($index, 'invokes-factory-callback'));
         foreach ($this->edges($index, 'invokes-factory-callback') as $edge) {
@@ -1670,7 +1671,7 @@ namespace App;
 class User extends \Illuminate\Database\Eloquent\Model { use \Illuminate\Database\Eloquent\Factories\HasFactory; protected static $factory = UserFactory::class; }
 class UserFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; public function configure() { return $this->count(0)->afterCreating(fn () => unknown()); } }
 class Action { public function empty() { UserFactory::new()->create(); } public function reset() { User::factory()->create(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $calls = $this->edges($index, 'invokes-factory-callback');
         $this->assertCount(1, $calls);
         $this->assertSame('App\Action::reset', $index->elements[$calls[0]['from']]['name']);
@@ -1698,7 +1699,7 @@ class Action {
     public function defaultCount() { User::factory(count: null)->create(); }
     public function overflow() { User::factory('1e999')->create(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $expected = ['App\Action::defaultCount', 'App\Action::one', 'App\Action::positive', 'App\Action::reset'];
         foreach (['writes', 'invokes-factory-callback'] as $kind) {
             $edges = $this->edges($index, $kind);
@@ -1728,7 +1729,7 @@ class Action {
     public function malformed() { UserFactory::new()->connection('https://user:secret@host')->create(); }
     public function make() { UserFactory::new()->connection('archive')->make(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $writes = array_values(array_filter($this->edges($index, 'writes'), fn ($row) => ($row['metadata']['operation'] ?? null) === 'factory-create'));
         $actual = [];
         foreach ($writes as $write) {
@@ -1751,7 +1752,7 @@ SOURCE]));
         foreach (['old', 'new'] as $connection) {
             $setup = $this->facts(['app/Setup.php' => 'namespace App; trait Setup { public function archived() { return $this->connection("'.$connection.'"); } }'])[0];
             $setup = CatalogFacts::fromArray($setup->path, $setup->toArray());
-            $index = new CatalogIndex([$consumer, $setup]);
+            $index = new CatalogIndex([$consumer, $setup], mode: AnalysisMode::Deep);
             $writes = array_values(array_filter($this->edges($index, 'writes'), fn ($row) => ($row['metadata']['operation'] ?? null) === 'factory-create'));
             $this->assertCount(1, $writes);
             $this->assertSame($connection, $index->elements[$writes[0]['to']]['metadata']['connection']['name']);
@@ -1761,7 +1762,7 @@ SOURCE]));
             $this->assertCount(1, $calls);
             $this->assertSame('app/Setup.php', $calls[0]['path']);
         }
-        $this->assertSame([], array_values(array_filter($this->edges(new CatalogIndex([$consumer]), 'writes'), fn ($row) => ($row['metadata']['operation'] ?? null) === 'factory-create')));
+        $this->assertSame([], array_values(array_filter($this->edges(new CatalogIndex([$consumer], mode: AnalysisMode::Deep), 'writes'), fn ($row) => ($row['metadata']['operation'] ?? null) === 'factory-create')));
     }
 
     public function test_cached_factory_connection_selector_rejects_unsanitized_names(): void
@@ -1787,7 +1788,7 @@ class UserFactory extends \Illuminate\Database\Eloquent\Factories\Factory { prot
 class OtherFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; public function connection($name) { return $this; } }
 class ConstructedFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; public function __construct() {} }
 class Action { public function run() { UserFactory::new()->connection('archive')->create(); OtherFactory::new()->connection('archive')->create(); ConstructedFactory::new()->create(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $writes = array_filter($this->edges($index, 'writes'), fn ($row) => ($row['metadata']['operation'] ?? null) === 'factory-create');
         // A source preparation can be replayed, but the model's setter is an unresolved persistence boundary.
         $this->assertSame([], array_values($writes));
@@ -1818,7 +1819,7 @@ class Action {
     public function wrongModel() { UserFactory::new()->has(RoleFactory::new(), 'posts')->create(); }
     public function dynamic() { UserFactory::new()->has(unknown(), 'posts')->create(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $query = new GraphQuery($index);
         $method = fn ($name) => $index->names[strtolower('App\Action::'.$name)][0];
         $table = fn ($name, $connection = '(default)') => CatalogElement::resourceIdentity('table', $connection.'::'.$name);
@@ -1844,14 +1845,14 @@ SOURCE]));
         foreach (['archive', 'current'] as $connection) {
             $related = $this->facts(['app/Related.php' => 'namespace App; trait Related { public function withPosts() { return $this->has(Post::factory()->connection("'.$connection.'")); } }'])[0];
             $related = CatalogFacts::fromArray($related->path, $related->toArray());
-            $index = new CatalogIndex([$consumer, $models, $related]);
+            $index = new CatalogIndex([$consumer, $models, $related], mode: AnalysisMode::Deep);
             $target = CatalogElement::resourceIdentity('table', $connection.'::posts');
             $this->assertSame('found', (new GraphQuery($index))->query($index->names[strtolower('App\Action::run')][0], 'path', $target, 8)['status']);
             $relations = $this->edges($index, 'creates-related-factory');
             $this->assertCount(1, $relations);
             $this->assertSame('app/Related.php', $relations[0]['path']);
         }
-        $deleted = new CatalogIndex([$consumer, $models]);
+        $deleted = new CatalogIndex([$consumer, $models], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($deleted, 'creates-related-factory'));
     }
 
@@ -1863,7 +1864,7 @@ class User extends \Illuminate\Database\Eloquent\Model { public function childre
 class UserFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; public function configure() { return $this->has(UserFactory::new(), 'children'); } }
 class PlainFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; }
 class Action { public function cycle() { UserFactory::new()->create(); } public function hidden() { PlainFactory::new()->has(PlainFactory::new(), 'hidden')->create(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
         $this->assertLessThan(10, count($this->edges($index, 'creates-related-factory')));
         $hidden = $index->names[strtolower('App\Action::hidden')][0];
@@ -1911,7 +1912,7 @@ class Action {
 }
 class Decoy { public function scopePaid($query) { return $query->where('paid', true); } }
 class Wrong { public function run() { Decoy::paid()->get(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $scopes = $this->edges($index, 'invokes-query-scope');
         $this->assertCount(3, $scopes);
         $this->assertSame(['App\Paid::scopePaid', 'App\Order::recent', 'App\Order::recent'], array_map(fn ($row) => $index->elements[$row['to']]['name'], $scopes));
@@ -1937,7 +1938,7 @@ class DispatchOverride extends \Illuminate\Database\Eloquent\Model { public func
 class CustomBuilder extends \Illuminate\Database\Eloquent\Model { protected static $builder = OtherBuilder::class; public function scopePaid($query) { return $query; } }
 class AttributeScope extends \Illuminate\Database\Eloquent\Model { #[\Illuminate\Database\Eloquent\Attributes\Scope] public function paid($query) { return $query; } }
 class Action { public function run() { Changed::paid()->get(); PrivateScope::paid()->get(); DispatchOverride::paid()->get(); CustomBuilder::paid()->get(); AttributeScope::paid()->get(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads'));
         $this->assertSame([], $this->edges($index, 'invokes-query-scope'));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'data_analysis'));
@@ -1949,16 +1950,16 @@ SOURCE]));
         $consumer = CatalogFacts::fromArray($consumer->path, $consumer->toArray());
         $scope = $this->facts(['app/Paid.php' => 'namespace App; trait Paid { public function scopePaid($query) { return $query->where("paid", true); } }'])[0];
         $scope = CatalogFacts::fromArray($scope->path, $scope->toArray());
-        $this->assertCount(1, $this->edges(new CatalogIndex([$consumer, $scope]), 'reads'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([$consumer, $scope], mode: AnalysisMode::Deep), 'reads'));
         $changed = $this->facts(['app/Paid.php' => 'namespace App; trait Paid { public function scopePaid($query) { return unknown(); } }'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer, $changed]), 'reads'));
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer]), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer, $changed], mode: AnalysisMode::Deep), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer], mode: AnalysisMode::Deep), 'reads'));
     }
 
     public function test_scope_attribute_lookalike_and_invalid_cached_scope_shape_are_not_framework_evidence(): void
     {
         $facts = $this->facts(['app/Scopes.php' => 'namespace App; class Scope {} class Order extends \Illuminate\Database\Eloquent\Model { #[Scope] protected function paid($query) { return $query->where("paid", true); } } class Action { public function run() { Order::paid()->get(); } }']);
-        $this->assertSame([], $this->edges(new CatalogIndex($facts), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex($facts, mode: AnalysisMode::Deep), 'reads'));
         $fact = $this->facts(['app/Legacy.php' => 'namespace App; class Order extends \Illuminate\Database\Eloquent\Model { public function scopePaid($query) { return $query; } }'])[0];
         $raw = $fact->toArray();
         foreach ($raw['elements'] as &$element) {
@@ -1988,7 +1989,7 @@ class Action {
     public function method() { MethodOrder::paid()->delete(); }
     public function inherited() { ChildOrder::paid()->recent()->get(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $calls = $this->edges($index, 'invokes-query-builder');
         $this->assertCount(4, $calls);
         foreach ($calls as $call) {
@@ -2018,7 +2019,7 @@ class D extends \Illuminate\Database\Eloquent\Model { protected static $builder 
 class E extends \Illuminate\Database\Eloquent\Model { public function newEloquentBuilder($query) { if (unknown()) { return new DynamicBuilder($query); } return new TerminalBuilder($query); } }
 class F extends \Illuminate\Database\Eloquent\Model { protected static $builder = ConstraintBuilder::class; }
 class Action { public function run() { A::paid()->get(); B::paid()->get(); C::get(); D::paid()->get(); E::get(); F::paid()->get(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads'));
         $this->assertSame([], $this->edges($index, 'invokes-query-builder'));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'data_analysis'));
@@ -2030,10 +2031,10 @@ SOURCE]));
         $consumer = CatalogFacts::fromArray($consumer->path, $consumer->toArray());
         $builder = $this->facts(['app/Builder.php' => 'namespace App; class OrderBuilder extends \Illuminate\Database\Eloquent\Builder { public function paid() { return $this->where("paid", true); } }'])[0];
         $builder = CatalogFacts::fromArray($builder->path, $builder->toArray());
-        $this->assertCount(1, $this->edges(new CatalogIndex([$consumer, $builder]), 'reads'));
+        $this->assertCount(1, $this->edges(new CatalogIndex([$consumer, $builder], mode: AnalysisMode::Deep), 'reads'));
         $changed = $this->facts(['app/Builder.php' => 'namespace App; class OrderBuilder extends \Illuminate\Database\Eloquent\Builder { public function paid() { return unknown(); } }'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer, $changed]), 'reads'));
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer]), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer, $changed], mode: AnalysisMode::Deep), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer], mode: AnalysisMode::Deep), 'reads'));
     }
 
     public function test_builder_cache_descriptor_rejects_nonselector_payload(): void
@@ -2068,7 +2069,7 @@ class Action {
     public function dynamic() { Order::withoutGlobalScopes(unknown())->get(); }
     public function create() { Order::create([]); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $applied = $this->edges($index, 'applies-global-scope');
         $byCaller = [];
         foreach ($applied as $edge) {
@@ -2103,7 +2104,7 @@ class Order extends \Illuminate\Database\Eloquent\Model {
     protected static function booted() { static::addGlobalScope('paid', fn ($query) => $query->where('paid', true)); }
 }
 SOURCE
-            .'class Action { '.$methods."public function increase() { Order::where('id', 1)->increment('amount'); } public function decrease() { Order::where('id', 1)->decrement('amount'); } }"]));
+            .'class Action { '.$methods."public function increase() { Order::where('id', 1)->increment('amount'); } public function decrease() { Order::where('id', 1)->decrement('amount'); } }"]), mode: AnalysisMode::Deep);
         $reads = $this->edges($index, 'reads');
         $this->assertCount(count($arguments), $reads);
         $this->assertSame(array_map('strtolower', array_keys($arguments)), array_column(array_column($reads, 'metadata'), 'operation'));
@@ -2140,7 +2141,7 @@ class Action {
     public function truncate() { Order::truncate(); }
     public function updateOrInsert() { Order::updateOrInsert(['id' => 1], []); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame(['App\Action::insert', 'App\Action::ignore', 'App\Action::upsert'], array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'applies-global-scope')));
         $this->assertCount(8, $this->edges($index, 'writes'));
         $reads = $this->edges($index, 'reads');
@@ -2164,7 +2165,7 @@ class A extends \Illuminate\Database\Eloquent\Model {
 class B extends \Illuminate\Database\Eloquent\Model { use PaidBoot { install as protected booted; } }
 class C extends \Illuminate\Database\Eloquent\Model { use OtherBoot, TenantBoot { TenantBoot::booted insteadof OtherBoot; } }
 class Action { public function run() { A::count(); B::count(); C::count(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertCount(3, $this->edges($index, 'reads'));
         $this->assertCount(3, $this->edges($index, 'applies-global-scope'));
         $registrations = $this->edges($index, 'registers-global-scope');
@@ -2183,14 +2184,14 @@ SOURCE]));
         $fixed = array_map(fn ($fact) => CatalogFacts::fromArray($fact->path, $fact->toArray()), $fixed);
         $model = $this->facts(['app/Order.php' => 'namespace App; class Order extends \\Illuminate\\Database\\Eloquent\\Model { use Paid { install as protected booted; } }'])[0];
         $model = CatalogFacts::fromArray($model->path, $model->toArray());
-        $index = new CatalogIndex([...$fixed, $model]);
+        $index = new CatalogIndex([...$fixed, $model], mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'reads'));
         $this->assertCount(1, $this->edges($index, 'applies-global-scope'));
         $changed = $this->facts(['app/Order.php' => 'namespace App; class Order extends \\Illuminate\\Database\\Eloquent\\Model { use Paid { install as private booted; } }'])[0];
-        $index = new CatalogIndex([...$fixed, $changed]);
+        $index = new CatalogIndex([...$fixed, $changed], mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads'));
         $this->assertSame([], $this->edges($index, 'applies-global-scope'));
-        $this->assertSame([], $this->edges(new CatalogIndex([$fixed[0], $model]), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$fixed[0], $model], mode: AnalysisMode::Deep), 'reads'));
     }
 
     public function test_private_or_conflicting_booted_trait_methods_do_not_infer_scope_application(): void
@@ -2203,7 +2204,7 @@ class A extends \Illuminate\Database\Eloquent\Model { use Paid { booted as priva
 class B extends \Illuminate\Database\Eloquent\Model { use Paid, Tenant; }
 class C extends \Illuminate\Database\Eloquent\Model { protected static function unused() { static::addGlobalScope('unused', fn ($query) => $query->where('unused', true)); } }
 class Action { public function run() { A::get(); B::get(); C::get(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $reads = $this->edges($index, 'reads');
         $this->assertCount(1, $reads);
         $maps = array_values(array_filter($this->edges($index, 'maps-table'), fn ($edge) => $edge['from'] === $index->names['app\\c'][0]));
@@ -2223,7 +2224,7 @@ class C extends \Illuminate\Database\Eloquent\Model { protected static function 
 class D extends \Illuminate\Database\Eloquent\Model { protected static function booted() { static::addGlobalScope(scope: 'tenant', implementation: TenantScope::class); } }
 class E extends \Illuminate\Database\Eloquent\Model { protected static function booted() { static::addGlobalScope(unknown: TenantScope::class); } }
 class Action { public function run() { A::get(); B::get(); C::get(); D::get(); E::get(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertCount(3, $this->edges($index, 'reads'));
         $this->assertCount(3, $this->edges($index, 'applies-global-scope'));
         $this->assertCount(3, $this->edges($index, 'registers-global-scope'));
@@ -2244,7 +2245,7 @@ class Action {
     public function increment() { Order::incrementOrCreate(['id' => 1]); }
     public function excluded() { Order::withoutGlobalScopes()->firstOrCreate(['id' => 1]); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertCount(5, $this->edges($index, 'reads'));
         $this->assertCount(5, $this->edges($index, 'writes'));
         $scopes = $this->edges($index, 'applies-global-scope');
@@ -2272,7 +2273,7 @@ class LookupOrder extends Order { protected static $builder = LookupBuilder::cla
 class CreateBuilder extends \Illuminate\Database\Eloquent\Builder { public function create(array $attributes = []) { return unknown(); } }
 class CreateOrder extends Order { protected static $builder = CreateBuilder::class; }
 class Action { public function run() { SaveOrder::updateOrCreate([]); LookupOrder::firstOrCreate([]); CreateOrder::createOrFirst([]); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads'));
         $this->assertSame([], $this->edges($index, 'writes'));
         $this->assertSame([], $this->edges($index, 'applies-global-scope'));
@@ -2302,7 +2303,7 @@ class Action {
     public function baseOverride() { BaseOverrideOrder::count(); }
     public function changed() { ChangedOrder::count(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame(['App\Action::excluded', 'App\Action::allExcluded'], array_map(fn ($edge) => $index->elements[$edge['from']]['name'], $this->edges($index, 'reads')));
         $this->assertSame([], $this->edges($index, 'applies-global-scope'));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'global_scope_analysis'));
@@ -2319,7 +2320,7 @@ class ChangedScope implements \Illuminate\Database\Eloquent\Scope { public funct
 #[\Illuminate\Database\Eloquent\Attributes\ScopedBy([ChangedScope::class])] class B extends \Illuminate\Database\Eloquent\Model {}
 class C extends \Illuminate\Database\Eloquent\Model { protected static function booted() { if (unknown()) { static::addGlobalScope('x', fn ($query) => $query->where('x', true)); } } }
 class Action { public function run() { A::get(); B::get(); C::get(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads'));
         $this->assertSame([], $this->edges($index, 'applies-global-scope'));
         $this->assertNotEmpty(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'global_scope_analysis'));
@@ -2331,10 +2332,10 @@ SOURCE]));
         $consumer = CatalogFacts::fromArray($consumer->path, $consumer->toArray());
         $scope = $this->facts(['app/Tenant.php' => 'namespace App; class TenantScope implements \Illuminate\Database\Eloquent\Scope { public function apply($builder, $model) { $builder->where("tenant", 1); } }'])[0];
         $scope = CatalogFacts::fromArray($scope->path, $scope->toArray());
-        $this->assertCount(3, $this->edges(new CatalogIndex([$consumer, $scope]), 'applies-global-scope'));
+        $this->assertCount(3, $this->edges(new CatalogIndex([$consumer, $scope], mode: AnalysisMode::Deep), 'applies-global-scope'));
         $changed = $this->facts(['app/Tenant.php' => 'namespace App; class TenantScope implements \Illuminate\Database\Eloquent\Scope { public function apply($builder, $model) { $builder->from("other"); } }'])[0];
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer, $changed]), 'reads'));
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer]), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer, $changed], mode: AnalysisMode::Deep), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer], mode: AnalysisMode::Deep), 'reads'));
     }
 
     public function test_global_scope_source_budgets_and_cache_payload_are_checked(): void
@@ -2369,7 +2370,7 @@ class Action {
     public function nested() { $query = Order::query(); $query->paid()->get(); }
     public function harmlessBranch() { $query = Order::query(); if (unknown()) { $x = 1; } $query->get(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $reads = $this->edges($index, 'reads');
         $tables = [];
         foreach ($reads as $read) {
@@ -2399,7 +2400,7 @@ class Action {
     public function dynamic() { $query = DB::table('orders'); $query->$method(); $query->get(); }
     public function dynamicArgument() { $query = DB::table('orders'); $other->$method([$query]); $query->get(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'reads'));
     }
 
@@ -2415,7 +2416,7 @@ class Action {
     public function escaped() { $query = DB::table('orders'); $alias = $query->where('id', 1); unknown($alias); $query->get(); }
     public function terminal() { $query = DB::table('orders'); $result = $query->get(); $result->get(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $tables = [];
         foreach ($this->edges($index, 'reads') as $read) {
             $tables[$index->elements[$read['from']]['name']][] = $index->elements[$read['to']]['name'];
@@ -2438,7 +2439,7 @@ class Action {
     public function second() { $query->get(); }
     public function callback() { $callback = function () { $query = DB::table('inside'); $query->get(); }; }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $reads = $this->edges($index, 'reads');
         $this->assertCount(1, $reads);
         $this->assertSame('closure', $index->elements[$reads[0]['from']]['kind']);
@@ -2451,7 +2452,7 @@ SOURCE]));
         $fact = $this->facts(['app/DeepQueries.php' => 'namespace App; class Action { public function run() { $query = \Illuminate\Support\Facades\DB::table("orders"); '.$calls.'$query->get(); } }'])[0];
         $this->assertFalse($fact->cacheable());
         $this->assertContains('catalog_limit', array_map(fn ($row) => $row->code, $fact->diagnostics));
-        $this->assertSame([], $this->edges(new CatalogIndex([$fact]), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$fact], mode: AnalysisMode::Deep), 'reads'));
     }
 
     public function test_cached_assigned_query_retains_only_sanitized_selectors_and_tracks_model_edit(): void
@@ -2461,17 +2462,17 @@ SOURCE]));
         $consumer = CatalogFacts::fromArray($consumer->path, $consumer->toArray());
         foreach (['orders', 'archives'] as $table) {
             $model = $this->facts(['app/Order.php' => 'namespace App; class Order extends \Illuminate\Database\Eloquent\Model { protected $table = "'.$table.'"; }'])[0];
-            $index = new CatalogIndex([$consumer, $model]);
+            $index = new CatalogIndex([$consumer, $model], mode: AnalysisMode::Deep);
             $reads = $this->edges($index, 'reads');
             $this->assertCount(1, $reads);
             $this->assertSame($table, $index->elements[$reads[0]['to']]['name']);
         }
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer]), 'reads'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer], mode: AnalysisMode::Deep), 'reads'));
     }
 
     public function test_first_class_function_creation_does_not_execute_or_destroy_query_bindings(): void
     {
-        $index = new CatalogIndex($this->facts(['app/CallableQuery.php' => 'namespace App; class Action { public function run() { $query = \Illuminate\Support\Facades\DB::table("orders"); $callback = unknown(...); $query->get(); } }']));
+        $index = new CatalogIndex($this->facts(['app/CallableQuery.php' => 'namespace App; class Action { public function run() { $query = \Illuminate\Support\Facades\DB::table("orders"); $callback = unknown(...); $query->get(); } }']), mode: AnalysisMode::Deep);
         $this->assertCount(1, $this->edges($index, 'reads'));
     }
 
@@ -2485,7 +2486,7 @@ class RequiredFactory extends \Illuminate\Database\Eloquent\Factories\Factory { 
 class OverriddenFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; public function configure() { return $this->afterCreating(fn () => unknown()); } public function afterCreating($callback) {} }
 class DynamicFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; public function configure() { return unknown(); } }
 class Action { public function run() { ConditionalFactory::new()->create(); RequiredFactory::new()->create(); OverriddenFactory::new()->create(); DynamicFactory::new()->create(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'invokes-factory-callback'));
         $this->assertSame([], $this->edges($index, 'writes'));
         $this->assertSame([], $this->edges($index, 'invokes-factory-configuration'));
@@ -2498,13 +2499,13 @@ SOURCE]));
         $consumer = CatalogFacts::fromArray($consumer->path, $consumer->toArray());
         foreach (['old_logs', 'new_logs'] as $table) {
             $configuration = $this->facts(['app/Setup.php' => 'namespace App; trait Setup { public function configure() { return $this->afterCreating(fn () => \Illuminate\Support\Facades\DB::table("'.$table.'")->insert([])); } }'])[0];
-            $index = new CatalogIndex([$consumer, $configuration]);
+            $index = new CatalogIndex([$consumer, $configuration], mode: AnalysisMode::Deep);
             $callbacks = $this->edges($index, 'invokes-factory-callback');
             $this->assertCount(1, $callbacks);
             $tableId = array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'table' && $row['name'] === $table))[0]['id'];
             $this->assertSame('found', (new GraphQuery($index))->query($index->names[strtolower('App\Action::run')][0], 'path', $tableId, 8)['status']);
         }
-        $this->assertSame([], $this->edges(new CatalogIndex([$consumer]), 'invokes-factory-callback'));
+        $this->assertSame([], $this->edges(new CatalogIndex([$consumer], mode: AnalysisMode::Deep), 'invokes-factory-callback'));
     }
 
     public function test_source_factory_states_replay_nested_registration_clearing_and_count_in_order(): void
@@ -2526,7 +2527,7 @@ class Action {
     public function empty() { UserFactory::new()->emptyModels()->create(); }
     public function reset() { UserFactory::new()->emptyModels()->count(null)->create(); }
 }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $query = new GraphQuery($index);
         $tableId = fn ($name) => array_values(array_filter($index->elements, fn ($row) => $row['kind'] === 'table' && $row['name'] === $name))[0]['id'];
         $methodId = fn ($name) => $index->names[strtolower('App\Action::'.$name)][0];
@@ -2554,7 +2555,7 @@ class UserFactory extends \Illuminate\Database\Eloquent\Factories\Factory {
     public function parameter($required) { return $this->afterCreating(fn () => unknown()); }
 }
 class Action { public function run() { UserFactory::new()->recursive()->create(); UserFactory::new()->internal()->create(); UserFactory::new()->dynamic()->create(); UserFactory::new()->parameter()->create(); } }
-SOURCE]));
+SOURCE]), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'invokes-factory-callback'));
         $this->assertSame([], $this->edges($index, 'writes'));
         $messages = array_column(array_filter($index->diagnostics, fn ($row) => $row['code'] === 'database_lifecycle_analysis'), 'message');
@@ -2568,7 +2569,7 @@ SOURCE]));
             $methods .= 'public function state'.$i.'() { return $this->state'.($i + 1).'(); } ';
         }
         $methods .= 'public function state34() { return $this->afterCreating(fn () => unknown()); }';
-        $index = new CatalogIndex($this->facts(['app/DeepFactory.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model {} class UserFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; '.$methods.' } class Action { public function run() { UserFactory::new()->state0()->create(); } }']));
+        $index = new CatalogIndex($this->facts(['app/DeepFactory.php' => 'namespace App; class User extends \Illuminate\Database\Eloquent\Model {} class UserFactory extends \Illuminate\Database\Eloquent\Factories\Factory { protected $model = User::class; '.$methods.' } class Action { public function run() { UserFactory::new()->state0()->create(); } }']), mode: AnalysisMode::Deep);
         $this->assertSame([], $this->edges($index, 'invokes-factory-callback'));
         $this->assertSame([], $this->edges($index, 'writes'));
         $this->assertContains('catalog_limit', array_column($index->diagnostics, 'code'));
@@ -2584,7 +2585,7 @@ SOURCE]));
             $files[] = new FileContext($path, '<?php '.$code);
         }
 
-        return (new ProjectGraphBuilder(catalog: true))->build($files)->catalogFacts;
+        return (new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build($files)->catalogFacts;
     }
 
     /** @return list<array<string, mixed>> */

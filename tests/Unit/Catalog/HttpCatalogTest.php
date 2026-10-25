@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Unit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex;
@@ -19,7 +20,7 @@ final class HttpCatalogTest extends TestCase
             $files[] = new FileContext($path, '<?php '.$source);
         }
 
-        return new CatalogIndex((new ProjectGraphBuilder(catalog: true))->build($files)->catalogFacts);
+        return new CatalogIndex((new ProjectGraphBuilder(catalog: true, mode: AnalysisMode::Deep))->build($files)->catalogFacts, mode: AnalysisMode::Deep);
     }
 
     /** @return list<array<string, mixed>> */

@@ -18,7 +18,7 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Name('search')]
-#[Description('Find the starting point when only a literal name/path fragment, route URL/name, command name or declaration kind is known. Matching is case-insensitive, exact matches first, with no fuzzy match or automatic selection. Inspect candidate kind, location, notes and supported selector; choose explicitly and pass selector to impact/path. File selectors include more than one route or command callback. Empty query needs a kind filter. Job classification uses supported contracts, dispatch or an explicit project kind declaration; the Jobs directory alone is a hint. Inspect classification provenance; a declaration does not prove a contract or runtime execution. Read totals with total_is_lower_bound, truncated, notices, status and freshness. No runtime registration or execution is proved. Project settings are parsed statically; dynamic audit settings are rejected without execution. Tables use impact with table instead.')]
+#[Description('Basic source map by default. Semantic execution/effects require analysis_mode=deep and prior task consent. Find the starting point when only a literal name/path fragment, route URL/name, command name or declaration kind is known. Matching is case-insensitive, exact matches first, with no fuzzy match or automatic selection. Inspect candidate kind, location, notes and supported selector; choose explicitly and pass selector to impact/path. File selectors include more than one route or command callback. Empty query needs a kind filter. Job classification uses supported contracts, dispatch or an explicit project kind declaration; the Jobs directory alone is a hint. Inspect classification provenance; a declaration does not prove a contract or runtime execution. Read totals with total_is_lower_bound, truncated, notices, status and freshness. No runtime registration or execution is proved. Project settings are parsed statically; dynamic audit settings are rejected without execution. Tables use impact with table instead.')]
 #[IsReadOnly]
 final class Search extends Tool
 {
@@ -26,15 +26,20 @@ final class Search extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['query' => $schema->string()->description('Literal fragment, not a regex. Omit only with kind.'), 'kind' => $schema->string()->enum(ArchitectureDiscovery::KINDS)->description('Exact supported declaration-kind filter. Required when query is omitted.'), 'limit' => $schema->integer()->min(0)->max(500)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.')];
+        return ['analysis_mode' => $schema->string()->enum(['basic', 'deep'])->default('basic')->description('Deep requires prior human consent recorded for task; full only controls report size.'), 'task' => $schema->string()->description('Task with previously recorded consent.'), 'query' => $schema->string()->description('Literal fragment, not a regex. Omit only with kind.'), 'kind' => $schema->string()->enum(ArchitectureDiscovery::KINDS)->description('Exact supported declaration-kind filter. Required when query is omitted.'), 'limit' => $schema->integer()->min(0)->max(500)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.')];
     }
 
     public function handle(Request $request): ResponseFactory
     {
-        if (($message = $this->invalidInput($request, ['query' => 'string', 'kind' => 'string', 'limit' => 'integer'])) !== null) {
-            return Response::structured(ArchitectureDiscovery::error('E_INVALID_TOOL_INPUT', $message));
-        }
+        try {
+            $mode = RepositoryContext::requestedMode($request->get('analysis_mode', 'basic'), $request->get('task'));
+            if (($message = $this->invalidInput($request, ['query' => 'string', 'kind' => 'string', 'limit' => 'integer'])) !== null) {
+                return Response::structured(ArchitectureDiscovery::error('E_INVALID_TOOL_INPUT', $message));
+            }
 
-        return Response::structured((new ArchitectureDiscovery(app(Filesystem::class), RepositoryContext::root()))->search($request->get('query', ''), $request->get('kind'), $request->get('limit', 20)));
+            return Response::structured((new ArchitectureDiscovery(app(Filesystem::class), RepositoryContext::root(), $mode))->search($request->get('query', ''), $request->get('kind'), $request->get('limit', 20)));
+        } catch (\Throwable $error) {
+            return Response::structured(ArchitectureDiscovery::error('E_ANALYSIS_UNAVAILABLE', $error->getMessage()));
+        }
     }
 }

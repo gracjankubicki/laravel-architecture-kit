@@ -25,7 +25,7 @@ final readonly class TargetSchema
         return ['$schema' => 'https://json-schema.org/draft/2020-12/schema', 'title' => 'Architecture target migration report', 'oneOf' => [
             ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'configured', ...array_keys($objects), 'limitations', 'next'], 'properties' => [...$base, 'ok' => ['const' => true], 'configured' => ['const' => true], ...$objects, 'limitations' => $strings, 'next' => $strings], 'additionalProperties' => false],
             ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'configured', 'next'], 'properties' => [...$base, 'ok' => ['const' => true], 'configured' => ['const' => false], 'next' => $strings], 'additionalProperties' => false],
-            ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'm', 'msg', 'next'], 'properties' => [...$base, 'ok' => ['const' => false], 'm' => ['type' => 'string'], 'msg' => ['type' => 'string'], 'next' => $strings], 'additionalProperties' => false],
+            ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'm', 'msg', 'next'], 'properties' => [...$base, 'ok' => ['const' => false], 'analysis' => ['type' => 'object', 'required' => ['mode', 'status', 'deep_run', 'checks_complete'], 'properties' => ['mode' => ['const' => 'basic'], 'status' => ['const' => 'not_run'], 'deep_run' => ['const' => false], 'checks_complete' => ['const' => false]], 'additionalProperties' => false], 'm' => ['type' => 'string'], 'msg' => ['type' => 'string'], 'next' => $strings], 'additionalProperties' => false],
         ]];
     }
 }

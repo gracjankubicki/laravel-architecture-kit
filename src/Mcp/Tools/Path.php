@@ -20,7 +20,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 use Throwable;
 
 #[Name('path')]
-#[Description('Find several bounded paths from A to B. Select each endpoint by FQCN, unambiguous short class name, Class::method or project PHP path. Dependencies project methods to classes and show strong/weak classification, not repair cost. Execution paths preserve ordinary calls and supported HTTP, job, event, model, Artisan and scheduler conditions. Read found separately from status, freshness, limits and unresolved notices. No path means no path in the analyzed graph, not runtime impossibility. External calls are terminal boundaries with unread declarations; vendor is excluded. Inspect execution.authorization in impact for precise Gate/policy rules, route and Form Request checks, conditions, boolean/exception usage, shared rule site counts and unresolved boundaries. Use path to expand individual authorization chains and reach for immutable continuation pages. Inline allowIf/denyIf bypass policies and hooks; missing checks are not security verdicts. No application code is executed.')]
+#[Description('Basic source map by default. Semantic execution/effects require analysis_mode=deep and prior task consent. Find several bounded paths from A to B. Select each endpoint by FQCN, unambiguous short class name, Class::method or project PHP path. Dependencies project methods to classes and show strong/weak classification, not repair cost. Execution paths preserve ordinary calls and supported HTTP, job, event, model, Artisan and scheduler conditions. Read found separately from status, freshness, limits and unresolved notices. No path means no path in the analyzed graph, not runtime impossibility. External calls are terminal boundaries with unread declarations; vendor is excluded. Inspect execution.authorization in impact for precise Gate/policy rules, route and Form Request checks, conditions, boolean/exception usage, shared rule site counts and unresolved boundaries. Use path to expand individual authorization chains and reach for immutable continuation pages. Inline allowIf/denyIf bypass policies and hooks; missing checks are not security verdicts. No application code is executed.')]
 #[IsReadOnly]
 final class Path extends Tool
 {
@@ -29,7 +29,7 @@ final class Path extends Tool
 
     public function schema(JsonSchema $schema): array
     {
-        return ['from' => $schema->string()->required()->description('Source class, Class::method or project-relative PHP path. Use search to resolve an unknown selector.'), 'to' => $schema->string()->required()->description('Destination class, Class::method or project-relative PHP path. Direction is from the source to this destination.'), 'limit' => $schema->integer()->min(0)->max(500)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'), 'depth' => $schema->integer()->min(1)->max(32)->default(8)->description('Maximum analysis hops, from 1 to 32. A depth-limited result does not prove that no longer path exists.')];
+        return ['analysis_mode' => $schema->string()->enum(['basic', 'deep'])->default('basic')->description('Deep requires prior human consent recorded for task; full only controls report size.'), 'task' => $schema->string()->description('Task with previously recorded consent.'), 'from' => $schema->string()->required()->description('Source class, Class::method or project-relative PHP path. Use search to resolve an unknown selector.'), 'to' => $schema->string()->required()->description('Destination class, Class::method or project-relative PHP path. Direction is from the source to this destination.'), 'limit' => $schema->integer()->min(0)->max(500)->default(20)->description('Maximum displayed records. Zero returns summary information without removing analysis limits.'), 'depth' => $schema->integer()->min(1)->max(32)->default(8)->description('Maximum analysis hops, from 1 to 32. A depth-limited result does not prove that no longer path exists.')];
     }
 
     public function handle(Request $request): ResponseFactory
@@ -38,8 +38,9 @@ final class Path extends Tool
             return Response::structured(ArchitecturePath::error('E_INVALID_TOOL_INPUT', $message));
         }
         try {
+            $mode = RepositoryContext::requestedMode($request->get('analysis_mode', 'basic'), $request->get('task'));
             $state = DiscoverySettings::load($this->files(), RepositoryContext::root());
-            $result = (new ArchitecturePath($this->files(), RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint))->inspect($request->get('from', ''), $request->get('to', ''), $state->exclude, $request->get('limit', 20), $request->get('depth', 8));
+            $result = (new ArchitecturePath($this->files(), RepositoryContext::root(), $state->scope, $state->cache, $state->fingerprint, mode: $mode))->inspect($request->get('from', ''), $request->get('to', ''), $state->exclude, $request->get('limit', 20), $request->get('depth', 8));
         } catch (Throwable $exception) {
             $result = ArchitecturePath::error('E_PATH_FAILED', $exception->getMessage());
         }

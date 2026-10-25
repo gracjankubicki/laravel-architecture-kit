@@ -36,6 +36,26 @@ final readonly class ProjectGraphSnapshot
         $this->symbolsByName = $byName;
     }
 
+    public function checksComplete(): bool
+    {
+        foreach ($this->impactFacts as $facts) {
+            foreach ($facts->notices as $notice) {
+                if (preg_match('/limit|unparseable|changed|unsafe/i', $notice['reason'])) {
+                    return false;
+                }
+            }
+        }
+        foreach ($this->catalogFacts as $facts) {
+            foreach ($facts->diagnostics as $diagnostic) {
+                if (preg_match('/limit|parse|changed_inputs/', $diagnostic->code)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     public function symbol(string $name): ?ProjectSymbol
     {
         return $this->symbolsByName[strtolower(ltrim($name, '\\'))] ?? null;

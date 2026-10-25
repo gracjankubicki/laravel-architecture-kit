@@ -25,7 +25,9 @@ final class GraphPage
             $summary[$code] = ($summary[$code] ?? 0) + 1;
         }
         ksort($summary);
-        $envelope = ['v' => 1, 'cmd' => $command, 'ok' => true, 'status' => $result['status'], 'snapshot' => $snapshot,
+        $analysis = $result['analysis'] ?? null;
+        unset($result['analysis']);
+        $envelope = [...(is_array($analysis) ? ['analysis' => $analysis] : []), 'v' => 1, 'cmd' => $command, 'ok' => true, 'status' => $result['status'], 'snapshot' => $snapshot,
             'scope' => $scope, 'analysis_complete' => $diagnostics === [], 'truncated' => false,
             'limits' => ['limit' => $limit, 'offset' => $offset, 'max_bytes' => self::MAX_BYTES],
             'diagnostics' => ['summary' => $summary, 'details' => [], 'details_truncated' => false], 'result' => $result, 'next' => null];

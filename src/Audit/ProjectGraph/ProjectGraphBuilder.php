@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
@@ -44,7 +46,7 @@ final class ProjectGraphBuilder
     /** @var list<CatalogFacts> */
     private array $catalogFacts = [];
 
-    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier, private readonly bool $impact = false, private readonly bool $preserveOccurrences = false, private readonly bool $catalog = false, private readonly ?string $basePath = null) {}
+    public function __construct(private readonly RoleClassifier $roles = new RoleClassifier, private readonly bool $impact = false, private readonly bool $preserveOccurrences = false, private readonly bool $catalog = false, private readonly ?string $basePath = null, private readonly AnalysisMode $mode = AnalysisMode::Basic) {}
 
     /**
      * @param  array<int, FileContext>  $files
@@ -125,21 +127,31 @@ final class ProjectGraphBuilder
 
             $testExtractor = new TestInvocationExtractor;
             $invocations = $testExtractor->extract($catalogFile);
-            $impactFacts = $this->impact ? (new ImpactExtractor)->extract($catalogFile) : null;
+            $impactFacts = $this->impact ? (new ImpactExtractor)->extract($catalogFile, catalog: $this->mode === AnalysisMode::Basic, mode: $this->mode) : null;
             $catalogFacts = $this->catalog ? (new PhpCatalogExtractor)->extract($catalogFile) : null;
             if ($catalogFacts !== null) {
-                $catalogFacts = (new DataCatalogExtractor)->extract($catalogFile, $catalogFacts);
-                $dataOperations = (new DataOperationCatalogExtractor)->extract($catalogFile, $catalogFacts);
-                $resources = (new ResourceCatalogExtractor)->extract($catalogFile, $catalogFacts);
-                $calls = (new PhpCallCatalogExtractor)->extract($catalogFile, $catalogFacts);
-                $container = (new ContainerCatalogExtractor)->extract($catalogFile, $catalogFacts);
-                $http = (new HttpCatalogExtractor($this->basePath ?? HttpCatalogExtractor::SOURCE_ROOT))->extract($catalogFile, $catalogFacts, $calls);
-                $execution = (new ExecutionCatalogExtractor)->extract($catalogFile, $catalogFacts);
-                $blade = (new BladeCatalogExtractor)->extract($file);
-                $auth = (new AuthConfigCatalogExtractor)->extract($catalogFile);
-                $tests = (new TestCatalogExtractor)->extract($catalogFile, $catalogFacts, $invocations, $testExtractor->sourceOffsets());
-                $validation = (new ValidationCatalogExtractor)->extract($catalogFile, $catalogFacts);
-                $catalogFacts = new CatalogFacts($file->path, [...$catalogFacts->elements, ...$tests->elements, ...$dataOperations->elements, ...$resources->elements, ...$blade->elements, ...$auth->elements, ...$validation->elements], [...$catalogFacts->relations, ...$tests->relations, ...$resources->relations, ...$blade->relations, ...$calls->relations, ...$container->relations, ...$http->relations, ...$execution->relations, ...$auth->relations, ...$validation->relations], [...$catalogFacts->diagnostics, ...$tests->diagnostics, ...$dataOperations->diagnostics, ...$resources->diagnostics, ...$blade->diagnostics, ...$calls->diagnostics, ...$container->diagnostics, ...$http->diagnostics, ...$execution->diagnostics, ...$auth->diagnostics, ...$validation->diagnostics], $calls->descriptorReceivers);
+                if ($this->mode === AnalysisMode::Basic) {
+                    $calls = (new PhpCallCatalogExtractor)->extract($catalogFile, $catalogFacts, $this->mode);
+                    $container = (new ContainerCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                    $tests = (new TestCatalogExtractor)->extract($catalogFile, $catalogFacts, $invocations, $testExtractor->sourceOffsets());
+                    $catalogFacts = new CatalogFacts($file->path, [...$catalogFacts->elements, ...$tests->elements],
+                        [...$catalogFacts->relations, ...$tests->relations, ...$calls->relations, ...$container->relations],
+                        [...$catalogFacts->diagnostics, ...$tests->diagnostics, ...$calls->diagnostics, ...$container->diagnostics], $calls->descriptorReceivers);
+                } else {
+                    AnalysisRuntime::stage('deep.catalog.extractors');
+                    $catalogFacts = (new DataCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                    $dataOperations = (new DataOperationCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                    $resources = (new ResourceCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                    $calls = (new PhpCallCatalogExtractor)->extract($catalogFile, $catalogFacts, $this->mode);
+                    $container = (new ContainerCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                    $http = (new HttpCatalogExtractor($this->basePath ?? HttpCatalogExtractor::SOURCE_ROOT))->extract($catalogFile, $catalogFacts, $calls);
+                    $execution = (new ExecutionCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                    $blade = (new BladeCatalogExtractor)->extract($file);
+                    $auth = (new AuthConfigCatalogExtractor)->extract($catalogFile);
+                    $tests = (new TestCatalogExtractor)->extract($catalogFile, $catalogFacts, $invocations, $testExtractor->sourceOffsets());
+                    $validation = (new ValidationCatalogExtractor)->extract($catalogFile, $catalogFacts);
+                    $catalogFacts = new CatalogFacts($file->path, [...$catalogFacts->elements, ...$tests->elements, ...$dataOperations->elements, ...$resources->elements, ...$blade->elements, ...$auth->elements, ...$validation->elements], [...$catalogFacts->relations, ...$tests->relations, ...$resources->relations, ...$blade->relations, ...$calls->relations, ...$container->relations, ...$http->relations, ...$execution->relations, ...$auth->relations, ...$validation->relations], [...$catalogFacts->diagnostics, ...$tests->diagnostics, ...$dataOperations->diagnostics, ...$resources->diagnostics, ...$blade->diagnostics, ...$calls->diagnostics, ...$container->diagnostics, ...$http->diagnostics, ...$execution->diagnostics, ...$auth->diagnostics, ...$validation->diagnostics], $calls->descriptorReceivers);
+                }
             }
             $source = $this->fileSymbol($catalogFile, $nodes, $symbols);
 
