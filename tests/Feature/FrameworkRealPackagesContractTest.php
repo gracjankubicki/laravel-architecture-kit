@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture;
 use GracjanKubicki\ArchitectureKit\Audit\ApplicationAudit;
 use GracjanKubicki\ArchitectureKit\Audit\ReadSide\RouteMap;
@@ -80,6 +81,7 @@ PHP);
             [],
             changedOnly: false,
             routes: new RouteMap(['app\http\controllers\serializationcontroller::show' => ['GET', 'HEAD']]),
+            mode: AnalysisMode::Deep,
         );
         $this->assertCount(1, $result->suggestions);
         $this->assertStringContainsString('AnalyzerSerializationProbe::__serialize', implode(' -> ', $result->suggestions[0]->trace));
@@ -154,6 +156,7 @@ PHP);
             [Architecture::ThinControllers, Architecture::Actions],
             changedOnly: false,
             routes: $routes,
+            mode: AnalysisMode::Deep,
         );
         $messages = implode("\n", [
             ...array_map(fn ($suggestion): string => $suggestion->message.' '.$suggestion->reason.' '.implode(' -> ', $suggestion->trace).' at '.$suggestion->path.':'.$suggestion->line, $result->suggestions),

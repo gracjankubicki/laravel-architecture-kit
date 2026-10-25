@@ -58,7 +58,19 @@ for guidance_path in .ai/guidelines/architecture-kit.md AGENTS.md CLAUDE.md; do
         printf 'Missing generated guidance: %s\n' "${guidance_path}" >&2
         exit 1
     fi
-    for expected_text in 'Find unknown elements by name fragment, path, route, table or kind with architecture-search.' 'restart at offset=0 after stale_snapshot' 'Guard success does not prove passing tests or complete analysis'; do
+    for expected_text in \
+        'Find unknown elements with architecture-search by literal name, path, route, table or kind.' \
+        'Read status, analysis_complete, diagnostics, relation kinds and limits.' \
+        'no_path_in_analyzed_graph concerns analyzed source only.' \
+        'restart at offset=0 after stale_snapshot' \
+        'Relationships, registration and candidate tests do not prove execution, coverage or PASS.' \
+        'Basic/advisory default.' \
+        'control.blocking; exit 0 is not PASS.' \
+        'Strict evaluates warnings, full expands output, enforce blocks.' \
+        'If Deep is needed, ask a concrete consent question first.' \
+        'After approval record analysis-consent per repo/task' \
+        'refusal leaves Basic available' \
+        'ask one concrete question; listing gaps is insufficient'; do
         if ! grep -Fq "${expected_text}" "${guidance_path}"; then
             printf 'Missing guidance in %s: %s\n' "${guidance_path}" "${expected_text}" >&2
             exit 1

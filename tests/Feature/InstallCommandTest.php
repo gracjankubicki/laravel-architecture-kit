@@ -198,7 +198,8 @@ class InstallCommandTest extends TestCase
         $this->assertStringContainsString('"command": "php"', $claudeMcp);
         $this->assertStringContainsString('"architecture-kit:mcp"', $claudeMcp);
         $this->assertStringContainsString('.architecture-kit/hooks/guard.sh', $files->get($this->tempPath.'/.codex/hooks.json'));
-        $this->assertStringContainsString('.architecture-kit/hooks/guard.sh claude', $files->get($this->tempPath.'/.claude/settings.json'));
+        $claudeHooks = json_decode($files->get($this->tempPath.'/.claude/settings.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('"${CLAUDE_PROJECT_DIR}/.architecture-kit/hooks/guard.sh" claude', $claudeHooks['hooks']['Stop'][0]['hooks'][0]['command']);
         $this->assertStringContainsString('"claude_code"', $files->get($this->tempPath.'/.architecture-kit/install.json'));
     }
 
