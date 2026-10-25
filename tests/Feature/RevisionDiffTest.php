@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\RevisionDiff;
 use GracjanKubicki\ArchitectureKit\Revision\ArchitectureRevisionDiff;
@@ -138,27 +139,46 @@ final class RevisionDiffTest extends TestCase
     public function test_working_mutation_during_analysis_requires_rerun(): void
     {
         $this->fixture();
-        for ($i = 0; $i < 30; $i++) {
-            $this->write('app/Extra'.$i.'.php', '<?php namespace App; class Extra'.$i.' { public function run() { Other::work(); } }');
-        }
-        $ready = $this->tempPath.'/.mutation-ready';
-        $script = 'file_put_contents($argv[2], "ready"); for ($i=0; $i<2000; $i++) { file_put_contents($argv[1], "<?php namespace App; class Run { public function run() { return ".$i."; } }".str_repeat(" ", $i)); usleep(5000); }';
-        $writer = new Process([PHP_BINARY, '-r', $script, $this->tempPath.'/app/Run.php', $ready]);
-        $writer->start();
-        try {
-            for ($i = 0; $i < 200 && ! file_exists($ready); $i++) {
-                usleep(10000);
+        $path = $this->tempPath.'/app/Run.php';
+        $before = file_get_contents($path);
+        $after = str_replace('function run()', 'function get()', $before);
+        $mtime = filemtime($path);
+        $beforeHash = hash_file('sha256', $path);
+        $this->assertNotSame($before, $after);
+        $this->assertSame(strlen($before), strlen($after));
+        $session = AnalysisRuntime::session();
+        $mutations = 0;
+        $observedEngine = null;
+        AnalysisRuntime::activate($session->withStageObserver(static function (string $stage) use ($path, $after, $mtime, &$mutations, &$observedEngine): void {
+            if ($stage !== 'deep.revision.facts' || $mutations !== 0) {
+                return;
             }
-            $this->assertFileExists($ready);
+            // Both snapshots exist before the first facts stage, on every backend.
+            $observedEngine = AnalysisRuntime::session()->engine->fingerprint();
+            $mutations++;
+            file_put_contents($path, $after);
+            touch($path, $mtime);
+        }));
+        try {
             $report = (new ArchitectureRevisionDiff($this->tempPath))->compare('HEAD');
+            clearstatcache(true, $path);
+            $this->assertSame(1, $mutations);
+            $this->assertSame($session->engine->fingerprint(), $observedEngine);
+            $this->assertNotSame($beforeHash, hash_file('sha256', $path));
+            $this->assertSame([$mtime, strlen($before)], [filemtime($path), filesize($path)]);
             $this->assertTrue($report['ok']);
             $this->assertFalse($report['analysis']['fresh']);
             $this->assertTrue($report['analysis']['lower_bounds']);
             $this->assertSame(['rerun:revision-diff'], $report['next']);
             $this->assertContains('E_REVISION_STALE', array_column($report['notices'], 'code'));
         } finally {
-            $writer->stop(0);
+            AnalysisRuntime::activate($session);
         }
+        $this->assertSame($session, AnalysisRuntime::session());
+        $stable = (new ArchitectureRevisionDiff($this->tempPath))->compare('HEAD');
+        $this->assertTrue($stable['ok']);
+        $this->assertTrue($stable['analysis']['fresh']);
+        $this->assertNotContains('E_REVISION_STALE', array_column($stable['notices'], 'code'));
     }
 
     public function test_unknown_execution_witness_identifies_after_side_and_source(): void
