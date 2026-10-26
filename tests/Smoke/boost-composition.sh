@@ -52,6 +52,7 @@ mkdir -p .codex
 printf '%s\n' '# Consumer project instructions' 'Preserve this consumer-specific instruction.' > CLAUDE.md
 php artisan boost:install --no-interaction
 php artisan boost:update --no-interaction
+graph_workflow="$(php -r 'require "vendor/autoload.php"; echo GracjanKubicki\ArchitectureKit\Mcp\ToolGuidance::GRAPH_WORKFLOW;')"
 
 for guidance_path in .ai/guidelines/architecture-kit.md AGENTS.md CLAUDE.md; do
     if ! test -f "${guidance_path}"; then
@@ -59,11 +60,7 @@ for guidance_path in .ai/guidelines/architecture-kit.md AGENTS.md CLAUDE.md; do
         exit 1
     fi
     for expected_text in \
-        'Find unknown elements with architecture-search by literal name, path, route, table or kind.' \
-        'Read status, analysis_complete, diagnostics, relation kinds and limits.' \
-        'no_path_in_analyzed_graph concerns analyzed source only.' \
-        'restart at offset=0 after stale_snapshot' \
-        'Relationships, registration and candidate tests do not prove execution, coverage or PASS.' \
+        "${graph_workflow}" \
         'Basic/advisory default.' \
         'control.blocking; exit 0 is not PASS.' \
         'Strict evaluates warnings, full expands output, enforce blocks.' \
