@@ -1,0 +1,653 @@
+{
+    "arg": [
+        "name",
+        "value",
+        "byRef",
+        "unpack"
+    ],
+    "array-item": [
+        "key",
+        "value",
+        "byRef",
+        "unpack"
+    ],
+    "attribute": [
+        "name",
+        "args"
+    ],
+    "attribute-group": [
+        "attrs"
+    ],
+    "closure-use": [
+        "var",
+        "byRef"
+    ],
+    "const": [
+        "name",
+        "value"
+    ],
+    "declare-item": [
+        "key",
+        "value"
+    ],
+    "expression.array": [
+        "items"
+    ],
+    "expression.array-dim-fetch": [
+        "var",
+        "dim"
+    ],
+    "expression.arrow-function": [
+        "attrGroups",
+        "static",
+        "byRef",
+        "params",
+        "returnType",
+        "expr"
+    ],
+    "expression.assign": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.bitwise-and": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.bitwise-or": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.bitwise-xor": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.coalesce": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.concat": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.div": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.minus": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.mod": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.mul": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.plus": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.pow": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.shift-left": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-op.shift-right": [
+        "var",
+        "expr"
+    ],
+    "expression.assign-ref": [
+        "var",
+        "expr"
+    ],
+    "expression.binary-op.bitwise-and": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.bitwise-or": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.bitwise-xor": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.boolean-and": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.boolean-or": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.coalesce": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.concat": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.div": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.equal": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.greater": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.greater-or-equal": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.identical": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.logical-and": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.logical-or": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.logical-xor": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.minus": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.mod": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.mul": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.not-equal": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.not-identical": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.pipe": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.plus": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.pow": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.shift-left": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.shift-right": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.smaller": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.smaller-or-equal": [
+        "left",
+        "right"
+    ],
+    "expression.binary-op.spaceship": [
+        "left",
+        "right"
+    ],
+    "expression.bitwise-not": [
+        "expr"
+    ],
+    "expression.boolean-not": [
+        "expr"
+    ],
+    "expression.cast.array": [
+        "expr"
+    ],
+    "expression.cast.bool": [
+        "expr"
+    ],
+    "expression.cast.double": [
+        "expr"
+    ],
+    "expression.cast.int": [
+        "expr"
+    ],
+    "expression.cast.object": [
+        "expr"
+    ],
+    "expression.cast.string": [
+        "expr"
+    ],
+    "expression.cast.unset": [
+        "expr"
+    ],
+    "expression.cast.void": [
+        "expr"
+    ],
+    "expression.class-const-fetch": [
+        "class",
+        "name"
+    ],
+    "expression.clone": [
+        "expr"
+    ],
+    "expression.closure": [
+        "attrGroups",
+        "static",
+        "byRef",
+        "params",
+        "uses",
+        "returnType",
+        "stmts"
+    ],
+    "expression.const-fetch": [
+        "name"
+    ],
+    "expression.empty": [
+        "expr"
+    ],
+    "expression.error": [],
+    "expression.error-suppress": [
+        "expr"
+    ],
+    "expression.eval": [
+        "expr"
+    ],
+    "expression.exit": [
+        "expr"
+    ],
+    "expression.func-call": [
+        "name",
+        "args"
+    ],
+    "expression.include": [
+        "expr",
+        "type"
+    ],
+    "expression.instanceof": [
+        "expr",
+        "class"
+    ],
+    "expression.isset": [
+        "vars"
+    ],
+    "expression.list": [
+        "items"
+    ],
+    "expression.match": [
+        "cond",
+        "arms"
+    ],
+    "expression.method-call": [
+        "var",
+        "name",
+        "args"
+    ],
+    "expression.new": [
+        "class",
+        "args"
+    ],
+    "expression.nullsafe-method-call": [
+        "var",
+        "name",
+        "args"
+    ],
+    "expression.nullsafe-property-fetch": [
+        "var",
+        "name"
+    ],
+    "expression.post-dec": [
+        "var"
+    ],
+    "expression.post-inc": [
+        "var"
+    ],
+    "expression.pre-dec": [
+        "var"
+    ],
+    "expression.pre-inc": [
+        "var"
+    ],
+    "expression.print": [
+        "expr"
+    ],
+    "expression.property-fetch": [
+        "var",
+        "name"
+    ],
+    "expression.shell-exec": [
+        "parts"
+    ],
+    "expression.static-call": [
+        "class",
+        "name",
+        "args"
+    ],
+    "expression.static-property-fetch": [
+        "class",
+        "name"
+    ],
+    "expression.ternary": [
+        "cond",
+        "if",
+        "else"
+    ],
+    "expression.throw": [
+        "expr"
+    ],
+    "expression.unary-minus": [
+        "expr"
+    ],
+    "expression.unary-plus": [
+        "expr"
+    ],
+    "expression.variable": [
+        "name"
+    ],
+    "expression.yield": [
+        "key",
+        "value"
+    ],
+    "expression.yield-from": [
+        "expr"
+    ],
+    "identifier": [
+        "name"
+    ],
+    "interpolated-string-part": [
+        "value"
+    ],
+    "intersection-type": [
+        "types"
+    ],
+    "match-arm": [
+        "conds",
+        "body"
+    ],
+    "name": [
+        "name"
+    ],
+    "name.fully-qualified": [
+        "name"
+    ],
+    "name.relative": [
+        "name"
+    ],
+    "nullable-type": [
+        "type"
+    ],
+    "param": [
+        "attrGroups",
+        "flags",
+        "type",
+        "byRef",
+        "variadic",
+        "var",
+        "default",
+        "hooks"
+    ],
+    "property-hook": [
+        "attrGroups",
+        "flags",
+        "byRef",
+        "name",
+        "params",
+        "body"
+    ],
+    "property-item": [
+        "name",
+        "default"
+    ],
+    "scalar.float": [
+        "value"
+    ],
+    "scalar.int": [
+        "value"
+    ],
+    "scalar.interpolated-string": [
+        "parts"
+    ],
+    "scalar.magic-const.class": [],
+    "scalar.magic-const.dir": [],
+    "scalar.magic-const.file": [],
+    "scalar.magic-const.function": [],
+    "scalar.magic-const.line": [],
+    "scalar.magic-const.method": [],
+    "scalar.magic-const.namespace": [],
+    "scalar.magic-const.property": [],
+    "scalar.magic-const.trait": [],
+    "scalar.string": [
+        "value"
+    ],
+    "statement.block": [
+        "stmts"
+    ],
+    "statement.break": [
+        "num"
+    ],
+    "statement.case": [
+        "cond",
+        "stmts"
+    ],
+    "statement.catch": [
+        "types",
+        "var",
+        "stmts"
+    ],
+    "statement.class": [
+        "attrGroups",
+        "flags",
+        "name",
+        "extends",
+        "implements",
+        "stmts"
+    ],
+    "statement.class-const": [
+        "attrGroups",
+        "flags",
+        "type",
+        "consts"
+    ],
+    "statement.class-method": [
+        "attrGroups",
+        "flags",
+        "byRef",
+        "name",
+        "params",
+        "returnType",
+        "stmts"
+    ],
+    "statement.const": [
+        "attrGroups",
+        "consts"
+    ],
+    "statement.continue": [
+        "num"
+    ],
+    "statement.declare": [
+        "declares",
+        "stmts"
+    ],
+    "statement.do": [
+        "stmts",
+        "cond"
+    ],
+    "statement.echo": [
+        "exprs"
+    ],
+    "statement.else": [
+        "stmts"
+    ],
+    "statement.else-if": [
+        "cond",
+        "stmts"
+    ],
+    "statement.enum": [
+        "attrGroups",
+        "name",
+        "scalarType",
+        "implements",
+        "stmts"
+    ],
+    "statement.enum-case": [
+        "attrGroups",
+        "name",
+        "expr"
+    ],
+    "statement.expression": [
+        "expr"
+    ],
+    "statement.finally": [
+        "stmts"
+    ],
+    "statement.for": [
+        "init",
+        "cond",
+        "loop",
+        "stmts"
+    ],
+    "statement.foreach": [
+        "expr",
+        "keyVar",
+        "byRef",
+        "valueVar",
+        "stmts"
+    ],
+    "statement.function": [
+        "attrGroups",
+        "byRef",
+        "name",
+        "params",
+        "returnType",
+        "stmts"
+    ],
+    "statement.global": [
+        "vars"
+    ],
+    "statement.goto": [
+        "name"
+    ],
+    "statement.group-use": [
+        "type",
+        "prefix",
+        "uses"
+    ],
+    "statement.halt-compiler": [
+        "remaining"
+    ],
+    "statement.if": [
+        "cond",
+        "stmts",
+        "elseifs",
+        "else"
+    ],
+    "statement.inline-html": [
+        "value"
+    ],
+    "statement.interface": [
+        "attrGroups",
+        "name",
+        "extends",
+        "stmts"
+    ],
+    "statement.label": [
+        "name"
+    ],
+    "statement.namespace": [
+        "name",
+        "stmts"
+    ],
+    "statement.nop": [],
+    "statement.property": [
+        "attrGroups",
+        "flags",
+        "type",
+        "props",
+        "hooks"
+    ],
+    "statement.return": [
+        "expr"
+    ],
+    "statement.static": [
+        "vars"
+    ],
+    "statement.switch": [
+        "cond",
+        "cases"
+    ],
+    "statement.trait": [
+        "attrGroups",
+        "name",
+        "stmts"
+    ],
+    "statement.trait-use": [
+        "traits",
+        "adaptations"
+    ],
+    "statement.trait-use-adaptation.alias": [
+        "trait",
+        "method",
+        "newModifier",
+        "newName"
+    ],
+    "statement.trait-use-adaptation.precedence": [
+        "trait",
+        "method",
+        "insteadof"
+    ],
+    "statement.try-catch": [
+        "stmts",
+        "catches",
+        "finally"
+    ],
+    "statement.unset": [
+        "vars"
+    ],
+    "statement.use": [
+        "type",
+        "uses"
+    ],
+    "statement.while": [
+        "cond",
+        "stmts"
+    ],
+    "static-var": [
+        "var",
+        "default"
+    ],
+    "union-type": [
+        "types"
+    ],
+    "use-item": [
+        "type",
+        "name",
+        "alias"
+    ],
+    "var-like-identifier": [
+        "name"
+    ],
+    "variadic-placeholder": []
+}

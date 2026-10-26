@@ -488,7 +488,7 @@ final class ArchitectureHttpRoutesTest extends TestCase
         $this->assertSame(0, Artisan::call('architecture-kit:impact', [...$this->deepCli(), 'subject' => 'Calculator::calculate', '--agent' => true]));
         $cli = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'Calculator::calculate'])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
-        $properties = ImpactSchema::get()['oneOf'][0]['properties']['execution']['properties'];
+        $properties = ImpactSchema::get()['oneOf'][0]['properties']['execution']['oneOf'][0]['properties'];
         foreach ($cli['execution'] as $key => $value) {
             $this->assertArrayHasKey($key, $properties);
         }

@@ -1,0 +1,3562 @@
+{
+    "reference_head": "8722f1a8fabbb539131c9463af5f87a655103740",
+    "reference_extractor_sha256": "3e2135077ce0d26d8b7a04bd1b032eecf05221447127c0e7993099d838968b0d",
+    "backend": "php",
+    "php_target": "8.5",
+    "scope": "Basic ImpactExtractor, both catalog flags",
+    "cases": [
+        {
+            "id": "imports",
+            "path": "app/Domain/Worker.php",
+            "source": "<?php\nnamespace Domain;\nuse Vendor\\{Port as Gateway, Model};\nclass Worker extends Model implements Gateway {\n    public Gateway|Model $port;\n    const Model C = Model::VALUE;\n    function run(?Gateway $port): Gateway&Model {\n        $x = new Model;\n        $x instanceof Gateway;\n        try { Model::run(...); Model::$property; } catch (\\Exception|\\Error $e) {}\n    }\n}",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "Domain\\Worker": {
+                        "kind": "class",
+                        "line": 4,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [
+                            "Vendor\\Model",
+                            "Vendor\\Port"
+                        ],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 7,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "port",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "?vendor\\port",
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": "(vendor\\model&vendor\\port)",
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "Domain\\Worker::run",
+                        "receiver": "Vendor\\Model",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 8,
+                        "site": {
+                            "form": "new",
+                            "class": "Domain\\Worker",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "Domain\\Worker::run",
+                        "receiver": "Vendor\\Model",
+                        "method": "run",
+                        "exact": true,
+                        "kind": "reference",
+                        "line": 10,
+                        "site": {
+                            "form": "class",
+                            "class": "Domain\\Worker",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "imports-catalog",
+            "path": "app/Domain/Worker.php",
+            "source": "<?php\nnamespace Domain;\nuse Vendor\\{Port as Gateway, Model};\nclass Worker extends Model implements Gateway {\n    public Gateway|Model $port;\n    const Model C = Model::VALUE;\n    function run(?Gateway $port): Gateway&Model {\n        $x = new Model;\n        $x instanceof Gateway;\n        try { Model::run(...); Model::$property; } catch (\\Exception|\\Error $e) {}\n    }\n}",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "Domain\\Worker": {
+                        "kind": "class",
+                        "line": 4,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [
+                            "Vendor\\Model",
+                            "Vendor\\Port"
+                        ],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": {
+                            "port": "@types:[\"Vendor\\\\Port\",\"Vendor\\\\Model\"]"
+                        },
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 7,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "port",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "?vendor\\port",
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": "(vendor\\model&vendor\\port)",
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "Domain\\Worker::run",
+                        "receiver": "Vendor\\Model",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 8,
+                        "site": {
+                            "form": "new",
+                            "class": "Domain\\Worker",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 238,
+                        "end_offset": 246,
+                        "end_line": 8,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "Domain\\Worker::run",
+                        "receiver": "Vendor\\Model",
+                        "method": "run",
+                        "exact": true,
+                        "kind": "reference",
+                        "line": 10,
+                        "site": {
+                            "form": "class",
+                            "class": "Domain\\Worker",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 294,
+                        "end_offset": 308,
+                        "end_line": 10,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "declarations",
+            "path": "app/Mixed.php",
+            "source": "<?php\nnamespace Mixed;\n#[\\Attribute]\ninterface EmptyPort {}\ninterface Port extends \\Vendor\\Contract { function run(): \\Vendor\\Data; }\ntrait Shared { function retry() { new \\Vendor\\Data; } }\nenum Cases: string implements Port { case READY = 'ready'; function run(): \\Vendor\\Data {} }\nclass Worker { use Shared { retry as protected locked; } }",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "Mixed\\EmptyPort": {
+                        "kind": "interface",
+                        "line": 3,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": []
+                    },
+                    "Mixed\\Port": {
+                        "kind": "interface",
+                        "line": 5,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [
+                            "Vendor\\Contract"
+                        ],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 5,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": true,
+                                    "final": false,
+                                    "return_type": "vendor\\data",
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "Mixed\\Shared": {
+                        "kind": "trait",
+                        "line": 6,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "retry": {
+                                "name": "retry",
+                                "line": 6,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "Mixed\\Cases": {
+                        "kind": "class",
+                        "line": 7,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [
+                            "Mixed\\Port"
+                        ],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 7,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": "vendor\\data",
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "Mixed\\Worker": {
+                        "kind": "class",
+                        "line": 8,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [
+                            "Mixed\\Shared"
+                        ],
+                        "adaptations": true,
+                        "properties": [],
+                        "methods": []
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "Mixed\\Shared::retry",
+                        "receiver": "Vendor\\Data",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "new",
+                            "class": "Mixed\\Shared",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "declarations-catalog",
+            "path": "app/Mixed.php",
+            "source": "<?php\nnamespace Mixed;\n#[\\Attribute]\ninterface EmptyPort {}\ninterface Port extends \\Vendor\\Contract { function run(): \\Vendor\\Data; }\ntrait Shared { function retry() { new \\Vendor\\Data; } }\nenum Cases: string implements Port { case READY = 'ready'; function run(): \\Vendor\\Data {} }\nclass Worker { use Shared { retry as protected locked; } }",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "Mixed\\EmptyPort": {
+                        "kind": "interface",
+                        "line": 3,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": []
+                    },
+                    "Mixed\\Port": {
+                        "kind": "interface",
+                        "line": 5,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [
+                            "Vendor\\Contract"
+                        ],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 5,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": true,
+                                    "final": false,
+                                    "return_type": "vendor\\data",
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "Mixed\\Shared": {
+                        "kind": "trait",
+                        "line": 6,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "retry": {
+                                "name": "retry",
+                                "line": 6,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "Mixed\\Cases": {
+                        "kind": "class",
+                        "line": 7,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [
+                            "Mixed\\Port"
+                        ],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 7,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": "vendor\\data",
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "Mixed\\Worker": {
+                        "kind": "class",
+                        "line": 8,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [
+                            "Mixed\\Shared"
+                        ],
+                        "adaptations": true,
+                        "properties": [],
+                        "methods": []
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "Mixed\\Shared::retry",
+                        "receiver": "Vendor\\Data",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "new",
+                            "class": "Mixed\\Shared",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 168,
+                        "end_offset": 183,
+                        "end_line": 6,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "nested",
+            "path": "app/Worker.php",
+            "source": "<?php\nclass Worker {\n    function run() {\n        $nested = new class extends Base implements Port { function work() { new Service; } };\n        return function (Nested $arg): Returned { return new Service; };\n    }\n}",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "Worker": {
+                        "kind": "class",
+                        "line": 2,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 3,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "Worker::run",
+                        "receiver": null,
+                        "method": "__construct",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 4,
+                        "site": {
+                            "form": "new",
+                            "class": "Worker",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": [
+                    {
+                        "line": 5,
+                        "reason": "Callback body is not a proved immediate invocation."
+                    },
+                    {
+                        "line": 4,
+                        "reason": "Anonymous class dispatch is unresolved."
+                    }
+                ]
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "nested-catalog",
+            "path": "app/Worker.php",
+            "source": "<?php\nclass Worker {\n    function run() {\n        $nested = new class extends Base implements Port { function work() { new Service; } };\n        return function (Nested $arg): Returned { return new Service; };\n    }\n}",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "Worker": {
+                        "kind": "class",
+                        "line": 2,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 3,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "(anonymous) app/Worker.php:64": {
+                        "kind": "class",
+                        "line": 4,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [
+                            "Base",
+                            "Port"
+                        ],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "work": {
+                                "name": "work",
+                                "line": 4,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "Worker::run",
+                        "receiver": "(anonymous) app/Worker.php:64",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 4,
+                        "site": {
+                            "form": "new",
+                            "class": "Worker",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 60,
+                        "end_offset": 134,
+                        "end_line": 4,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(closure) app/Worker.php:152",
+                        "receiver": "Service",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 5,
+                        "site": {
+                            "form": "new",
+                            "class": "Worker",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 194,
+                        "end_offset": 204,
+                        "end_line": 5,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(anonymous) app/Worker.php:64::work",
+                        "receiver": "Service",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 4,
+                        "site": {
+                            "form": "new",
+                            "class": "(anonymous) app/Worker.php:64",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 119,
+                        "end_offset": 129,
+                        "end_line": 4,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [
+                {
+                    "from": "(closure) app/Worker.php:152",
+                    "line": 5,
+                    "end_line": 5,
+                    "offset": 187,
+                    "value": {
+                        "type": "Service",
+                        "exact": true,
+                        "catalog_instance_origin": 204
+                    }
+                },
+                {
+                    "from": "Worker::run",
+                    "line": 5,
+                    "end_line": 5,
+                    "offset": 145,
+                    "value": {
+                        "type": "@closure:(closure) app/Worker.php:152",
+                        "exact": true
+                    }
+                }
+            ],
+            "descriptors": []
+        },
+        {
+            "id": "eloquent",
+            "path": "app/Models/Entry.php",
+            "source": "<?php\nnamespace App\\Models;\nclass Entry {\n    function relations() {\n        $this->hasMany(Child::class);\n        $this->belongsTo(ParentModel::CUSTOM);\n        $this->morphTo(Target::class);\n        $this->ordinary(Other::class);\n        Child::class;\n        Child::OTHER;\n        self::run(); static::run(); parent::run();\n    }\n}",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "App\\Models\\Entry": {
+                        "kind": "class",
+                        "line": 3,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "relations": {
+                                "name": "relations",
+                                "line": 4,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "hasMany",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 5,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "belongsTo",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "morphTo",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "ordinary",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 8,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "run",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "self",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "run",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "static",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": null,
+                        "method": "run",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "parent",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "eloquent-catalog",
+            "path": "app/Models/Entry.php",
+            "source": "<?php\nnamespace App\\Models;\nclass Entry {\n    function relations() {\n        $this->hasMany(Child::class);\n        $this->belongsTo(ParentModel::CUSTOM);\n        $this->morphTo(Target::class);\n        $this->ordinary(Other::class);\n        Child::class;\n        Child::OTHER;\n        self::run(); static::run(); parent::run();\n    }\n}",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "App\\Models\\Entry": {
+                        "kind": "class",
+                        "line": 3,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "relations": {
+                                "name": "relations",
+                                "line": 4,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "hasMany",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 5,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        },
+                        "offset": 77,
+                        "end_offset": 104,
+                        "end_line": 5,
+                        "this_receiver": true,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "belongsTo",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        },
+                        "offset": 115,
+                        "end_offset": 151,
+                        "end_line": 6,
+                        "this_receiver": true,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "morphTo",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        },
+                        "offset": 162,
+                        "end_offset": 190,
+                        "end_line": 7,
+                        "this_receiver": true,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "ordinary",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 8,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        },
+                        "offset": 201,
+                        "end_offset": 229,
+                        "end_line": 8,
+                        "this_receiver": true,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "run",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "self",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 284,
+                        "end_offset": 294,
+                        "end_line": 11,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": "self"
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "App\\Models\\Entry",
+                        "method": "run",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "static",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 297,
+                        "end_offset": 309,
+                        "end_line": 11,
+                        "this_receiver": false,
+                        "late_static_receiver": true,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Models\\Entry::relations",
+                        "receiver": "@parent:App\\Models\\Entry",
+                        "method": "run",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "parent",
+                            "class": "App\\Models\\Entry",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 312,
+                        "end_offset": 324,
+                        "end_line": 11,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": "parent"
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "classless",
+            "path": "routes/console.php",
+            "source": "<?php\nnamespace Console;\nuse Vendor\\Runner as R;\nfunction run(R $runner): R { return new R; }\n$callback = fn(R $runner): R => new R;\nnew R; new R;",
+            "catalog": false,
+            "expected": {
+                "classes": [],
+                "calls": [
+                    {
+                        "from": "(file) routes/console.php",
+                        "receiver": "Vendor\\Runner",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "(file) routes/console.php",
+                        "receiver": "Vendor\\Runner",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": [
+                    {
+                        "line": 4,
+                        "reason": "Standalone function bodies are outside method dispatch analysis."
+                    },
+                    {
+                        "line": 5,
+                        "reason": "Callback body is not a proved immediate invocation."
+                    }
+                ]
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "classless-catalog",
+            "path": "routes/console.php",
+            "source": "<?php\nnamespace Console;\nuse Vendor\\Runner as R;\nfunction run(R $runner): R { return new R; }\n$callback = fn(R $runner): R => new R;\nnew R; new R;",
+            "catalog": true,
+            "expected": {
+                "classes": [],
+                "calls": [
+                    {
+                        "from": "Console\\run",
+                        "receiver": "Vendor\\Runner",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 4,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 85,
+                        "end_offset": 89,
+                        "end_line": 4,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(closure) routes/console.php:106",
+                        "receiver": "Vendor\\Runner",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 5,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 126,
+                        "end_offset": 130,
+                        "end_line": 5,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(file) routes/console.php",
+                        "receiver": "Vendor\\Runner",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 133,
+                        "end_offset": 137,
+                        "end_line": 6,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(file) routes/console.php",
+                        "receiver": "Vendor\\Runner",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 140,
+                        "end_offset": 144,
+                        "end_line": 6,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [
+                {
+                    "from": "Console\\run",
+                    "line": 4,
+                    "end_line": 4,
+                    "offset": 78,
+                    "value": {
+                        "type": "Vendor\\Runner",
+                        "exact": true,
+                        "catalog_instance_origin": 89
+                    }
+                },
+                {
+                    "from": "(closure) routes/console.php:106",
+                    "line": 5,
+                    "end_line": 5,
+                    "offset": 106,
+                    "value": {
+                        "type": "Vendor\\Runner",
+                        "exact": true,
+                        "catalog_instance_origin": 130
+                    }
+                }
+            ],
+            "descriptors": []
+        },
+        {
+            "id": "anonymous-only",
+            "path": "routes/anonymous.php",
+            "source": "<?php $x = new class extends ParentClass { function run(Port $port): Result { return new Result; } };",
+            "catalog": false,
+            "expected": {
+                "classes": [],
+                "calls": [
+                    {
+                        "from": "(file) routes/anonymous.php",
+                        "receiver": null,
+                        "method": "__construct",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": [
+                    {
+                        "line": 1,
+                        "reason": "Anonymous class dispatch is unresolved."
+                    }
+                ]
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "anonymous-only-catalog",
+            "path": "routes/anonymous.php",
+            "source": "<?php $x = new class extends ParentClass { function run(Port $port): Result { return new Result; } };",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "(anonymous) routes/anonymous.php:15": {
+                        "kind": "class",
+                        "line": 1,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [
+                            "ParentClass"
+                        ],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 1,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "port",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "port",
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": "result",
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "(anonymous) routes/anonymous.php:15::run",
+                        "receiver": "Result",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "(anonymous) routes/anonymous.php:15",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 85,
+                        "end_offset": 94,
+                        "end_line": 1,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(file) routes/anonymous.php",
+                        "receiver": "(anonymous) routes/anonymous.php:15",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 11,
+                        "end_offset": 99,
+                        "end_line": 1,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [
+                {
+                    "from": "(anonymous) routes/anonymous.php:15::run",
+                    "line": 1,
+                    "end_line": 1,
+                    "offset": 78,
+                    "value": {
+                        "type": "Result",
+                        "exact": true,
+                        "catalog_instance_origin": 94
+                    }
+                }
+            ],
+            "descriptors": []
+        },
+        {
+            "id": "two-namespaces",
+            "path": "routes/two.php",
+            "source": "<?php namespace One { class First { function run() { new Thing; } } } namespace Two { class Second { function run() { new Thing; } } }",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "One\\First": {
+                        "kind": "class",
+                        "line": 1,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 1,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "Two\\Second": {
+                        "kind": "class",
+                        "line": 1,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 1,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "One\\First::run",
+                        "receiver": "One\\Thing",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "One\\First",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "Two\\Second::run",
+                        "receiver": "Two\\Thing",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "Two\\Second",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "two-namespaces-catalog",
+            "path": "routes/two.php",
+            "source": "<?php namespace One { class First { function run() { new Thing; } } } namespace Two { class Second { function run() { new Thing; } } }",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "One\\First": {
+                        "kind": "class",
+                        "line": 1,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 1,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    },
+                    "Two\\Second": {
+                        "kind": "class",
+                        "line": 1,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 1,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "One\\First::run",
+                        "receiver": "One\\Thing",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "One\\First",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 53,
+                        "end_offset": 61,
+                        "end_line": 1,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "Two\\Second::run",
+                        "receiver": "Two\\Thing",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "Two\\Second",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 118,
+                        "end_offset": 126,
+                        "end_line": 1,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "test-path",
+            "path": "Modules/Billing/Tests/Unit/Test.php",
+            "source": "<?php namespace Billing\\Tests; class ExampleTest { function test_it() { new \\App\\Example; } }",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "Billing\\Tests\\ExampleTest": {
+                        "kind": "class",
+                        "line": 1,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "test_it": {
+                                "name": "test_it",
+                                "line": 1,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "Billing\\Tests\\ExampleTest::test_it",
+                        "receiver": "App\\Example",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "Billing\\Tests\\ExampleTest",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "test-path-catalog",
+            "path": "Modules/Billing/Tests/Unit/Test.php",
+            "source": "<?php namespace Billing\\Tests; class ExampleTest { function test_it() { new \\App\\Example; } }",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "Billing\\Tests\\ExampleTest": {
+                        "kind": "class",
+                        "line": 1,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "test_it": {
+                                "name": "test_it",
+                                "line": 1,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "Billing\\Tests\\ExampleTest::test_it",
+                        "receiver": "App\\Example",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "Billing\\Tests\\ExampleTest",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 72,
+                        "end_offset": 87,
+                        "end_line": 1,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "source-app",
+            "path": "app/bootstrap.php",
+            "source": "<?php function start(Port $port) { new Handler; } start(new Port);",
+            "catalog": false,
+            "expected": {
+                "classes": [],
+                "calls": [
+                    {
+                        "from": "(file) app/bootstrap.php",
+                        "receiver": "Port",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": [
+                    {
+                        "line": 1,
+                        "reason": "Standalone function bodies are outside method dispatch analysis."
+                    }
+                ]
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "source-app-catalog",
+            "path": "app/bootstrap.php",
+            "source": "<?php function start(Port $port) { new Handler; } start(new Port);",
+            "catalog": true,
+            "expected": {
+                "classes": [],
+                "calls": [
+                    {
+                        "from": "start",
+                        "receiver": "Handler",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 35,
+                        "end_offset": 45,
+                        "end_line": 1,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(file) app/bootstrap.php",
+                        "receiver": "@function:[\"start\"]",
+                        "method": "__invoke",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "instance",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        },
+                        "offset": 50,
+                        "end_line": 1,
+                        "bound_callable": null,
+                        "callable_form": null
+                    },
+                    {
+                        "from": "(file) app/bootstrap.php",
+                        "receiver": "Port",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 1,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 56,
+                        "end_offset": 63,
+                        "end_line": 1,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "empty",
+            "path": "routes/empty.php",
+            "source": "",
+            "catalog": false,
+            "expected": {
+                "classes": [],
+                "calls": [],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "empty-catalog",
+            "path": "routes/empty.php",
+            "source": "",
+            "catalog": true,
+            "expected": {
+                "classes": [],
+                "calls": [],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "metadata",
+            "path": "app/Meta.php",
+            "source": "<?php\nnamespace App;\nuse Illuminate\\Http\\Resources\\Attributes\\Collects;\nuse Illuminate\\Routing\\Attributes\\Controllers\\Middleware;\n#[Collects(Data::class)]\n#[Middleware('auth', only: ['show', 'index'], except: null)]\nfinal class Meta {\n    public $collects = Data::class;\n    protected $connector = Connector::class;\n    public $allowBaseUrlOverride = false;\n    public function __construct(private Data $data) {}\n    public function create($first, $second = null, ...$rest) { return new Data; }\n    public function closure() { return fn(Data $data) => $data; }\n    public function factory() { return self::create(); }\n}",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "App\\Meta": {
+                        "kind": "class",
+                        "line": 5,
+                        "final": true,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": {
+                            "data": "App\\Data"
+                        },
+                        "methods": {
+                            "__construct": {
+                                "name": "__construct",
+                                "line": 11,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "data",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "app\\data",
+                                            "promoted": true
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            },
+                            "create": {
+                                "name": "create",
+                                "line": 12,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "first",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "second",
+                                            "optional": true,
+                                            "default": "null",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "rest",
+                                            "optional": true,
+                                            "default": null,
+                                            "variadic": true,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            },
+                            "closure": {
+                                "name": "closure",
+                                "line": 13,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            },
+                            "factory": {
+                                "name": "factory",
+                                "line": 14,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "App\\Meta::create",
+                        "receiver": "App\\Data",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 12,
+                        "site": {
+                            "form": "new",
+                            "class": "App\\Meta",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Meta::factory",
+                        "receiver": "App\\Meta",
+                        "method": "create",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 14,
+                        "site": {
+                            "form": "self",
+                            "class": "App\\Meta",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": [
+                    {
+                        "line": 13,
+                        "reason": "Callback body is not a proved immediate invocation."
+                    }
+                ]
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "metadata-catalog",
+            "path": "app/Meta.php",
+            "source": "<?php\nnamespace App;\nuse Illuminate\\Http\\Resources\\Attributes\\Collects;\nuse Illuminate\\Routing\\Attributes\\Controllers\\Middleware;\n#[Collects(Data::class)]\n#[Middleware('auth', only: ['show', 'index'], except: null)]\nfinal class Meta {\n    public $collects = Data::class;\n    protected $connector = Connector::class;\n    public $allowBaseUrlOverride = false;\n    public function __construct(private Data $data) {}\n    public function create($first, $second = null, ...$rest) { return new Data; }\n    public function closure() { return fn(Data $data) => $data; }\n    public function factory() { return self::create(); }\n}",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "App\\Meta": {
+                        "kind": "class",
+                        "line": 5,
+                        "final": true,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": {
+                            "data": "App\\Data"
+                        },
+                        "methods": {
+                            "__construct": {
+                                "name": "__construct",
+                                "line": 11,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "data",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "app\\data",
+                                            "promoted": true
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            },
+                            "create": {
+                                "name": "create",
+                                "line": 12,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "first",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "second",
+                                            "optional": true,
+                                            "default": "null",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "rest",
+                                            "optional": true,
+                                            "default": null,
+                                            "variadic": true,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            },
+                            "closure": {
+                                "name": "closure",
+                                "line": 13,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            },
+                            "factory": {
+                                "name": "factory",
+                                "line": 14,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "App\\Meta::create",
+                        "receiver": "App\\Data",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 12,
+                        "site": {
+                            "form": "new",
+                            "class": "App\\Meta",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 483,
+                        "end_offset": 490,
+                        "end_line": 12,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Meta::factory",
+                        "receiver": "App\\Meta",
+                        "method": "create",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 14,
+                        "site": {
+                            "form": "self",
+                            "class": "App\\Meta",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 600,
+                        "end_offset": 613,
+                        "end_line": 14,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": "self"
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [
+                {
+                    "from": "App\\Meta::create",
+                    "line": 12,
+                    "end_line": 12,
+                    "offset": 476,
+                    "value": {
+                        "type": "App\\Data",
+                        "exact": true,
+                        "catalog_instance_origin": 490
+                    }
+                },
+                {
+                    "from": "(closure) app/Meta.php:534",
+                    "line": 13,
+                    "end_line": 13,
+                    "offset": 534,
+                    "value": {
+                        "type": "App\\Data",
+                        "exact": false
+                    }
+                },
+                {
+                    "from": "App\\Meta::closure",
+                    "line": 13,
+                    "end_line": 13,
+                    "offset": 527,
+                    "value": {
+                        "type": "@closure:(closure) app/Meta.php:534",
+                        "exact": true
+                    }
+                },
+                {
+                    "from": "App\\Meta::factory",
+                    "line": 14,
+                    "end_line": 14,
+                    "offset": 593,
+                    "value": {
+                        "type": null,
+                        "exact": false
+                    }
+                }
+            ],
+            "descriptors": []
+        },
+        {
+            "id": "includes",
+            "path": "routes/load.php",
+            "source": "<?php\ninclude __DIR__.'/../app/start.php';\nrequire 'helpers.php';\ninclude $dynamic;\n$callback = function () { yield 1; return 2; };",
+            "catalog": false,
+            "expected": {
+                "classes": [],
+                "calls": [],
+                "notices": [
+                    {
+                        "line": 5,
+                        "reason": "Callback body is not a proved immediate invocation."
+                    }
+                ]
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "includes-catalog",
+            "path": "routes/load.php",
+            "source": "<?php\ninclude __DIR__.'/../app/start.php';\nrequire 'helpers.php';\ninclude $dynamic;\n$callback = function () { yield 1; return 2; };",
+            "catalog": true,
+            "expected": {
+                "classes": [],
+                "calls": [],
+                "notices": []
+            },
+            "returns": [
+                {
+                    "from": "(closure) routes/load.php:96",
+                    "line": 5,
+                    "end_line": 5,
+                    "offset": 119,
+                    "value": {
+                        "type": null,
+                        "exact": false
+                    }
+                }
+            ],
+            "descriptors": []
+        },
+        {
+            "id": "branching",
+            "path": "app/Branch.php",
+            "source": "<?php\nnamespace App;\nclass Branch {\n public function run(Port $port, bool $flag) {\n  $x = new Service;\n  $x->before();\n  if ($flag) { $x = new Other; $x->inside(); } else { $x->otherwise(); }\n  $x->after();\n  $port->send($x);\n  $x->afterArgument();\n  foreach ([1] as $item) { $port = new Other; $port->loop(); }\n  $port->afterLoop();\n  $callback = function (Service $service) use ($port) { $service->run(); return $port; };\n  return $callback;\n }\n}\nfunction run(Port $port) { $port->send(); }\nrun(new Service);",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "App\\Branch": {
+                        "kind": "class",
+                        "line": 3,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 4,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "port",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "app\\port",
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "flag",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "bool",
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Service",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 5,
+                        "site": {
+                            "form": "new",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Service",
+                        "method": "before",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Other",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "new",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Other",
+                        "method": "inside",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Service",
+                        "method": "otherwise",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": null,
+                        "method": "after",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 8,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Port",
+                        "method": "send",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 9,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "variable"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": null,
+                        "method": "afterArgument",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 10,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Other",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "new",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Other",
+                        "method": "loop",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": null,
+                        "method": "afterLoop",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 12,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "(file) app/Branch.php",
+                        "receiver": "App\\Service",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 18,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": [
+                    {
+                        "line": 13,
+                        "reason": "Callback body is not a proved immediate invocation."
+                    },
+                    {
+                        "line": 17,
+                        "reason": "Standalone function bodies are outside method dispatch analysis."
+                    }
+                ]
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "branching-catalog",
+            "path": "app/Branch.php",
+            "source": "<?php\nnamespace App;\nclass Branch {\n public function run(Port $port, bool $flag) {\n  $x = new Service;\n  $x->before();\n  if ($flag) { $x = new Other; $x->inside(); } else { $x->otherwise(); }\n  $x->after();\n  $port->send($x);\n  $x->afterArgument();\n  foreach ([1] as $item) { $port = new Other; $port->loop(); }\n  $port->afterLoop();\n  $callback = function (Service $service) use ($port) { $service->run(); return $port; };\n  return $callback;\n }\n}\nfunction run(Port $port) { $port->send(); }\nrun(new Service);",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "App\\Branch": {
+                        "kind": "class",
+                        "line": 3,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 4,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "port",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "app\\port",
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "flag",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "bool",
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Service",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 5,
+                        "site": {
+                            "form": "new",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 90,
+                        "end_offset": 100,
+                        "end_line": 5,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Service",
+                        "method": "before",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 6,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "receiver_instance_origin": 100,
+                        "offset": 105,
+                        "end_offset": 116,
+                        "end_line": 6,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Other",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "new",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 139,
+                        "end_offset": 147,
+                        "end_line": 7,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Other",
+                        "method": "inside",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "receiver_instance_origin": 147,
+                        "offset": 150,
+                        "end_offset": 161,
+                        "end_line": 7,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Service",
+                        "method": "otherwise",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "receiver_instance_origin": 100,
+                        "offset": 173,
+                        "end_offset": 187,
+                        "end_line": 7,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": null,
+                        "method": "after",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 8,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 194,
+                        "end_offset": 204,
+                        "end_line": 8,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Port",
+                        "method": "send",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 9,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "variable"
+                                }
+                            ]
+                        },
+                        "offset": 209,
+                        "end_offset": 223,
+                        "end_line": 9,
+                        "saloon_pool_send": false,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": null,
+                        "method": "afterArgument",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 10,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 228,
+                        "end_offset": 246,
+                        "end_line": 10,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Other",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "new",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 284,
+                        "end_offset": 292,
+                        "end_line": 11,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": "App\\Other",
+                        "method": "loop",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "receiver_instance_origin": 292,
+                        "offset": 295,
+                        "end_offset": 307,
+                        "end_line": 11,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\Branch::run",
+                        "receiver": null,
+                        "method": "afterLoop",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 12,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 314,
+                        "end_offset": 331,
+                        "end_line": 12,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(closure) app/Branch.php:348",
+                        "receiver": "App\\Service",
+                        "method": "run",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 13,
+                        "site": {
+                            "form": "instance",
+                            "class": "App\\Branch",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 390,
+                        "end_offset": 404,
+                        "end_line": 13,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "App\\run",
+                        "receiver": "App\\Port",
+                        "method": "send",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 17,
+                        "site": {
+                            "form": "instance",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 476,
+                        "end_offset": 488,
+                        "end_line": 17,
+                        "saloon_pool_send": true,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "(file) app/Branch.php",
+                        "receiver": "@function:[\"App\\\\run\",\"run\"]",
+                        "method": "__invoke",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 18,
+                        "site": {
+                            "form": "instance",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "value"
+                                }
+                            ]
+                        },
+                        "offset": 493,
+                        "end_line": 18,
+                        "bound_callable": null,
+                        "callable_form": null
+                    },
+                    {
+                        "from": "(file) app/Branch.php",
+                        "receiver": "App\\Service",
+                        "method": "__construct",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 18,
+                        "site": {
+                            "form": "new",
+                            "class": "",
+                            "static_context": true,
+                            "arguments": []
+                        },
+                        "offset": 497,
+                        "end_offset": 507,
+                        "end_line": 18,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [
+                {
+                    "from": "(closure) app/Branch.php:348",
+                    "line": 13,
+                    "end_line": 13,
+                    "offset": 407,
+                    "value": {
+                        "type": null,
+                        "exact": false
+                    }
+                },
+                {
+                    "from": "App\\Branch::run",
+                    "line": 14,
+                    "end_line": 14,
+                    "offset": 426,
+                    "value": {
+                        "type": "@closure:(closure) app/Branch.php:348",
+                        "exact": true
+                    }
+                }
+            ],
+            "descriptors": []
+        },
+        {
+            "id": "references",
+            "path": "app/References.php",
+            "source": "<?php\nclass References {\n public function run(Foo $foo, Bar|Other $other) {\n  $bound = [$foo, 'run'];\n  $static = [Foo::class, 'run'];\n  $named = ['Foo', 'run'];\n  $dynamic = $foo->$unknown();\n  $foo->property->nested->call();\n  $this->method(...);\n  self::method(...);\n  json_encode($foo);\n  return $named;\n }\n}",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "References": {
+                        "kind": "class",
+                        "line": 2,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 3,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "foo",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "foo",
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "other",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "(bar|other)",
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "References::run",
+                        "receiver": "Foo",
+                        "method": "run",
+                        "exact": false,
+                        "kind": "reference",
+                        "line": 4,
+                        "site": {
+                            "form": "reference",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "Foo",
+                        "method": "run",
+                        "exact": true,
+                        "kind": "reference",
+                        "line": 5,
+                        "site": {
+                            "form": "reference",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "Foo",
+                        "method": null,
+                        "exact": false,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "instance",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "@property:@property:Foo#property#nested",
+                        "method": "call",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 8,
+                        "site": {
+                            "form": "instance",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "References",
+                        "method": "method",
+                        "exact": false,
+                        "kind": "reference",
+                        "line": 9,
+                        "site": {
+                            "form": "instance",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "References",
+                        "method": "method",
+                        "exact": true,
+                        "kind": "reference",
+                        "line": 10,
+                        "site": {
+                            "form": "self",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        }
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "references-catalog",
+            "path": "app/References.php",
+            "source": "<?php\nclass References {\n public function run(Foo $foo, Bar|Other $other) {\n  $bound = [$foo, 'run'];\n  $static = [Foo::class, 'run'];\n  $named = ['Foo', 'run'];\n  $dynamic = $foo->$unknown();\n  $foo->property->nested->call();\n  $this->method(...);\n  self::method(...);\n  json_encode($foo);\n  return $named;\n }\n}",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "References": {
+                        "kind": "class",
+                        "line": 2,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 3,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "foo",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "foo",
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "other",
+                                            "optional": false,
+                                            "default": null,
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": "(bar|other)",
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [
+                    {
+                        "from": "References::run",
+                        "receiver": "Foo",
+                        "method": "run",
+                        "exact": false,
+                        "kind": "reference",
+                        "line": 4,
+                        "site": {
+                            "form": "instance",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 87,
+                        "end_line": 4
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "Foo",
+                        "method": "run",
+                        "exact": true,
+                        "kind": "reference",
+                        "line": 5,
+                        "site": {
+                            "form": "class",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 114,
+                        "end_line": 5
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "Foo",
+                        "method": null,
+                        "exact": false,
+                        "kind": "call",
+                        "line": 7,
+                        "site": {
+                            "form": "instance",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 175,
+                        "end_offset": 190,
+                        "end_line": 7,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "@property:@descriptor:2935c32d0ae5efbd4ea13ed28a3d18420bc4d5f4d0691a54b3c579c4a49bde34#nested",
+                        "method": "call",
+                        "exact": false,
+                        "kind": "call",
+                        "line": 8,
+                        "site": {
+                            "form": "instance",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 195,
+                        "end_offset": 224,
+                        "end_line": 8,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "References",
+                        "method": "method",
+                        "exact": false,
+                        "kind": "reference",
+                        "line": 9,
+                        "site": {
+                            "form": "instance",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 229,
+                        "end_offset": 246,
+                        "end_line": 9,
+                        "this_receiver": true,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": null
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "References",
+                        "method": "method",
+                        "exact": true,
+                        "kind": "reference",
+                        "line": 10,
+                        "site": {
+                            "form": "self",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": []
+                        },
+                        "offset": 251,
+                        "end_offset": 267,
+                        "end_line": 10,
+                        "this_receiver": false,
+                        "late_static_receiver": false,
+                        "lexical_static_receiver": "self"
+                    },
+                    {
+                        "from": "References::run",
+                        "receiver": "@function:[\"json_encode\"]",
+                        "method": "__invoke",
+                        "exact": true,
+                        "kind": "call",
+                        "line": 11,
+                        "site": {
+                            "form": "instance",
+                            "class": "References",
+                            "static_context": false,
+                            "arguments": [
+                                {
+                                    "name": null,
+                                    "unpack": false,
+                                    "reference": "variable"
+                                }
+                            ]
+                        },
+                        "offset": 272,
+                        "end_line": 11,
+                        "bound_callable": null,
+                        "callable_form": null,
+                        "json_serialization_receiver": "Foo"
+                    }
+                ],
+                "notices": []
+            },
+            "returns": [
+                {
+                    "from": "References::run",
+                    "line": 12,
+                    "end_line": 12,
+                    "offset": 293,
+                    "value": {
+                        "type": null,
+                        "exact": false,
+                        "callable_name": [
+                            "0165de9eed36f00db9752dbb420137e5e5b9634371d24603b4f8fa5694096b6c",
+                            "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+                            "acba25512100f80b56fc3ccd14c65be55d94800cda77585c5f41a887e398f9be"
+                        ]
+                    }
+                }
+            ],
+            "descriptors": {
+                "2935c32d0ae5efbd4ea13ed28a3d18420bc4d5f4d0691a54b3c579c4a49bde34": "@property:Foo#property"
+            }
+        },
+        {
+            "id": "signature-defaults",
+            "path": "app/Defaults.php",
+            "source": "<?php\nnamespace App;\nclass Defaults {\n public function run($a = [1, 'x' => null], $b = new \\App\\Data(flag: true), $c = 'escaped\\'quote', $d = 1 + 2, $e = self::FLAG, $f = \"utf8 \u03b1\", $g = 1.0, $h = null, $i = new Data, $j = -(2 ** 3), $k = 1e17, $l = 1e-5, $m = 1e16, $n = 1.2e20, $o = \"\\u{2028}\") {}\n}",
+            "catalog": false,
+            "expected": {
+                "classes": {
+                    "App\\Defaults": {
+                        "kind": "class",
+                        "line": 3,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 4,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "a",
+                                            "optional": true,
+                                            "default": "[1, 'x' => null]",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "b",
+                                            "optional": true,
+                                            "default": "new \\App\\Data(flag: true)",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "c",
+                                            "optional": true,
+                                            "default": "'escaped\\'quote'",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "d",
+                                            "optional": true,
+                                            "default": "1 + 2",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "e",
+                                            "optional": true,
+                                            "default": "self::FLAG",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "f",
+                                            "optional": true,
+                                            "default": "\"utf8 \u03b1\"",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "g",
+                                            "optional": true,
+                                            "default": "1.0",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "h",
+                                            "optional": true,
+                                            "default": "null",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "i",
+                                            "optional": true,
+                                            "default": "new Data()",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "j",
+                                            "optional": true,
+                                            "default": "-2 ** 3",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "k",
+                                            "optional": true,
+                                            "default": "1.0E+17",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "l",
+                                            "optional": true,
+                                            "default": "1.0E-5",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "m",
+                                            "optional": true,
+                                            "default": "10000000000000000.0",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "n",
+                                            "optional": true,
+                                            "default": "1.2E+20",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "o",
+                                            "optional": true,
+                                            "default": "\"\\u2028\"",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        },
+        {
+            "id": "signature-defaults-catalog",
+            "path": "app/Defaults.php",
+            "source": "<?php\nnamespace App;\nclass Defaults {\n public function run($a = [1, 'x' => null], $b = new \\App\\Data(flag: true), $c = 'escaped\\'quote', $d = 1 + 2, $e = self::FLAG, $f = \"utf8 \u03b1\", $g = 1.0, $h = null, $i = new Data, $j = -(2 ** 3), $k = 1e17, $l = 1e-5, $m = 1e16, $n = 1.2e20, $o = \"\\u{2028}\") {}\n}",
+            "catalog": true,
+            "expected": {
+                "classes": {
+                    "App\\Defaults": {
+                        "kind": "class",
+                        "line": 3,
+                        "final": false,
+                        "abstract": false,
+                        "parents": [],
+                        "traits": [],
+                        "adaptations": false,
+                        "properties": [],
+                        "methods": {
+                            "run": {
+                                "name": "run",
+                                "line": 4,
+                                "final": false,
+                                "signature": {
+                                    "parameters": [
+                                        {
+                                            "name": "a",
+                                            "optional": true,
+                                            "default": "[1, 'x' => null]",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "b",
+                                            "optional": true,
+                                            "default": "new \\App\\Data(flag: true)",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "c",
+                                            "optional": true,
+                                            "default": "'escaped\\'quote'",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "d",
+                                            "optional": true,
+                                            "default": "1 + 2",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "e",
+                                            "optional": true,
+                                            "default": "self::FLAG",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "f",
+                                            "optional": true,
+                                            "default": "\"utf8 \u03b1\"",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "g",
+                                            "optional": true,
+                                            "default": "1.0",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "h",
+                                            "optional": true,
+                                            "default": "null",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "i",
+                                            "optional": true,
+                                            "default": "new Data()",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "j",
+                                            "optional": true,
+                                            "default": "-2 ** 3",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "k",
+                                            "optional": true,
+                                            "default": "1.0E+17",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "l",
+                                            "optional": true,
+                                            "default": "1.0E-5",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "m",
+                                            "optional": true,
+                                            "default": "10000000000000000.0",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "n",
+                                            "optional": true,
+                                            "default": "1.2E+20",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        },
+                                        {
+                                            "name": "o",
+                                            "optional": true,
+                                            "default": "\"\\u2028\"",
+                                            "variadic": false,
+                                            "by_ref": false,
+                                            "type": null,
+                                            "promoted": false
+                                        }
+                                    ],
+                                    "visibility": "public",
+                                    "static": false,
+                                    "abstract": false,
+                                    "final": false,
+                                    "return_type": null,
+                                    "return_by_ref": false
+                                }
+                            }
+                        }
+                    }
+                },
+                "calls": [],
+                "notices": []
+            },
+            "returns": [],
+            "descriptors": []
+        }
+    ]
+}

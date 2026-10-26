@@ -1,0 +1,1071 @@
+{
+    "reference_head": "8722f1a8fabbb539131c9463af5f87a655103740",
+    "reference_builder_sha256": "12ddb1ab2b81f59fb38fddb787a57ec89e6a4173b81780d03104bb3e3b28193c",
+    "reference_backend": "php",
+    "php_target": "8.5",
+    "scope": "symbols and dependency edges only; not full Basic facts",
+    "cases": [
+        {
+            "id": "imports",
+            "path": "app/Domain/Worker.php",
+            "source": "<?php\nnamespace Domain;\nuse Vendor\\{Port as Gateway, Model};\nclass Worker extends Model implements Gateway {\n    public Gateway|Model $port;\n    const Model C = Model::VALUE;\n    function run(?Gateway $port): Gateway&Model {\n        $x = new Model;\n        $x instanceof Gateway;\n        try { Model::run(...); Model::$property; } catch (\\Exception|\\Error $e) {}\n    }\n}",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "Domain\\Worker",
+                    4,
+                    "Domain",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    4,
+                    "extends",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    4,
+                    "implements",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    5,
+                    "property",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    5,
+                    "property",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    6,
+                    "property",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    6,
+                    "class-constant",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    7,
+                    "return",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    7,
+                    "return",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    7,
+                    "parameter",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    8,
+                    "new",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    9,
+                    "instanceof",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    10,
+                    "static",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Exception",
+                    10,
+                    "catch",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Error",
+                    10,
+                    "catch",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "imports-occurrences",
+            "path": "app/Domain/Worker.php",
+            "source": "<?php\nnamespace Domain;\nuse Vendor\\{Port as Gateway, Model};\nclass Worker extends Model implements Gateway {\n    public Gateway|Model $port;\n    const Model C = Model::VALUE;\n    function run(?Gateway $port): Gateway&Model {\n        $x = new Model;\n        $x instanceof Gateway;\n        try { Model::run(...); Model::$property; } catch (\\Exception|\\Error $e) {}\n    }\n}",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "Domain\\Worker",
+                    4,
+                    "Domain",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    4,
+                    "extends",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    4,
+                    "implements",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    5,
+                    "property",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    5,
+                    "property",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    6,
+                    "property",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    6,
+                    "class-constant",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    7,
+                    "return",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    7,
+                    "return",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    7,
+                    "parameter",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    8,
+                    "new",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Port",
+                    9,
+                    "instanceof",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    10,
+                    "static",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Vendor\\Model",
+                    10,
+                    "static",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Exception",
+                    10,
+                    "catch",
+                    true
+                ],
+                [
+                    "Domain\\Worker",
+                    "Error",
+                    10,
+                    "catch",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "declarations",
+            "path": "app/Mixed.php",
+            "source": "<?php\nnamespace Mixed;\n#[\\Attribute]\ninterface EmptyPort {}\ninterface Port extends \\Vendor\\Contract { function run(): \\Vendor\\Data; }\ntrait Shared { function retry() { new \\Vendor\\Data; } }\nenum Cases: string implements Port { case READY = 'ready'; function run(): \\Vendor\\Data {} }\nclass Worker { use Shared { retry as protected locked; } }",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "Mixed\\EmptyPort",
+                    3,
+                    "Mixed",
+                    "interface",
+                    false,
+                    false
+                ],
+                [
+                    "Mixed\\Port",
+                    5,
+                    "Mixed",
+                    "interface",
+                    true,
+                    true
+                ],
+                [
+                    "Mixed\\Shared",
+                    6,
+                    "Mixed",
+                    "trait",
+                    true,
+                    true
+                ],
+                [
+                    "Mixed\\Cases",
+                    7,
+                    "Mixed",
+                    "enum",
+                    true,
+                    true
+                ],
+                [
+                    "Mixed\\Worker",
+                    8,
+                    "Mixed",
+                    "class",
+                    false,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "Mixed\\EmptyPort",
+                    "Attribute",
+                    3,
+                    "attribute",
+                    true
+                ],
+                [
+                    "Mixed\\Port",
+                    "Vendor\\Contract",
+                    5,
+                    "extends",
+                    true
+                ],
+                [
+                    "Mixed\\Port",
+                    "Vendor\\Data",
+                    5,
+                    "return",
+                    true
+                ],
+                [
+                    "Mixed\\Shared",
+                    "Vendor\\Data",
+                    6,
+                    "new",
+                    true
+                ],
+                [
+                    "Mixed\\Cases",
+                    "Mixed\\Port",
+                    7,
+                    "implements",
+                    true
+                ],
+                [
+                    "Mixed\\Cases",
+                    "Vendor\\Data",
+                    7,
+                    "return",
+                    true
+                ],
+                [
+                    "Mixed\\Worker",
+                    "Mixed\\Shared",
+                    8,
+                    "trait",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "declarations-occurrences",
+            "path": "app/Mixed.php",
+            "source": "<?php\nnamespace Mixed;\n#[\\Attribute]\ninterface EmptyPort {}\ninterface Port extends \\Vendor\\Contract { function run(): \\Vendor\\Data; }\ntrait Shared { function retry() { new \\Vendor\\Data; } }\nenum Cases: string implements Port { case READY = 'ready'; function run(): \\Vendor\\Data {} }\nclass Worker { use Shared { retry as protected locked; } }",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "Mixed\\EmptyPort",
+                    3,
+                    "Mixed",
+                    "interface",
+                    false,
+                    false
+                ],
+                [
+                    "Mixed\\Port",
+                    5,
+                    "Mixed",
+                    "interface",
+                    true,
+                    true
+                ],
+                [
+                    "Mixed\\Shared",
+                    6,
+                    "Mixed",
+                    "trait",
+                    true,
+                    true
+                ],
+                [
+                    "Mixed\\Cases",
+                    7,
+                    "Mixed",
+                    "enum",
+                    true,
+                    true
+                ],
+                [
+                    "Mixed\\Worker",
+                    8,
+                    "Mixed",
+                    "class",
+                    false,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "Mixed\\EmptyPort",
+                    "Attribute",
+                    3,
+                    "attribute",
+                    true
+                ],
+                [
+                    "Mixed\\Port",
+                    "Vendor\\Contract",
+                    5,
+                    "extends",
+                    true
+                ],
+                [
+                    "Mixed\\Port",
+                    "Vendor\\Data",
+                    5,
+                    "return",
+                    true
+                ],
+                [
+                    "Mixed\\Shared",
+                    "Vendor\\Data",
+                    6,
+                    "new",
+                    true
+                ],
+                [
+                    "Mixed\\Cases",
+                    "Mixed\\Port",
+                    7,
+                    "implements",
+                    true
+                ],
+                [
+                    "Mixed\\Cases",
+                    "Vendor\\Data",
+                    7,
+                    "return",
+                    true
+                ],
+                [
+                    "Mixed\\Worker",
+                    "Mixed\\Shared",
+                    8,
+                    "trait",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "nested",
+            "path": "app/Worker.php",
+            "source": "<?php\nclass Worker {\n    function run() {\n        $nested = new class extends Base implements Port { function work() { new Service; } };\n        return function (Nested $arg): Returned { return new Service; };\n    }\n}",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "Worker",
+                    2,
+                    "",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "Worker",
+                    "Base",
+                    4,
+                    "extends",
+                    true
+                ],
+                [
+                    "Worker",
+                    "Port",
+                    4,
+                    "implements",
+                    true
+                ],
+                [
+                    "Worker",
+                    "Service",
+                    4,
+                    "new",
+                    true
+                ],
+                [
+                    "Worker",
+                    "Nested",
+                    5,
+                    "parameter",
+                    true
+                ],
+                [
+                    "Worker",
+                    "Service",
+                    5,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "nested-occurrences",
+            "path": "app/Worker.php",
+            "source": "<?php\nclass Worker {\n    function run() {\n        $nested = new class extends Base implements Port { function work() { new Service; } };\n        return function (Nested $arg): Returned { return new Service; };\n    }\n}",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "Worker",
+                    2,
+                    "",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "Worker",
+                    "Base",
+                    4,
+                    "extends",
+                    true
+                ],
+                [
+                    "Worker",
+                    "Port",
+                    4,
+                    "implements",
+                    true
+                ],
+                [
+                    "Worker",
+                    "Service",
+                    4,
+                    "new",
+                    true
+                ],
+                [
+                    "Worker",
+                    "Nested",
+                    5,
+                    "parameter",
+                    true
+                ],
+                [
+                    "Worker",
+                    "Service",
+                    5,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "eloquent",
+            "path": "app/Models/Entry.php",
+            "source": "<?php\nnamespace App\\Models;\nclass Entry {\n    function relations() {\n        $this->hasMany(Child::class);\n        $this->belongsTo(ParentModel::CUSTOM);\n        $this->morphTo(Target::class);\n        $this->ordinary(Other::class);\n        Child::class;\n        Child::OTHER;\n        self::run(); static::run(); parent::run();\n    }\n}",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "App\\Models\\Entry",
+                    3,
+                    "App\\Models",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Child",
+                    5,
+                    "eloquent-relation",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\ParentModel",
+                    6,
+                    "eloquent-relation",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\ParentModel",
+                    6,
+                    "class-constant",
+                    true
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Target",
+                    7,
+                    "eloquent-relation",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Other",
+                    8,
+                    "class-reference",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Child",
+                    9,
+                    "class-reference",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Child",
+                    10,
+                    "class-constant",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "eloquent-occurrences",
+            "path": "app/Models/Entry.php",
+            "source": "<?php\nnamespace App\\Models;\nclass Entry {\n    function relations() {\n        $this->hasMany(Child::class);\n        $this->belongsTo(ParentModel::CUSTOM);\n        $this->morphTo(Target::class);\n        $this->ordinary(Other::class);\n        Child::class;\n        Child::OTHER;\n        self::run(); static::run(); parent::run();\n    }\n}",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "App\\Models\\Entry",
+                    3,
+                    "App\\Models",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Child",
+                    5,
+                    "eloquent-relation",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\ParentModel",
+                    6,
+                    "eloquent-relation",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\ParentModel",
+                    6,
+                    "class-constant",
+                    true
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Target",
+                    7,
+                    "eloquent-relation",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Other",
+                    8,
+                    "class-reference",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Child",
+                    9,
+                    "class-reference",
+                    false
+                ],
+                [
+                    "App\\Models\\Entry",
+                    "App\\Models\\Child",
+                    10,
+                    "class-constant",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "classless",
+            "path": "routes/console.php",
+            "source": "<?php\nnamespace Console;\nuse Vendor\\Runner as R;\nfunction run(R $runner): R { return new R; }\n$callback = fn(R $runner): R => new R;\nnew R; new R;",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "(file) routes/console.php",
+                    1,
+                    "",
+                    "file",
+                    false,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    4,
+                    "parameter",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    4,
+                    "new",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    5,
+                    "parameter",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    5,
+                    "new",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    6,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "classless-occurrences",
+            "path": "routes/console.php",
+            "source": "<?php\nnamespace Console;\nuse Vendor\\Runner as R;\nfunction run(R $runner): R { return new R; }\n$callback = fn(R $runner): R => new R;\nnew R; new R;",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "(file) routes/console.php",
+                    1,
+                    "",
+                    "file",
+                    false,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    4,
+                    "parameter",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    4,
+                    "new",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    5,
+                    "parameter",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    5,
+                    "new",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    6,
+                    "new",
+                    true
+                ],
+                [
+                    "(file) routes/console.php",
+                    "Vendor\\Runner",
+                    6,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "anonymous-only",
+            "path": "routes/anonymous.php",
+            "source": "<?php $x = new class extends ParentClass { function run(Port $port): Result { return new Result; } };",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "(file) routes/anonymous.php",
+                    1,
+                    "",
+                    "file",
+                    false,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "(file) routes/anonymous.php",
+                    "ParentClass",
+                    1,
+                    "extends",
+                    true
+                ],
+                [
+                    "(file) routes/anonymous.php",
+                    "Result",
+                    1,
+                    "return",
+                    true
+                ],
+                [
+                    "(file) routes/anonymous.php",
+                    "Port",
+                    1,
+                    "parameter",
+                    true
+                ],
+                [
+                    "(file) routes/anonymous.php",
+                    "Result",
+                    1,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "anonymous-only-occurrences",
+            "path": "routes/anonymous.php",
+            "source": "<?php $x = new class extends ParentClass { function run(Port $port): Result { return new Result; } };",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "(file) routes/anonymous.php",
+                    1,
+                    "",
+                    "file",
+                    false,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "(file) routes/anonymous.php",
+                    "ParentClass",
+                    1,
+                    "extends",
+                    true
+                ],
+                [
+                    "(file) routes/anonymous.php",
+                    "Result",
+                    1,
+                    "return",
+                    true
+                ],
+                [
+                    "(file) routes/anonymous.php",
+                    "Port",
+                    1,
+                    "parameter",
+                    true
+                ],
+                [
+                    "(file) routes/anonymous.php",
+                    "Result",
+                    1,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "two-namespaces",
+            "path": "routes/two.php",
+            "source": "<?php namespace One { class First { function run() { new Thing; } } } namespace Two { class Second { function run() { new Thing; } } }",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "One\\First",
+                    1,
+                    "One",
+                    "class",
+                    true,
+                    true
+                ],
+                [
+                    "Two\\Second",
+                    1,
+                    "Two",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "One\\First",
+                    "One\\Thing",
+                    1,
+                    "new",
+                    true
+                ],
+                [
+                    "Two\\Second",
+                    "Two\\Thing",
+                    1,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "two-namespaces-occurrences",
+            "path": "routes/two.php",
+            "source": "<?php namespace One { class First { function run() { new Thing; } } } namespace Two { class Second { function run() { new Thing; } } }",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "One\\First",
+                    1,
+                    "One",
+                    "class",
+                    true,
+                    true
+                ],
+                [
+                    "Two\\Second",
+                    1,
+                    "Two",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "One\\First",
+                    "One\\Thing",
+                    1,
+                    "new",
+                    true
+                ],
+                [
+                    "Two\\Second",
+                    "Two\\Thing",
+                    1,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "test-path",
+            "path": "Modules/Billing/Tests/Unit/Test.php",
+            "source": "<?php namespace Billing\\Tests; class ExampleTest { function test_it() { new \\App\\Example; } }",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "Billing\\Tests\\ExampleTest",
+                    1,
+                    "Billing\\Tests",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "Billing\\Tests\\ExampleTest",
+                    "App\\Example",
+                    1,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "test-path-occurrences",
+            "path": "Modules/Billing/Tests/Unit/Test.php",
+            "source": "<?php namespace Billing\\Tests; class ExampleTest { function test_it() { new \\App\\Example; } }",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "Billing\\Tests\\ExampleTest",
+                    1,
+                    "Billing\\Tests",
+                    "class",
+                    true,
+                    true
+                ]
+            ],
+            "edges": [
+                [
+                    "Billing\\Tests\\ExampleTest",
+                    "App\\Example",
+                    1,
+                    "new",
+                    true
+                ]
+            ]
+        },
+        {
+            "id": "source-app",
+            "path": "app/bootstrap.php",
+            "source": "<?php function start(Port $port) { new Handler; } start(new Port);",
+            "preserve_occurrences": false,
+            "declarations": [],
+            "edges": []
+        },
+        {
+            "id": "source-app-occurrences",
+            "path": "app/bootstrap.php",
+            "source": "<?php function start(Port $port) { new Handler; } start(new Port);",
+            "preserve_occurrences": true,
+            "declarations": [],
+            "edges": []
+        },
+        {
+            "id": "empty",
+            "path": "routes/empty.php",
+            "source": "",
+            "preserve_occurrences": false,
+            "declarations": [
+                [
+                    "(file) routes/empty.php",
+                    1,
+                    "",
+                    "file",
+                    false,
+                    true
+                ]
+            ],
+            "edges": []
+        },
+        {
+            "id": "empty-occurrences",
+            "path": "routes/empty.php",
+            "source": "",
+            "preserve_occurrences": true,
+            "declarations": [
+                [
+                    "(file) routes/empty.php",
+                    1,
+                    "",
+                    "file",
+                    false,
+                    true
+                ]
+            ],
+            "edges": []
+        }
+    ]
+}

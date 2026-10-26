@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Impact\ExecutionLinks;
 use GracjanKubicki\ArchitectureKit\Impact\ExecutionSources;
 use GracjanKubicki\ArchitectureKit\Impact\HttpRouteDiscovery;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -38,6 +39,13 @@ final class ArchitectureDiscovery
         }
         try {
             if ($this->mode === AnalysisMode::Basic) {
+                if (($context = GraphRuntime::context($this->basePath)) !== null) {
+                    $response = (new GraphRuntime($context))->query('discovery', compact('query', 'kind', 'limit'));
+
+                    return isset($response['result']) ? [...$response['result'], 'runtime' => array_diff_key($response, ['result' => true])]
+                        : [...$response, 'cmd' => 'search', 'status' => $response['availability'], 'msg' => 'Map preparation is still running; use architecture-map result.'];
+                }
+
                 return $this->basicSearch($query, $kind, $limit);
             }
             AnalysisRuntime::stage('deep.discovery.execution');

@@ -12,6 +12,8 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphProductSpec;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -35,6 +37,14 @@ final readonly class ArchitectureImpact
      */
     public function inspect(string $subject, array $exclude = [], int $limit = 20, int $depth = 4, ?string $change = null, ?string $signature = null, ?string $targetClass = null, ?string $targetPath = null, ?string $table = null, ?string $tableMatch = null, ?string $connection = null, ?string $operation = null): array
     {
+        if ($this->mode === AnalysisMode::Basic && ! $this->reachMode && ($context = GraphRuntime::context($this->basePath)) !== null) {
+            $product = GraphProductSpec::full($this->basePath, 'impact', $this->scope, $exclude, $this->cache, $this->cacheConfiguration);
+            $response = (new GraphRuntime($context))->query('impact',
+                compact('subject', 'exclude', 'limit', 'depth', 'change', 'signature', 'targetClass', 'targetPath', 'table', 'tableMatch', 'connection', 'operation'), $product);
+
+            return isset($response['result']) ? [...$response['result'], 'runtime' => array_diff_key($response, ['result' => true])]
+                : [...$response, 'cmd' => 'impact', 'm' => 'E_MAP_PENDING', 'msg' => 'Collect architecture-map result using job_id.'];
+        }
         if ($table !== null && $this->mode === AnalysisMode::Basic) {
             return [...self::error('E_ANALYSIS_DEEP_REQUIRED', 'Table effects require explicit Deep analysis.'),
                 'analysis' => ['mode' => 'basic', 'checks_complete' => false, 'deep_run' => false]];

@@ -28,6 +28,9 @@ def build(directory: pathlib.Path) -> dict:
             capabilities = metadata["capabilities"]
         if not isinstance(capabilities, list) or metadata.get("capabilities") != capabilities:
             raise ValueError(f"Inconsistent engine capabilities for {platform}")
+        required = {"syntax-facts", "syntax-tree-v1", "syntax-flat-v1", "basic-file-facts-v1"}
+        if not all(isinstance(value, str) for value in capabilities) or set(capabilities) != required or len(capabilities) != len(required):
+            raise ValueError(f"Incomplete engine capabilities for {platform}")
         size = artifact.stat().st_size
         if size < 1 or size > 134217728 or artifact.is_symlink():
             raise ValueError(f"Invalid engine artifact for {platform}")

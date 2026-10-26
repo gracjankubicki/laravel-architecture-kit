@@ -14,8 +14,16 @@ final class StandaloneServer extends ArchitectureKitServer
 {
     public int $defaultPaginationLength = 50;
 
+    private bool $graphRequestSeen = false;
+
     protected function handleMessage(JsonRpcRequest $request, ServerContext $context): void
     {
+        if ($request->method === 'tools/call') {
+            if ($this->graphRequestSeen) {
+                GraphRuntime::beginRequest();
+            }
+            $this->graphRequestSeen = true;
+        }
         $transport = $this->transport;
         if (! $transport instanceof ReportStdioTransport || $request->method !== 'tools/call'
             || ! in_array($request->params['name'] ?? null, ['audit-changed', 'guard'], true)

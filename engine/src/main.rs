@@ -1,3 +1,11 @@
+mod basic;
+mod basic_calls;
+mod basic_container;
+mod basic_digest;
+mod basic_impact;
+mod basic_product;
+mod basic_structure;
+mod basic_tests;
 mod syntax;
 use mago_allocator::LocalArena;
 use mago_database::file::{File, FileId};
@@ -12,7 +20,7 @@ use mago_syntax::{
 };
 use serde_json::{Value, json};
 use std::borrow::Cow;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, Read, Write};
 
 fn fact(kind: &str, span: Span, source: &[u8], dynamic: bool, owner: Option<u32>) -> Value {
     json!({"kind":kind,"start":span.start.offset,"end":span.end.offset,
@@ -149,6 +157,15 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
     let php_version = request["php_version"]
         .as_str()
         .ok_or("Missing target PHP version")?;
+    let basic = request["product"] == basic_product::PRODUCT;
+    if request.get("product").is_some() && !basic && request["product"] != "syntax-tree-v1" {
+        return Err("Unsupported analysis product".into());
+    }
+    if basic {
+        if let Some(result) = basic_product::limited(request)? {
+            return Ok(result);
+        }
+    }
     let arena = LocalArena::new();
     let program = parse_file_content(&arena, FileId::new(path.as_bytes()), source);
     let target_version = php_version.parse::<PHPVersion>()?;
@@ -163,6 +180,7 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
         .collect();
     let mut facts = Vec::new();
     let mut syntax = json!({"nodes":[],"roots":[]});
+    let mut ir_built = false;
     if diagnostics.is_empty() {
         let names = NameResolver::new(&arena).resolve(program);
         let file = File::ephemeral(
@@ -172,11 +190,14 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
         for issue in SemanticsChecker::new(target_version).check(&file, program, &names) {
             // Mago 1.57 includes runtime checks and rejects final trait aliases
             // even on PHP >=8.3. Neither is a syntax failure on those targets.
-            let runtime_this = matches!(issue.message.as_ref(),
-                "Cannot use `$this` in a static closure." |
-                "Cannot use `$this` in a static arrow function.");
+            let runtime_this = matches!(
+                issue.message.as_ref(),
+                "Cannot use `$this` in a static closure."
+                    | "Cannot use `$this` in a static arrow function."
+            );
             let valid_final_alias = target_version >= PHPVersion::new(8, 3, 0)
-                && issue.message == "The `final` modifier is not allowed in a trait `as` adaptation.";
+                && issue.message
+                    == "The `final` modifier is not allowed in a trait `as` adaptation.";
             if issue.level == Level::Error && !runtime_this && !valid_final_alias {
                 let span = issue.primary_span();
                 diagnostics.push(json!({"category":"syntax_error", "message":issue.message,
@@ -187,7 +208,10 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
             match syntax::document(program, &names) {
                 Ok(tree) => {
                     syntax = tree;
-                    walk(Node::Program(program), source, None, &mut facts);
+                    ir_built = true;
+                    if !basic {
+                        walk(Node::Program(program), source, None, &mut facts);
+                    }
                 }
                 Err(error) => diagnostics.push(
                     json!({"category":"unsupported_syntax", "message":error.message,
@@ -195,6 +219,9 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
                 ),
             }
         }
+    }
+    if basic {
+        return basic_product::response(request, syntax, diagnostics, ir_built, None);
     }
     Ok(
         json!({"schema":SCHEMA, "path":path, "source_hash":source_hash,
@@ -208,22 +235,81 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_writer(
             &mut output,
             &json!({"engine":"mago", "version":VERSION,
-            "mago_version":MAGO_VERSION, "schema":SCHEMA, "capabilities":["syntax-facts", "syntax-tree-v1", "syntax-flat-v1"]}),
+            "mago_version":MAGO_VERSION, "schema":SCHEMA, "capabilities":["syntax-facts", "syntax-tree-v1", "syntax-flat-v1",basic_product::PRODUCT]}),
         )?;
         output.write_all(b"\n")?;
         return Ok(());
     }
-    for line in io::stdin().lock().lines() {
-        let line = line?;
-        if line.len() > 32 * 1024 * 1024 {
+    let mut input = io::stdin().lock();
+    loop {
+        let mut line = String::new();
+        let bytes = input
+            .by_ref()
+            .take(32 * 1024 * 1024 + 1)
+            .read_line(&mut line)?;
+        if bytes == 0 {
+            break;
+        }
+        if bytes > 32 * 1024 * 1024 {
             return Err("Source request exceeds 32 MiB".into());
         }
         let request: Value = serde_json::from_str(&line)?;
-        serde_json::to_writer(&mut output, &analyze(&request)?)?;
-        output.write_all(b"\n")?;
+        let mut bounded = BoundedOutput {
+            output: &mut output,
+            bytes: 0,
+        };
+        if request["product"] == "basic-file-facts-batch-v1" {
+            let requests = request["requests"]
+                .as_array()
+                .ok_or("Missing Basic batch requests")?;
+            if line.len() > 4 * 1024 * 1024
+                || requests.is_empty()
+                || requests.len() > 32
+                || request["schema"] != SCHEMA
+            {
+                return Err("Basic batch exceeds its count, byte or schema bounds".into());
+            }
+            bounded.write_all(
+                b"{\"schema\":1,\"product\":\"basic-file-facts-batch-v1\",\"results\":[",
+            )?;
+            for (index, request) in requests.iter().enumerate() {
+                if request["product"] != basic_product::PRODUCT {
+                    return Err("A Basic batch cannot contain another product".into());
+                }
+                if index > 0 {
+                    bounded.write_all(b",")?;
+                }
+                let result = analyze(request)?;
+                serde_json::to_writer(&mut bounded, &result)?;
+            }
+            bounded.write_all(b"]}\n")?;
+        } else {
+            serde_json::to_writer(&mut bounded, &analyze(&request)?)?;
+            bounded.write_all(b"\n")?;
+        }
         output.flush()?;
     }
     Ok(())
+}
+
+struct BoundedOutput<'a, W: Write> {
+    output: &'a mut W,
+    bytes: usize,
+}
+impl<W: Write> Write for BoundedOutput<'_, W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() > 64 * 1024 * 1024 - self.bytes {
+            return Err(io::Error::other(
+                "Analysis response exceeds 64 MiB. Analysis is incomplete.",
+            ));
+        }
+        let count = self.output.write(bytes)?;
+        self.bytes += count;
+        Ok(count)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.output.flush()
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -272,6 +358,18 @@ mod tests {
         let mut input = request("<?php helper();");
         input["schema"] = json!(2);
         assert!(analyze(&input).is_err());
+    }
+
+    #[test]
+    fn response_byte_budget_accepts_the_last_byte_and_rejects_the_next_without_writing_it() {
+        let mut output = Vec::new();
+        let mut writer = BoundedOutput {
+            output: &mut output,
+            bytes: 64 * 1024 * 1024 - 1,
+        };
+        assert_eq!(writer.write(b"x").unwrap(), 1);
+        assert!(writer.write(b"y").is_err());
+        assert_eq!(output, b"x");
     }
 
     #[test]

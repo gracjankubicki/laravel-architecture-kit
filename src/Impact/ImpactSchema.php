@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntimeSchema;
+
 final readonly class ImpactSchema
 {
     /** @return array<string, mixed> */
@@ -13,7 +15,7 @@ final readonly class ImpactSchema
         $base = ['v' => ['const' => 1], 'cmd' => ['const' => 'impact'], 'ok' => ['type' => 'boolean']];
         $flowProperties = ['authorization' => ['type' => 'object'], 'flows' => $rows, 'flow_analysis' => ['type' => 'object']];
 
-        return ['$schema' => 'https://json-schema.org/draft/2020-12/schema', 'title' => 'Architecture Kit impact agent output', 'oneOf' => [
+        $schema = ['$schema' => 'https://json-schema.org/draft/2020-12/schema', 'title' => 'Architecture Kit impact agent output', 'oneOf' => [
             ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'subject', 'dependents', 'dependencies', 'possible', 'references', 'class_context', 'tests', 'analysis', 'cache', 'snapshot', 'scope', 'next'],
                 'properties' => [...$base, 'reach' => ['type' => 'object'], 'classification' => ['type' => 'object'], 'ok' => ['const' => true], 'signature_overview' => ['type' => 'object'], 'pagination' => ['type' => 'object'], 'normalized_intent' => ['type' => 'object'], 'subject' => ['type' => 'object'], 'dependents' => $rows, 'dependencies' => $rows,
                     'possible' => ['type' => 'object', 'required' => ['dependents', 'dependencies', 'overrides'], 'properties' => ['dependents' => $rows, 'dependencies' => $rows, 'overrides' => $rows], 'additionalProperties' => false],
@@ -28,5 +30,16 @@ final readonly class ImpactSchema
             ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'm', 'msg', 'next'], 'properties' => [...$base, 'ok' => ['const' => false], 'm' => ['type' => 'string'], 'msg' => ['type' => 'string'], 'next' => ['type' => 'array', 'items' => ['type' => 'string']], 'candidates' => $rows, 'trunc' => ['type' => 'boolean']], 'additionalProperties' => false],
             TableSchema::get(),
         ]];
+
+        $schema['oneOf'][0]['properties']['analysis']['properties'] += ['mode' => ['enum' => ['basic', 'deep']],
+            'checks_complete' => ['type' => 'boolean'], 'deep_run' => ['type' => 'boolean'], 'computed_counts' => ['type' => 'object']];
+        foreach (['execution', 'data'] as $channel) {
+            $schema['oneOf'][0]['properties'][$channel] = ['oneOf' => [$schema['oneOf'][0]['properties'][$channel],
+                ['type' => 'object', 'required' => ['status', 'fresh', 'truncated', 'limitations'],
+                    'properties' => ['status' => ['const' => 'not_run'], 'fresh' => ['type' => 'boolean'],
+                        'truncated' => ['type' => 'boolean'], 'limitations' => ['type' => 'array']]]]];
+        }
+
+        return GraphRuntimeSchema::extend($schema);
     }
 }

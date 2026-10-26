@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrence;
 use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrenceResolver;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphPending;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
@@ -54,7 +55,13 @@ class ExplainCommand extends Command
             return self::FAILURE;
         }
 
-        $explanation = $codes->explain($code, $this->occurrence($code));
+        try {
+            $explanation = $codes->explain($code, $this->occurrence($code));
+        } catch (GraphPending $pending) {
+            $this->line($this->json($pending->response));
+
+            return self::SUCCESS;
+        }
 
         if ($explanation === null) {
             $payload = [

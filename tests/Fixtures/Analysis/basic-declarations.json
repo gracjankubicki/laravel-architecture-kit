@@ -1,0 +1,3738 @@
+{
+    "reference_head": "8722f1a8fabbb539131c9463af5f87a655103740",
+    "reference_extractor_sha256": "bbdfe7b108432f73f7ab41e87214c40bee671b6afa999b469ccb0dfe39db7562",
+    "backend": "php",
+    "php_target": "8.5",
+    "scope": "PhpCatalogExtractor only, not complete Basic catalog",
+    "cases": [
+        {
+            "id": "imports",
+            "path": "app/Domain/Worker.php",
+            "source": "<?php\nnamespace Domain;\nuse Vendor\\{Port as Gateway, Model};\nclass Worker extends Model implements Gateway {\n    public Gateway|Model $port;\n    const Model C = Model::VALUE;\n    function run(?Gateway $port): Gateway&Model {\n        $x = new Model;\n        $x instanceof Gateway;\n        try { Model::run(...); Model::$property; } catch (\\Exception|\\Error $e) {}\n    }\n}",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Domain/Worker.php",
+                                0
+                            ]
+                        },
+                        "name": "app/Domain/Worker.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 12,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "name": "Domain\\Worker",
+                        "kind": "class",
+                        "line": 4,
+                        "end_line": 12,
+                        "offset": 61,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Domain/Worker.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 369
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "Domain\\Worker::$port",
+                                134
+                            ]
+                        },
+                        "name": "Domain\\Worker::$port",
+                        "kind": "property",
+                        "line": 5,
+                        "end_line": 5,
+                        "offset": 134,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "types": [
+                                "Vendor\\Port",
+                                "Vendor\\Model"
+                            ],
+                            "visibility": "public",
+                            "static": false,
+                            "end_offset": 138
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Domain\\Worker::run",
+                                179
+                            ]
+                        },
+                        "name": "Domain\\Worker::run",
+                        "kind": "method",
+                        "line": 7,
+                        "end_line": 11,
+                        "offset": 179,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [
+                                "Vendor\\Port",
+                                "Vendor\\Model"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "port",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [
+                                        "Vendor\\Port"
+                                    ],
+                                    "line": 7
+                                }
+                            ],
+                            "end_offset": 367
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Domain/Worker.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 4,
+                        "end_line": 12,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "to": "php:Vendor\\Model",
+                        "kind": "extends",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "to": "php:Vendor\\Port",
+                        "kind": "implements",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "to": "php:Vendor\\Port",
+                        "kind": "type-reference",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "to": "php:Vendor\\Model",
+                        "kind": "type-reference",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "Domain\\Worker::$port",
+                                134
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Domain\\Worker",
+                                61
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Domain\\Worker::run",
+                                179
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 7,
+                        "end_line": 11,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Domain\\Worker::run",
+                                179
+                            ]
+                        },
+                        "to": "php:Vendor\\Port",
+                        "kind": "type-reference",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Domain\\Worker::run",
+                                179
+                            ]
+                        },
+                        "to": "php:Vendor\\Model",
+                        "kind": "type-reference",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Domain\\Worker::run",
+                                179
+                            ]
+                        },
+                        "to": "php:Vendor\\Port",
+                        "kind": "type-reference",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "declarations",
+            "path": "app/Mixed.php",
+            "source": "<?php\nnamespace Mixed;\n#[\\Attribute]\ninterface EmptyPort {}\ninterface Port extends \\Vendor\\Contract { function run(): \\Vendor\\Data; }\ntrait Shared { function retry() { new \\Vendor\\Data; } }\nenum Cases: string implements Port { case READY = 'ready'; function run(): \\Vendor\\Data {} }\nclass Worker { use Shared { retry as protected locked; } }",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "name": "app/Mixed.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 8,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\EmptyPort",
+                                23
+                            ]
+                        },
+                        "name": "Mixed\\EmptyPort",
+                        "kind": "interface",
+                        "line": 3,
+                        "end_line": 4,
+                        "offset": 23,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 58
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Attribute",
+                                25
+                            ]
+                        },
+                        "name": "Attribute",
+                        "kind": "attribute",
+                        "line": 3,
+                        "end_line": 3,
+                        "offset": 25,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\EmptyPort",
+                                23
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "end_offset": 34
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\Port",
+                                60
+                            ]
+                        },
+                        "name": "Mixed\\Port",
+                        "kind": "interface",
+                        "line": 5,
+                        "end_line": 5,
+                        "offset": 60,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 132
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Port::run",
+                                102
+                            ]
+                        },
+                        "name": "Mixed\\Port::run",
+                        "kind": "method",
+                        "line": 5,
+                        "end_line": 5,
+                        "offset": 102,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\Port",
+                                60
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [
+                                "Vendor\\Data"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": false,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 130
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "trait",
+                                "Mixed\\Shared",
+                                134
+                            ]
+                        },
+                        "name": "Mixed\\Shared",
+                        "kind": "trait",
+                        "line": 6,
+                        "end_line": 6,
+                        "offset": 134,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 188
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Shared::retry",
+                                149
+                            ]
+                        },
+                        "name": "Mixed\\Shared::retry",
+                        "kind": "method",
+                        "line": 6,
+                        "end_line": 6,
+                        "offset": 149,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "trait",
+                                "Mixed\\Shared",
+                                134
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 186
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "enum",
+                                "Mixed\\Cases",
+                                190
+                            ]
+                        },
+                        "name": "Mixed\\Cases",
+                        "kind": "enum",
+                        "line": 7,
+                        "end_line": 7,
+                        "offset": 190,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 281
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "enum-case",
+                                "Mixed\\Cases::READY",
+                                227
+                            ]
+                        },
+                        "name": "Mixed\\Cases::READY",
+                        "kind": "enum-case",
+                        "line": 7,
+                        "end_line": 7,
+                        "offset": 227,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "enum",
+                                "Mixed\\Cases",
+                                190
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "end_offset": 247
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Cases::run",
+                                249
+                            ]
+                        },
+                        "name": "Mixed\\Cases::run",
+                        "kind": "method",
+                        "line": 7,
+                        "end_line": 7,
+                        "offset": 249,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "enum",
+                                "Mixed\\Cases",
+                                190
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [
+                                "Vendor\\Data"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 279
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Mixed\\Worker",
+                                283
+                            ]
+                        },
+                        "name": "Mixed\\Worker",
+                        "kind": "class",
+                        "line": 8,
+                        "end_line": 8,
+                        "offset": 283,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": true,
+                            "trait_rules": [
+                                {
+                                    "trait": null,
+                                    "method": "retry",
+                                    "alias": "locked",
+                                    "excluded": [],
+                                    "visibility": "protected",
+                                    "final": false
+                                }
+                            ],
+                            "end_offset": 340
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\EmptyPort",
+                                23
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 3,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\EmptyPort",
+                                23
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Attribute",
+                                25
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 3,
+                        "end_line": 3,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Attribute",
+                                25
+                            ]
+                        },
+                        "to": "php:Attribute",
+                        "kind": "attribute-type",
+                        "line": 3,
+                        "end_line": 3,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\Port",
+                                60
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\Port",
+                                60
+                            ]
+                        },
+                        "to": "php:Vendor\\Contract",
+                        "kind": "extends",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "interface",
+                                "Mixed\\Port",
+                                60
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Port::run",
+                                102
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Port::run",
+                                102
+                            ]
+                        },
+                        "to": "php:Vendor\\Data",
+                        "kind": "type-reference",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "trait",
+                                "Mixed\\Shared",
+                                134
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "trait",
+                                "Mixed\\Shared",
+                                134
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Shared::retry",
+                                149
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "enum",
+                                "Mixed\\Cases",
+                                190
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "enum",
+                                "Mixed\\Cases",
+                                190
+                            ]
+                        },
+                        "to": "php:Mixed\\Port",
+                        "kind": "implements",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "enum",
+                                "Mixed\\Cases",
+                                190
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "enum-case",
+                                "Mixed\\Cases::READY",
+                                227
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "enum",
+                                "Mixed\\Cases",
+                                190
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Cases::run",
+                                249
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Cases::run",
+                                249
+                            ]
+                        },
+                        "to": "php:Vendor\\Data",
+                        "kind": "type-reference",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Mixed.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Mixed\\Worker",
+                                283
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Mixed\\Worker",
+                                283
+                            ]
+                        },
+                        "to": "php:Mixed\\Shared",
+                        "kind": "uses-trait",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "nested",
+            "path": "app/Worker.php",
+            "source": "<?php\nclass Worker {\n    function run() {\n        $nested = new class extends Base implements Port { function work() { new Service; } };\n        return function (Nested $arg): Returned { return new Service; };\n    }\n}",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Worker.php",
+                                0
+                            ]
+                        },
+                        "name": "app/Worker.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 7,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Worker",
+                                6
+                            ]
+                        },
+                        "name": "Worker",
+                        "kind": "class",
+                        "line": 2,
+                        "end_line": 7,
+                        "offset": 6,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Worker.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 216
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Worker::run",
+                                25
+                            ]
+                        },
+                        "name": "Worker::run",
+                        "kind": "method",
+                        "line": 3,
+                        "end_line": 6,
+                        "offset": 25,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Worker",
+                                6
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    145
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 214
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) app/Worker.php:64",
+                                64
+                            ]
+                        },
+                        "name": "(anonymous) app/Worker.php:64",
+                        "kind": "class",
+                        "line": 4,
+                        "end_line": 4,
+                        "offset": 64,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Worker::run",
+                                25
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": true,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 134
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) app/Worker.php:64::work",
+                                101
+                            ]
+                        },
+                        "name": "(anonymous) app/Worker.php:64::work",
+                        "kind": "method",
+                        "line": 4,
+                        "end_line": 4,
+                        "offset": 101,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) app/Worker.php:64",
+                                64
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 132
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Worker.php:152",
+                                152
+                            ]
+                        },
+                        "name": "(closure) app/Worker.php:152",
+                        "kind": "closure",
+                        "line": 5,
+                        "end_line": 5,
+                        "offset": 152,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Worker::run",
+                                25
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "arrow": false,
+                            "return_types": [
+                                "Returned"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "arg",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    187
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [
+                                        "Nested"
+                                    ],
+                                    "line": 5
+                                }
+                            ],
+                            "end_offset": 207
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Worker.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Worker",
+                                6
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 2,
+                        "end_line": 7,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Worker",
+                                6
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Worker::run",
+                                25
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 3,
+                        "end_line": 6,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Worker::run",
+                                25
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) app/Worker.php:64",
+                                64
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) app/Worker.php:64",
+                                64
+                            ]
+                        },
+                        "to": "php:Base",
+                        "kind": "extends",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) app/Worker.php:64",
+                                64
+                            ]
+                        },
+                        "to": "php:Port",
+                        "kind": "implements",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) app/Worker.php:64",
+                                64
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) app/Worker.php:64::work",
+                                101
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Worker::run",
+                                25
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Worker.php:152",
+                                152
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Worker.php:152",
+                                152
+                            ]
+                        },
+                        "to": "php:Returned",
+                        "kind": "type-reference",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Worker.php:152",
+                                152
+                            ]
+                        },
+                        "to": "php:Nested",
+                        "kind": "type-reference",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "eloquent",
+            "path": "app/Models/Entry.php",
+            "source": "<?php\nnamespace App\\Models;\nclass Entry {\n    function relations() {\n        $this->hasMany(Child::class);\n        $this->belongsTo(ParentModel::CUSTOM);\n        $this->morphTo(Target::class);\n        $this->ordinary(Other::class);\n        Child::class;\n        Child::OTHER;\n        self::run(); static::run(); parent::run();\n    }\n}",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Models/Entry.php",
+                                0
+                            ]
+                        },
+                        "name": "app/Models/Entry.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 13,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Models\\Entry",
+                                28
+                            ]
+                        },
+                        "name": "App\\Models\\Entry",
+                        "kind": "class",
+                        "line": 3,
+                        "end_line": 13,
+                        "offset": 28,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Models/Entry.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 333
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "name": "App\\Models\\Entry::relations",
+                        "kind": "method",
+                        "line": 4,
+                        "end_line": 12,
+                        "offset": 46,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Models\\Entry",
+                                28
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 331
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Models/Entry.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Models\\Entry",
+                                28
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 3,
+                        "end_line": 13,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Models\\Entry",
+                                28
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 4,
+                        "end_line": 12,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "classless",
+            "path": "routes/console.php",
+            "source": "<?php\nnamespace Console;\nuse Vendor\\Runner as R;\nfunction run(R $runner): R { return new R; }\n$callback = fn(R $runner): R => new R;\nnew R; new R;",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/console.php",
+                                0
+                            ]
+                        },
+                        "name": "routes/console.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 6,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "Console\\run",
+                                49
+                            ]
+                        },
+                        "name": "Console\\run",
+                        "kind": "function",
+                        "line": 4,
+                        "end_line": 4,
+                        "offset": 49,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/console.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "return_types": [
+                                "Vendor\\Runner"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "runner",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    78
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [
+                                        "Vendor\\Runner"
+                                    ],
+                                    "line": 4
+                                }
+                            ],
+                            "end_offset": 92
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) routes/console.php:106",
+                                106
+                            ]
+                        },
+                        "name": "(closure) routes/console.php:106",
+                        "kind": "closure",
+                        "line": 5,
+                        "end_line": 5,
+                        "offset": 106,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/console.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "arrow": true,
+                            "return_types": [
+                                "Vendor\\Runner"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "runner",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    106
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [
+                                        "Vendor\\Runner"
+                                    ],
+                                    "line": 5
+                                }
+                            ],
+                            "end_offset": 130
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/console.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "Console\\run",
+                                49
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "Console\\run",
+                                49
+                            ]
+                        },
+                        "to": "php:Vendor\\Runner",
+                        "kind": "type-reference",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "Console\\run",
+                                49
+                            ]
+                        },
+                        "to": "php:Vendor\\Runner",
+                        "kind": "type-reference",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/console.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) routes/console.php:106",
+                                106
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) routes/console.php:106",
+                                106
+                            ]
+                        },
+                        "to": "php:Vendor\\Runner",
+                        "kind": "type-reference",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) routes/console.php:106",
+                                106
+                            ]
+                        },
+                        "to": "php:Vendor\\Runner",
+                        "kind": "type-reference",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "anonymous-only",
+            "path": "routes/anonymous.php",
+            "source": "<?php $x = new class extends ParentClass { function run(Port $port): Result { return new Result; } };",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/anonymous.php",
+                                0
+                            ]
+                        },
+                        "name": "routes/anonymous.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) routes/anonymous.php:15",
+                                15
+                            ]
+                        },
+                        "name": "(anonymous) routes/anonymous.php:15",
+                        "kind": "class",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 15,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/anonymous.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": true,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 99
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) routes/anonymous.php:15::run",
+                                43
+                            ]
+                        },
+                        "name": "(anonymous) routes/anonymous.php:15::run",
+                        "kind": "method",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 43,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) routes/anonymous.php:15",
+                                15
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [
+                                "Result"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "port",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    78
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [
+                                        "Port"
+                                    ],
+                                    "line": 1
+                                }
+                            ],
+                            "end_offset": 97
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/anonymous.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) routes/anonymous.php:15",
+                                15
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) routes/anonymous.php:15",
+                                15
+                            ]
+                        },
+                        "to": "php:ParentClass",
+                        "kind": "extends",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "(anonymous) routes/anonymous.php:15",
+                                15
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) routes/anonymous.php:15::run",
+                                43
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) routes/anonymous.php:15::run",
+                                43
+                            ]
+                        },
+                        "to": "php:Result",
+                        "kind": "type-reference",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) routes/anonymous.php:15::run",
+                                43
+                            ]
+                        },
+                        "to": "php:Port",
+                        "kind": "type-reference",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "two-namespaces",
+            "path": "routes/two.php",
+            "source": "<?php namespace One { class First { function run() { new Thing; } } } namespace Two { class Second { function run() { new Thing; } } }",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/two.php",
+                                0
+                            ]
+                        },
+                        "name": "routes/two.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "One\\First",
+                                22
+                            ]
+                        },
+                        "name": "One\\First",
+                        "kind": "class",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 22,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/two.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 66
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "One\\First::run",
+                                36
+                            ]
+                        },
+                        "name": "One\\First::run",
+                        "kind": "method",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 36,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "One\\First",
+                                22
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 64
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Two\\Second",
+                                86
+                            ]
+                        },
+                        "name": "Two\\Second",
+                        "kind": "class",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 86,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/two.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 131
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Two\\Second::run",
+                                101
+                            ]
+                        },
+                        "name": "Two\\Second::run",
+                        "kind": "method",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 101,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Two\\Second",
+                                86
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 129
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/two.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "One\\First",
+                                22
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "One\\First",
+                                22
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "One\\First::run",
+                                36
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/two.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Two\\Second",
+                                86
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Two\\Second",
+                                86
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Two\\Second::run",
+                                101
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "test-path",
+            "path": "Modules/Billing/Tests/Unit/Test.php",
+            "source": "<?php namespace Billing\\Tests; class ExampleTest { function test_it() { new \\App\\Example; } }",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "Modules/Billing/Tests/Unit/Test.php",
+                                0
+                            ]
+                        },
+                        "name": "Modules/Billing/Tests/Unit/Test.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Billing\\Tests\\ExampleTest",
+                                31
+                            ]
+                        },
+                        "name": "Billing\\Tests\\ExampleTest",
+                        "kind": "class",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 31,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "Modules/Billing/Tests/Unit/Test.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": false,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 92
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Billing\\Tests\\ExampleTest::test_it",
+                                51
+                            ]
+                        },
+                        "name": "Billing\\Tests\\ExampleTest::test_it",
+                        "kind": "method",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 51,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Billing\\Tests\\ExampleTest",
+                                31
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 90
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "Modules/Billing/Tests/Unit/Test.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Billing\\Tests\\ExampleTest",
+                                31
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "Billing\\Tests\\ExampleTest",
+                                31
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Billing\\Tests\\ExampleTest::test_it",
+                                51
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "source-app",
+            "path": "app/bootstrap.php",
+            "source": "<?php function start(Port $port) { new Handler; } start(new Port);",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/bootstrap.php",
+                                0
+                            ]
+                        },
+                        "name": "app/bootstrap.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "start",
+                                6
+                            ]
+                        },
+                        "name": "start",
+                        "kind": "function",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 6,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/bootstrap.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "port",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [
+                                        "Port"
+                                    ],
+                                    "line": 1
+                                }
+                            ],
+                            "end_offset": 48
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/bootstrap.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "start",
+                                6
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "start",
+                                6
+                            ]
+                        },
+                        "to": "php:Port",
+                        "kind": "type-reference",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "empty",
+            "path": "routes/empty.php",
+            "source": "",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/empty.php",
+                                0
+                            ]
+                        },
+                        "name": "routes/empty.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 1,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    }
+                ],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "metadata",
+            "path": "app/Meta.php",
+            "source": "<?php\nnamespace App;\nuse Illuminate\\Http\\Resources\\Attributes\\Collects;\nuse Illuminate\\Routing\\Attributes\\Controllers\\Middleware;\n#[Collects(Data::class)]\n#[Middleware('auth', only: ['show', 'index'], except: null)]\nfinal class Meta {\n    public $collects = Data::class;\n    protected $connector = Connector::class;\n    public $allowBaseUrlOverride = false;\n    public function __construct(private Data $data) {}\n    public function create($first, $second = null, ...$rest) { return new Data; }\n    public function closure() { return fn(Data $data) => $data; }\n    public function factory() { return self::create(); }\n}",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Meta.php",
+                                0
+                            ]
+                        },
+                        "name": "app/Meta.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 15,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "name": "App\\Meta",
+                        "kind": "class",
+                        "line": 5,
+                        "end_line": 15,
+                        "offset": 130,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Meta.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "anonymous": false,
+                            "abstract": false,
+                            "final": true,
+                            "trait_adaptations": false,
+                            "trait_rules": [],
+                            "end_offset": 618
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Illuminate\\Http\\Resources\\Attributes\\Collects",
+                                132
+                            ]
+                        },
+                        "name": "Illuminate\\Http\\Resources\\Attributes\\Collects",
+                        "kind": "attribute",
+                        "line": 5,
+                        "end_line": 5,
+                        "offset": 132,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "resource_collects": {
+                                "resolved": true,
+                                "target": "App\\Data"
+                            },
+                            "end_offset": 152
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Illuminate\\Routing\\Attributes\\Controllers\\Middleware",
+                                157
+                            ]
+                        },
+                        "name": "Illuminate\\Routing\\Attributes\\Controllers\\Middleware",
+                        "kind": "attribute",
+                        "line": 6,
+                        "end_line": 6,
+                        "offset": 157,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "controller_middleware": {
+                                "middleware": "auth",
+                                "only": [
+                                    "show",
+                                    "index"
+                                ],
+                                "except": [],
+                                "filters_resolved": true,
+                                "shape_resolved": true
+                            },
+                            "end_offset": 213
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$collects",
+                                246
+                            ]
+                        },
+                        "name": "App\\Meta::$collects",
+                        "kind": "property",
+                        "line": 8,
+                        "end_line": 8,
+                        "offset": 246,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "types": [],
+                            "visibility": "public",
+                            "static": false,
+                            "resource_collects": {
+                                "resolved": true,
+                                "target": "App\\Data"
+                            },
+                            "end_offset": 268
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$connector",
+                                285
+                            ]
+                        },
+                        "name": "App\\Meta::$connector",
+                        "kind": "property",
+                        "line": 9,
+                        "end_line": 9,
+                        "offset": 285,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "types": [],
+                            "visibility": "protected",
+                            "static": false,
+                            "saloon_connector": {
+                                "resolved": true,
+                                "type": "App\\Connector"
+                            },
+                            "end_offset": 313
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$allowBaseUrlOverride",
+                                327
+                            ]
+                        },
+                        "name": "App\\Meta::$allowBaseUrlOverride",
+                        "kind": "property",
+                        "line": 10,
+                        "end_line": 10,
+                        "offset": 327,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "types": [],
+                            "visibility": "public",
+                            "static": false,
+                            "saloon_url_override": {
+                                "resolved": true,
+                                "value": false
+                            },
+                            "end_offset": 355
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::__construct",
+                                362
+                            ]
+                        },
+                        "name": "App\\Meta::__construct",
+                        "kind": "method",
+                        "line": 11,
+                        "end_line": 11,
+                        "offset": 362,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "data",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [
+                                        "App\\Data"
+                                    ],
+                                    "line": 11
+                                }
+                            ],
+                            "end_offset": 411
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$data",
+                                390
+                            ]
+                        },
+                        "name": "App\\Meta::$data",
+                        "kind": "property",
+                        "line": 11,
+                        "end_line": 11,
+                        "offset": 390,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::__construct",
+                                362
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "promoted": true,
+                            "visibility": "private",
+                            "static": false,
+                            "types": [
+                                "App\\Data"
+                            ],
+                            "end_offset": 407
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::create",
+                                417
+                            ]
+                        },
+                        "name": "App\\Meta::create",
+                        "kind": "method",
+                        "line": 12,
+                        "end_line": 12,
+                        "offset": 417,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [
+                                "App\\Data"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "first",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    },
+                                    {
+                                        "name": "second",
+                                        "required": false,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    },
+                                    {
+                                        "name": "rest",
+                                        "required": false,
+                                        "variadic": true,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    476
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [],
+                                    "line": 12
+                                },
+                                {
+                                    "types": [],
+                                    "line": 12
+                                },
+                                {
+                                    "types": [],
+                                    "line": 12
+                                }
+                            ],
+                            "end_offset": 493
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::closure",
+                                499
+                            ]
+                        },
+                        "name": "App\\Meta::closure",
+                        "kind": "method",
+                        "line": 13,
+                        "end_line": 13,
+                        "offset": 499,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [
+                                "@closure:(closure) app/Meta.php:534"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    527
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 559
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Meta.php:534",
+                                534
+                            ]
+                        },
+                        "name": "(closure) app/Meta.php:534",
+                        "kind": "closure",
+                        "line": 13,
+                        "end_line": 13,
+                        "offset": 534,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::closure",
+                                499
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "arrow": true,
+                            "return_types": [
+                                "App\\Data"
+                            ],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": [
+                                    {
+                                        "name": "data",
+                                        "required": true,
+                                        "variadic": false,
+                                        "by_ref": false
+                                    }
+                                ]
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    534
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [
+                                {
+                                    "types": [
+                                        "App\\Data"
+                                    ],
+                                    "line": 13
+                                }
+                            ],
+                            "end_offset": 556
+                        }
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::factory",
+                                565
+                            ]
+                        },
+                        "name": "App\\Meta::factory",
+                        "kind": "method",
+                        "line": 14,
+                        "end_line": 14,
+                        "offset": 565,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "static": false,
+                            "final": false,
+                            "abstract": false,
+                            "visibility": "public",
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": true,
+                                "offsets": [
+                                    593
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "static_return": {
+                                "class": "App\\Meta",
+                                "method": "create"
+                            },
+                            "end_offset": 616
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Meta.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 5,
+                        "end_line": 15,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Illuminate\\Http\\Resources\\Attributes\\Collects",
+                                132
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Illuminate\\Http\\Resources\\Attributes\\Collects",
+                                132
+                            ]
+                        },
+                        "to": "php:Illuminate\\Http\\Resources\\Attributes\\Collects",
+                        "kind": "attribute-type",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Illuminate\\Routing\\Attributes\\Controllers\\Middleware",
+                                157
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "attribute",
+                                "Illuminate\\Routing\\Attributes\\Controllers\\Middleware",
+                                157
+                            ]
+                        },
+                        "to": "php:Illuminate\\Routing\\Attributes\\Controllers\\Middleware",
+                        "kind": "attribute-type",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$collects",
+                                246
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$connector",
+                                285
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 9,
+                        "end_line": 9,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$allowBaseUrlOverride",
+                                327
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 10,
+                        "end_line": 10,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::__construct",
+                                362
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::__construct",
+                                362
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$data",
+                                390
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "property",
+                                "App\\Meta::$data",
+                                390
+                            ]
+                        },
+                        "to": "php:App\\Data",
+                        "kind": "type-reference",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::create",
+                                417
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 12,
+                        "end_line": 12,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::closure",
+                                499
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 13,
+                        "end_line": 13,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::closure",
+                                499
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Meta.php:534",
+                                534
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 13,
+                        "end_line": 13,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Meta.php:534",
+                                534
+                            ]
+                        },
+                        "to": "php:App\\Data",
+                        "kind": "type-reference",
+                        "line": 13,
+                        "end_line": 13,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "class",
+                                "App\\Meta",
+                                130
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::factory",
+                                565
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 14,
+                        "end_line": 14,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "includes",
+            "path": "routes/load.php",
+            "source": "<?php\ninclude __DIR__.'/../app/start.php';\nrequire 'helpers.php';\ninclude $dynamic;\n$callback = function () { yield 1; return 2; };",
+            "expected": {
+                "v": 3,
+                "elements": [
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/load.php",
+                                0
+                            ]
+                        },
+                        "name": "routes/load.php",
+                        "kind": "file",
+                        "line": 1,
+                        "end_line": 5,
+                        "offset": 0,
+                        "parent": null,
+                        "roles": [],
+                        "metadata": []
+                    },
+                    {
+                        "id": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) routes/load.php:96",
+                                96
+                            ]
+                        },
+                        "name": "(closure) routes/load.php:96",
+                        "kind": "closure",
+                        "line": 5,
+                        "end_line": 5,
+                        "offset": 96,
+                        "parent": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/load.php",
+                                0
+                            ]
+                        },
+                        "roles": [],
+                        "metadata": {
+                            "arrow": false,
+                            "return_types": [],
+                            "call_parameters": {
+                                "complete": true,
+                                "parameters": []
+                            },
+                            "return_sites": {
+                                "complete": false,
+                                "offsets": [
+                                    119
+                                ],
+                                "limit_reason": null
+                            },
+                            "parameters": [],
+                            "end_offset": 129
+                        }
+                    }
+                ],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/load.php",
+                                0
+                            ]
+                        },
+                        "to": "file:app/start.php",
+                        "kind": "includes-file",
+                        "line": 2,
+                        "end_line": 2,
+                        "resolution": "resolved",
+                        "metadata": []
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/load.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "include",
+                                [
+                                    "helpers.php",
+                                    "routes/helpers.php"
+                                ]
+                            ]
+                        },
+                        "kind": "includes-file",
+                        "line": 3,
+                        "end_line": 3,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "candidate_paths": [
+                                "helpers.php",
+                                "routes/helpers.php"
+                            ]
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/load.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) routes/load.php:96",
+                                96
+                            ]
+                        },
+                        "kind": "contains",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "resolved",
+                        "metadata": []
+                    }
+                ],
+                "diagnostics": [
+                    {
+                        "code": "include_search_path",
+                        "message": "Relative include candidates depend on the runtime working directory and include_path; source candidates are not a proven selection.",
+                        "line": 3,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/load.php",
+                                0
+                            ]
+                        }
+                    },
+                    {
+                        "code": "dynamic_include",
+                        "message": "Included file is dynamic or cannot be located safely from source.",
+                        "line": 4,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/load.php",
+                                0
+                            ]
+                        }
+                    }
+                ],
+                "descriptor_receivers": []
+            }
+        }
+    ]
+}

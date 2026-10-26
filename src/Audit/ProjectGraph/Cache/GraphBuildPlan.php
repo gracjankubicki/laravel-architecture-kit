@@ -30,6 +30,8 @@ final readonly class GraphBuildPlan
         public array $reusable,
         public CacheStatus $cacheStatus = CacheStatus::Disabled,
         public bool $stale = true,
+        /** @var list<string> */
+        public array $exclude = [],
     ) {}
 
     public function absolutePath(string $path): ?string

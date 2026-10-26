@@ -11,9 +11,13 @@ use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
 use Throwable;
 
-final class MagoAnalysisEngine implements AnalysisEngine
+final class MagoAnalysisEngine implements BasicFactsEngine
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.2.0';
+
+    public const BASIC_BATCH_FILES = 32;
+
+    public const BASIC_BATCH_BYTES = 4 * 1024 * 1024;
 
     public const MAGO_VERSION = '1.57.0';
 
@@ -97,6 +101,49 @@ final class MagoAnalysisEngine implements AnalysisEngine
         }
     }
 
+    public function analyzeBasic(array $sources, BasicFactsOptions $options): array
+    {
+        $descriptor = $this->descriptor();
+        $descriptor->requireCapability(BasicFileFacts::PRODUCT);
+        if (! array_is_list($sources) || $sources === [] || count($sources) > self::BASIC_BATCH_FILES) {
+            throw new RuntimeException('Basic extraction requires a nonempty batch of at most 32 sources.');
+        }
+        $requests = array_map(static fn (BasicSource $source): array => $source->request($descriptor, $options), $sources);
+        $input = json_encode(['schema' => EngineDescriptor::SCHEMA, 'product' => 'basic-file-facts-batch-v1', 'requests' => $requests], JSON_THROW_ON_ERROR)."\n";
+        $single = false;
+        if (strlen($input) > self::BASIC_BATCH_BYTES) {
+            if (count($sources) !== 1) {
+                throw new RuntimeException('Basic extraction batch exceeds 4 MiB. Split the batch; no source was accepted.');
+            }
+            // Batching must not lower the existing per-source 32 MiB limit.
+            $input = json_encode($requests[0], JSON_THROW_ON_ERROR)."\n";
+            $single = true;
+        }
+        $data = $this->request($input);
+        try {
+            if ($single) {
+                $data = ['schema' => EngineDescriptor::SCHEMA, 'product' => 'basic-file-facts-batch-v1', 'results' => [$data]];
+            }
+            if (array_keys($data) !== ['schema', 'product', 'results'] || $data['schema'] !== EngineDescriptor::SCHEMA
+                || $data['product'] !== 'basic-file-facts-batch-v1' || ! is_array($data['results']) || ! array_is_list($data['results'])
+                || count($data['results']) !== count($sources)) {
+                throw new RuntimeException('Mago returned an invalid or incomplete Basic batch.');
+            }
+            $results = [];
+            $strings = new BasicRecordStrings;
+            foreach ($sources as $index => $source) {
+                $results[] = BasicFileFacts::fromNative($data['results'][$index], $source, $descriptor, $options, $strings);
+                unset($data['results'][$index]);
+            }
+
+            return $results;
+        } catch (Throwable $error) {
+            $this->failed = true;
+            $this->close();
+            throw $error;
+        }
+    }
+
     public function __destruct()
     {
         $this->close();
@@ -123,7 +170,7 @@ final class MagoAnalysisEngine implements AnalysisEngine
                 $reference = \WeakReference::create($this);
                 $this->process->start(static function (string $type, string $chunk) use ($reference): void {
                     $engine = $reference->get();
-                    if ($engine === null) {
+                    if ($engine === null || $engine->failed) {
                         return;
                     }
                     $engine->responseBytes += strlen($chunk);
@@ -145,7 +192,8 @@ final class MagoAnalysisEngine implements AnalysisEngine
             $this->input?->write($input);
             $deadline = hrtime(true) + (int) ($this->timeout * 1000000000);
             do {
-                $running = $this->process->isRunning();
+                $receivedBytes = $this->responseBytes;
+                $running = $this->pollProcess($this->process);
                 $this->process->clearOutput();
                 $this->process->clearErrorOutput();
                 if (str_contains($this->responseOutput, "\n")) {
@@ -163,13 +211,22 @@ final class MagoAnalysisEngine implements AnalysisEngine
                 if (hrtime(true) >= $deadline) {
                     throw new RuntimeException('Mago engine response timed out. Analysis is incomplete.');
                 }
-                usleep(1000);
+                // Drain available output before waiting, including progress on stderr.
+                if ($this->responseBytes === $receivedBytes) {
+                    usleep(1000);
+                }
             } while (true);
         } catch (Throwable $error) {
             $this->failed = true;
             $this->close();
             throw $error;
         }
+    }
+
+    /** @phpstan-impure Polling invokes the callback that updates this session's response buffers. */
+    private function pollProcess(Process $process): bool
+    {
+        return $process->isRunning();
     }
 
     private function close(): void

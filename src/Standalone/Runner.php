@@ -17,6 +17,7 @@ final class Runner
     /** @param list<string> $argv */
     public static function run(array $argv): int
     {
+        GraphRuntime::beginRequest();
         try {
             [$args, $options] = self::options($argv);
             $home = $options['tool-home'] ?? getenv('ARCHITECTURE_KIT_HOME') ?: (getenv('HOME').'/'.'.architecture-kit');
@@ -57,7 +58,7 @@ final class Runner
                 return 0;
             }
             if ($command === 'help') {
-                fwrite(STDOUT, "architecture-kit [--project PATH] [--tool-home PATH] [--profile NAME] COMMAND\nengine install|status|describe\ninit [architecture ...] [--shared --allow-write]\nanalysis-consent grant-deep TASK [--confirm]\ntask begin|check|status|skip|bind TASK [--confirm] [--client codex|claude --session ID]\nintegration export|status codex|claude\nmcp | audit | guard | doctor | search | impact | path | reach | file-rules | guidelines | make | sync\nDefault: source-only, external state. --runtime-routes explicitly boots the application to read routes. --allow-write authorizes repository mutations. --allow-execution enables broader application/custom-rule execution.\n");
+                fwrite(STDOUT, "architecture-kit [--project PATH] [--tool-home PATH] [--profile NAME] COMMAND\nengine install|status|describe\nmap prepare|status JOB_ID|result JOB_ID\ninit [architecture ...] [--shared --allow-write]\nanalysis-consent grant-deep TASK [--confirm]\ntask begin|check|status|skip|bind TASK [--confirm] [--client codex|claude --session ID]\nintegration export|status codex|claude\nmcp | audit | guard | doctor | search | impact | path | reach | file-rules | guidelines | make | sync\nDefault: source-only, external state. --runtime-routes explicitly boots the application to read routes. --allow-write authorizes repository mutations. --allow-execution enables broader application/custom-rule execution.\n");
 
                 return 0;
             }
@@ -75,6 +76,26 @@ final class Runner
             $context = new RepositoryContext($root, $home, $options['profile'] ?? null, isset($options['allow-execution']), isset($options['allow-write']), isset($options['runtime-routes']));
             RepositoryContext::activate($context);
             $host = Host::create($home);
+            if ($command === '__graph-runtime') {
+                $directory = $args[3] ?? '';
+                StateStore::assertBoundary($directory, $context->home);
+                $spec = (new StateStore($directory, $context->home))->read($args[4] ?? '');
+                if (($args[2] ?? '') === 'coordinator') {
+                    (new GraphCoordinator($context, $directory, $spec['token'], $spec['endpoint']))->run();
+                } elseif (($args[2] ?? '') === 'worker') {
+                    (new GraphWorker($context, $directory, $spec))->run();
+                } else {
+                    throw new RuntimeException('Unknown graph process role.');
+                }
+
+                return 0;
+            }
+            if ($command === 'map') {
+                self::output((new GraphRuntime($context))->map($args[2] ?? 'prepare', $args[3] ?? null));
+
+                return 0;
+            }
+            GraphRuntime::enable();
             if ($command === 'task') {
                 $task = $args[3] ?? '';
                 $tasks = new TaskControl($context, isset($options['enforce']) ? ControlPolicy::Enforce : null, strict: isset($options['strict']));
@@ -153,6 +174,7 @@ final class Runner
 
             return $policy === ControlPolicy::Enforce ? 2 : 0;
         } finally {
+            GraphRuntime::enable(false);
             RepositoryContext::activate(null);
         }
     }

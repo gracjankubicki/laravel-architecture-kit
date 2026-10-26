@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Context;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\DependencyEdge;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\LayerPolicy;
@@ -16,6 +17,9 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectRuleSet;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphPending;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphProductSpec;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use Illuminate\Filesystem\Filesystem;
 
 final readonly class ArchitectureContext
@@ -38,6 +42,22 @@ final readonly class ArchitectureContext
      */
     public function inspect(string $subject, array $enabled, array $exclude = [], int $limit = 20): ArchitectureContextResult
     {
+        if ($this->mode === AnalysisMode::Basic && ($context = GraphRuntime::context($this->basePath)) !== null) {
+            $product = GraphProductSpec::full($this->basePath, 'context', $this->scope, $exclude, $this->cache, $this->cacheConfiguration);
+            $response = (new GraphRuntime($context))->query('context', compact('subject', 'enabled', 'exclude', 'limit'), $product);
+            if (is_string($response['error_code'] ?? null)) {
+                throw new ArchitectureContextException($response['error_code'], $response['reason']);
+            }
+            if (! isset($response['result'])) {
+                throw new GraphPending($response);
+            }
+            $result = $response['result'];
+
+            return new ArchitectureContextResult(new ProjectSymbol(...$result['subject']), $result['dependencies'], $result['dependents'],
+                $result['violations'], $result['inspect'], $result['next'], $result['truncated'], $result['tests'],
+                CacheStatus::from($result['cacheStatus']),
+                $result['classification'], [...$result['analysis'], 'runtime' => array_diff_key($response, ['result' => true])]);
+        }
         // Map own sources even when their files are outside rule enforcement scope.
         $mapScope = AuditScope::package(array_values(array_unique([...$this->scope->directories, ...ProjectLayout::read($this->basePath)->graphSources()])));
         $loader = new ProjectGraphLoader($this->files, $this->basePath, $mapScope, $this->cache, $this->cacheConfiguration, sourceOnly: true, catalog: true, mode: $this->mode);

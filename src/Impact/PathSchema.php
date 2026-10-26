@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntimeSchema;
+
 final class PathSchema
 {
     /** @return array<string, mixed> */
@@ -13,9 +15,16 @@ final class PathSchema
         $channel = ['type' => 'object', 'required' => ['paths', 'found', 'path_total', 'external_boundaries', 'notices', 'notice_total', 'status', 'fresh', 'limited', 'edge_visits'], 'properties' => ['paths' => $rows, 'found' => ['type' => 'boolean'], 'path_total' => ['type' => 'integer'], 'external_boundaries' => $rows, 'notices' => $rows, 'notice_total' => ['type' => 'integer'], 'status' => ['enum' => ['found', 'no_path', 'incomplete', 'limit', 'stale']], 'fresh' => ['type' => 'boolean'], 'limited' => ['type' => 'boolean'], 'edge_visits' => ['type' => 'integer']], 'additionalProperties' => false];
         $base = ['v' => ['const' => 1], 'cmd' => ['const' => 'path']];
 
-        return ['$schema' => 'https://json-schema.org/draft/2020-12/schema', 'title' => 'Architecture Kit path agent output', 'oneOf' => [
+        $schema = ['$schema' => 'https://json-schema.org/draft/2020-12/schema', 'title' => 'Architecture Kit path agent output', 'oneOf' => [
             ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'from', 'to', 'dependencies', 'execution', 'cache', 'analysis'], 'properties' => [...$base, 'ok' => ['const' => true], 'from' => ['type' => 'object'], 'to' => ['type' => 'object'], 'dependencies' => $channel, 'execution' => $channel, 'cache' => ['type' => 'string'], 'analysis' => ['type' => 'object']], 'additionalProperties' => false],
             ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'm', 'msg'], 'properties' => [...$base, 'ok' => ['const' => false], 'm' => ['type' => 'string'], 'msg' => ['type' => 'string'], 'endpoint' => ['enum' => ['from', 'to']], 'candidates' => $rows, 'truncated' => ['type' => 'boolean'], 'limited' => ['type' => 'boolean']], 'additionalProperties' => false],
         ]];
+
+        $schema['oneOf'][] = ['type' => 'object', 'required' => ['v', 'cmd', 'ok', 'analysis', 'diagnostics', 'source_path', 'snapshot', 'scope'],
+            'properties' => [...$base, 'ok' => ['type' => 'boolean'], 'analysis' => ['type' => 'object'],
+                'diagnostics' => ['type' => 'object'], 'source_path' => ['type' => 'object'], 'snapshot' => ['type' => 'string'], 'scope' => ['type' => 'object']],
+            'additionalProperties' => false];
+
+        return GraphRuntimeSchema::extend($schema);
     }
 }

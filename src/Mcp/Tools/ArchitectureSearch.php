@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Mcp\Tools;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Context\GraphPage;
 use GracjanKubicki\ArchitectureKit\Context\GraphSearch;
 use GracjanKubicki\ArchitectureKit\Context\GraphSource;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Filesystem\Filesystem;
@@ -59,6 +61,12 @@ final class ArchitectureSearch extends Tool
         }
         try {
             $mode = RepositoryContext::requestedMode($request->get('analysis_mode', 'basic'), $request->get('task'));
+            if ($mode === AnalysisMode::Basic
+                && ($context = GraphRuntime::context(RepositoryContext::root())) !== null) {
+                $response = (new GraphRuntime($context))->query('search', $arguments);
+
+                return Response::structured(isset($response['result']) ? [...$response['result'], 'runtime' => array_diff_key($response, ['result' => true])] : $response);
+            }
             $source = (new GraphSource(app(Filesystem::class), RepositoryContext::root(), mode: $mode))->load();
             $result = (new GraphSearch($source['index']))->find($request->get('query'), $request->get('kind'), $request->get('path'));
             if ($source['changed']) {

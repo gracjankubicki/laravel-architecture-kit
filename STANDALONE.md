@@ -50,6 +50,10 @@ architecture-kit --project /absolute/path/project engine describe
 
 The distribution supports macOS and Linux on ARM64 and x64. Linux binaries use static musl linking and also run on glibc systems. Windows is outside the binary distribution. Users do not need Rust. The installer verifies the release manifest, size, SHA-256, protocol and executable version before replacing an installation. A release that defaults to Mago requires all matching binaries to be published first.
 
+Package v0.11.0 requires engine 0.2.0, based on Mago 1.57.0. Engine 0.1.0 does not provide the new Basic facts capability. Once the matching binary release is published, run `architecture-kit engine install` using the upgraded executable, then check `engine status` and the project's `engine describe`. Use the same `--tool-home` as the selected installation if it is not the default. Restart existing MCP sessions after upgrading; running processes retain their loaded tool code and engine identity.
+
+Updating the Composer package and installing the native engine are separate operations. Neither step enables hooks, changes project profiles or grants Deep/runtime permissions. Do not interpret the package release as authorization to upgrade or activate a user's global integration.
+
 To use PHP explicitly, add this to the selected JSON profile or shared settings:
 
 ```json
@@ -66,6 +70,55 @@ Omit `php_version` to use the project's `composer.json`: `config.platform.php` t
 A missing, incompatible or failed Mago executable stops the analysis with a reason and installation instructions. It never switches to PHP automatically. `engine describe` and MCP resource `architecture-kit://analysis-engine` report the selected engine, version, implementation fingerprint, schema, PHP target and setting origin. An explicitly selected local profile can override shared engine settings; diagnostics identify that override.
 
 Syntax errors identify the file and location, block a successful control result, and cannot be suppressed by a baseline or inline ignore. Other files are still analyzed. Unsupported valid syntax is a separate engine error. Changing engines, binaries, tool sources or configuration invalidates caches and task comparisons without refreshing an existing task beginning. Start a new task only at an authorized task boundary.
+
+## Prepare and collect a Basic map
+
+Standalone CLI and MCP share a Basic map runtime for the selected repository, profile and analysis identity. It launches tool-only background processes and keeps ready generations in worker memory. Preparing a map does not bootstrap application PHP or execute its jobs.
+
+```sh
+architecture-kit --project /absolute/path/project map prepare
+architecture-kit --project /absolute/path/project map status JOB_ID
+architecture-kit --project /absolute/path/project map result JOB_ID
+```
+
+`prepare` reuses a verified ready generation or starts a build. It waits within its request budget and can return `building` with `job_id` and a suggested next call. Keep that job ID, continue ordinary source inspection, and use `result` to collect it. Disconnecting the CLI or MCP client does not cancel the background build.
+
+MCP exposes the same actions through `architecture-map`:
+
+```json
+{"action":"prepare"}
+```
+
+```json
+{"action":"result","job_id":"<job_id returned by prepare>"}
+```
+
+| Field or action | Interpretation |
+| --- | --- |
+| `availability` | `building`, `ready`, `failed` or `unavailable`; readiness is separate from freshness and completeness |
+| `status` action | Inspect the job without rechecking source inputs; a historical ready state is returned as `freshness: unverified` |
+| `result` action | Collect current metadata; a ready worker checks its source inputs before reporting freshness |
+| `freshness` | `current`, `stale` or `unverified`; it never follows from a ready job record alone |
+| `checks_complete`, `analysis` | Analysis completeness within the supported static scope; a current generation can remain partial |
+| `cache.read`, `cache.write` | Disk reuse and persistence outcomes; RAM readiness does not imply a successful cache write |
+| `deadline_exceeded`, `request_deadline_exceeded` | Recorded budget overruns where applicable; a late or still-building job does not prove the budget was met |
+| `snapshot_id`, `snapshot_ref` | Identity of the prepared generation; job metadata does not contain the full graph |
+
+Queries such as search and graph use the prepared catalog. Context, impact and related full products keep their own product keys and scopes. Their preparation must not be replaced by a catalog result. Public query responses retain their existing facts and pagination; lifecycle metadata appears under `runtime`, or as the top-level lifecycle response while the product is pending.
+
+A graph query that reaches its traversal limit remains incomplete even when the resident generation is complete. Its `traversal_limit` diagnostic belongs to that response and does not change the generation's diagnostics or later full queries. Request budgets are checked after queries on every product path; a late response keeps its facts and freshness while recording `deadline_exceeded` in the job.
+
+The coordinator retains at most 64 job records in memory. Admission can discard the oldest failed or unavailable records, protecting active generations, queued/running builds and in-flight queries. An expired job ID returns `unknown_or_expired_job`; it never identifies a replacement job. This history limit does not delete graph cache data or invalidate an active writer.
+
+The worker checks source and tool identity before and after each actual query. A change during the read marks the result stale. Content checks detect same-size edits even when timestamps stay unchanged. Added/deleted files, scope or configuration changes, engine/tool upgrades and cache clearing also invalidate reuse. Restart search or the first page after `stale_snapshot`; do not combine pages from different snapshots.
+
+Disk storage retains validated per-file contributions and prepared catalog state outside the inspected repository. A later worker can restore unchanged facts without parsing them again, but it still verifies current inputs. Corrupt, incompatible or unreadable cache entries are rejected. Disabled caching or a failed write can leave a usable RAM generation without persistent reuse. `architecture-kit cache-clear` invalidates stored state and resident generations; an older worker cannot publish into the new cache generation.
+
+Replaced workers retire after their in-flight queries finish. Workers can exit after 300 seconds without requests; the coordinator can exit after 300 seconds without an active build or client. A later request starts the required processes and restores or rebuilds state. There is no filesystem watcher, and idle retention is not a persistence guarantee.
+
+Background execution requires macOS or Linux with Unix-domain sockets, file locking and PHP process-launch functions available, including `exec` and `proc_open`, plus the shell's `nohup` command. The native engine distribution targets ARM64 and x64. Selecting the PHP backend does not add Windows support to this background runtime. PHP 8.3 or newer is still required for the tool itself.
+
+The current request budgets distinguish cold/major preparation at 20 seconds, unchanged restore at 2 seconds and single-file changes at 3 seconds. They are not guaranteed completion times, and crossing a budget does not cancel an independent build. This release does not guarantee those targets or a 100 ms ready query. Source verification, setup, IPC and response handling remain part of the observed request cost. Performance acceptance remains open.
 
 ## Apply architecture to a Composer package
 
@@ -236,7 +289,7 @@ These mechanisms do not establish a universal runtime guarantee. The selected CR
 
 ## Reference
 
-CLI supports audit, guard, doctor, context, search, impact, path, reach, public API, revision comparisons, target architecture, file rules, guidelines, explanation, upgrade planning, scaffold proposals, sync and cache clearing. Use `COMMAND --help` for the reused command's options. Laravel's existing `php artisan architecture-kit:*` commands retain their normal behavior.
+CLI supports map preparation/status/result, audit, guard, doctor, context, search, impact, path, reach, public API, revision comparisons, target architecture, file rules, guidelines, explanation, upgrade planning, scaffold proposals, sync and cache clearing. Use `COMMAND --help` for the reused command's options. The map lifecycle is a standalone facility; Laravel's existing `php artisan architecture-kit:*` commands retain their normal behavior.
 
 Official integration contracts:
 
@@ -249,4 +302,4 @@ Official integration contracts:
 
 ## Candidate, publication, upgrade and activation
 
-Local tests produce a candidate, not an installed integration. After independent QA and final review, publication and release version need separate authorization. Upgrading the isolated global tool is another explicit step; preserve the selected profiles and external task state. Activation for a named repository/client needs separate authorization and actual readback of the installed version, selected repository/profile, MCP registration and hook configuration. Verify a real client event and a source-only query afterward. Exported settings or historical observations do not prove current activation. Do not overwrite developer-owned scripts or change CRM/Glenross while preparing the candidate. Runtime/bootstrap permissions remain separate from activation.
+Local tests produce a candidate, not an installed integration. After independent QA and final review, publication and release version need separate authorization. Upgrading the isolated global tool is another explicit step; preserve the selected profiles and external task state. Activation for a named repository/client needs separate authorization and actual readback of the installed version, selected repository/profile, MCP registration and hook configuration. Verify a real client event and a source-only query afterward. Exported settings or historical observations do not prove current activation. Preserve developer-owned scripts and application repositories while preparing the candidate. Runtime/bootstrap permissions remain separate from activation. Publishing v0.11.0 does not close the open graph performance targets.

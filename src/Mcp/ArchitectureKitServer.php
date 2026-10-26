@@ -10,6 +10,7 @@ use GracjanKubicki\ArchitectureKit\Mcp\Resources\ArchitectureGuidelineResource;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\AnalysisConsent;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureContext;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureGraph;
+use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureMap;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureRules;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\ArchitectureSearch;
 use GracjanKubicki\ArchitectureKit\Mcp\Tools\AuditChanged;
@@ -66,6 +67,7 @@ class ArchitectureKitServer extends Server
         PlanUpgrade::class,
         ArchitectureSearch::class,
         ArchitectureGraph::class,
+        ArchitectureMap::class,
     ];
 
     protected array $resources = [

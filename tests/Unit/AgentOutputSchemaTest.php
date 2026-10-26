@@ -11,12 +11,16 @@ use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrence;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectPackage;
+use GracjanKubicki\ArchitectureKit\Discovery\SearchSchema;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorCheck;
 use GracjanKubicki\ArchitectureKit\Doctor\ArchitectureDoctorResult;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuardResult;
+use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
+use GracjanKubicki\ArchitectureKit\Impact\PathSchema;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitectureRecommendation;
+use GracjanKubicki\ArchitectureKit\Reach\ReachSchema;
 use GracjanKubicki\ArchitectureKit\Resources\ManagedResourcePlan;
 use GracjanKubicki\ArchitectureKit\Revision\ArchitectureRevisionDiff;
 use GracjanKubicki\ArchitectureKit\Revision\RevisionDiffSchema;
@@ -344,6 +348,24 @@ class AgentOutputSchemaTest extends TestCase
                     $command.' payload does not match schema: '.json_encode($payload),
                 );
             }
+        }
+    }
+
+    public function test_runtime_states_are_discriminated_and_missing_job_never_matches_building(): void
+    {
+        $pending = ['availability' => 'building', 'freshness' => 'unverified', 'checks_complete' => false,
+            'job_id' => str_repeat('a', 32), 'next' => ['tool' => 'architecture-map', 'arguments' => ['action' => 'result']]];
+        foreach ([(new AgentOutput)->schema('architecture-context'),
+            SearchSchema::get(),
+            ImpactSchema::get(),
+            PathSchema::get(),
+            ReachSchema::get()] as $schema) {
+            $this->assertTrue($this->matchesSchema($pending, $schema));
+            $missingJob = $pending;
+            unset($missingJob['job_id']);
+            $this->assertFalse($this->matchesSchema($missingJob, $schema));
+            $this->assertFalse($this->matchesSchema([...$pending, 'freshness' => 'currentish'], $schema));
+            $this->assertTrue($this->matchesSchema(['availability' => 'failed', 'freshness' => 'unverified', 'checks_complete' => false], $schema));
         }
     }
 

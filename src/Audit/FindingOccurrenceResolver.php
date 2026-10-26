@@ -9,6 +9,8 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
 use GracjanKubicki\ArchitectureKit\Impact\LayerFindingContext;
 use GracjanKubicki\ArchitectureKit\ProjectState;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphPending;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
@@ -30,6 +32,17 @@ final readonly class FindingOccurrenceResolver
 
     public function resolve(string $path, ?int $line, ?string $code = null): FindingOccurrence
     {
+        if (($context = GraphRuntime::context($this->basePath)) !== null) {
+            $scope = $this->scope()->directories;
+            $product = ['kind' => 'occurrence', 'scope' => $scope, 'freshness_scope' => $scope, 'audit_scope' => $scope,
+                'exclude' => [], 'cache' => null, 'configuration' => []];
+            $response = (new GraphRuntime($context))->query('occurrence', compact('path', 'line', 'code'), $product);
+            if (! isset($response['result'])) {
+                throw new GraphPending($response);
+            }
+
+            return new FindingOccurrence(...$response['result']);
+        }
         $path = ProjectPath::relative(
             $this->basePath,
             str_starts_with($path, '/') ? $path : $this->basePath.'/'.$path,
@@ -39,7 +52,7 @@ final readonly class FindingOccurrenceResolver
         $dependency = null;
         if ($code === 'E_LAYER_DEPENDENCY') {
             try {
-                $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope());
+                $loader = new ProjectGraphLoader($this->files, $this->basePath, $this->scope(), sourceOnly: true);
                 $plan = $loader->plan([]);
                 $graph = $loader->build($plan);
                 $symbol = $this->symbolAt($path, $line, $graph);
@@ -58,7 +71,7 @@ final readonly class FindingOccurrenceResolver
     private function symbolAt(string $path, ?int $line, ?ProjectGraphSnapshot $graph = null): ?ProjectSymbol
     {
         try {
-            $graph ??= (new ProjectGraphLoader($this->files, $this->basePath, $this->scope()))->load([]);
+            $graph ??= (new ProjectGraphLoader($this->files, $this->basePath, $this->scope(), sourceOnly: true))->load([]);
             $symbols = $graph->symbolsAt($path);
 
             if ($symbols === []) {

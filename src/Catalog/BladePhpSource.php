@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\BasicSource;
+use GracjanKubicki\ArchitectureKit\Analysis\SourceInput;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\SourceMap;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
@@ -11,6 +13,8 @@ use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 /** Piecewise byte mapping keeps copied expressions at their original source positions. */
 final class BladePhpSource
 {
+    public const MAPPING_VERSION = 'blade-php-v1';
+
     private string $source = '';
 
     /** @var list<array{start: int, original: int, length: int, copied: bool}> */
@@ -21,6 +25,25 @@ final class BladePhpSource
         if (ImpactExtractor::sourceLimit(strlen($file->contents)) !== null) {
             return $file;
         }
+        $input = $this->input($file);
+        if ($input->mappingFingerprint === '') {
+            return $file;
+        }
+        $parsed = $file->withContents($input->prepared->contents);
+        $nodes = $parsed->syntax();
+        if ($nodes === null) {
+            return $parsed;
+        }
+        $map = new SourceMap($input->original, $this->original(...));
+        $nodes = array_map($map->node(...), $nodes);
+
+        return $file->withSyntax($nodes);
+    }
+
+    /** Prepare bytes and mapping without invoking either parser. */
+    public function input(FileContext $file): BasicSource
+    {
+        $source = new SourceInput($file->path, $file->contents, $file->analysisSession()->phpVersion);
         $this->source = '';
         $this->segments = [];
         // Hide source comments before tokenization so their PHP tags cannot introduce declarations.
@@ -37,17 +60,10 @@ final class BladePhpSource
             $offset += strlen($text);
         }
         if ($this->source === $file->contents) {
-            return $file;
+            return BasicSource::plain($source);
         }
-        $parsed = $file->withContents($this->source);
-        $nodes = $parsed->syntax();
-        if ($nodes === null) {
-            return $parsed;
-        }
-        $map = new SourceMap($file->analysisDocument()->source, $this->original(...));
-        $nodes = array_map($map->node(...), $nodes);
 
-        return $file->withSyntax($nodes);
+        return new BasicSource($source, new SourceInput($file->path, $this->source, $source->phpVersion), $this->segments, self::MAPPING_VERSION);
     }
 
     private function html(string $text, int $base): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Reach;
 
 use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntimeSchema;
 
 final readonly class ReachSchema
 {
@@ -21,6 +22,6 @@ final readonly class ReachSchema
         $schema['oneOf'][0]['required'][] = 'reach';
         $schema['oneOf'][0]['properties']['analysis']['properties']['limit']['maximum'] = 1000;
 
-        return $schema;
+        return GraphRuntimeSchema::extend($schema);
     }
 }

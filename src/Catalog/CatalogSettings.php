@@ -8,6 +8,7 @@ use Closure;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\ConstantValue as ConstExprEvaluator;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\SourceManifest;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
@@ -24,9 +25,11 @@ final readonly class CatalogSettings
      * @param  list<string>  $fingerprint
      * @param  array<string, list<int>>  $inputStats
      * @param  array<string, string>  $packages
+     * @param  array<string, string|null>  $inputHashes
+     * @param  array<string, array{safe: bool, kind: string}>  $rootState
      * @param  list<CatalogDiagnostic>  $diagnostics
      */
-    public function __construct(public DiscoverySettings $discovery, public AuditScope $scope, public array $exclude, public array $fingerprint, public array $inputStats, public array $packages, public array $diagnostics) {}
+    public function __construct(public DiscoverySettings $discovery, public AuditScope $scope, public array $exclude, public array $fingerprint, public array $inputStats, public array $packages, public array $diagnostics, public array $rootState = [], public array $inputHashes = []) {}
 
     /** @param (Closure(string): void)|null $onParse */
     public static function load(Filesystem $files, string $base, ?Closure $onParse = null): self
@@ -67,29 +70,34 @@ final readonly class CatalogSettings
         }
         $roots = array_values(array_unique([...self::ROOTS, ...ProjectLayout::read($base)->graphSources(), ...$paths]));
         $diagnostics = [];
+        $rootState = SourceManifest::scopeState($base, $roots);
         foreach ($roots as $root) {
-            if (! DiscoverySettings::safe($base, $root)) {
+            if (! $rootState[$root]['safe']) {
                 $diagnostics[] = new CatalogDiagnostic('unsafe_root', 'Graph root is unsafe or contains a symlink: '.$root, 1);
-            } elseif (! $files->isDirectory($base.'/'.$root)) {
+            } elseif ($rootState[$root]['kind'] !== 'directory') {
                 $diagnostics[] = new CatalogDiagnostic('missing_root', 'Graph root does not exist: '.$root, 1);
             }
         }
         $inputStats = ['config/architectures.php' => $discovery->configStat];
+        $inputHashes = ['config/architectures.php' => $discovery->sourceFile === null ? null : hash('sha256', $discovery->sourceFile->contents)];
         $fingerprint = [...$discovery->fingerprint, 'catalog-source-v1', hash('sha256', serialize($settings))];
         $packages = [];
         foreach (['composer.lock', 'vendor/composer/installed.json'] as $relative) {
             $inputStats[$relative] = DiscoverySettings::stat($base.'/'.$relative);
+            $inputHashes[$relative] = null;
             if ($inputStats[$relative] === []) {
                 continue;
             }
             $absolute = self::metadataPath($base, $relative);
             if ($absolute === null || ($inputStats[$relative][1] ?? 0) > 4000000) {
+                $inputHashes[$relative] = 'unsafe';
                 $diagnostics[] = new CatalogDiagnostic('package_metadata', 'Package metadata is unsafe or exceeds 4 MB: '.$relative, 1);
 
                 continue;
             }
             try {
                 $text = $files->get($absolute);
+                $inputHashes[$relative] = hash('sha256', $text);
                 $fingerprint[] = $relative.':'.hash('sha256', $text);
                 $decoded = json_decode($text, true, 64, JSON_THROW_ON_ERROR);
                 if (! is_array($decoded)) {
@@ -115,7 +123,7 @@ final readonly class CatalogSettings
         }
         ksort($packages);
 
-        return new self($discovery, new AuditScope($roots), $exclude, $fingerprint, $inputStats, $packages, $diagnostics);
+        return new self($discovery, new AuditScope($roots), $exclude, $fingerprint, $inputStats, $packages, $diagnostics, $rootState, $inputHashes);
     }
 
     public function fresh(string $base): bool
@@ -123,6 +131,15 @@ final readonly class CatalogSettings
         foreach ($this->inputStats as $path => $stat) {
             $absolute = $path === 'config/architectures.php' ? RepositoryContext::configurationPath($base) : $base.'/'.$path;
             if (DiscoverySettings::stat($absolute) !== $stat) {
+                return false;
+            }
+        }
+
+        foreach ($this->inputHashes as $path => $expected) {
+            $absolute = $path === 'config/architectures.php' ? RepositoryContext::configurationPath($base) : self::metadataPath($base, $path);
+            $actual = $absolute === null || is_file($absolute) && filesize($absolute) > 4000000
+                ? 'unsafe' : (is_file($absolute) ? hash_file('sha256', $absolute) : null);
+            if ($actual !== $expected) {
                 return false;
             }
         }

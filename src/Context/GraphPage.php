@@ -15,7 +15,7 @@ final class GraphPage
      * @param  list<string>  $scope
      * @return array<string, mixed>
      */
-    public static function make(string $command, array $arguments, string $snapshot, array $scope, array $diagnostics, array $result, string $recordsKey): array
+    public static function make(string $command, array $arguments, string $snapshot, array $scope, array $diagnostics, array $result, string $recordsKey, int $reservedBytes = 0): array
     {
         $offset = $arguments['offset'] ?? 0;
         $limit = $arguments['limit'] ?? 20;
@@ -33,7 +33,7 @@ final class GraphPage
             'diagnostics' => ['summary' => $summary, 'details' => [], 'details_truncated' => false], 'result' => $result, 'next' => null];
         $records = $result[$recordsKey];
         $envelope['result'][$recordsKey] = [];
-        if (self::bytes($envelope) > self::MAX_BYTES) {
+        if (self::bytes($envelope) > self::MAX_BYTES - $reservedBytes) {
             return self::limitFailure($command, $snapshot, $recordsKey);
         }
         if (! is_int($limit) || $limit < 0 || $limit > 100 || ! is_int($offset) || $offset < 0
@@ -60,7 +60,7 @@ final class GraphPage
             $candidate = $envelope;
             $candidate['result'][$recordsKey][] = $record;
             $candidate['next'] = ['tool' => $command, 'arguments' => [...$arguments, 'offset' => $nextOffset + 1, 'snapshot' => $snapshot]];
-            if (self::bytes($candidate) > self::MAX_BYTES) {
+            if (self::bytes($candidate) > self::MAX_BYTES - $reservedBytes) {
                 if ($nextOffset === $offset) {
                     $envelope['diagnostics']['details'][] = ['code' => 'oversized_record', 'offset' => $offset,
                         'subject' => isset($record['id']) ? substr($record['id'], 0, 1024) : null, 'message' => 'One record exceeds the output budget. Narrow the query using its locator.'];
@@ -104,7 +104,7 @@ final class GraphPage
         foreach (array_slice($relevant, 0, 20) as $diagnostic) {
             $candidate = $envelope;
             $candidate['diagnostics']['details'][] = $diagnostic;
-            if (self::bytes($candidate) > self::MAX_BYTES) {
+            if (self::bytes($candidate) > self::MAX_BYTES - $reservedBytes) {
                 break;
             }
             $envelope = $candidate;

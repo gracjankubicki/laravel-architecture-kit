@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisLimitReason;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Analysis\GraphBuildEligibility;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 
 /** Resolves cached source dispatch descriptors against the current declaration set. */
@@ -112,6 +114,9 @@ final class CatalogCallResolver
                 $targets = $reachable;
             }
             if (count($targets) > 1000 || $this->limited) {
+                if (count($targets) > 1000) {
+                    GraphBuildEligibility::report(AnalysisLimitReason::Structure);
+                }
                 $this->diagnostic($call, 'dispatch_limit', 'Dispatch exceeded its candidate, type-expression or inheritance budget.');
                 $targets = array_slice($targets, 0, 1000);
             }
@@ -276,6 +281,7 @@ final class CatalogCallResolver
         AnalysisRuntime::stage('deep.calls.factory');
         if ($depth >= 16) {
             $this->limited = true;
+            GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
             return [];
         }
@@ -353,6 +359,7 @@ final class CatalogCallResolver
                 $classes = [$base, ...(! $exact || $trait && $call['binding'] !== null ? ($this->subtypes[$base] ?? []) : [])];
                 if (count($classes) > 1000) {
                     $this->limited = true;
+                    GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
                 }
                 foreach (array_slice($classes, 0, 1000) as $class) {
                     if ($trait && $call['binding'] !== null && $class === $base) {
@@ -433,6 +440,7 @@ final class CatalogCallResolver
     {
         if (isset($seen[$class]) || count($seen) >= 32 || ++$this->factoryVisits > 20000 || ImpactExtractor::sourceLimit(0) !== null) {
             $this->limited = true;
+            GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
             return null;
         }
@@ -533,6 +541,7 @@ final class CatalogCallResolver
         }
         if ($depth >= 16 || ++$this->returnVisits > 10000 || ImpactExtractor::sourceLimit(0) !== null) {
             $this->limited = true;
+            GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
             return [];
         }
@@ -565,6 +574,7 @@ final class CatalogCallResolver
                 }
                 if (count($values) >= 1000) {
                     $this->limited = true;
+                    GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
                     return array_slice($values, 0, 1000);
                 }
@@ -598,6 +608,7 @@ final class CatalogCallResolver
     {
         if ($depth >= 16 || $this->receiverInspection && (++$this->receiverVisits > 10000 || ImpactExtractor::sourceLimit(0) !== null)) {
             $this->limited = true;
+            GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
             return [];
         }
@@ -645,6 +656,7 @@ final class CatalogCallResolver
             $classes = [$ids[0], ...($exact ? [] : ($this->subtypes[$ids[0]] ?? []))];
             if (count($classes) > 1000) {
                 $this->limited = true;
+                GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
             }
             foreach (array_slice($classes, 0, 1001) as $class) {
                 $found = $this->member($class, strtolower($method));
@@ -667,6 +679,7 @@ final class CatalogCallResolver
         }
         if ($depth >= 16 || ++$this->argumentVisits > 10000 || $this->argumentVisits % 128 === 0 && ImpactExtractor::sourceLimit(0) !== null) {
             $this->limited = true;
+            GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
             return null;
         }
@@ -889,6 +902,7 @@ final class CatalogCallResolver
                             }
                             if (ImpactExtractor::sourceLimit(0) !== null) {
                                 $this->limited = true;
+                                GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
                                 return false;
                             }
@@ -899,6 +913,7 @@ final class CatalogCallResolver
             }
             if (count($candidates) > 1000) {
                 $this->limited = true;
+                GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
                 return false;
             }
@@ -920,6 +935,7 @@ final class CatalogCallResolver
     {
         if ($depth >= 16 || $this->receiverInspection && (++$this->receiverVisits > 10000 || ImpactExtractor::sourceLimit(0) !== null)) {
             $this->limited = true;
+            GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
             return [];
         }
@@ -951,6 +967,7 @@ final class CatalogCallResolver
                     if ($this->receiverInspection) {
                         if (count($this->receiverSources) >= 128) {
                             $this->limited = true;
+                            GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
 
                             return array_values(array_unique($types));
                         }
@@ -1014,6 +1031,7 @@ final class CatalogCallResolver
         if (isset($seen[$class]) || count($seen) >= 32) {
             if (count($seen) >= 32) {
                 $this->limited = true;
+                GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
             }
 
             return [];

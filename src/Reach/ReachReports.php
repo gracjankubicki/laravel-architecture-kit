@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Reach;
 use DirectoryIterator;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\SourceManifest;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Standalone\StateStore;
@@ -55,6 +56,7 @@ final readonly class ReachReports
                         continue;
                     }
                     $states[$path] = DiscoverySettings::stat($this->base.'/'.$path);
+                    $states['@contents:'.$path.':'.hash_file('sha256', $this->base.'/'.$path)] = [];
                 }
             }
         }
@@ -64,10 +66,12 @@ final readonly class ReachReports
             }
             $absolute = $required === 'config/architectures.php' ? RepositoryContext::configurationPath($this->base) : $this->base.'/'.$required;
             $states[$required] = DiscoverySettings::stat($absolute);
+            $states['@contents:'.$required.':'.(is_file($absolute) ? hash_file('sha256', $absolute) : 'missing')] = [];
         }
         if (($context = RepositoryContext::forRoot($this->base)) !== null) {
             $states['@configuration:'.$context->fingerprint()] = [];
         }
+        $states['@identity:'.SourceManifest::identity($this->base, $this->mode)] = [];
         $states['@analysis-mode:'.$this->mode->value] = [];
         ksort($states);
 

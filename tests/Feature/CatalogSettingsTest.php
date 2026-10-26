@@ -28,9 +28,9 @@ final class CatalogSettingsTest extends TestCase
         $this->assertContains('config/architectures.php', array_column($cold['index']->elements, 'path'));
         $calls = [];
         $warm = $source->load();
-        // Settings still determine the scope/cache on each request; graph reuse
-        // avoids parsing any other unchanged source or reparsing configuration.
-        $this->assertSame(['config/architectures.php' => 1], $calls);
+        // Ready restore validates raw configuration and source hashes without any parser.
+        $this->assertSame([], $calls);
+        $this->assertSame('hit', $warm['cache']['read']['status']);
         $this->assertSame($cold['snapshot'], $warm['snapshot']);
         $this->assertEquals($cold['index'], $warm['index']);
     }

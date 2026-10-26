@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Impact;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisLimitReason;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Analysis\GraphBuildEligibility;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Finder as NodeFinder;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
@@ -179,12 +181,34 @@ final class ImpactExtractor
      */
     public static function sourceLimit(int $bytes): ?string
     {
+        $cause = self::sourceLimitCause($bytes);
+        // The legacy probe has no new autoload/session side effects outside a build scope.
+        if ($cause !== null && class_exists(GraphBuildEligibility::class, false)) {
+            GraphBuildEligibility::report(AnalysisLimitReason::from($cause));
+        }
+
+        return match ($cause) {
+            'structure' => 'Impact source size limit exceeded.',
+            'memory' => 'Impact memory limit reached during extraction.',
+            default => null,
+        };
+    }
+
+    public static function sourceLimitReason(int $bytes): ?AnalysisLimitReason
+    {
+        $cause = self::sourceLimitCause($bytes);
+
+        return $cause === null ? null : AnalysisLimitReason::from($cause);
+    }
+
+    private static function sourceLimitCause(int $bytes): ?string
+    {
         if ($bytes > 100_000) {
-            return 'Impact source size limit exceeded.';
+            return 'structure';
         }
         $memoryLimit = MemoryLimit::bytes();
         if ($memoryLimit !== null && memory_get_usage(true) + $bytes * 200 + 262144 > $memoryLimit * 0.65) {
-            return 'Impact memory limit reached during extraction.';
+            return 'memory';
         }
 
         return null;

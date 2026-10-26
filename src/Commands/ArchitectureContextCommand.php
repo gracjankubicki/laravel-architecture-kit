@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Context\ArchitectureContext;
 use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextException;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\ProjectState;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphPending;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
@@ -55,6 +56,10 @@ final class ArchitectureContextCommand extends Command
                 exclude: $state->exclude,
                 limit: $agent->limit($this->option('limit')),
             );
+        } catch (GraphPending $exception) {
+            $this->line($this->json($exception->response));
+
+            return self::SUCCESS;
         } catch (ArchitectureContextException $exception) {
             return $this->failContext($agent, $exception->errorCode, $exception->getMessage());
         } catch (Throwable $exception) {

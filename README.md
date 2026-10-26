@@ -212,11 +212,27 @@ Move analysis allows 10,000 evidence visits, Composer files up to 1 MB, 1,000 ma
 
 ## Analysis engines and Composer packages
 
-Architecture Kit uses Mago by default, with PHP available through an explicit `analysis.engine` setting. Both engines feed the same neutral syntax model into audits, graph queries, impact, revision comparisons and public API analysis. A failed or missing Mago binary produces an explicit error; it never triggers a PHP fallback.
+Architecture Kit uses Mago by default, with PHP available through an explicit `analysis.engine` setting. Both engines support the same public analysis contracts. Mago engine 0.2.0 adds file-local `basic-file-facts-v1` extraction for Basic graphs; neutral syntax remains available to other analysis consumers. A failed or missing Mago binary produces an explicit error; it never triggers a PHP fallback.
 
 Install the matching engine with `architecture-kit engine install`, then inspect a project's choice with `architecture-kit --project /absolute/path/project engine describe`. The tool runtime requires PHP 8.3 or newer; the analyzed language version comes from project settings or Composer. Binary distributions cover macOS and Linux on ARM64 and x64.
 
+After upgrading to v0.11.0, install the matching engine 0.2.0 and restart existing CLI/MCP sessions before using Mago. Composer updates do not install or activate the native engine. See [engine installation and upgrades](STANDALONE.md#select-and-inspect-the-analysis-engine).
+
 The standalone workflow also applies architecture to plain PHP and Laravel Composer packages. It derives source directories and namespaces from Composer or explicit placements and supports guidance, generation, audit and task control without `artisan` or `app/`. See [standalone setup, engine selection and package examples](STANDALONE.md).
+
+### Prepare a standalone Basic map
+
+Standalone CLI and MCP share background map jobs and ready generations held in worker memory:
+
+```sh
+architecture-kit --project /absolute/path/project map prepare
+architecture-kit --project /absolute/path/project map status JOB_ID
+architecture-kit --project /absolute/path/project map result JOB_ID
+```
+
+MCP exposes the same lifecycle through `architecture-map`. If prepare returns `building`, retain its `job_id`, continue source inspection, and collect it with `result`. Status does not recheck source freshness. A ready map can still contain incomplete analysis or an unsuccessful disk-cache write. Workers expire after idle periods; later requests can restore verified disk facts or build a new generation.
+
+This release does not guarantee cold builds within 20 seconds, restores within 2 seconds, single-file updates within 3 seconds, or ready queries within 100 ms. These performance targets remain open. See [the standalone map lifecycle](STANDALONE.md#prepare-and-collect-a-basic-map) for state fields, invalidation and platform requirements.
 
 ## Installation
 
@@ -445,9 +461,9 @@ Enabling it also brings `tests/` into the audited scope. That is not optional: w
 
 The rule is off unless a project asks for it. Measured on an application with 6305 files under `app/` and 5153 test files, enabling it by default would have produced roughly 700 findings on the first run after an upgrade.
 
-### The project graph is built once
+### Per-file graph cache
 
-Building the graph means parsing every PHP file in scope, which is 87% of the cost and takes about 19.5s on an application with 11566 files. `guard --changed` paid it on every run: its rules only check the files you touched, but a changed edge can reveal a cycle through a file you did not, so the graph still had to cover the whole project.
+Per-file caching retains source graph contributions between runs. A changed edge can reveal a cycle through an untouched file, so a changed-file audit still needs relationships from the full configured scope. The standalone background runtime also retains prepared generations in worker memory, as described [above](#prepare-a-standalone-basic-map).
 
 The graph is now kept between runs, per file, so a run parses only what moved:
 
@@ -459,7 +475,7 @@ The graph is now kept between runs, per file, so a run parses only what moved:
 ],
 ```
 
-Measured on that application, with `app/` in scope and nothing edited between runs:
+Historical local measurements of the earlier cache implementation, with `app/` in scope and nothing edited between runs:
 
 | | Without the cache | With it |
 |---|---|---|
@@ -467,11 +483,11 @@ Measured on that application, with `app/` in scope and nothing edited between ru
 | Full `audit` | 6.57s | 6.63s |
 | `context` on one symbol | 19.67s | 0.72s |
 
-A full audit gains nothing, and that is not an oversight: its rules need the syntax tree of every file they check, so those files are parsed either way. The cache removes parsing that nothing else needed, which is what `--changed` and `context` are made of.
+In those measurements, full audit rules still needed the syntax of the files they checked. These figures describe that workload, not a latency guarantee for v0.11.0 or its background map jobs.
 
 Staleness is the risk, not speed: a graph that describes code the project no longer has would report findings for deleted code and stay silent about new code, with nothing in the output to say so. An entry is discarded when the enabled architectures, custom rules or audited scope change, and when the package itself changes, which is decided by hashing its sources rather than by a version constant somebody has to remember to bump. A file is parsed again when its content hash, modification time or size changes, and the run is driven by the files the project actually has, so a deleted file leaves the graph and a contribution missing from the entry is rebuilt rather than assumed. The stored file carries a hash of its own contents, because a damaged entry can still be well formed: one stripped of its symbols looks exactly like a file that declares none, and no structural check can tell those apart.
 
-File state is stat rather than a content hash: hashing the same project costs 1.58s against 0.02s, on every run including the ones that hit the cache, and it would eat most of what the cache saves. The gap that leaves is narrow and named: content changed while both timestamp and size stayed identical, which `rsync -a`, an archive unpacked with its timestamps, and `touch -r` can do but Git, editors and agents cannot. `php artisan architecture-kit:cache-clear` is the answer to it, and to any entry you no longer trust. A corrupt or unreadable entry is not an error: the command rebuilds and moves on.
+Graph freshness checks source content and membership as well as configuration and tool identity. A same-length edit with an unchanged timestamp still invalidates a standalone ready generation. These checks read source bytes and have a cost even when no parsing is needed. Use `php artisan architecture-kit:cache-clear`, or standalone `architecture-kit cache-clear`, to invalidate stored graph state explicitly. Corrupt or unreadable cache data is rejected and rebuilt when the inputs can be read safely.
 
 A rebuild answers correctly, which is why a rejected entry would otherwise be invisible while costing a full build on every run. When an entry is unreadable, or too large to restore inside the remaining memory budget, `audit`, `guard` and `context` all say so: `--agent` output carries a `cache` field and human output prints a note. An ordinary first run says nothing, because there is nothing to report.
 

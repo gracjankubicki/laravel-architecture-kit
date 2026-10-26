@@ -7,6 +7,8 @@ namespace GracjanKubicki\ArchitectureKit\Impact;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Reach\ReachReports;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphProductSpec;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
 
@@ -22,6 +24,14 @@ final readonly class ImpactPages
             return ArchitectureImpact::error('E_IMPACT_PAGE_INPUT', 'Start at page 1 with a subject and proposal. Continue using only report_id, page and display limit.');
         }
         try {
+            if ($this->mode === AnalysisMode::Basic && ($context = GraphRuntime::context($this->base)) !== null) {
+                $settings = DiscoverySettings::load($this->files, $this->base);
+                $product = GraphProductSpec::full($this->base, 'impact', $settings->scope, $settings->exclude, $settings->cache, $settings->fingerprint);
+                $response = (new GraphRuntime($context))->query('impact-pages', compact('subject', 'limit', 'depth', 'change', 'signature', 'targetClass', 'targetPath', 'reportId', 'page'), $product);
+
+                return isset($response['result']) ? [...$response['result'], 'runtime' => array_diff_key($response, ['result' => true])]
+                    : [...$response, 'cmd' => 'impact', 'm' => 'E_MAP_PENDING', 'msg' => 'Collect architecture-map result using job_id.'];
+            }
             $store = new ReachReports($this->files, $this->base, $this->mode);
             if ($reportId !== null) {
                 $saved = $store->load($reportId);

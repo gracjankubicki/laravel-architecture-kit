@@ -99,7 +99,7 @@ final class BasicAnalysisModeTest extends TestCase
         }));
         $basic = (new GraphSource(new Filesystem, $this->tempPath))->load();
         (new ApplicationAudit(new Filesystem, $this->tempPath))->run([], false);
-        $this->assertSame([], $stages);
+        $this->assertSame([], array_values(array_filter($stages, static fn ($stage): bool => str_starts_with($stage, 'deep.'))));
         $deep = (new GraphSource(new Filesystem, $this->tempPath, mode: AnalysisMode::Deep))->load();
         $this->assertContains('deep.catalog.extractors', $stages);
         $this->assertContains('deep.catalog.resolvers', $stages);

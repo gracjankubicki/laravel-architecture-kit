@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## v0.11.0 - 2026-10-26
+
+### Added
+
+- Add standalone `map prepare`, `map status JOB_ID` and `map result JOB_ID`, with the equivalent `architecture-map` MCP tool. Share background jobs and ready Basic generations between CLI and MCP clients for the same repository, profile and analysis identity.
+- Add native `basic-file-facts-v1` extraction in Mago engine 0.2.0, with bounded batches and validated source, configuration, mapping and engine identities. Basic graph consumers retain file-local facts without transporting the full neutral syntax tree.
+- Persist validated graph contributions and prepared catalog state outside standalone repositories. Separate readiness, freshness, analysis completeness and cache persistence in lifecycle metadata.
+
+### Changed
+
+- Keep ready catalog queries in their resident worker, with source and identity checks before and after the read. Retire replaced generations after in-flight queries drain, expire idle processes, and invalidate RAM and disk generations on cache clearing.
+- Preserve detached builds after client disconnects and record exceeded request budgets without treating a still-building job as a successful result. Keep task beginnings and explicit Basic/Deep permissions separate from map jobs.
+- Require the matching engine 0.2.0 binary after upgrading the package. Missing, incompatible or failed Mago installations remain explicit errors; PHP requires an explicit engine selection.
+
+### Fixed
+
+- Drain partial Mago output before sleeping, enforce the shared stdout/stderr response budget, and close failed sessions without a second callback exception or implicit retry.
+- Avoid reusing retired job identities when source content changes and later returns to its earlier value. Preserve source checks for same-size, same-timestamp edits and stale paginated results.
+- Preserve incomplete graph-query analysis and response-local traversal diagnostics in resident workers without changing the generation's diagnostic metadata.
+- Recover admission capacity from the oldest terminal job records within the existing 64-record history, protecting active generations, queued builds and in-flight queries. Expired IDs remain explicitly unavailable.
+- Record request-budget overruns after queries on catalog fallback and full-product paths as well as ready catalog reads, preserving the returned facts, freshness and original request clock.
+
+### Limitations
+
+- This release does not guarantee 20-second cold builds, 2-second restores, 3-second incremental updates or 100 ms ready queries. Performance acceptance remains open. Binary distribution targets are macOS and Linux on ARM64 and x64; publication of matching artifacts and activation of an installed integration are separate steps.
+
 ## v0.10.0 - 2026-10-25
 
 - Preserve incomplete graph-query status after traversal limits. Include Modules and Composer source roots in symbol context, while keeping configured file-audit paths separate and vendor unread.

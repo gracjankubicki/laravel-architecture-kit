@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisLimitReason;
+use GracjanKubicki\ArchitectureKit\Analysis\GraphBuildEligibility;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
@@ -62,6 +64,8 @@ final class PhpCatalogExtractor
         while ($pending !== []) {
             $node = array_pop($pending);
             if (++$visited > 10000) {
+                GraphBuildEligibility::report(AnalysisLimitReason::Structure);
+
                 return ['complete' => false, 'offsets' => $offsets, 'limit_reason' => 'structure'];
             }
             if ($visited % 128 === 0 && ImpactExtractor::sourceLimit(0) !== null) {
@@ -75,6 +79,8 @@ final class PhpCatalogExtractor
             }
             if (Node::is($node, 'statement.return')) {
                 if (count($offsets) >= 128) {
+                    GraphBuildEligibility::report(AnalysisLimitReason::Structure);
+
                     return ['complete' => false, 'offsets' => $offsets, 'limit_reason' => 'structure'];
                 }
                 $offsets[] = max(0, $node->getStartFilePos());
@@ -100,6 +106,7 @@ final class PhpCatalogExtractor
         }
         if (++$this->visited > 25000 || count($this->elements) >= 10000 || ($this->visited % 128 === 0 && ImpactExtractor::sourceLimit(0) !== null)) {
             $this->limited = true;
+            GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
             $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'PHP catalog extraction reached its node or memory budget.', max(1, $node->getStartLine()), $owner);
 
             return;
@@ -353,6 +360,7 @@ final class PhpCatalogExtractor
             }
             if (Node::is($value, 'expression.array') && count($value->items) > 1000) {
                 $this->limited = true;
+                GraphBuildEligibility::report(ImpactExtractor::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
                 $this->diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Controller middleware attribute filters exceeded their 1000 item budget.', max(1, $attribute->getStartLine()));
                 $resolved = false;
 

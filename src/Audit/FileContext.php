@@ -8,6 +8,7 @@ use Closure;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisDocument;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
+use GracjanKubicki\ArchitectureKit\Analysis\SourceInput;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node as SyntaxNode;
 use PhpParser\Error;
 use PhpParser\Node;
@@ -143,9 +144,12 @@ final class FileContext
     /** @param list<SyntaxNode> $nodes */
     public function withSyntax(array $nodes): self
     {
-        $document = $this->analysisDocument();
         $view = new self($this->path, $this->contents, $this->onParse, false, $this->analysisSession());
-        $view->document = new AnalysisDocument($document->source, $document->engine, [], syntax: $nodes);
+        $source = $nodes[0]->source ?? new SourceInput($this->path, $this->contents, $this->analysisSession()->phpVersion);
+        if ($source->path !== $this->path || $source->contents !== $this->contents || $source->phpVersion !== $this->analysisSession()->phpVersion) {
+            throw new RuntimeException('Portable syntax view must belong to this source snapshot.');
+        }
+        $view->document = new AnalysisDocument($source, $this->analysisSession()->engine, [], syntax: $nodes);
 
         return $view;
     }
@@ -153,6 +157,14 @@ final class FileContext
     public function analysisSession(): AnalysisSession
     {
         return $this->resolvedAnalysis ??= $this->analysis ?? AnalysisRuntime::session();
+    }
+
+    /** The map product parses this snapshot without retaining syntax in PHP. */
+    public function observeBasicExtraction(): void
+    {
+        if ($this->onParse !== null) {
+            ($this->onParse)($this->path);
+        }
     }
 
     public function withContents(string $contents): self

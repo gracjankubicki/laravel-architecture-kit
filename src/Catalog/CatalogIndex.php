@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Catalog;
 
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CatalogState;
 
 /** Snapshot composition resolves named declarations again after each per-file rebuild. */
 final class CatalogIndex
@@ -86,10 +87,20 @@ final class CatalogIndex
     private array $hierarchyLimits = [];
 
     /** @param list<CatalogFacts> $files
+     * @param  array<string, array<mixed>>|null  $restoredState
      * @param  (\Closure(string): ?string)|null  $sourceContents
      */
-    public function __construct(array $files, public readonly ?\Closure $sourceContents = null, public readonly AnalysisMode $mode = AnalysisMode::Basic)
+    public function __construct(array $files, public readonly ?\Closure $sourceContents = null, public readonly AnalysisMode $mode = AnalysisMode::Basic, ?array $restoredState = null)
     {
+        if ($restoredState !== null) {
+            CatalogState::validate($restoredState);
+            foreach ($restoredState as $field => $value) {
+                $this->{$field} = $value;
+            }
+
+            return;
+        }
+        AnalysisRuntime::stage('catalog.compose');
         $pendingCalls = [];
         $pendingBindings = [];
         $pendingHttp = [];
@@ -187,6 +198,7 @@ final class CatalogIndex
         $this->composerStates();
         $this->classify();
         if ($this->mode === AnalysisMode::Basic) {
+            AnalysisRuntime::stage('basic.catalog.resolvers');
             (new CatalogCallResolver($this))->resolve($pendingCalls);
             foreach ([...$pendingBindings, ...$pendingHttp, ...$pendingExecution] as $registration) {
                 $this->addRelation($registration);
@@ -300,6 +312,23 @@ final class CatalogIndex
                     'metadata' => ['state' => $package['metadata']['state'], 'constraint_evaluated' => false, 'execution_proven' => false]]);
             }
         }
+    }
+
+    /** The complete ready state, without callback, engine or syntax objects.
+     * @return array<string, array<mixed>> */
+    public function exportState(): array
+    {
+        return ['elements' => $this->elements, 'relations' => $this->relations, 'diagnostics' => $this->diagnostics,
+            'descriptorReceivers' => $this->descriptorReceivers, 'names' => $this->names, 'out' => $this->out,
+            'in' => $this->in, 'hierarchyLimits' => $this->hierarchyLimits];
+    }
+
+    /** Controlled hydration returns before any composition or resolver.
+     * @param array<string, array<mixed>> $state
+     * @param (\Closure(string): ?string)|null $sourceContents */
+    public static function fromState(array $state, ?\Closure $sourceContents = null, AnalysisMode $mode = AnalysisMode::Basic): self
+    {
+        return new self([], $sourceContents, $mode, $state);
     }
 
     /** @return list<string> */

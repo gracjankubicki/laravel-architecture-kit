@@ -63,6 +63,21 @@ Source transport overrides, inaccessible or dynamic URL selectors, invalid argum
 
 ## MCP tools
 
+### architecture-map in standalone sessions
+
+`architecture-map` prepares or inspects the standalone Basic map for the server's pinned repository, profile and engine. It requires the standalone repository context and tool home.
+
+| Parameter | Meaning |
+| --- | --- |
+| `action` | Required: `prepare`, `status` or `result` |
+| `job_id` | Required for `status` and `result`; use the ID returned by `prepare` |
+
+`prepare` can return a background `building` job. Keep its ID and collect it with `result` while continuing ordinary source inspection. Status does not revalidate source freshness. `ready`, `freshness`, `checks_complete` and cache write status describe different properties; a ready current map can still contain incomplete analysis. The map response contains metadata, not the full graph.
+
+Existing search and graph queries use the ready catalog and check inputs before and after the read. Other products preserve their own scope and identity. Source edits, including same-size/same-timestamp changes, and configuration/tool/engine changes invalidate reuse. A replaced generation drains its in-flight queries before retiring; idle workers can exit and later restore verified disk facts.
+
+See [standalone map preparation and lifecycle](../STANDALONE.md#prepare-and-collect-a-basic-map) for CLI equivalents, platform requirements and RAM/disk behavior. The 20/2/3-second preparation targets and 100 ms ready-query target remain open; the release does not guarantee these timings.
+
 ### architecture-search
 
 Search uses a literal, case-insensitive fragment. Exact matches rank first. It can match names, paths, routes, tables, and element kinds. Select a candidate using its ID and source location before querying relationships.
@@ -145,13 +160,13 @@ Completeness describes the current inputs within the supported source contracts.
 
 ## Cache and measurement
 
-Graph discovery reuses the existing per-file cache in `storage/framework/cache/architecture-kit`. Source statistics, file membership, graph configuration, and package source fingerprints invalidate affected entries. Memory guards can refuse a cache read or write and fall back to rebuilding.
+In application installations, graph discovery uses the per-file cache in `storage/framework/cache/architecture-kit`. Standalone storage stays outside the inspected repository and can retain validated contributions and prepared catalog state alongside resident worker generations. Content signatures, file membership, graph configuration, engine identity and package source fingerprints invalidate affected entries. Memory guards can refuse a cache read or write and fall back to rebuilding. A cache hit does not remove current-input verification or prove that a result is complete.
 
 Catalog receiver chains store each intermediate receiver once in a file-local table. Later descriptors use a content-addressed link; resolvers decode one step at a time, with the same dispatch budgets and support for inline legacy descriptors. The table travels with the cached facts and remains usable in another process. Catalog cache format 3 replaces format 2; the package source fingerprint rebuilds older entries automatically. Receiver and argument descriptors retain size guards, and memory guards stop extraction with a source location and previously collected facts. These diagnostics do not prove that later unresolved calls are safe.
 
 Some partial results repeat for unchanged source. Diagnostics with `limit_reason: "structure"` retain source-bounded node, depth, or descriptor limits in cache. The warning remains in the reused result. Memory-dependent and unclassified limits are retried. Editing the source or changing the package fingerprint refreshes the facts.
 
-The benchmark runs isolated synthetic projects with 1,000 and 10,000 PHP files and a copy of this package's `src`. It reports cold, warm, one-file-edit, and disabled-cache builds, query timings, payload sizes, memory, cache bytes, input hashes, and observed parser calls. It does not scan neighboring repositories.
+The historical benchmark below runs isolated synthetic projects with 1,000 and 10,000 PHP files and a copy of this package's `src`. It reports cold, warm, one-file-edit, and disabled-cache builds, query timings, payload sizes, memory, cache bytes, input hashes, and observed parser calls. It does not scan neighboring repositories. These results predate the standalone background runtime and do not establish its latency targets.
 
 ```bash
 php tests/Benchmarks/static-graph.php --sizes=1000,10000,repo --trials=5 --memory-limit=1024M --output=build/static-graph.json

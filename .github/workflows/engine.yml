@@ -6,7 +6,14 @@ on:
     paths:
       - 'engine/**'
       - 'src/Analysis/**'
+      - 'src/Audit/FileContext.php'
+      - 'src/Audit/ProjectGraph/**'
+      - 'src/Catalog/BladePhpSource.php'
       - 'tests/Unit/Analysis/**'
+      - 'tests/Fixtures/Analysis/**'
+      - 'tests/Unit/Audit/ProjectGraph/**'
+      - 'tests/Unit/Catalog/Blade*'
+      - 'tests/Feature/BasicAnalysisModeTest.php'
       - '.github/workflows/engine.yml'
 
 permissions:
@@ -63,7 +70,11 @@ jobs:
       - name: Verify real PHP adapter and installer against this executable
         env:
           ARCHITECTURE_KIT_TEST_ENGINE: ${{ github.workspace }}/build/engine-artifacts/architecture-kit-engine-${{ matrix.platform }}
-        run: php -d memory_limit=1G vendor/bin/phpunit tests/Unit/Analysis
+        run: |
+          php -d memory_limit=1G vendor/bin/phpunit tests/Unit/Analysis
+          php -d memory_limit=1G vendor/bin/phpunit --filter 'ProjectGraphBuilderTest|ProjectGraphLoaderTest|BladePhpSourceTest|BladeCatalogTest|BasicAnalysisModeTest'
+          ARCHITECTURE_KIT_SUITE_ENGINE=mago php -d memory_limit=1G vendor/bin/phpunit --filter BasicAnalysisModeTest
+          ARCHITECTURE_KIT_SUITE_ENGINE=mago php -d memory_limit=1G vendor/bin/phpunit tests/Feature/Standalone/GraphRuntimeProcessTest.php tests/Feature/GraphFreshnessTest.php
       - uses: actions/upload-artifact@v4
         with:
           name: engine-${{ matrix.platform }}

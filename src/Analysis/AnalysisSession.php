@@ -54,6 +54,41 @@ final class AnalysisSession
         return new self($this->backend, $version, $this->mode, $this->stageObserver);
     }
 
+    /** @param list<BasicSource> $sources
+     * @return list<BasicFileFacts> */
+    public function basic(array $sources, BasicFactsOptions $options): array
+    {
+        $this->fingerprint();
+        if ($this->mode !== AnalysisMode::Basic || ! $this->backend instanceof BasicFactsEngine) {
+            throw new RuntimeException('This session does not provide native Basic contributions. No fallback was used.');
+        }
+        try {
+            foreach ($sources as $source) {
+                if ($source->original->phpVersion !== $this->phpVersion) {
+                    throw new RuntimeException('Basic contribution target differs from the pinned session.');
+                }
+            }
+            $results = $this->backend->analyzeBasic($sources, $options);
+            if (count($results) !== count($sources)) {
+                throw new RuntimeException('Basic extraction returned an incomplete batch.');
+            }
+            foreach ($results as $index => $result) {
+                if ($result->engine->fingerprint() !== $this->engine->fingerprint() || $result->source->contents !== $sources[$index]->original->contents
+                    || $result->source->path !== $sources[$index]->original->path || $result->source->phpVersion !== $this->phpVersion
+                    || $result->mappingFingerprint !== $sources[$index]->mappingFingerprint || $result->options->fingerprint() !== $options->fingerprint()) {
+                    throw new RuntimeException('Basic contribution belongs to another source or implementation.');
+                }
+                $this->observeStage('basic.native.extract');
+            }
+            $this->observeStage('basic.native.batch');
+
+            return $results;
+        } catch (Throwable $error) {
+            $this->failed = true;
+            throw $error;
+        }
+    }
+
     /** Internal stage names only. No source or payload is passed to the observer. */
     public function observeStage(string $stage): void
     {

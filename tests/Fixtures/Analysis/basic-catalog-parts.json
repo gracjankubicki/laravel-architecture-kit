@@ -1,0 +1,4325 @@
+{
+    "reference_head": "8722f1a8fabbb539131c9463af5f87a655103740",
+    "backend": "php",
+    "php_target": "8.5",
+    "scope": "PhpCallCatalogExtractor and ContainerCatalogExtractor, Basic only",
+    "cases": [
+        {
+            "id": "imports-catalog-calls",
+            "path": "app/Domain/Worker.php",
+            "source": "<?php\nnamespace Domain;\nuse Vendor\\{Port as Gateway, Model};\nclass Worker extends Model implements Gateway {\n    public Gateway|Model $port;\n    const Model C = Model::VALUE;\n    function run(?Gateway $port): Gateway&Model {\n        $x = new Model;\n        $x instanceof Gateway;\n        try { Model::run(...); Model::$property; } catch (\\Exception|\\Error $e) {}\n    }\n}",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Domain\\Worker::run",
+                                179
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Vendor\\Model",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Model",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 238,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 246
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Domain\\Worker::run",
+                                179
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Vendor\\Model",
+                                "run",
+                                true
+                            ]
+                        },
+                        "kind": "callable-reference",
+                        "line": 10,
+                        "end_line": 10,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Model",
+                            "method": "run",
+                            "exact_receiver": true,
+                            "form": "class",
+                            "offset": 294,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 308
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "imports-catalog-container",
+            "path": "app/Domain/Worker.php",
+            "source": "<?php\nnamespace Domain;\nuse Vendor\\{Port as Gateway, Model};\nclass Worker extends Model implements Gateway {\n    public Gateway|Model $port;\n    const Model C = Model::VALUE;\n    function run(?Gateway $port): Gateway&Model {\n        $x = new Model;\n        $x instanceof Gateway;\n        try { Model::run(...); Model::$property; } catch (\\Exception|\\Error $e) {}\n    }\n}",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "declarations-catalog-calls",
+            "path": "app/Mixed.php",
+            "source": "<?php\nnamespace Mixed;\n#[\\Attribute]\ninterface EmptyPort {}\ninterface Port extends \\Vendor\\Contract { function run(): \\Vendor\\Data; }\ntrait Shared { function retry() { new \\Vendor\\Data; } }\nenum Cases: string implements Port { case READY = 'ready'; function run(): \\Vendor\\Data {} }\nclass Worker { use Shared { retry as protected locked; } }",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Mixed\\Shared::retry",
+                                149
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Vendor\\Data",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Data",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 168,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 183
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "declarations-catalog-container",
+            "path": "app/Mixed.php",
+            "source": "<?php\nnamespace Mixed;\n#[\\Attribute]\ninterface EmptyPort {}\ninterface Port extends \\Vendor\\Contract { function run(): \\Vendor\\Data; }\ntrait Shared { function retry() { new \\Vendor\\Data; } }\nenum Cases: string implements Port { case READY = 'ready'; function run(): \\Vendor\\Data {} }\nclass Worker { use Shared { retry as protected locked; } }",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "nested-catalog-calls",
+            "path": "app/Worker.php",
+            "source": "<?php\nclass Worker {\n    function run() {\n        $nested = new class extends Base implements Port { function work() { new Service; } };\n        return function (Nested $arg): Returned { return new Service; };\n    }\n}",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Worker::run",
+                                25
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "(anonymous) app/Worker.php:64",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "(anonymous) app/Worker.php:64",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 60,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 134
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Worker.php:152",
+                                152
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Service",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Service",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 194,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 204
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) app/Worker.php:64::work",
+                                101
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Service",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Service",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 119,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 129
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Worker.php:152",
+                                152
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "Service",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 187
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Service",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 187
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Worker::run",
+                                25
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "@closure:(closure) app/Worker.php:152",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 145
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@closure:(closure) app/Worker.php:152",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 145
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "nested-catalog-container",
+            "path": "app/Worker.php",
+            "source": "<?php\nclass Worker {\n    function run() {\n        $nested = new class extends Base implements Port { function work() { new Service; } };\n        return function (Nested $arg): Returned { return new Service; };\n    }\n}",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "eloquent-catalog-calls",
+            "path": "app/Models/Entry.php",
+            "source": "<?php\nnamespace App\\Models;\nclass Entry {\n    function relations() {\n        $this->hasMany(Child::class);\n        $this->belongsTo(ParentModel::CUSTOM);\n        $this->morphTo(Target::class);\n        $this->ordinary(Other::class);\n        Child::class;\n        Child::OTHER;\n        self::run(); static::run(); parent::run();\n    }\n}",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Models\\Entry",
+                                "hasMany",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Models\\Entry",
+                            "method": "hasMany",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 77,
+                            "this_receiver": true,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 104
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Models\\Entry",
+                                "belongsTo",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Models\\Entry",
+                            "method": "belongsTo",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 115,
+                            "this_receiver": true,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 151
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Models\\Entry",
+                                "morphTo",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Models\\Entry",
+                            "method": "morphTo",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 162,
+                            "this_receiver": true,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 190
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Models\\Entry",
+                                "ordinary",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Models\\Entry",
+                            "method": "ordinary",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 201,
+                            "this_receiver": true,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 229
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Models\\Entry",
+                                "run",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Models\\Entry",
+                            "method": "run",
+                            "exact_receiver": true,
+                            "form": "self",
+                            "offset": 284,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": "self",
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 294
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Models\\Entry",
+                                "run",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Models\\Entry",
+                            "method": "run",
+                            "exact_receiver": false,
+                            "form": "static",
+                            "offset": 297,
+                            "this_receiver": false,
+                            "late_static_receiver": true,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 309
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Models\\Entry::relations",
+                                46
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@parent:App\\Models\\Entry",
+                                "run",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@parent:App\\Models\\Entry",
+                            "method": "run",
+                            "exact_receiver": true,
+                            "form": "parent",
+                            "offset": 312,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": "parent",
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 324
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "eloquent-catalog-container",
+            "path": "app/Models/Entry.php",
+            "source": "<?php\nnamespace App\\Models;\nclass Entry {\n    function relations() {\n        $this->hasMany(Child::class);\n        $this->belongsTo(ParentModel::CUSTOM);\n        $this->morphTo(Target::class);\n        $this->ordinary(Other::class);\n        Child::class;\n        Child::OTHER;\n        self::run(); static::run(); parent::run();\n    }\n}",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "classless-catalog-calls",
+            "path": "routes/console.php",
+            "source": "<?php\nnamespace Console;\nuse Vendor\\Runner as R;\nfunction run(R $runner): R { return new R; }\n$callback = fn(R $runner): R => new R;\nnew R; new R;",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "Console\\run",
+                                49
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Vendor\\Runner",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Runner",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 85,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 89
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) routes/console.php:106",
+                                106
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Vendor\\Runner",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Runner",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 126,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 130
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/console.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Vendor\\Runner",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Runner",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 133,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 137
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/console.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Vendor\\Runner",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Runner",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 140,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 144
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "Console\\run",
+                                49
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "Vendor\\Runner",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 78
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Runner",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 78
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) routes/console.php:106",
+                                106
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "Vendor\\Runner",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 106
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Vendor\\Runner",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 106
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "classless-catalog-container",
+            "path": "routes/console.php",
+            "source": "<?php\nnamespace Console;\nuse Vendor\\Runner as R;\nfunction run(R $runner): R { return new R; }\n$callback = fn(R $runner): R => new R;\nnew R; new R;",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "anonymous-only-catalog-calls",
+            "path": "routes/anonymous.php",
+            "source": "<?php $x = new class extends ParentClass { function run(Port $port): Result { return new Result; } };",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) routes/anonymous.php:15::run",
+                                43
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Result",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Result",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 85,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 94
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "routes/anonymous.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "(anonymous) routes/anonymous.php:15",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "(anonymous) routes/anonymous.php:15",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 11,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 99
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "(anonymous) routes/anonymous.php:15::run",
+                                43
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "Result",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 78
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Result",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 78
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "anonymous-only-catalog-container",
+            "path": "routes/anonymous.php",
+            "source": "<?php $x = new class extends ParentClass { function run(Port $port): Result { return new Result; } };",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "two-namespaces-catalog-calls",
+            "path": "routes/two.php",
+            "source": "<?php namespace One { class First { function run() { new Thing; } } } namespace Two { class Second { function run() { new Thing; } } }",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "One\\First::run",
+                                36
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "One\\Thing",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "One\\Thing",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 53,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 61
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Two\\Second::run",
+                                101
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Two\\Thing",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Two\\Thing",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 118,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 126
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "two-namespaces-catalog-container",
+            "path": "routes/two.php",
+            "source": "<?php namespace One { class First { function run() { new Thing; } } } namespace Two { class Second { function run() { new Thing; } } }",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "test-path-catalog-calls",
+            "path": "Modules/Billing/Tests/Unit/Test.php",
+            "source": "<?php namespace Billing\\Tests; class ExampleTest { function test_it() { new \\App\\Example; } }",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "Billing\\Tests\\ExampleTest::test_it",
+                                51
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Example",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Example",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 72,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 87
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "test-path-catalog-container",
+            "path": "Modules/Billing/Tests/Unit/Test.php",
+            "source": "<?php namespace Billing\\Tests; class ExampleTest { function test_it() { new \\App\\Example; } }",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "source-app-catalog-calls",
+            "path": "app/bootstrap.php",
+            "source": "<?php function start(Port $port) { new Handler; } start(new Port);",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "start",
+                                6
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Handler",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Handler",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 35,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 45
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/bootstrap.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"start\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"start\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 50,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/bootstrap.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Port",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 1,
+                        "end_line": 1,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Port",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 56,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 63
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "source-app-catalog-container",
+            "path": "app/bootstrap.php",
+            "source": "<?php function start(Port $port) { new Handler; } start(new Port);",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "empty-catalog-calls",
+            "path": "routes/empty.php",
+            "source": "",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "empty-catalog-container",
+            "path": "routes/empty.php",
+            "source": "",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "metadata-catalog-calls",
+            "path": "app/Meta.php",
+            "source": "<?php\nnamespace App;\nuse Illuminate\\Http\\Resources\\Attributes\\Collects;\nuse Illuminate\\Routing\\Attributes\\Controllers\\Middleware;\n#[Collects(Data::class)]\n#[Middleware('auth', only: ['show', 'index'], except: null)]\nfinal class Meta {\n    public $collects = Data::class;\n    protected $connector = Connector::class;\n    public $allowBaseUrlOverride = false;\n    public function __construct(private Data $data) {}\n    public function create($first, $second = null, ...$rest) { return new Data; }\n    public function closure() { return fn(Data $data) => $data; }\n    public function factory() { return self::create(); }\n}",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::create",
+                                417
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Data",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 12,
+                        "end_line": 12,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Data",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 483,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 490
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::factory",
+                                565
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Meta",
+                                "create",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 14,
+                        "end_line": 14,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Meta",
+                            "method": "create",
+                            "exact_receiver": true,
+                            "form": "self",
+                            "offset": 600,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": "self",
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 613
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::create",
+                                417
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "App\\Data",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 476
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 12,
+                        "end_line": 12,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Data",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 476
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Meta.php:534",
+                                534
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "App\\Data",
+                                    "exact_receiver": false,
+                                    "bound_callable": null,
+                                    "offset": 534
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 13,
+                        "end_line": 13,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Data",
+                            "exact_receiver": false,
+                            "bound_callable": null,
+                            "offset": 534
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Meta::closure",
+                                499
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "@closure:(closure) app/Meta.php:534",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 527
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 13,
+                        "end_line": 13,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@closure:(closure) app/Meta.php:534",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 527
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "metadata-catalog-container",
+            "path": "app/Meta.php",
+            "source": "<?php\nnamespace App;\nuse Illuminate\\Http\\Resources\\Attributes\\Collects;\nuse Illuminate\\Routing\\Attributes\\Controllers\\Middleware;\n#[Collects(Data::class)]\n#[Middleware('auth', only: ['show', 'index'], except: null)]\nfinal class Meta {\n    public $collects = Data::class;\n    protected $connector = Connector::class;\n    public $allowBaseUrlOverride = false;\n    public function __construct(private Data $data) {}\n    public function create($first, $second = null, ...$rest) { return new Data; }\n    public function closure() { return fn(Data $data) => $data; }\n    public function factory() { return self::create(); }\n}",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "includes-catalog-calls",
+            "path": "routes/load.php",
+            "source": "<?php\ninclude __DIR__.'/../app/start.php';\nrequire 'helpers.php';\ninclude $dynamic;\n$callback = function () { yield 1; return 2; };",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "includes-catalog-container",
+            "path": "routes/load.php",
+            "source": "<?php\ninclude __DIR__.'/../app/start.php';\nrequire 'helpers.php';\ninclude $dynamic;\n$callback = function () { yield 1; return 2; };",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "branching-catalog-calls",
+            "path": "app/Branch.php",
+            "source": "<?php\nnamespace App;\nclass Branch {\n public function run(Port $port, bool $flag) {\n  $x = new Service;\n  $x->before();\n  if ($flag) { $x = new Other; $x->inside(); } else { $x->otherwise(); }\n  $x->after();\n  $port->send($x);\n  $x->afterArgument();\n  foreach ([1] as $item) { $port = new Other; $port->loop(); }\n  $port->afterLoop();\n  $callback = function (Service $service) use ($port) { $service->run(); return $port; };\n  return $callback;\n }\n}\nfunction run(Port $port) { $port->send(); }\nrun(new Service);",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Service",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 90,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 100
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Service",
+                                "before",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "method": "before",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "receiver_instance_origin": 100,
+                            "offset": 105,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 116
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Other",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Other",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 139,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 147
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Other",
+                                "inside",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Other",
+                            "method": "inside",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "receiver_instance_origin": 147,
+                            "offset": 150,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 161
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Service",
+                                "otherwise",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "method": "otherwise",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "receiver_instance_origin": 100,
+                            "offset": 173,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 187
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Port",
+                                "send",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 9,
+                        "end_line": 9,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Port",
+                            "method": "send",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 209,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "saloon_pool_send": false,
+                            "end_offset": 223
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Other",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Other",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 284,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 292
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Other",
+                                "loop",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Other",
+                            "method": "loop",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "receiver_instance_origin": 292,
+                            "offset": 295,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 307
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Branch.php:348",
+                                348
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Service",
+                                "run",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 13,
+                        "end_line": 13,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "method": "run",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 390,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 404
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "function",
+                                "App\\run",
+                                449
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Port",
+                                "send",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 17,
+                        "end_line": 17,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Port",
+                            "method": "send",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 476,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "saloon_pool_send": true,
+                            "end_offset": 488
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Branch.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"App\\\\run\",\"run\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 18,
+                        "end_line": 18,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"App\\\\run\",\"run\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 493,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Branch.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Service",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 18,
+                        "end_line": 18,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 497,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 507
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "@closure:(closure) app/Branch.php:348",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 426
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 14,
+                        "end_line": 14,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@closure:(closure) app/Branch.php:348",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 426
+                        }
+                    }
+                ],
+                "diagnostics": [
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 8,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 10,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 12,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Branch::run",
+                                37
+                            ]
+                        }
+                    }
+                ],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "branching-catalog-container",
+            "path": "app/Branch.php",
+            "source": "<?php\nnamespace App;\nclass Branch {\n public function run(Port $port, bool $flag) {\n  $x = new Service;\n  $x->before();\n  if ($flag) { $x = new Other; $x->inside(); } else { $x->otherwise(); }\n  $x->after();\n  $port->send($x);\n  $x->afterArgument();\n  foreach ([1] as $item) { $port = new Other; $port->loop(); }\n  $port->afterLoop();\n  $callback = function (Service $service) use ($port) { $service->run(); return $port; };\n  return $callback;\n }\n}\nfunction run(Port $port) { $port->send(); }\nrun(new Service);",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "references-catalog-calls",
+            "path": "app/References.php",
+            "source": "<?php\nclass References {\n public function run(Foo $foo, Bar|Other $other) {\n  $bound = [$foo, 'run'];\n  $static = [Foo::class, 'run'];\n  $named = ['Foo', 'run'];\n  $dynamic = $foo->$unknown();\n  $foo->property->nested->call();\n  $this->method(...);\n  self::method(...);\n  json_encode($foo);\n  return $named;\n }\n}",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "References::run",
+                                26
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Foo",
+                                "run",
+                                false
+                            ]
+                        },
+                        "kind": "callable-reference",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Foo",
+                            "method": "run",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 87,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "References::run",
+                                26
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Foo",
+                                "run",
+                                true
+                            ]
+                        },
+                        "kind": "callable-reference",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Foo",
+                            "method": "run",
+                            "exact_receiver": true,
+                            "form": "class",
+                            "offset": 114,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "References::run",
+                                26
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@property:@descriptor:2935c32d0ae5efbd4ea13ed28a3d18420bc4d5f4d0691a54b3c579c4a49bde34#nested",
+                                "call",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@property:@descriptor:2935c32d0ae5efbd4ea13ed28a3d18420bc4d5f4d0691a54b3c579c4a49bde34#nested",
+                            "method": "call",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 195,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 224
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "References::run",
+                                26
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "References",
+                                "method",
+                                false
+                            ]
+                        },
+                        "kind": "callable-reference",
+                        "line": 9,
+                        "end_line": 9,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "References",
+                            "method": "method",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 229,
+                            "this_receiver": true,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 246
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "References::run",
+                                26
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "References",
+                                "method",
+                                true
+                            ]
+                        },
+                        "kind": "callable-reference",
+                        "line": 10,
+                        "end_line": 10,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "References",
+                            "method": "method",
+                            "exact_receiver": true,
+                            "form": "self",
+                            "offset": 251,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": "self",
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 267
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "References::run",
+                                26
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"json_encode\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"json_encode\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "json_serialization_receiver": "Foo",
+                            "offset": 272,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "References::run",
+                                26
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "@named-callable:[\"0165de9eed36f00db9752dbb420137e5e5b9634371d24603b4f8fa5694096b6c\",\"2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae\",\"acba25512100f80b56fc3ccd14c65be55d94800cda77585c5f41a887e398f9be\"]",
+                                    "exact_receiver": false,
+                                    "bound_callable": null,
+                                    "offset": 293
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 12,
+                        "end_line": 12,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@named-callable:[\"0165de9eed36f00db9752dbb420137e5e5b9634371d24603b4f8fa5694096b6c\",\"2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae\",\"acba25512100f80b56fc3ccd14c65be55d94800cda77585c5f41a887e398f9be\"]",
+                            "exact_receiver": false,
+                            "bound_callable": null,
+                            "offset": 293
+                        }
+                    }
+                ],
+                "diagnostics": [
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 7,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "References::run",
+                                26
+                            ]
+                        }
+                    }
+                ],
+                "descriptor_receivers": {
+                    "2935c32d0ae5efbd4ea13ed28a3d18420bc4d5f4d0691a54b3c579c4a49bde34": "@property:Foo#property"
+                }
+            }
+        },
+        {
+            "id": "references-catalog-container",
+            "path": "app/References.php",
+            "source": "<?php\nclass References {\n public function run(Foo $foo, Bar|Other $other) {\n  $bound = [$foo, 'run'];\n  $static = [Foo::class, 'run'];\n  $named = ['Foo', 'run'];\n  $dynamic = $foo->$unknown();\n  $foo->property->nested->call();\n  $this->method(...);\n  self::method(...);\n  json_encode($foo);\n  return $named;\n }\n}",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "signature-defaults-catalog-calls",
+            "path": "app/Defaults.php",
+            "source": "<?php\nnamespace App;\nclass Defaults {\n public function run($a = [1, 'x' => null], $b = new \\App\\Data(flag: true), $c = 'escaped\\'quote', $d = 1 + 2, $e = self::FLAG, $f = \"utf8 \u03b1\", $g = 1.0, $h = null, $i = new Data, $j = -(2 ** 3), $k = 1e17, $l = 1e-5, $m = 1e16, $n = 1.2e20, $o = \"\\u{2028}\") {}\n}",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "signature-defaults-catalog-container",
+            "path": "app/Defaults.php",
+            "source": "<?php\nnamespace App;\nclass Defaults {\n public function run($a = [1, 'x' => null], $b = new \\App\\Data(flag: true), $c = 'escaped\\'quote', $d = 1 + 2, $e = self::FLAG, $f = \"utf8 \u03b1\", $g = 1.0, $h = null, $i = new Data, $j = -(2 ** 3), $k = 1e17, $l = 1e-5, $m = 1e16, $n = 1.2e20, $o = \"\\u{2028}\") {}\n}",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "container-calls",
+            "path": "app/Providers/Bindings.php",
+            "source": "<?php\nnamespace App\\Providers;\nuse Illuminate\\Support\\Facades\\App;\nclass Bindings {\n function register(\\Illuminate\\Contracts\\Container\\Container $container) {\n   $this->app->bind(\\App\\Port::class, \\App\\Service::class);\n   App::singleton('service', fn (): \\App\\Port => new \\App\\Service);\n   app()->bind('conditional', function ($app) { if ($app) return new \\App\\First; return new \\App\\Second; });\n   $container->bind('typed', \\App\\Service::class);\n   $this->app->when([\\App\\Consumer::class])->needs(\\App\\Port::class)->give(\\App\\Service::class);\n   app()->when(\\App\\Consumer::class)->needs('$value')->give('secret');\n }\n function invalidated(\\Illuminate\\Contracts\\Container\\Container $container) { $container = unknown(); $container->bind('omitted', \\App\\Service::class); }\n}\nApp::bind(fn(): \\App\\Port => new \\App\\Service);",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@property:App\\Providers\\Bindings#app",
+                                "bind",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@property:App\\Providers\\Bindings#app",
+                            "method": "bind",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 162,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 216
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Illuminate\\Support\\Facades\\App",
+                                "singleton",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Illuminate\\Support\\Facades\\App",
+                            "method": "singleton",
+                            "exact_receiver": true,
+                            "form": "class",
+                            "offset": 222,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 284
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Providers/Bindings.php:248",
+                                248
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Service",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 268,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 283
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"App\\\\Providers\\\\app\",\"app\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"App\\\\Providers\\\\app\",\"app\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 290,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Providers/Bindings.php:317",
+                                317
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\First",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\First",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 352,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 365
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Providers/Bindings.php:317",
+                                317
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Second",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Second",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 375,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 389
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Illuminate\\Contracts\\Container\\Container",
+                                "bind",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 9,
+                        "end_line": 9,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Illuminate\\Contracts\\Container\\Container",
+                            "method": "bind",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 399,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 444
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@property:App\\Providers\\Bindings#app",
+                                "when",
+                                false
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 10,
+                        "end_line": 10,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@property:App\\Providers\\Bindings#app",
+                            "method": "when",
+                            "exact_receiver": false,
+                            "form": "instance",
+                            "offset": 450,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false,
+                            "end_offset": 489
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"App\\\\Providers\\\\app\",\"app\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"App\\\\Providers\\\\app\",\"app\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 547,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::invalidated",
+                                619
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"App\\\\Providers\\\\unknown\",\"unknown\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 13,
+                        "end_line": 13,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"App\\\\Providers\\\\unknown\",\"unknown\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 709,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": false
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Providers/Bindings.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "Illuminate\\Support\\Facades\\App",
+                                "bind",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 15,
+                        "end_line": 15,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "Illuminate\\Support\\Facades\\App",
+                            "method": "bind",
+                            "exact_receiver": true,
+                            "form": "class",
+                            "offset": 774,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 819
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Providers/Bindings.php:784",
+                                784
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "App\\Service",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 15,
+                        "end_line": 15,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 803,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 818
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Providers/Bindings.php:248",
+                                248
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "App\\Service",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 248
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 248
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Providers/Bindings.php:317",
+                                317
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "App\\First",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 345
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\First",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 345
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Providers/Bindings.php:317",
+                                317
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "App\\Second",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 368
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Second",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 368
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Providers/Bindings.php:784",
+                                784
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "App\\Service",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 784
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 15,
+                        "end_line": 15,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "App\\Service",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 784
+                        }
+                    }
+                ],
+                "diagnostics": [
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 8,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 10,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 10,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 11,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 11,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 11,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 13,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::invalidated",
+                                619
+                            ]
+                        }
+                    }
+                ],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "container-container",
+            "path": "app/Providers/Bindings.php",
+            "source": "<?php\nnamespace App\\Providers;\nuse Illuminate\\Support\\Facades\\App;\nclass Bindings {\n function register(\\Illuminate\\Contracts\\Container\\Container $container) {\n   $this->app->bind(\\App\\Port::class, \\App\\Service::class);\n   App::singleton('service', fn (): \\App\\Port => new \\App\\Service);\n   app()->bind('conditional', function ($app) { if ($app) return new \\App\\First; return new \\App\\Second; });\n   $container->bind('typed', \\App\\Service::class);\n   $this->app->when([\\App\\Consumer::class])->needs(\\App\\Port::class)->give(\\App\\Service::class);\n   app()->when(\\App\\Consumer::class)->needs('$value')->give('secret');\n }\n function invalidated(\\Illuminate\\Contracts\\Container\\Container $container) { $container = unknown(); $container->bind('omitted', \\App\\Service::class); }\n}\nApp::bind(fn(): \\App\\Port => new \\App\\Service);",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "provider:App\\Providers\\Bindings",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "App\\Port"
+                                    ],
+                                    "implementations": [
+                                        "App\\Service"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 162,
+                                    "callback": null
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "provider:App\\Providers\\Bindings",
+                            "mode": "bind",
+                            "abstracts": [
+                                "App\\Port"
+                            ],
+                            "implementations": [
+                                "App\\Service"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 162,
+                            "callback": null
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "framework",
+                                    "mode": "singleton",
+                                    "abstracts": [
+                                        "service"
+                                    ],
+                                    "implementations": [
+                                        "App\\Service"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 222,
+                                    "callback": {
+                                        "$tuple": [
+                                            "element",
+                                            "closure",
+                                            "(closure) app/Providers/Bindings.php:248",
+                                            248
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 7,
+                        "end_line": 7,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "framework",
+                            "mode": "singleton",
+                            "abstracts": [
+                                "service"
+                            ],
+                            "implementations": [
+                                "App\\Service"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 222,
+                            "callback": {
+                                "$tuple": [
+                                    "element",
+                                    "closure",
+                                    "(closure) app/Providers/Bindings.php:248",
+                                    248
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "helper",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "conditional"
+                                    ],
+                                    "implementations": [
+                                        "App\\First",
+                                        "App\\Second"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 290,
+                                    "callback": {
+                                        "$tuple": [
+                                            "element",
+                                            "closure",
+                                            "(closure) app/Providers/Bindings.php:317",
+                                            317
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 8,
+                        "end_line": 8,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "helper",
+                            "mode": "bind",
+                            "abstracts": [
+                                "conditional"
+                            ],
+                            "implementations": [
+                                "App\\First",
+                                "App\\Second"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 290,
+                            "callback": {
+                                "$tuple": [
+                                    "element",
+                                    "closure",
+                                    "(closure) app/Providers/Bindings.php:317",
+                                    317
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "type:Illuminate\\Contracts\\Container\\Container",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "typed"
+                                    ],
+                                    "implementations": [
+                                        "App\\Service"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 399,
+                                    "callback": null
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 9,
+                        "end_line": 9,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "type:Illuminate\\Contracts\\Container\\Container",
+                            "mode": "bind",
+                            "abstracts": [
+                                "typed"
+                            ],
+                            "implementations": [
+                                "App\\Service"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 399,
+                            "callback": null
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "provider:App\\Providers\\Bindings",
+                                    "mode": "contextual",
+                                    "abstracts": [
+                                        "App\\Port"
+                                    ],
+                                    "implementations": [
+                                        "App\\Service"
+                                    ],
+                                    "contexts": [
+                                        "App\\Consumer"
+                                    ],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 450,
+                                    "callback": null
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 10,
+                        "end_line": 10,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "provider:App\\Providers\\Bindings",
+                            "mode": "contextual",
+                            "abstracts": [
+                                "App\\Port"
+                            ],
+                            "implementations": [
+                                "App\\Service"
+                            ],
+                            "contexts": [
+                                "App\\Consumer"
+                            ],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 450,
+                            "callback": null
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "method",
+                                "App\\Providers\\Bindings::register",
+                                85
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "helper",
+                                    "mode": "contextual",
+                                    "abstracts": [
+                                        "$value"
+                                    ],
+                                    "implementations": [],
+                                    "contexts": [
+                                        "App\\Consumer"
+                                    ],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 547,
+                                    "callback": null
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 11,
+                        "end_line": 11,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "helper",
+                            "mode": "contextual",
+                            "abstracts": [
+                                "$value"
+                            ],
+                            "implementations": [],
+                            "contexts": [
+                                "App\\Consumer"
+                            ],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 547,
+                            "callback": null
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Providers/Bindings.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "framework",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "App\\Port"
+                                    ],
+                                    "implementations": [
+                                        "App\\Service"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 774,
+                                    "callback": {
+                                        "$tuple": [
+                                            "element",
+                                            "closure",
+                                            "(closure) app/Providers/Bindings.php:784",
+                                            784
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 15,
+                        "end_line": 15,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "framework",
+                            "mode": "bind",
+                            "abstracts": [
+                                "App\\Port"
+                            ],
+                            "implementations": [
+                                "App\\Service"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 774,
+                            "callback": {
+                                "$tuple": [
+                                    "element",
+                                    "closure",
+                                    "(closure) app/Providers/Bindings.php:784",
+                                    784
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "factory-branches-calls",
+            "path": "app/Factory.php",
+            "source": "<?php\napp()->bind('a', fn () => $flag ? new A : new B);\napp()->bind('b', function () { $x = new A; return $x; });\napp()->bind('c', function () use ($captured) { return $captured; });\napp()->bind('d', function () { $x = new A; if (mutate($x)) return $x; return new B; });\napp()->bind('e', fn () => match ($selector) { 1 => new A, default => new B });",
+            "part": "calls",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"app\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 2,
+                        "end_line": 2,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"app\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 6,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:23",
+                                23
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "A",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 2,
+                        "end_line": 2,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "A",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 40,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 44
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:23",
+                                23
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "B",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 2,
+                        "end_line": 2,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "B",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 48,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 52
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"app\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 3,
+                        "end_line": 3,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"app\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 56,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:73",
+                                73
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "A",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 3,
+                        "end_line": 3,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "A",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 92,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 96
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"app\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"app\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 114,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"app\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"app\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 183,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:200",
+                                200
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "A",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "A",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 219,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 223
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:200",
+                                200
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"mutate\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"mutate\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 230,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:200",
+                                200
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "B",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "B",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 260,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 264
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "@function:[\"app\"]",
+                                "__invoke",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "@function:[\"app\"]",
+                            "method": "__invoke",
+                            "exact_receiver": true,
+                            "form": "instance",
+                            "offset": 271,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:288",
+                                288
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "A",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "A",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 322,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 326
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:288",
+                                288
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "dispatch",
+                                "B",
+                                "__construct",
+                                true
+                            ]
+                        },
+                        "kind": "calls",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "B",
+                            "method": "__construct",
+                            "exact_receiver": true,
+                            "form": "new",
+                            "offset": 340,
+                            "this_receiver": false,
+                            "late_static_receiver": false,
+                            "lexical_static_receiver": null,
+                            "bound_callable": null,
+                            "static_context": true,
+                            "end_offset": 344
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:73",
+                                73
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "A",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 99
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 3,
+                        "end_line": 3,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "A",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 99
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "closure",
+                                "(closure) app/Factory.php:200",
+                                200
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "value",
+                                {
+                                    "receiver": "B",
+                                    "exact_receiver": true,
+                                    "bound_callable": null,
+                                    "offset": 253
+                                }
+                            ]
+                        },
+                        "kind": "returns-value",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "B",
+                            "exact_receiver": true,
+                            "bound_callable": null,
+                            "offset": 253
+                        }
+                    }
+                ],
+                "diagnostics": [
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 2,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 3,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 4,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 5,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        }
+                    },
+                    {
+                        "code": "unresolved_call",
+                        "message": "Call receiver or method cannot be resolved from source types.",
+                        "line": 6,
+                        "subject": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        }
+                    }
+                ],
+                "descriptor_receivers": []
+            }
+        },
+        {
+            "id": "factory-branches-container",
+            "path": "app/Factory.php",
+            "source": "<?php\napp()->bind('a', fn () => $flag ? new A : new B);\napp()->bind('b', function () { $x = new A; return $x; });\napp()->bind('c', function () use ($captured) { return $captured; });\napp()->bind('d', function () { $x = new A; if (mutate($x)) return $x; return new B; });\napp()->bind('e', fn () => match ($selector) { 1 => new A, default => new B });",
+            "part": "container",
+            "expected": {
+                "v": 3,
+                "elements": [],
+                "relations": [
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "helper",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "a"
+                                    ],
+                                    "implementations": [
+                                        "A",
+                                        "B"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 6,
+                                    "callback": {
+                                        "$tuple": [
+                                            "element",
+                                            "closure",
+                                            "(closure) app/Factory.php:23",
+                                            23
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 2,
+                        "end_line": 2,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "helper",
+                            "mode": "bind",
+                            "abstracts": [
+                                "a"
+                            ],
+                            "implementations": [
+                                "A",
+                                "B"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 6,
+                            "callback": {
+                                "$tuple": [
+                                    "element",
+                                    "closure",
+                                    "(closure) app/Factory.php:23",
+                                    23
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "helper",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "b"
+                                    ],
+                                    "implementations": [
+                                        "A"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 56,
+                                    "callback": {
+                                        "$tuple": [
+                                            "element",
+                                            "closure",
+                                            "(closure) app/Factory.php:73",
+                                            73
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 3,
+                        "end_line": 3,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "helper",
+                            "mode": "bind",
+                            "abstracts": [
+                                "b"
+                            ],
+                            "implementations": [
+                                "A"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 56,
+                            "callback": {
+                                "$tuple": [
+                                    "element",
+                                    "closure",
+                                    "(closure) app/Factory.php:73",
+                                    73
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "helper",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "c"
+                                    ],
+                                    "implementations": [],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": true,
+                                    "offset": 114,
+                                    "callback": {
+                                        "$tuple": [
+                                            "element",
+                                            "closure",
+                                            "(closure) app/Factory.php:131",
+                                            131
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 4,
+                        "end_line": 4,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "helper",
+                            "mode": "bind",
+                            "abstracts": [
+                                "c"
+                            ],
+                            "implementations": [],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": true,
+                            "offset": 114,
+                            "callback": {
+                                "$tuple": [
+                                    "element",
+                                    "closure",
+                                    "(closure) app/Factory.php:131",
+                                    131
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "helper",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "d"
+                                    ],
+                                    "implementations": [
+                                        "B"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": true,
+                                    "offset": 183,
+                                    "callback": {
+                                        "$tuple": [
+                                            "element",
+                                            "closure",
+                                            "(closure) app/Factory.php:200",
+                                            200
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 5,
+                        "end_line": 5,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "helper",
+                            "mode": "bind",
+                            "abstracts": [
+                                "d"
+                            ],
+                            "implementations": [
+                                "B"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": true,
+                            "offset": 183,
+                            "callback": {
+                                "$tuple": [
+                                    "element",
+                                    "closure",
+                                    "(closure) app/Factory.php:200",
+                                    200
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "from": {
+                            "$tuple": [
+                                "element",
+                                "file",
+                                "app/Factory.php",
+                                0
+                            ]
+                        },
+                        "to": {
+                            "$tuple": [
+                                "container",
+                                {
+                                    "receiver": "helper",
+                                    "mode": "bind",
+                                    "abstracts": [
+                                        "e"
+                                    ],
+                                    "implementations": [
+                                        "A",
+                                        "B"
+                                    ],
+                                    "contexts": [],
+                                    "context_unknown": false,
+                                    "factory_unknown": false,
+                                    "offset": 271,
+                                    "callback": {
+                                        "$tuple": [
+                                            "element",
+                                            "closure",
+                                            "(closure) app/Factory.php:288",
+                                            288
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "kind": "container-registration",
+                        "line": 6,
+                        "end_line": 6,
+                        "resolution": "conditional",
+                        "metadata": {
+                            "receiver": "helper",
+                            "mode": "bind",
+                            "abstracts": [
+                                "e"
+                            ],
+                            "implementations": [
+                                "A",
+                                "B"
+                            ],
+                            "contexts": [],
+                            "context_unknown": false,
+                            "factory_unknown": false,
+                            "offset": 271,
+                            "callback": {
+                                "$tuple": [
+                                    "element",
+                                    "closure",
+                                    "(closure) app/Factory.php:288",
+                                    288
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "diagnostics": [],
+                "descriptor_receivers": []
+            }
+        }
+    ]
+}

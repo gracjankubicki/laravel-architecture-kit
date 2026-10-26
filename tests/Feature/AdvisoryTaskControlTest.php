@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Analysis\MagoAnalysisEngine;
 use GracjanKubicki\ArchitectureKit\Audit\AuditRule;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\PortableAuditRule;
+use GracjanKubicki\ArchitectureKit\Context\GraphSource;
 use GracjanKubicki\ArchitectureKit\Guard\ArchitectureGuard;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Standalone\AnalysisConsent;
@@ -102,6 +103,26 @@ final class AdvisoryTaskControlTest extends TestCase
         self::assertFalse($strict['ok']);
         self::assertGreaterThan(0, $strict['warnings']);
         self::assertFalse($strict['control']['blocking']);
+    }
+
+    public function test_warming_a_partial_basic_map_does_not_begin_a_task_or_refresh_existing_beginning(): void
+    {
+        $this->source('Target.php', 'class Target { public function run() {} }');
+        $context = $this->context();
+        $control = new TaskControl($context);
+        $begin = $control->begin('A');
+        $state = $context->storage.'/tasks/'.hash('sha256', 'A').'.json';
+        $before = hash_file('sha256', $state);
+        $this->source('Broken.php', 'class Broken { invalid');
+        $map = (new GraphSource(new Filesystem, $this->root))->load();
+        self::assertFalse($map['analysis']['checks_complete']);
+        self::assertSame($before, hash_file('sha256', $state));
+        self::assertSame($begin['begin_sources'], $control->status('A')['begin_sources']);
+        self::assertSame('missing', $control->status('missing')['status']);
+        $missing = $control->check('missing');
+        self::assertFalse($missing['ok']);
+        self::assertFalse($missing['control']['blocking']);
+        self::assertFileDoesNotExist($context->storage.'/tasks/'.hash('sha256', 'missing').'.json');
     }
 
     public function test_retry_resume_grant_and_old_errors_never_refresh_the_beginning(): void
@@ -293,14 +314,14 @@ final class AdvisoryTaskControlTest extends TestCase
 #!/usr/bin/env php
 <?php
 if (($argv[1] ?? '') === '--version') {
-    echo json_encode(['engine'=>'mago','version'=>'0.1.0','mago_version'=>'1.57.0','schema'=>1,'capabilities'=>['syntax-facts','syntax-tree-v1']]);
+    echo json_encode(['engine'=>'mago','version'=>'__ENGINE_VERSION__','mago_version'=>'1.57.0','schema'=>1,'capabilities'=>['syntax-facts','syntax-tree-v1']]);
     exit;
 }
 fgets(STDIN);
 file_put_contents(__DIR__.'/request-received', 'request received');
 usleep(2000000);
 CODE;
-        file_put_contents($binary, $program);
+        file_put_contents($binary, str_replace('__ENGINE_VERSION__', MagoAnalysisEngine::VERSION, $program));
         chmod($binary, 0700);
         $engine = new MagoAnalysisEngine($binary, timeout: 0.5);
         AnalysisRuntime::activate(new AnalysisSession($engine, '8.5'));

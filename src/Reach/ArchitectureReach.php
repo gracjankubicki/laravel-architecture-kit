@@ -8,6 +8,8 @@ use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphProductSpec;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use Illuminate\Filesystem\Filesystem;
 use Throwable;
 
@@ -23,6 +25,14 @@ final readonly class ArchitectureReach
             return self::error('E_REACH_INPUT', 'Use limit 0..500, depth 1..32, page >=1. Continuation requires report_id without subject; new analysis starts at page 1.');
         }
         try {
+            if ($this->mode === AnalysisMode::Basic && ($context = GraphRuntime::context($this->base)) !== null) {
+                $settings = DiscoverySettings::load($this->files, $this->base);
+                $product = GraphProductSpec::full($this->base, 'impact', $settings->scope, $settings->exclude, $settings->cache, $settings->fingerprint);
+                $response = (new GraphRuntime($context))->query('reach', compact('subject', 'limit', 'depth', 'reportId', 'page'), $product);
+
+                return isset($response['result']) ? [...$response['result'], 'runtime' => array_diff_key($response, ['result' => true])]
+                    : [...$response, 'cmd' => 'reach', 'm' => 'E_MAP_PENDING', 'msg' => 'Collect architecture-map result using job_id.'];
+            }
             $store = new ReachReports($this->files, $this->base, $this->mode);
             if ($reportId !== null) {
                 $saved = $store->load($reportId);

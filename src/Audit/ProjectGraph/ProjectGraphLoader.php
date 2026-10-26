@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisLimitReason;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Analysis\GraphBuildEligibility;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
@@ -14,6 +16,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CachedGraph;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphBuildPlan;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphCacheSignature;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphContributionStore;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogDiagnostic;
@@ -21,6 +24,7 @@ use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
 use GracjanKubicki\ArchitectureKit\Catalog\ComposerCatalogExtractor;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactExtractor;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactFacts;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphProducts;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use SplFileInfo;
@@ -46,6 +50,7 @@ final readonly class ProjectGraphLoader
         /** @var Closure(string): void|null */
         private ?Closure $onParse = null,
         private AnalysisMode $mode = AnalysisMode::Basic,
+        private ?GraphContributionStore $contributions = null,
     ) {
         $this->classification = RoleClassifier::forProject($files, $basePath);
     }
@@ -177,12 +182,18 @@ final readonly class ProjectGraphLoader
      */
     public function build(GraphBuildPlan $plan, array $parsedSources = []): ProjectGraphSnapshot
     {
+        if (($prepared = GraphProducts::get($this->productKey($plan))) !== null) {
+            return $prepared;
+        }
         $builder = new ProjectGraphBuilder(roles: $this->classification, impact: $this->impact, catalog: $this->catalog, basePath: $this->basePath, mode: $this->mode);
         $entries = $plan->reusable;
+        $pending = [];
+        $pendingBytes = 0;
 
         foreach ($plan->toParse as $path) {
             $absolute = $plan->files[$path];
             if ($this->sourceOnly && (! $this->safeSource($path) || ! $this->files->isFile($absolute) || $this->fileSignature($absolute) !== ($plan->signature->files[$path] ?? null))) {
+                GraphBuildEligibility::report(AnalysisLimitReason::Unknown);
                 $entries[$path] = new FileGraphEntry([], [], impact: new ImpactFacts($path, [], [], [['line' => 1, 'reason' => 'Source changed or became unsafe before graph reading.']]),
                     catalog: $this->catalog ? new CatalogFacts($path, diagnostics: [new CatalogDiagnostic('changed_inputs', 'Source changed or became unsafe before graph reading.', 1)]) : null);
 
@@ -196,17 +207,58 @@ final readonly class ProjectGraphLoader
                 continue;
             }
             $contents = $this->files->get($absolute);
+            $expectedHash = substr($plan->signature->files[$path] ?? '', strrpos($plan->signature->files[$path] ?? '', ':') + 1);
+            if ($this->sourceOnly && ! hash_equals($expectedHash, hash('sha256', $contents))) {
+                GraphBuildEligibility::report(AnalysisLimitReason::Unknown);
+                $entries[$path] = new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($path, [], [], [['line' => 1, 'reason' => 'Source bytes differ from pinned graph input.']]) : null,
+                    catalog: $this->catalog ? new CatalogFacts($path, diagnostics: [new CatalogDiagnostic('changed_inputs', 'Source bytes differ from pinned graph input.', 1)]) : null);
+
+                continue;
+            }
             $context = $parsedSources[$path] ?? null;
             if ($context !== null && ($context->path !== $path || $context->contents !== $contents)) {
+                GraphBuildEligibility::report(AnalysisLimitReason::Unknown);
                 $entries[$path] = new FileGraphEntry([], [], impact: $this->impact ? new ImpactFacts($path, [], [], [['line' => 1, 'reason' => 'Previously parsed source changed before graph reading.']]) : null,
                     catalog: $this->catalog ? new CatalogFacts($path, diagnostics: [new CatalogDiagnostic('changed_inputs', 'Previously parsed source changed before graph reading.', 1)]) : null);
 
                 continue;
             }
-            $entries[$path] = $builder->collect($context ?? new FileContext($path, $contents, $this->onParse));
+            if ($context !== null) {
+                // Settings already required syntax from this same pinned backend.
+                // Consume that document once instead of requesting another Basic extraction.
+                $this->appendBasicBatch($builder, $pending, $entries);
+                $pending = [];
+                $pendingBytes = 0;
+                $entries[$path] = $builder->collect($context);
+                $context->releaseAst();
+
+                continue;
+            }
+            if (count($pending) >= 32 || $pendingBytes + strlen($contents) > 4 * 1024 * 1024) {
+                $this->appendBasicBatch($builder, $pending, $entries);
+                $pending = [];
+                $pendingBytes = 0;
+            }
+            $pending[$path] = new FileContext($path, $contents, $this->onParse);
+            $pendingBytes += strlen($contents);
         }
 
+        $this->appendBasicBatch($builder, $pending, $entries);
+
         return $this->compose($builder, $plan, $entries);
+    }
+
+    /** @param array<string, FileContext> $pending
+     * @param array<string, FileGraphEntry> $entries */
+    private function appendBasicBatch(ProjectGraphBuilder $builder, array $pending, array &$entries): void
+    {
+        if ($pending === []) {
+            return;
+        }
+        $contributions = $builder->collectBasicMany(array_values($pending));
+        foreach (array_keys($pending) as $ordinal => $path) {
+            $entries[$path] = $contributions[$ordinal];
+        }
     }
 
     private function safeSource(string $path): bool
@@ -240,16 +292,20 @@ final readonly class ProjectGraphLoader
         $scanned = $this->scan($exclude);
         $signature = $this->signatureFor($scanned);
         $files = array_map(static fn (array $file): string => $file[0], $scanned);
-
-        if ($this->cache === null) {
-            return new GraphBuildPlan($signature, $files, array_keys($scanned), [], CacheStatus::Disabled);
+        $residentPlan = new GraphBuildPlan($signature, $files, [], [], CacheStatus::Fresh, stale: false, exclude: $exclude);
+        if (GraphProducts::get($this->productKey($residentPlan)) !== null) {
+            return $residentPlan;
         }
 
-        $result = $this->cache->read($signature);
+        if ($this->cache === null && $this->contributions === null) {
+            return new GraphBuildPlan($signature, $files, array_keys($scanned), [], CacheStatus::Disabled, exclude: $exclude);
+        }
+
+        $result = ($this->contributions ?? $this->cache)->read($signature);
         $previous = $result->graph;
 
         if ($previous === null) {
-            return new GraphBuildPlan($signature, $files, array_keys($scanned), [], $result->status);
+            return new GraphBuildPlan($signature, $files, array_keys($scanned), [], $result->status, exclude: $exclude);
         }
 
         $reusable = [];
@@ -263,7 +319,7 @@ final readonly class ProjectGraphLoader
         foreach ($scanned as $path => $file) {
             $entry = $previous->entries[$path] ?? null;
 
-            if ($entry !== null && (! $this->impact || ($entry->impact !== null && $entry->impact->cacheable())) && (! $this->catalog || ($entry->catalog !== null && $entry->catalog->cacheable())) && ($previous->signature->files[$path] ?? null) === $file[1]) {
+            if ($entry !== null && (! $this->impact || $entry->impact !== null) && (! $this->catalog || $entry->catalog !== null) && ($this->contributions !== null || ((! $this->impact || ($entry->impact !== null && $entry->impact->cacheable())) && (! $this->catalog || ($entry->catalog !== null && $entry->catalog->cacheable())))) && ($previous->signature->files[$path] ?? null) === $file[1]) {
                 $reusable[$path] = $entry;
 
                 continue;
@@ -282,7 +338,16 @@ final readonly class ProjectGraphLoader
             $reusable,
             $result->status,
             stale: $toParse !== [] || count($reusable) !== count($previous->entries),
+            exclude: $exclude,
         );
+    }
+
+    /** Full product identity, including equal-file-set requests with different exclusions. */
+    public function productKey(GraphBuildPlan $plan): string
+    {
+        return hash('sha256', serialize([$this->basePath, $this->scope->directories, $plan->exclude,
+            $this->configuration, $this->impact, $this->catalog, $this->sourceOnly, $this->mode->value,
+            $this->classification->mappings->fingerprint(), $plan->signature->toArray()]));
     }
 
     /** Recheck file state without restoring a second cached graph.
@@ -319,7 +384,7 @@ final readonly class ProjectGraphLoader
         }
 
         if ($plan->stale) {
-            $this->cache?->write(new CachedGraph($plan->signature, $entries));
+            ($this->contributions ?? $this->cache)?->write(new CachedGraph($plan->signature, $entries));
         }
 
         return $builder->finish();

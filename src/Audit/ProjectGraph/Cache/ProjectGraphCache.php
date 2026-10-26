@@ -84,13 +84,18 @@ final readonly class ProjectGraphCache
      */
     private const DIGEST = 'xxh128';
 
+    private ?GraphEpoch $epoch;
+
     public function __construct(
         private Filesystem $files,
         private string $basePath,
         private string $directory = self::DIRECTORY,
         private ?int $memoryLimitBytes = null,
         private ?\Closure $memoryUsage = null,
-    ) {}
+    ) {
+        $context = RepositoryContext::forRoot($this->basePath);
+        $this->epoch = $context === null ? null : new GraphEpoch($context);
+    }
 
     /**
      * The stored graph for this signature, together with why it was or was not used.
@@ -254,7 +259,8 @@ final readonly class ProjectGraphCache
                 return false;
             }
 
-            if (! $this->files->move($temporary, $path)) {
+            $publish = fn (): bool => $this->files->move($temporary, $path);
+            if (! ($this->epoch === null ? $publish() : $this->epoch->publish($publish))) {
                 $this->files->delete($temporary);
 
                 return false;
@@ -272,11 +278,14 @@ final readonly class ProjectGraphCache
      */
     public function clear(): int
     {
-        $directory = $this->absoluteDirectory();
+        $context = RepositoryContext::forRoot($this->basePath);
 
-        if (! $this->files->isDirectory($directory)) {
-            return 0;
-        }
+        return $context === null ? $this->clearFiles() : (new GraphEpoch($context))->clear(fn (): int => $this->clearFiles());
+    }
+
+    private function clearFiles(): int
+    {
+        $directory = $this->absoluteDirectory();
 
         $removed = 0;
 
@@ -285,6 +294,10 @@ final readonly class ProjectGraphCache
                 $removed++;
             }
         }
+
+        $removed += (new GraphSegmentStore($this->files, $this->canonicalDirectory().'/catalog-ready-v1'))->clear();
+        $default = (new self($this->files, $this->basePath))->canonicalDirectory();
+        $removed += (new GraphSegmentStore($this->files, $default.'/catalog-locator-v1'))->clear();
 
         return $removed;
     }
@@ -301,6 +314,22 @@ final readonly class ProjectGraphCache
         return str_starts_with($this->directory, '/')
             ? rtrim($this->directory, '/')
             : $this->basePath.'/'.trim($this->directory, '/');
+    }
+
+    /** Preserve the configured location while resolving the caller's root alias. */
+    public function canonicalDirectory(): string
+    {
+        $absolute = $this->absoluteDirectory();
+        $root = realpath($this->basePath);
+
+        return $root !== false && str_starts_with($absolute, $this->basePath.'/')
+            ? $root.substr($absolute, strlen($this->basePath)) : $absolute;
+    }
+
+    /** Configuration data only, for the ready-map locator. Discovery validates this path. */
+    public function configuredDirectory(): string
+    {
+        return $this->directory;
     }
 
     /**

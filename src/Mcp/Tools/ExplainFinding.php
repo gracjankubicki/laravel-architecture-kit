@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrence;
 use GracjanKubicki\ArchitectureKit\Audit\FindingOccurrenceResolver;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphPending;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -49,7 +50,11 @@ class ExplainFinding extends Tool
         }
 
         $code = strtoupper($code);
-        $explanation = (new FindingCodeRegistry)->explain($code, $this->occurrence($request, $code));
+        try {
+            $explanation = (new FindingCodeRegistry)->explain($code, $this->occurrence($request, $code));
+        } catch (GraphPending $pending) {
+            return Response::structured($pending->response);
+        }
 
         return Response::structured($explanation === null
             ? [

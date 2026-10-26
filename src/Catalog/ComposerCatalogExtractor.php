@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Catalog;
 
 use Composer\Semver\VersionParser;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisLimitReason;
+use GracjanKubicki\ArchitectureKit\Analysis\GraphBuildEligibility;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Impact\HttpRouteExtractor;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
@@ -19,12 +21,33 @@ final class ComposerCatalogExtractor
     /** @phpstan-impure */
     public static function sourceLimit(int $bytes): ?string
     {
+        $cause = self::sourceLimitCause($bytes);
+        if ($cause !== null && class_exists(GraphBuildEligibility::class, false)) {
+            GraphBuildEligibility::report(AnalysisLimitReason::from($cause));
+        }
+
+        return match ($cause) {
+            'structure' => 'Composer metadata exceeds its 4 MB source budget.',
+            'memory' => 'Composer metadata exceeds its decoding memory budget.',
+            default => null,
+        };
+    }
+
+    public static function sourceLimitReason(int $bytes): ?AnalysisLimitReason
+    {
+        $cause = self::sourceLimitCause($bytes);
+
+        return $cause === null ? null : AnalysisLimitReason::from($cause);
+    }
+
+    private static function sourceLimitCause(int $bytes): ?string
+    {
         if ($bytes > 4000000) {
-            return 'Composer metadata exceeds its 4 MB source budget.';
+            return 'structure';
         }
         $limit = MemoryLimit::bytes();
         if ($limit !== null && memory_get_usage(true) + $bytes * 24 + 262144 > $limit * 0.65) {
-            return 'Composer metadata exceeds its decoding memory budget.';
+            return 'memory';
         }
 
         return null;
@@ -48,6 +71,8 @@ final class ComposerCatalogExtractor
         }
         $positions = new JsonSourcePositions($file->contents);
         if ($positions->limited) {
+            GraphBuildEligibility::report(self::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
+
             return new CatalogFacts($file->path, $elements, diagnostics: [new CatalogDiagnostic('catalog_limit', 'Composer JSON source locations reached their node, depth or memory budget.', 1)]);
         }
         if ($file->path === 'composer.json') {
@@ -89,6 +114,7 @@ final class ComposerCatalogExtractor
                 : (isset($data['packages']) ? ['packages', $recordIndex] : [$recordIndex]);
             $span = $positions->span($recordPath);
             if (++$visits > 10000 || self::sourceLimit(0) !== null) {
+                GraphBuildEligibility::report(self::sourceLimitReason(0) ?? AnalysisLimitReason::Structure);
                 $diagnostics[] = new CatalogDiagnostic('catalog_limit', 'Composer catalog reached its package or memory budget.', 1);
                 break;
             }

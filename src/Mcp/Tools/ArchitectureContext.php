@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextException;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\UsesArchitectureKitState;
 use GracjanKubicki\ArchitectureKit\Mcp\Concerns\ValidatesMcpInput;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphPending;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -70,6 +71,8 @@ final class ArchitectureContext extends Tool
                 exclude: $state->exclude,
                 limit: $agent->limit($request->get('limit', 20)),
             );
+        } catch (GraphPending $exception) {
+            return Response::structured($exception->response);
         } catch (ArchitectureContextException $exception) {
             return Response::structured($agent->architectureContextError($exception->errorCode, $exception->getMessage()));
         } catch (Throwable $exception) {

@@ -326,7 +326,7 @@ final class ArchitectureExecutionTest extends TestCase
         $this->assertTrue($cli['ok'], json_encode($cli));
         $this->assertNotEmpty($cli['execution']['flows']);
         ArchitectureKitServer::tool(Impact::class, [...$this->deepMcp(), 'subject' => 'Service::send', 'limit' => 100, 'depth' => 16])->assertOk()->assertStructuredContent(fn ($json) => $json->where('execution', $cli['execution'])->etc());
-        $schema = ImpactSchema::get()['oneOf'][0]['properties']['execution']['properties'];
+        $schema = ImpactSchema::get()['oneOf'][0]['properties']['execution']['oneOf'][0]['properties'];
         foreach (array_keys($cli['execution']) as $key) {
             $this->assertArrayHasKey($key, $schema);
         }

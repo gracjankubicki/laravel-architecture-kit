@@ -6,6 +6,11 @@ namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph;
 
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
+use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
+use GracjanKubicki\ArchitectureKit\Analysis\BasicFactsOptions;
+use GracjanKubicki\ArchitectureKit\Analysis\BasicSource;
+use GracjanKubicki\ArchitectureKit\Analysis\MagoAnalysisEngine;
+use GracjanKubicki\ArchitectureKit\Analysis\SourceInput;
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Node;
 use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\Ast\PhpAst;
@@ -14,6 +19,7 @@ use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocation;
 use GracjanKubicki\ArchitectureKit\Audit\TestReachability\TestInvocationExtractor;
 use GracjanKubicki\ArchitectureKit\Catalog\AuthConfigCatalogExtractor;
 use GracjanKubicki\ArchitectureKit\Catalog\BladeCatalogExtractor;
+use GracjanKubicki\ArchitectureKit\Catalog\BladePhpSource;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogFacts;
 use GracjanKubicki\ArchitectureKit\Catalog\ComposerCatalogExtractor;
 use GracjanKubicki\ArchitectureKit\Catalog\ContainerCatalogExtractor;
@@ -167,6 +173,91 @@ final class ProjectGraphBuilder
         }
 
         return new FileGraphEntry($symbols, $this->distinct($edges), $invocations, $impactFacts, $catalogFacts);
+    }
+
+    /** Standalone map extraction is distinct from the syntax consumed by audit rules.
+     * @param list<FileContext> $files
+     * @return list<FileGraphEntry> */
+    public function collectBasicMany(array $files): array
+    {
+        $entries = [];
+        $pending = [];
+        $contexts = [];
+        $session = null;
+        $bytes = 128;
+        $options = new BasicFactsOptions($this->impact, $this->catalog, $this->preserveOccurrences, $this->roles);
+
+        foreach ($files as $index => $file) {
+            $analysis = $file->analysisSession();
+            if ($this->mode !== AnalysisMode::Basic || $analysis->engine->engine === 'php'
+                || $this->catalog && in_array($file->path, ComposerCatalogExtractor::FILES, true)
+                || ($this->impact || $this->catalog) && ImpactExtractor::sourceLimit(strlen($file->contents)) !== null) {
+                $this->appendBasicBatch($pending, $contexts, $session, $options, $entries, $bytes);
+                $entries[$index] = $this->collect($file);
+
+                continue;
+            }
+            if ($analysis->mode !== AnalysisMode::Basic) {
+                $analysis = $analysis->withMode(AnalysisMode::Basic);
+            }
+            $analysis->engine->requireCapability('basic-file-facts-v1');
+            $source = $this->catalog && str_ends_with($file->path, '.blade.php') ? (new BladePhpSource)->input($file)
+                : BasicSource::plain(new SourceInput($file->path, $file->contents, $analysis->phpVersion));
+            $requestBytes = strlen(json_encode($source->request($analysis->engine, $options), JSON_THROW_ON_ERROR)) + 1;
+            if ($requestBytes > 32 * 1024 * 1024) {
+                throw new \RuntimeException('Prepared Basic source exceeds 32 MiB. Analysis is incomplete.');
+            }
+            if ($pending !== [] && (count($pending) >= MagoAnalysisEngine::BASIC_BATCH_FILES || $bytes + $requestBytes > MagoAnalysisEngine::BASIC_BATCH_BYTES
+                || $session->fingerprint() !== $analysis->fingerprint())) {
+                $this->appendBasicBatch($pending, $contexts, $session, $options, $entries, $bytes);
+            }
+            $session = $analysis;
+            $pending[$index] = $source;
+            $contexts[$index] = $file;
+            $bytes += $requestBytes;
+            if ($bytes > MagoAnalysisEngine::BASIC_BATCH_BYTES) {
+                $this->appendBasicBatch($pending, $contexts, $session, $options, $entries, $bytes);
+            }
+        }
+        $this->appendBasicBatch($pending, $contexts, $session, $options, $entries, $bytes);
+        ksort($entries);
+
+        return array_values($entries);
+    }
+
+    /** @param array<int, BasicSource> $pending
+     * @param array<int, FileContext> $contexts
+     * @param array<int, FileGraphEntry> $entries */
+    private function appendBasicBatch(array &$pending, array &$contexts, ?AnalysisSession $session, BasicFactsOptions $options, array &$entries, int &$bytes): void
+    {
+        if ($pending === []) {
+            return;
+        }
+        if ($session === null) {
+            throw new \RuntimeException('A native Basic batch needs its pinned session.');
+        }
+        $results = $session->basic(array_values($pending), $options);
+        foreach (array_keys($pending) as $ordinal => $index) {
+            $facts = $results[$ordinal];
+            $file = $contexts[$index];
+            $file->observeBasicExtraction();
+            foreach ($facts->diagnostics as $diagnostic) {
+                if ($diagnostic['category'] === 'unsupported_syntax') {
+                    throw new \RuntimeException($file->path.': '.$diagnostic['message']);
+                }
+            }
+            $entry = $facts->entry;
+            if ($entry->syntaxError !== null && $this->catalog && str_ends_with($file->path, '.blade.php')) {
+                $blade = (new BladeCatalogExtractor)->extract($file);
+                $entry = new FileGraphEntry($entry->symbols, $entry->edges, $entry->testInvocations, $entry->impact,
+                    new CatalogFacts($file->path, [...$entry->catalog->elements, ...$blade->elements], $blade->relations,
+                        [...$entry->catalog->diagnostics, ...$blade->diagnostics]), $entry->syntaxError, $entry->syntaxErrorLine);
+            }
+            $entries[$index] = $entry;
+            $file->releaseAst();
+        }
+        $pending = $contexts = [];
+        $bytes = 128;
     }
 
     /**

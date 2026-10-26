@@ -23,6 +23,7 @@ use GracjanKubicki\ArchitectureKit\Impact\PathSchema;
 use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldFile;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldPlan;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntimeSchema;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlan;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlanStep;
 
@@ -1218,11 +1219,11 @@ final readonly class AgentOutput
             'additionalProperties' => false,
         ];
 
-        return $this->successOrCommandErrorSchema(
+        return GraphRuntimeSchema::extend($this->successOrCommandErrorSchema(
             'Architecture Kit architecture context agent output',
             'architecture-context',
             $success,
-        );
+        ));
     }
 
     /**
