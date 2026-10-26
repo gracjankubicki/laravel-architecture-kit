@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.11.1 - 2026-10-26
+
+### Fixed
+
+- Start standalone background coordinators and workers through the known Composer binary proxy so installed packages load the tool's dependencies correctly, including custom binary directories and symlinked proxies. Preserve explicit test entrypoints and the checkout fallback without loading the analyzed project's autoloader. Add an isolated Composer installation smoke test covering ready/current map preparation and nonempty CLI/MCP search to the existing runtime-install CI job. Native engine 0.2.0 is unchanged.
+
 ## Unreleased
 
 ## v0.11.0 - 2026-10-26

@@ -451,6 +451,25 @@ final class GraphRuntimeProcessTest extends TestCase
         }
     }
 
+    public function test_checkout_launcher_works_without_a_composer_proxy_or_instrumented_entrypoint(): void
+    {
+        $binDirectory = $GLOBALS['_composer_bin_dir'] ?? null;
+        unset($GLOBALS['_composer_bin_dir']);
+        GraphRuntime::instrument(null, null);
+        try {
+            $ready = $this->runtime->map('prepare');
+            self::assertTrue($ready['ok']);
+            self::assertSame('ready', $ready['availability']);
+            self::assertSame('current', $ready['freshness']);
+            $search = $this->runtime->query('search', ['query' => 'Dependency']);
+            self::assertNotEmpty($search['result']['result']['candidates']);
+        } finally {
+            if ($binDirectory !== null) {
+                $GLOBALS['_composer_bin_dir'] = $binDirectory;
+            }
+        }
+    }
+
     public function test_real_cli_mcp_share_generation_and_preserve_nonempty_queries(): void
     {
         $cli = $this->cli(['map', 'prepare']);

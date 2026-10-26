@@ -114,6 +114,7 @@ jobs:
           php-version: '8.3'
           coverage: none
       - run: bash tests/Smoke/runtime-install.sh
+      - run: bash tests/Smoke/standalone-install.sh
 
   boost-composition:
     runs-on: ubuntu-latest

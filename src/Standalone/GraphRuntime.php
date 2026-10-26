@@ -266,7 +266,7 @@ final class GraphRuntime
     {
         $name = 'launch-'.bin2hex(random_bytes(16));
         (new StateStore($directory, $this->context->home))->update($name, static fn () => $spec);
-        $args = [PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), self::$entrypoint ?? dirname(__DIR__, 2).'/bin/architecture-kit',
+        $args = [PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), self::$entrypoint ?? self::defaultEntrypoint(),
             '--project', $this->context->rootPath, '--tool-home', $this->context->home];
         if ($this->context->profile !== null) {
             array_push($args, '--profile', $this->context->profile);
@@ -282,5 +282,20 @@ final class GraphRuntime
         }
 
         return (int) $output[0];
+    }
+
+    private static function defaultEntrypoint(): string
+    {
+        // Composer's proxy supplies the tool autoloader, including custom bin-dir
+        // installations. Never discover an autoloader in the analyzed project.
+        $binDirectory = $GLOBALS['_composer_bin_dir'] ?? null;
+        if (is_string($binDirectory) && $binDirectory !== '') {
+            $proxy = $binDirectory.'/architecture-kit';
+            if (is_file($proxy) && is_readable($proxy)) {
+                return $proxy;
+            }
+        }
+
+        return dirname(__DIR__, 2).'/bin/architecture-kit';
     }
 }

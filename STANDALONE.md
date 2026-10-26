@@ -36,7 +36,7 @@ composer global bin architecture-kit require gracjankubicki/laravel-architecture
 
 Find the namespace's actual binary directory with `composer global bin architecture-kit config bin-dir --absolute`. Composer may inherit a global `bin-dir`, so do not assume the executable is under the namespace's `vendor/bin`. Add the reported directory to your shell's `PATH`, or use the absolute executable path.
 
-Update with `composer global bin architecture-kit update gracjankubicki/laravel-architecture-kit`. Updating the tool invalidates task comparisons made with a different tool source fingerprint. Finish or explicitly skip the previous task before starting a new task under the new version.
+Update to v0.11.1 or newer with `composer global bin architecture-kit update gracjankubicki/laravel-architecture-kit`. Version 0.11.1 fixes background startup through Composer proxies, including custom binary directories and symlinked proxies. Updating the tool invalidates task comparisons made with a different tool source fingerprint. Finish or explicitly skip the previous task before starting a new task under the new version.
 
 ## Select and inspect the analysis engine
 
@@ -50,7 +50,7 @@ architecture-kit --project /absolute/path/project engine describe
 
 The distribution supports macOS and Linux on ARM64 and x64. Linux binaries use static musl linking and also run on glibc systems. Windows is outside the binary distribution. Users do not need Rust. The installer verifies the release manifest, size, SHA-256, protocol and executable version before replacing an installation. A release that defaults to Mago requires all matching binaries to be published first.
 
-Package v0.11.0 requires engine 0.2.0, based on Mago 1.57.0. Engine 0.1.0 does not provide the new Basic facts capability. Once the matching binary release is published, run `architecture-kit engine install` using the upgraded executable, then check `engine status` and the project's `engine describe`. Use the same `--tool-home` as the selected installation if it is not the default. Restart existing MCP sessions after upgrading; running processes retain their loaded tool code and engine identity.
+Package v0.11.1 requires engine 0.2.0, based on Mago 1.57.0. Engine 0.1.0 does not provide the new Basic facts capability. Run `architecture-kit engine install` using the upgraded executable, then check `engine status` and the project's `engine describe`. Use the same `--tool-home` as the selected installation if it is not the default. Restart existing MCP sessions after upgrading; running processes retain their loaded tool code and engine identity.
 
 Updating the Composer package and installing the native engine are separate operations. Neither step enables hooks, changes project profiles or grants Deep/runtime permissions. Do not interpret the package release as authorization to upgrade or activate a user's global integration.
 
