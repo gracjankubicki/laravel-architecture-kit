@@ -235,8 +235,10 @@ final class ArchitectureConfig
     private function config(): array
     {
         $context = RepositoryContext::current();
-        if ($context !== null && $context->configPath === $this->path) {
+        if ($context !== null && ($context->configPath === $this->path || str_starts_with($this->path, $context->storage.'/configuration-'))) {
             $context->fingerprint();
+
+            return $context->effectiveSettings();
         }
         if ($this->configLoaded) {
             return $this->loadedConfig ?? [];
@@ -249,7 +251,7 @@ final class ArchitectureConfig
         }
 
         $config = $context !== null && $context->configPath === $this->path
-            ? $context->settings
+            ? $context->effectiveSettings()
             : (DeclaredConfiguration::read($this->files->get($this->path)) ?? require $this->path);
 
         if (! is_array($config)) {
@@ -963,7 +965,7 @@ final class ArchitectureConfig
 
     private function projectPath(): string
     {
-        if (($context = RepositoryContext::current()) !== null && $context->configPath === $this->path) {
+        if (($context = RepositoryContext::current()) !== null && ($context->configPath === $this->path || str_starts_with($this->path, $context->storage.'/configuration-'))) {
             return $context->rootPath;
         }
 

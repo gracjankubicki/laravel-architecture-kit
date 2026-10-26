@@ -6,9 +6,12 @@ namespace GracjanKubicki\ArchitectureKit\Standalone;
 
 use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use GracjanKubicki\ArchitectureKit\Mcp\ArchitectureKitServer;
+use GracjanKubicki\ArchitectureKit\Mcp\ToolGuidance;
 use GracjanKubicki\ArchitectureKit\Resources\PackageGuidance;
 use Laravel\Mcp\Server\ServerContext;
 use Laravel\Mcp\Transport\JsonRpcRequest;
+use Laravel\Mcp\Transport\JsonRpcResponse;
+use Throwable;
 
 final class StandaloneServer extends ArchitectureKitServer
 {
@@ -55,8 +58,64 @@ final class StandaloneServer extends ArchitectureKitServer
         }
     }
 
+    protected function runMethodHandle(JsonRpcRequest $request, ServerContext $context): iterable|JsonRpcResponse
+    {
+        $dependent = in_array($request->method, ['tools/call', 'resources/read', 'prompts/get'], true)
+            && ! ($request->method === 'tools/call' && ($request->params['name'] ?? null) === 'repository-context');
+        if (! $dependent) {
+            return parent::runMethodHandle($request, $context);
+        }
+        try {
+            $scope = RepositoryRequestScope::begin();
+        } catch (Throwable $error) {
+            return $this->contextFailure($request, $error->getMessage());
+        }
+        $response = parent::runMethodHandle($request, $context);
+        if (is_iterable($response)) {
+            return (function () use ($response, $scope, $request): \Generator {
+                foreach ($response as $message) {
+                    yield $this->currentResponse($request, $message, $scope);
+                }
+            })();
+        }
+
+        return $this->currentResponse($request, $response, $scope);
+    }
+
+    private function currentResponse(JsonRpcRequest $request, JsonRpcResponse $response, ?RepositoryRequestScope $scope): JsonRpcResponse
+    {
+        try {
+            $scope?->assertCurrent();
+
+            return $response;
+        } catch (Throwable $error) {
+            return $this->contextFailure($request, 'stale_snapshot: '.$error->getMessage());
+        }
+    }
+
+    private function contextFailure(JsonRpcRequest $request, string $reason): JsonRpcResponse
+    {
+        if ($request->method !== 'tools/call') {
+            return JsonRpcResponse::error($request->id, -32002, $reason);
+        }
+        $result = ['ok' => false, 'status' => str_starts_with($reason, 'context_required:') ? 'context_required' : 'unverified',
+            'freshness' => 'stale', 'reason' => $reason,
+            'analysis' => ['mode' => 'basic', 'checks_complete' => false, 'deep_run' => false],
+            'control' => ['policy' => 'advisory', 'blocking' => false]];
+
+        return JsonRpcResponse::result($request->id, ['isError' => true, 'content' => [['type' => 'text',
+            'text' => json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)]], 'structuredContent' => $result]);
+    }
+
     protected function boot(): void
     {
+        if (RepositoryBinding::current() !== null) {
+            $this->tools[] = RepositoryContextTool::class;
+            $this->tools[] = TaskTool::class;
+            $this->instructions = ToolGuidance::FAMILY_INSTRUCTIONS;
+
+            return;
+        }
         if (($repository = RepositoryContext::current()) !== null) {
             $this->instructions = (new PackageGuidance(ProjectLayout::read($repository->rootPath), $repository->settings))->rewrite($this->instructions);
         }

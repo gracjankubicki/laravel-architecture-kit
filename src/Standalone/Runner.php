@@ -25,6 +25,9 @@ final class Runner
                 throw new RuntimeException('Tool home must be an absolute external directory.');
             }
             $command = $args[1] ?? 'help';
+            if (isset($options['family']) && (isset($options['project']) || ! in_array($command, ['mcp', 'integration'], true))) {
+                throw new RuntimeException('--family is only available for mcp or integration and cannot be combined with --project.');
+            }
             if ($command === 'engine' && ($args[2] ?? '') !== 'describe') {
                 if (isset($options['project'])) {
                     self::externalHome($home, Projects::discover($options['project']));
@@ -58,7 +61,34 @@ final class Runner
                 return 0;
             }
             if ($command === 'help') {
-                fwrite(STDOUT, "architecture-kit [--project PATH] [--tool-home PATH] [--profile NAME] COMMAND\nengine install|status|describe\nmap prepare|status JOB_ID|result JOB_ID\ninit [architecture ...] [--shared --allow-write]\nanalysis-consent grant-deep TASK [--confirm]\ntask begin|check|status|skip|bind TASK [--confirm] [--client codex|claude --session ID]\nintegration export|status codex|claude\nmcp | audit | guard | doctor | search | impact | path | reach | file-rules | guidelines | make | sync\nDefault: source-only, external state. --runtime-routes explicitly boots the application to read routes. --allow-write authorizes repository mutations. --allow-execution enables broader application/custom-rule execution.\n");
+                fwrite(STDOUT, "architecture-kit [--project PATH | --family PATH (mcp/integration)] [--tool-home PATH] [--profile NAME] COMMAND\nengine install|status|describe\nmap prepare|status JOB_ID|result JOB_ID\ninit [architecture ...] [--shared --allow-write]\nanalysis-consent grant-deep TASK [--confirm]\ntask begin|check|status|skip|bind TASK [--confirm] [--client codex|claude --session ID]\nintegration export|status codex|claude\nmcp | audit | guard | doctor | search | impact | path | reach | file-rules | guidelines | make | sync\nDefault: source-only, external state. --runtime-routes explicitly boots the application to read routes. --allow-write authorizes repository mutations. --allow-execution enables broader application/custom-rule execution.\n");
+
+                return 0;
+            }
+            if (isset($options['family'])) {
+                $family = $options['family'];
+                if (! is_string($family) || ! str_starts_with($family, '/')) {
+                    throw new RuntimeException('--family requires an absolute Git family directory.');
+                }
+                $family = GitFamily::inspect($family)->codeRoot;
+                if ($command === 'integration') {
+                    self::externalHome($home, $family);
+                    $hooks = new AgentHooks($home, $options['profile'] ?? null);
+                    $client = $args[3] ?? '';
+                    self::output(match ($args[2] ?? '') {
+                        'export' => $hooks->exportFamily($client, realpath($argv[0]) ?: throw new RuntimeException('Executable path is unavailable.'), $family),
+                        'status' => $hooks->familyStatus($client, $family),
+                        default => throw new RuntimeException('Unknown integration action.'),
+                    });
+
+                    return 0;
+                }
+                RepositoryContext::activate(null);
+                RepositoryBinding::activate(new RepositoryBinding($family, $home, $options['profile'] ?? null,
+                    isset($options['allow-execution']), isset($options['allow-write']), isset($options['runtime-routes'])));
+                Host::create($home);
+                GraphRuntime::enable();
+                self::mcp();
 
                 return 0;
             }
@@ -80,6 +110,13 @@ final class Runner
                 $directory = $args[3] ?? '';
                 StateStore::assertBoundary($directory, $context->home);
                 $spec = (new StateStore($directory, $context->home))->read($args[4] ?? '');
+                if (($spec['advisory_only'] ?? false) === true) {
+                    $context = new RepositoryContext($root, $home, $context->profile, $context->execute, $context->write, $context->runtimeRoutes, advisoryOnly: true);
+                    Host::refresh($context);
+                }
+                if (isset($spec['configuration_fingerprint']) && $spec['configuration_fingerprint'] !== $context->fingerprint()) {
+                    throw new RuntimeException('stale_snapshot: graph launch configuration changed.');
+                }
                 if (($args[2] ?? '') === 'coordinator') {
                     (new GraphCoordinator($context, $directory, $spec['token'], $spec['endpoint']))->run();
                 } elseif (($args[2] ?? '') === 'worker') {
@@ -131,12 +168,7 @@ final class Runner
                 return 0;
             }
             if ($command === 'mcp') {
-                $transportClass = new \ReflectionClass(ReportStdioTransport::class);
-                $arguments = ($transportClass->getConstructor()?->getNumberOfRequiredParameters() ?? 0) > 0 ? [bin2hex(random_bytes(16))] : [];
-                $transport = $transportClass->newInstanceArgs($arguments);
-                $server = new StandaloneServer($transport);
-                $server->start();
-                $transport->run();
+                self::mcp();
 
                 return 0;
             }
@@ -176,7 +208,18 @@ final class Runner
         } finally {
             GraphRuntime::enable(false);
             RepositoryContext::activate(null);
+            RepositoryBinding::activate(null);
         }
+    }
+
+    private static function mcp(): void
+    {
+        $transportClass = new \ReflectionClass(ReportStdioTransport::class);
+        $arguments = ($transportClass->getConstructor()?->getNumberOfRequiredParameters() ?? 0) > 0 ? [bin2hex(random_bytes(16))] : [];
+        $transport = $transportClass->newInstanceArgs($arguments);
+        $server = new StandaloneServer($transport);
+        $server->start();
+        $transport->run();
     }
 
     public static function externalHome(string $home, string $root): void
@@ -201,7 +244,7 @@ final class Runner
     {
         $args = [];
         $options = [];
-        $values = ['project', 'tool-home', 'profile', 'client', 'session'];
+        $values = ['family', 'project', 'tool-home', 'profile', 'client', 'session'];
         $flags = ['allow-write', 'allow-execution', 'runtime-routes', 'confirm', 'shared', 'enforce', 'strict'];
         for ($i = 0; $i < count($argv); $i++) {
             $arg = $argv[$i];

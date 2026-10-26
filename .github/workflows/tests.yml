@@ -47,6 +47,40 @@ jobs:
           composer update --prefer-dist --no-interaction --no-progress ${{ matrix.dependencies == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
       - run: php -d memory_limit=512M vendor/bin/phpunit
 
+  worktree-mcp:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mcp: ['0.8.2', '1.1.1']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Install selected real MCP SDK
+        run: |
+          composer require "laravel/mcp:${{ matrix.mcp }}" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --no-progress
+      # Explicit fixture lifecycle, never hidden in PHPUnit setup or installation.
+      - name: Prepare synthetic Git main and A fixtures
+        run: |
+          bash tests/Support/worktree-lab.sh prepare-a "$PWD/build/worktree-rule-inheritance/qa-lab/acceptance-v1"
+          bash tests/Support/worktree-lab.sh clone-negative "$PWD/build/worktree-rule-inheritance/qa-lab/acceptance-v1"
+      - name: Check actual family STDIO and configuration
+        run: bash tests/Smoke/worktree-inheritance.sh "$PWD/build/worktree-rule-inheritance/qa-lab/acceptance-v1/manifests/lab.json"
+      - name: Remove owned Git fixtures
+        if: always()
+        run: |
+          if [ -f build/worktree-rule-inheritance/qa-lab/acceptance-v1/manifests/lab.json ]; then
+            bash tests/Support/worktree-lab.sh stop "$PWD/build/worktree-rule-inheritance/qa-lab/acceptance-v1"
+            bash tests/Support/worktree-lab.sh cleanup "$PWD/build/worktree-rule-inheritance/qa-lab/acceptance-v1"
+          fi
+
   eval-harness:
     runs-on: ubuntu-latest
     steps:
@@ -155,7 +189,7 @@ jobs:
       - run: bash tests/Smoke/project-graph-consumer.sh
 
   coverage:
-    needs: [lint, tests, eval-harness, laravel-ai-contract, framework-contract, runtime-install, boost-composition, workbench-commands, project-graph-consumer]
+    needs: [lint, tests, worktree-mcp, eval-harness, laravel-ai-contract, framework-contract, runtime-install, boost-composition, workbench-commands, project-graph-consumer]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

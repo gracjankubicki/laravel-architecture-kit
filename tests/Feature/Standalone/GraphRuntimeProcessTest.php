@@ -105,6 +105,33 @@ final class GraphRuntimeProcessTest extends TestCase
         yield 'full-context-metadata' => [true, true];
     }
 
+    public static function explicitRuntimePermissions(): iterable
+    {
+        yield 'read only' => [false, false, false, false];
+        yield 'execution granted' => [true, false, false, false];
+        yield 'routes granted' => [false, false, true, false];
+        yield 'all granted advisory context' => [true, true, true, true];
+    }
+
+    #[DataProvider('explicitRuntimePermissions')]
+    public function test_graph_children_preserve_explicit_permissions_without_booting_the_application(bool $execute, bool $write, bool $runtimeRoutes, bool $advisoryOnly): void
+    {
+        $marker = $this->home.'/application-booted';
+        mkdir($this->root.'/bootstrap');
+        file_put_contents($this->root.'/bootstrap/app.php', '<?php file_put_contents('.var_export($marker, true).', "unexpected");');
+        $context = new RepositoryContext($this->root, $this->home, execute: $execute, write: $write, runtimeRoutes: $runtimeRoutes, advisoryOnly: $advisoryOnly);
+        Host::refresh($context);
+        $runtime = new GraphRuntime($context);
+        $ready = $runtime->map('prepare');
+        self::assertTrue($ready['ok'], json_encode($ready));
+        self::assertSame('ready', $ready['availability']);
+        self::assertSame('current', $ready['freshness']);
+        $search = $runtime->query('search', ['query' => 'Caller']);
+        self::assertTrue($search['ok'], json_encode($search));
+        self::assertNotEmpty($search['result']['result']['candidates']);
+        self::assertFileDoesNotExist($marker);
+    }
+
     #[DataProvider('builtInputProducts')]
     public function test_built_from_b_cannot_become_current_when_job_inputs_return_to_a(bool $fullContext, bool $collectMetadata): void
     {
@@ -918,6 +945,41 @@ final class GraphRuntimeProcessTest extends TestCase
         $ready = $this->runtime->map('prepare');
         self::assertGreaterThanOrEqual(0.05, $ready['request_elapsed_seconds']);
         self::assertStringContainsString('including_context', $ready['timing_scope']);
+    }
+
+    public function test_rules_changed_while_worker_builds_cannot_publish_current_under_the_new_selection(): void
+    {
+        $this->barrier('build.before');
+        $old = $this->runtime->request(['action' => 'prepare']);
+        $this->until(fn () => count(array_filter($this->events(), static fn ($event) => $event['stage'] === 'build.before')) === 1);
+        $path = $this->root.'/.architecture-kit/settings.json';
+        $settings = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $settings['enabled'] = ['services'];
+        file_put_contents($path, json_encode($settings, JSON_THROW_ON_ERROR));
+        $this->barrier(null);
+        $oldContext = RepositoryContext::current();
+        $directory = $oldContext->storage;
+        $job = [];
+        $this->until(function () use ($directory, $old, &$job): bool {
+            foreach (glob($directory.'/runtime/*/job-'.$old['job_id'].'.json') ?: [] as $candidate) {
+                $job = json_decode(file_get_contents($candidate), true, flags: JSON_THROW_ON_ERROR);
+                if (isset($job['availability']) && $job['availability'] !== 'building') {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+        self::assertNotSame('current', $job['freshness']);
+        self::assertFalse($job['ok'] ?? false);
+        $fresh = new RepositoryContext($this->root, $this->home);
+        Host::refresh($fresh);
+        $runtime = new GraphRuntime($fresh);
+        self::assertNotSame($oldContext->configPath, $fresh->configPath);
+        $new = $runtime->request(['action' => 'prepare']);
+        self::assertNotSame($old['job_id'], $new['job_id']);
+        $this->runtime = $runtime;
+        self::assertSame('current', $this->ready($new['job_id'])['freshness']);
     }
 
     public function test_mcp_first_starts_shared_generation_and_changes_during_build_stay_stale(): void

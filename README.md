@@ -30,6 +30,10 @@ This package is installed as a runtime dependency because the committed architec
 Use the [standalone global tool](STANDALONE.md) when you need local AI guidance and task checks without installing this package or writing its configuration into the application. The standalone integrations support Codex and Claude Code.
 
 
+## Git worktree support
+
+The global tool can serve one Git family across its worktrees. Each MCP connection binds to the task's checkout, reads that checkout's code and selects its own settings or one inherited main-repository source. New worktrees do not need individual MCP entries. A task folder with two repository families uses two family MCP entries. Settings refresh without resetting task beginnings; operational permissions are never inherited. See [standalone worktree configuration and rollback](STANDALONE.md#use-one-mcp-per-git-family-across-worktrees).
+
 ## Basic analysis and advisory control
 
 Basic is the default on CLI, MCP and hooks, including existing profiles. It maps project source, including Modules, checks local architecture rules and demonstrated call/interface mismatches, and lists candidate tests. Vendor is a boundary. Candidates and relationships do not prove execution, test coverage or business correctness.

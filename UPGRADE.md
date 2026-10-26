@@ -1,5 +1,13 @@
 # Upgrade Guide
 
+## Upgrading to v0.12.0 from v0.11.x
+
+Update the isolated global package with `composer global bin architecture-kit require "gracjankubicki/laravel-architecture-kit:^0.12"`. Engine 0.2.0 is unchanged. Restart existing MCP connections to load the new package sources. Existing profiles, task beginnings and consent records remain intact; task comparisons created under the previous tool fingerprint do not become current or reset automatically.
+
+Fixed `--project` entries remain supported. To use one MCP across a Git family's worktrees, explicitly export and install a `--family` entry as described in [the standalone guide](STANDALONE.md#use-one-mcp-per-git-family-across-worktrees). Keep separate entries for separate Git families. Save the previous entries for rollback. Updating the package does not install family entries or enable hooks, automatic audits, Deep, runtime execution or repository writes.
+
+A worktree uses its own configuration before its main checkout's configuration, without merging sources. Named profiles require an exact match. Inaccessible selected settings now fail explicitly instead of falling back to a different source. Relative analysis paths and all analysis/task/consent state remain tied to the selected worktree.
+
 ## Upgrading to v0.7.0 from v0.6.2
 
 `architecture-search` and `architecture-graph` add source-only graph discovery. Existing MCP tools retain their names and parameters. Graph roots are configured separately from audit roots; see [the static graph reference](docs/static-graph.md).

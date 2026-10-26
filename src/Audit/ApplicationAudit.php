@@ -174,6 +174,13 @@ final class ApplicationAudit
         // Decided from stat alone, before a single file is opened. Without a cache every
         // path lands in `toParse`, which is the behaviour this loop always had.
         $plan = $loader->plan($exclude);
+        // The initial focus list also contains unsafe links which the source-only
+        // loader deliberately never reads. Do not present those as audited files.
+        $omittedFocusPaths = array_values(array_diff($focusPaths, array_keys($plan->files)));
+        foreach ($omittedFocusPaths as $omitted) {
+            $notices[] = new AnalysisNotice('A_SOURCE_OMITTED', 'source_omitted', $omitted, 1, 'Selected source was unavailable or unsafe and was not audited.');
+        }
+        $focusPaths = array_values(array_intersect($focusPaths, array_keys($plan->files)));
         if (! $changedFocusAvailable && $plan->reusable !== []) {
             // A full audit parses every file for its rules anyway. Do not retain
             // the previous graph alongside the new worker contributions.
@@ -303,7 +310,7 @@ final class ApplicationAudit
             $findingsByPath[$finding->path][] = $finding;
             $inlineSources[$finding->path] ??= $this->suppressionSource($this->files->get($this->absolute($finding->path)));
         }
-        $checksComplete = $graph->checksComplete() && $signatureRule->checksComplete;
+        $checksComplete = $graph->checksComplete() && $signatureRule->checksComplete && $omittedFocusPaths === [];
         if (! $checksComplete) {
             foreach ($graph->impactFacts as $sourceFacts) {
                 foreach ($sourceFacts->notices as $notice) {

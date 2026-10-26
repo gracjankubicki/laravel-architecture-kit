@@ -264,7 +264,7 @@ final class GraphCoordinator
                 $budget = $changed === [] ? 2 : (count($changed) === 1 || $singleMove ? 3 : 20);
             }
             $this->jobs[$id] = ['job_id' => $id, 'request_id' => $request['request_id'], 'repository_id' => $this->context->id,
-                'analysis_fingerprint' => $this->fingerprint, 'input_manifest_digest' => $digest, 'files' => $files,
+                'analysis_fingerprint' => $this->fingerprint, 'configuration_fingerprint' => $this->context->fingerprint(), 'input_manifest_digest' => $digest, 'files' => $files,
                 'product' => $product, 'product_key' => $productKey, 'scope' => $scope, 'exclude' => $exclude,
                 'retain_tests' => $retainTests, 'epoch' => (new GraphEpoch($this->context))->token,
                 'availability' => 'building', 'freshness' => 'unverified', 'checks_complete' => false,

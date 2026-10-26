@@ -16,7 +16,7 @@ use RuntimeException;
 use Throwable;
 
 #[Name('task-control')]
-#[Description('Before edits begin an explicitly named task once. Keep its immutable beginning through corrections and resume. Check before completion. Basic results are advisory by default, including errors and incomplete checks. Try to fix new errors; hand off remaining errors and unverified checks. Use enforce only for explicit blocking. Read analysis and reason even on pass. Failures, missing beginning and drift never pass. Explicit skip remains unverified. Bind a client session when starting another task; never refresh a failing beginning.')]
+#[Description('For explicitly requested task comparisons, begin a named task once and check its results. Task comparisons are optional in family mode. Keep the immutable beginning through corrections, rule changes and resume. Basic results are advisory by default, including errors and incomplete checks. Try to fix new errors; hand off remaining errors and unverified checks. Use enforce only for explicit blocking. Read analysis and reason even on pass. Failures, missing beginning and drift never pass. Explicit skip remains unverified. Bind a client session when starting another task; never refresh a failing beginning.')]
 class TaskTool extends Tool
 {
     public function schema(JsonSchema $schema): array

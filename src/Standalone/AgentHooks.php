@@ -112,6 +112,48 @@ final readonly class AgentHooks
             'observations' => $observed, 'reason' => 'Historical observations do not prove hooks are currently installed, trusted or enabled. Verify a real client session.'];
     }
 
+    /** Export data only. It never installs client settings or hooks.
+     * @return array<string, mixed>
+     */
+    public function exportFamily(string $client, string $binary, string $root): array
+    {
+        if (! in_array($client, ['codex', 'claude'], true)) {
+            throw new RuntimeException('Supported clients are codex and claude.');
+        }
+        if ($this->profile !== null && ! preg_match('/^[a-zA-Z0-9_-]+$/D', $this->profile)) {
+            throw new RuntimeException('Invalid local profile name.');
+        }
+        $family = GitFamily::inspect($root);
+        Runner::externalHome($this->home, $family->codeRoot);
+        new StateStore($this->home);
+        $mcp = ['command' => PHP_BINARY, 'args' => [$binary, '--tool-home', $this->home, '--family', $family->codeRoot,
+            ...($this->profile === null ? [] : ['--profile', $this->profile]), 'mcp']];
+        $directory = $this->home.'/integrations/'.$client.'/family-'.hash('sha256', $family->commonDirectory);
+        $store = new StateStore($directory, $this->home);
+        $store->update('mcp', static fn (): array => $mcp);
+        $store->update('status', static fn (): array => ['state' => 'exported', 'active' => false, 'mode' => 'family',
+            'reason' => 'Install the family MCP explicitly in user settings. Export does not activate it or install hooks.']);
+
+        return ['ok' => true, 'directory' => $directory, 'mode' => 'family', 'state' => 'exported', 'active' => false,
+            'family_root' => $family->codeRoot, 'mcp' => $mcp, 'hooks' => []];
+    }
+
+    /** @return array<string, mixed> */
+    public function familyStatus(string $client, string $root): array
+    {
+        if (! in_array($client, ['codex', 'claude'], true)) {
+            throw new RuntimeException('Supported clients are codex and claude.');
+        }
+        $family = GitFamily::inspect($root);
+        Runner::externalHome($this->home, $family->codeRoot);
+        new StateStore($this->home);
+        $directory = $this->home.'/integrations/'.$client.'/family-'.hash('sha256', $family->commonDirectory);
+        $status = (new StateStore($directory, $this->home))->read('status');
+
+        return ['state' => $status['state'] ?? 'not_exported', 'active' => false, 'mode' => 'family',
+            'reason' => 'An export does not prove client installation or a live binding. Verify repository-context status in the actual client.'];
+    }
+
     /** @return array<string, mixed> */
     public function export(string $client, string $binary, string $root): array
     {

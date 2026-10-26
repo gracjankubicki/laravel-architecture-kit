@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
 use Illuminate\Config\Repository;
+use Illuminate\Container\Container;
 use Illuminate\Events\EventServiceProvider;
 use Illuminate\Filesystem\FilesystemServiceProvider;
 use Illuminate\Foundation\Application;
@@ -16,6 +17,15 @@ use Laravel\Mcp\Request;
 /** Bootstrap the tool's dependencies, never the project's bootstrap or autoloader. */
 final class Host
 {
+    public static function refresh(RepositoryContext $context): void
+    {
+        RepositoryContext::activate($context);
+        // Never replace the container or SDK request during dispatch.
+        $app = Container::getInstance();
+        $app->make('config')->set('architectures', $context->effectiveSettings());
+        Facade::clearResolvedInstance('config');
+    }
+
     public static function create(string $home): Application
     {
         $app = new Application($home.'/host');

@@ -1,12 +1,25 @@
 # Changelog
 
+## v0.12.0 - 2026-10-26
+
+### Added
+
+- Add Git-family MCP binding for individual worktrees and task folders, with one-source configuration inheritance, explicit named profiles, separate root state and visible configuration provenance.
+- Refresh settings at request boundaries without changing the bound root, resetting task beginnings or granting inherited operational permissions. Reject stale results and conflicting root changes.
+- Export family MCP configuration without installing hooks or activating client settings; retain fixed `--project` integration.
+- Add real Git, STDIO, SDK compatibility and client acceptance support with metadata-only logs.
+
+### Fixed
+
+- Fail closed when Git cannot identify the main checkout or a selected configuration directory cannot be searched. Do not treat inaccessible worktree settings as missing or fall back to another source.
+- Preserve explicitly granted execution, write and runtime-route options in background graph coordinators and workers without granting permissions from inherited settings or removing drift checks.
+- Report unsafe omitted audit sources explicitly instead of listing them as audited.
+
 ## v0.11.1 - 2026-10-26
 
 ### Fixed
 
 - Start standalone background coordinators and workers through the known Composer binary proxy so installed packages load the tool's dependencies correctly, including custom binary directories and symlinked proxies. Preserve explicit test entrypoints and the checkout fallback without loading the analyzed project's autoloader. Add an isolated Composer installation smoke test covering ready/current map preparation and nonempty CLI/MCP search to the existing runtime-install CI job. Native engine 0.2.0 is unchanged.
-
-## Unreleased
 
 ## v0.11.0 - 2026-10-26
 

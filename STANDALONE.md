@@ -3,6 +3,33 @@
 The standalone executable reads Laravel applications and standalone Composer packages using its own dependencies. Configuration, graph cache, saved reports, task beginnings and generated integration files stay outside that repository. Installing the executable does not enable AI hooks or change any agent settings.
 
 
+## Use one MCP per Git family across worktrees
+
+A family MCP reads the selected worktree while inheriting one settings source from its Git main checkout when the worktree has none. The relationship is verified with Git common-directory and worktree membership. Folder names, branches and remotes are not identity proofs. Unrelated clones do not inherit.
+
+Export one family entry for each configured main repository:
+
+```sh
+architecture-kit --family /absolute/main/repo --tool-home /external/tool-home integration export codex
+architecture-kit --family /absolute/main/repo --tool-home /external/tool-home integration status codex
+```
+
+Use the exported `mcp.command` and `mcp.args` in the client's user settings. Export writes only external tool data. It does not install client settings, activate an MCP or generate hooks. Keep the Composer proxy in the command arguments because it supplies the tool's autoloader. Existing fixed `--project` exports remain available. Family export also retains the existing Claude configuration format; real client acceptance for this change uses Codex CLI.
+
+For two families, replace the two existing fixed entries with the two exported family entries after explicit operator approval. Save their previous values first. Restart the client as needed and verify `repository-context status` after selecting the workspace. Rollback restores exactly those two saved entries and preserves other client settings, profiles and task state. Export alone never proves activation.
+
+Client approval is separate from source-analysis permissions. A client running with approval policy `never` may reject an MCP call before it reaches the server. Use the client's normal approval flow for the intended tool and repository. Do not enable repository execution, writes or Deep to solve a client approval refusal.
+
+The family process starts unbound. Its instructions tell the agent to call `repository-context` with `action=bind` and the absolute task workspace before a repository operation. A workspace may be one worktree, its subdirectory, or a task folder containing one member of each family. Each family selects exactly one of its members. Zero or multiple candidates gives a reason and leaves the process unbound. The agent can continue ordinary source searching. An identical bind is idempotent; a different root gives `context_conflict`. A new connection starts unbound again.
+
+Without an explicit profile, all existing local sources precede the main checkout's sources: repository JSON, static repository PHP, registered default. A named `--profile X` chooses local X, then main X. Missing or invalid selected sources never fall back to a different profile. Exactly one source is used, without merging settings. Relative scopes and directory roles apply to the worktree code, never the parent's code. Status shows both origins and the settings hash.
+
+Settings refresh at the next request without changing the bound root. Drift makes old results or comparisons unverified and preserves the original task beginning. Each canonical worktree root has separate cache, map, task, result and consent state. Shared rules do not grant Enforce, Deep, runtime, PHP execution, writes, hooks or automatic audits. Family guidance does not require task begin/check or map preparation. Explicit operations retain their normal consent requirements. Existing analysis limits remain in force; this feature introduces no new configurable graph limit.
+
+A source-only audit excludes unsafe links and identifies omitted selected files instead of reporting them as audited. Completeness, freshness, business correctness and passing tests remain separate claims.
+
+The optional `tests/Smoke/worktree-inheritance.sh MANIFEST` checks an already prepared synthetic Git lab. It never creates worktrees. `tests/Support/worktree-lab.sh` is an operator-only fixture lifecycle helper, including cleanup. The optional STDIO metadata proxy in tests/Support is for client acceptance only and is not part of normal runtime. It forwards actual product messages and stores only approved metadata and assertions, with no prompts, application sources or raw arguments/results. Real client acceptance must identify the actual client used and cannot equate CLI lifecycle with Desktop lifecycle.
+
 ## Basic analysis and advisory control
 
 Basic is the default on CLI, MCP and hooks, including existing profiles. It maps project source, including Modules, checks local architecture rules and demonstrated call/interface mismatches, and lists candidate tests. Vendor is a boundary. Candidates and relationships do not prove execution, test coverage or business correctness.
@@ -36,7 +63,7 @@ composer global bin architecture-kit require gracjankubicki/laravel-architecture
 
 Find the namespace's actual binary directory with `composer global bin architecture-kit config bin-dir --absolute`. Composer may inherit a global `bin-dir`, so do not assume the executable is under the namespace's `vendor/bin`. Add the reported directory to your shell's `PATH`, or use the absolute executable path.
 
-Update to v0.11.1 or newer with `composer global bin architecture-kit update gracjankubicki/laravel-architecture-kit`. Version 0.11.1 fixes background startup through Composer proxies, including custom binary directories and symlinked proxies. Updating the tool invalidates task comparisons made with a different tool source fingerprint. Finish or explicitly skip the previous task before starting a new task under the new version.
+Upgrade to v0.12.0 with `composer global bin architecture-kit require "gracjankubicki/laravel-architecture-kit:^0.12"`. This also replaces an older exact version constraint. Later compatible updates can use `composer global bin architecture-kit update gracjankubicki/laravel-architecture-kit`. Family MCP support is available after explicitly exporting and installing family entries; upgrading alone preserves existing fixed entries. Composer proxies, custom binary directories and symlinked proxies remain supported. Updating the tool invalidates task comparisons made with a different tool source fingerprint. Finish or explicitly skip the previous task before starting a new task under the new version.
 
 ## Select and inspect the analysis engine
 
@@ -50,7 +77,7 @@ architecture-kit --project /absolute/path/project engine describe
 
 The distribution supports macOS and Linux on ARM64 and x64. Linux binaries use static musl linking and also run on glibc systems. Windows is outside the binary distribution. Users do not need Rust. The installer verifies the release manifest, size, SHA-256, protocol and executable version before replacing an installation. A release that defaults to Mago requires all matching binaries to be published first.
 
-Package v0.11.1 requires engine 0.2.0, based on Mago 1.57.0. Engine 0.1.0 does not provide the new Basic facts capability. Run `architecture-kit engine install` using the upgraded executable, then check `engine status` and the project's `engine describe`. Use the same `--tool-home` as the selected installation if it is not the default. Restart existing MCP sessions after upgrading; running processes retain their loaded tool code and engine identity.
+Package v0.12.0 requires engine 0.2.0, based on Mago 1.57.0. Engine 0.1.0 does not provide the new Basic facts capability. Run `architecture-kit engine install` using the upgraded executable, then check `engine status` and the project's `engine describe`. Use the same `--tool-home` as the selected installation if it is not the default. Restart existing MCP sessions after upgrading; running processes retain their loaded tool code and engine identity.
 
 Updating the Composer package and installing the native engine are separate operations. Neither step enables hooks, changes project profiles or grants Deep/runtime permissions. Do not interpret the package release as authorization to upgrade or activate a user's global integration.
 

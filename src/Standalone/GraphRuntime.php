@@ -264,12 +264,19 @@ final class GraphRuntime
     /** @param array<string, mixed> $spec */
     public function launch(string $role, string $directory, array $spec): int
     {
+        $spec['configuration_fingerprint'] = $this->context->fingerprint();
+        $spec['advisory_only'] = $this->context->advisoryOnly;
         $name = 'launch-'.bin2hex(random_bytes(16));
         (new StateStore($directory, $this->context->home))->update($name, static fn () => $spec);
         $args = [PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), self::$entrypoint ?? self::defaultEntrypoint(),
             '--project', $this->context->rootPath, '--tool-home', $this->context->home];
         if ($this->context->profile !== null) {
             array_push($args, '--profile', $this->context->profile);
+        }
+        foreach (['allow-execution' => $this->context->execute, 'allow-write' => $this->context->write, 'runtime-routes' => $this->context->runtimeRoutes] as $flag => $granted) {
+            if ($granted) {
+                $args[] = '--'.$flag;
+            }
         }
         array_push($args, '__graph-runtime', $role, $directory, $name);
         // A short-lived shell re-parents a nohup child. All stdio is redirected;

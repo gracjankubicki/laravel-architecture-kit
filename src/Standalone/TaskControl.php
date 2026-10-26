@@ -180,6 +180,12 @@ final readonly class TaskControl
         $saved = $this->store()->read($this->key($task));
         $this->validate($saved, $task);
         try {
+            if ($saved !== [] && ($saved['fingerprint'] ?? null) !== null && $saved['fingerprint'] !== $this->context->fingerprint()) {
+                $saved['status'] = 'stale';
+                $saved['ok'] = false;
+                $saved['analysis']['checks_complete'] = false;
+                $saved['reason'] = 'Rules or analysis identity changed. The original beginning is retained; comparison is unverified.';
+            }
             if (($saved['status'] ?? '') === 'pass' && (($saved['checked_sources'] ?? null) !== $this->sources() || ($saved['fingerprint'] ?? null) !== $this->context->fingerprint())) {
                 $saved['status'] = 'stale';
                 $saved['ok'] = false;

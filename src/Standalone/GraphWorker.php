@@ -228,6 +228,9 @@ final class GraphWorker
     private function freshness(): string
     {
         try {
+            if (isset($this->job['configuration_fingerprint']) && $this->job['configuration_fingerprint'] !== $this->context->fingerprint()) {
+                return 'stale';
+            }
             $this->context->fingerprint();
             $metadata = $this->source['metadata'];
 
