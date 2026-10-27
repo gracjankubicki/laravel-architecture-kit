@@ -808,7 +808,9 @@ final class ObservedGraphRuntimeTest extends TestCase
     public function test_prehydrate_transition_admission_uses_transition_ceiling_while_old_query_is_pinned(): void
     {
         $source = '<?php namespace App; class Bulk {';
-        for ($i = 0; $i < 300; $i++) {
+        // Make the transient decode reservation dominate platform RSS jitter,
+        // while the two retained generations still fit the resident ceiling.
+        for ($i = 0; $i < 1000; $i++) {
             $source .= ' function m'.$i.'_'.str_repeat('a', 512).'() {}';
         }
         file_put_contents($this->root.'/app/Bulk.php', $source.'}');

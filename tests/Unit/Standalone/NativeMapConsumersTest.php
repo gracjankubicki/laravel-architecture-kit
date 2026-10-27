@@ -10,6 +10,8 @@ use GracjanKubicki\ArchitectureKit\Standalone\NativeGraph\NativeConsumerGuard;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Standalone\StateStore;
 use Illuminate\Filesystem\Filesystem;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 
 final class NativeMapConsumersTest extends TestCase
@@ -27,6 +29,9 @@ final class NativeMapConsumersTest extends TestCase
         self::assertStringContainsString('full_php_catalog', implode(',', NativeConsumerGuard::violations($sources)));
     }
 
+    // This fixture measures its own process, not memory retained by earlier tests.
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_native_lru_counts_live_client_and_shared_process_trees_once(): void
     {
         $root = realpath(sys_get_temp_dir()).'/kit-r04-accounting-'.bin2hex(random_bytes(6));

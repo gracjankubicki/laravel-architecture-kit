@@ -71,8 +71,16 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
+          # Keep the process-memory fixture independent of unrelated runner extensions.
+          extensions: none, ctype, curl, dom, fileinfo, filter, iconv, mbstring, openssl, pcntl, pdo, pdo_sqlite, phar, posix, session, simplexml, sodium, tokenizer, xml, xmlreader, xmlwriter
           coverage: none
           ini-values: memory_limit=512M
+      - name: Record native integration PHP baseline
+        run: |
+          php --ini
+          php -m
+          php -r 'exit(function_exists("posix_kill") && defined("SIGKILL") && defined("SIGTERM") ? 0 : 1);'
+          php -r 'passthru("ps -o pid=,ppid=,rss= -p ".getmypid());'
       - run: composer install --prefer-dist --no-interaction --no-progress
       - name: Verify PHP adapter, installer and real native filesystem observation
         env:
