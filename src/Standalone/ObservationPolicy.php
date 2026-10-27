@@ -108,7 +108,7 @@ final class ObservationPolicy
         $this->restartAttempts++;
         $this->nextRestart = microtime(true) + min(30, 2 ** $this->restartAttempts);
         try {
-            $binary = (new RuntimeInstallation($this->context->home))->binary();
+            $binary = (new RuntimeInstallation($this->context->home))->watchBinary();
             $boundary = new WatchBoundary($this->roots);
             $client = self::$factory === null ? new WatchClient($binary, $boundary) : (self::$factory)($binary, $boundary);
             $client->start();

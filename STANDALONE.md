@@ -79,7 +79,7 @@ The distribution supports macOS and Linux on ARM64 and x64. Linux binaries use s
 
 Package v0.13.0 requires engine 0.2.0, based on Mago 1.57.0. Engine 0.1.0 does not provide the new Basic facts capability. Run `architecture-kit engine install` using the upgraded executable, then check `engine status` and the project's `engine describe`. Use the same `--tool-home` as the selected installation if it is not the default. Restart existing MCP sessions after upgrading; running processes retain their loaded tool code and engine identity.
 
-The native filesystem watcher is distributed separately as runtime 0.1.0. Install it with `architecture-kit runtime install` and verify it with `architecture-kit runtime status`, using the same tool home as the MCP server. It works with both analysis engines. Without the native helper, the tool reports background reconciliation rather than claiming native observation.
+The separate native runtime candidate is 0.2.0 and includes both filesystem observation and the opt-in Rust Basic map. `architecture-kit runtime install` explicitly requests the version required by the tool; `architecture-kit runtime status` verifies that installation in the same tool home as MCP. Installation requires the matching published binary release and does not build Rust locally. Version 0.2.0 lives beside an existing 0.1.0 installation without changing its bytes. Filesystem observation can still use the watcher-only 0.1.0 installation when the candidate is absent; the Rust map cannot. Both parsers can use native observation. Without a usable watcher, observation reports background reconciliation.
 
 Updating the Composer package and installing the native engine are separate operations. Neither step enables hooks, changes project profiles or grants Deep/runtime permissions. Do not interpret the package release as authorization to upgrade or activate a user's global integration.
 
@@ -103,6 +103,8 @@ Syntax errors identify the file and location, block a successful control result,
 ## Prepare and collect a Basic map
 
 Standalone CLI and MCP share a Basic map runtime for the selected repository, profile and analysis identity. It launches tool-only background processes and keeps ready generations in worker memory. Preparing a map does not bootstrap application PHP or execute its jobs.
+
+`graph_runtime.representation` selects `php` or the explicit `rust` candidate. Omission selects PHP. `analysis.engine` independently selects the parser, so PHP parsing does not require Mago when using a Rust map. Rust handles Basic composition, dependencies, search and normal map queries. Audit rules and legacy proposed-change assessments remain PHP operations over temporary bounded projections. Deep retains its existing separate path and consent requirements. Read [the native map contract](docs/graph-runtime.md) before opting in; this does not enable automatic audits or guarantee large-project performance.
 
 ```sh
 architecture-kit --project /absolute/path/project map prepare

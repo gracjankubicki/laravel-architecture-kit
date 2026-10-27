@@ -11,7 +11,11 @@ final class WatchProtocol
 {
     public const PROTOCOL = 'architecture-kit-watch-v1';
 
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.2.0';
+
+    public const LEGACY_VERSION = '0.1.0';
+
+    public const GRAPH_CAPABILITIES = ['events-v1', 'continuity-loss-v1', 'graph-store-v1', 'basic-graph-v1'];
 
     public const FRAME_BYTES = 65536;
 
@@ -92,14 +96,14 @@ final class WatchProtocol
     }
 
     /** @param array<string, mixed> $value */
-    public static function version(array $value, string $platform): void
+    public static function version(array $value, string $platform, string $version = self::VERSION): void
     {
         self::fields($value, ['runtime_version', 'protocol', 'notify_version', 'platform', 'target', 'linkage', 'capabilities']);
-        if (($value['runtime_version'] ?? null) !== self::VERSION || ($value['protocol'] ?? null) !== self::PROTOCOL
+        if (($value['runtime_version'] ?? null) !== $version || ($value['protocol'] ?? null) !== self::PROTOCOL
             || ($value['notify_version'] ?? null) !== '8.2.1' || ($value['platform'] ?? null) !== $platform
             || ($value['target'] ?? null) !== (RuntimePlatform::TARGETS[$platform] ?? null)
             || ($value['linkage'] ?? null) !== RuntimePlatform::linkage($platform)
-            || ($value['capabilities'] ?? null) !== self::CAPABILITIES) {
+            || ($value['capabilities'] ?? null) !== ($version === self::LEGACY_VERSION ? self::CAPABILITIES : self::GRAPH_CAPABILITIES)) {
             throw new RuntimeException('protocol_error: incompatible runtime version.');
         }
     }

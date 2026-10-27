@@ -37,10 +37,17 @@ fn identities(plan: &BTreeMap<PathBuf, bool>) -> BTreeMap<PathBuf, (u64, u64)> {
 }
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args == ["--licenses"] {
+        print!("{}", graph::compose::sort::NOTICE);
+        return Ok(());
+    }
+    if args == ["--graph-store-v1"] {
+        return graph::protocol::serve();
+    }
     if args == ["--version"] {
         println!(
             "{}",
-            json!({"runtime_version":VERSION,"protocol":PROTOCOL,"notify_version":"8.2.1","platform":platform(),"target":target(),"linkage":linkage(),"capabilities":CAPABILITIES})
+            json!({"runtime_version":VERSION,"protocol":PROTOCOL,"notify_version":"8.2.1","platform":platform(),"target":target(),"linkage":linkage(),"capabilities":["events-v1","continuity-loss-v1","graph-store-v1","basic-graph-v1"]})
         );
         return Ok(());
     }

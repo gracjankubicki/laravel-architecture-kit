@@ -53,6 +53,10 @@ final readonly class GraphSource
             && ! $fullComposition && ($resident = GraphRuntime::resident()) !== null) {
             return $resident;
         }
+        if (GraphRuntime::representation($this->basePath) === 'rust'
+            && ($this->mode ?? AnalysisRuntime::session()->mode) === AnalysisMode::Basic) {
+            throw new \RuntimeException('native_basic_index_unavailable: use bounded map operations.');
+        }
         $eligibility = GraphBuildEligibility::begin();
         $complete = false;
         try {

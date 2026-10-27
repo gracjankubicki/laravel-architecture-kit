@@ -10,6 +10,8 @@ use InvalidArgumentException;
 /** Explicit ceilings when no reliable OS pressure signal is available. Never raises PHP's limit. */
 final readonly class GraphPolicy
 {
+    public string $representation;
+
     public int $residentBytes;
 
     public int $transitionBytes;
@@ -27,6 +29,11 @@ final readonly class GraphPolicy
     /** @param array<string, mixed> $configuration */
     public function __construct(array $configuration = [])
     {
+        $representation = $configuration['representation'] ?? 'php';
+        if (! is_string($representation) || ! in_array($representation, ['php', 'rust'], true)) {
+            throw new InvalidArgumentException('graph_runtime.representation must be php or rust.');
+        }
+        $this->representation = $representation;
         $limit = MemoryLimit::bytes() ?? 0;
         $this->residentBytes = self::integer($configuration, 'resident_budget_bytes', $limit, 1, PHP_INT_MAX);
         $this->transitionBytes = self::integer($configuration, 'transition_budget_bytes', $limit, 1, PHP_INT_MAX);
@@ -54,7 +61,7 @@ final readonly class GraphPolicy
     /** @return array<string, mixed> */
     public function describe(): array
     {
-        return ['resident_budget_bytes' => $this->residentBytes, 'transition_budget_bytes' => $this->transitionBytes,
+        return ['representation' => $this->representation, 'resident_budget_bytes' => $this->residentBytes, 'transition_budget_bytes' => $this->transitionBytes,
             'pressure_mode' => 'configured_ceiling', 'memory_limit' => ini_get('memory_limit'), 'queue_paths' => $this->queuePaths,
             'queue_bytes' => $this->queueBytes, 'posting_budget' => $this->postingBudget, 'overlay_depth' => 0,
             'debounce_ms' => $this->debounceSeconds * 1000, 'max_window_ms' => $this->maxWindowSeconds * 1000,

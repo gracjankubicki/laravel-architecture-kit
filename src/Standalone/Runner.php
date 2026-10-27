@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Standalone;
 use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Analysis\Distribution\EngineInstallation;
 use GracjanKubicki\ArchitectureKit\Analysis\MagoAnalysisEngine;
+use GracjanKubicki\ArchitectureKit\Standalone\Capture\CaptureCommand;
 use GracjanKubicki\ArchitectureKit\Standalone\Distribution\RuntimeInstallation;
 use Illuminate\Console\Application;
 use RuntimeException;
@@ -18,6 +19,7 @@ final class Runner
     /** @param list<string> $argv */
     public static function run(array $argv): int
     {
+        $entryStarted = hrtime(true);
         GraphRuntime::startProcess();
         GraphRuntime::beginRequest();
         try {
@@ -127,6 +129,12 @@ final class Runner
             $root = Projects::discover($options['project'] ?? getcwd());
             // Validate external home before registering or generating any state.
             self::externalHome($home, $root);
+            if ($command === 'capture-basic') {
+                $report = CaptureCommand::run($root, $home, $options['profile'] ?? null, $argv, $options, $entryStarted);
+                self::output($report);
+
+                return $report['ok'] ? 0 : 2;
+            }
             if ($command === 'init') {
                 if (isset($options['shared']) && ! isset($options['allow-write'])) {
                     throw new RuntimeException('Shared settings require --allow-write.');
@@ -276,12 +284,12 @@ final class Runner
     {
         $args = [];
         $options = [];
-        $values = ['family', 'project', 'tool-home', 'profile', 'client', 'session'];
-        $flags = ['allow-write', 'allow-execution', 'runtime-routes', 'confirm', 'shared', 'enforce', 'strict'];
+        $values = ['family', 'project', 'tool-home', 'profile', 'client', 'session', 'admission-file', 'source-manifest', 'output'];
+        $flags = ['allow-write', 'allow-execution', 'runtime-routes', 'confirm', 'shared', 'enforce', 'strict', 'once'];
         for ($i = 0; $i < count($argv); $i++) {
             $arg = $argv[$i];
             $parts = explode('=', ltrim($arg, '-'), 2);
-            if (in_array($parts[0], ['enforce', 'strict'], true) && isset($parts[1])) {
+            if (in_array($parts[0], ['enforce', 'strict', 'once'], true) && isset($parts[1])) {
                 throw new RuntimeException('Use the bare --'.$parts[0].' flag.');
             }
             if ($parts[0] === 'runtime-routes' && isset($parts[1])) {

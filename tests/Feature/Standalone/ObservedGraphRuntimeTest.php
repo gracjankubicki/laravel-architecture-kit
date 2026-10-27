@@ -64,7 +64,7 @@ final class ObservedGraphRuntimeTest extends TestCase
         file_put_contents($this->root.'/app/B.php', '<?php namespace App; class B { function gamma() { $this->gamma(); } }');
         $binary = RuntimeFixture::native();
         $platform = RuntimePlatform::current();
-        $store = new StateStore($this->home.'/runtimes/0.1.0/'.$platform);
+        $store = new StateStore($this->home.'/runtimes/0.2.0/'.$platform);
         $body = file_get_contents($binary);
         copy($binary, $store->directory.'/architecture-kit-runtime');
         chmod($store->directory.'/architecture-kit-runtime', 0700);
@@ -486,7 +486,7 @@ final class ObservedGraphRuntimeTest extends TestCase
             self::markTestSkipped('Opt in once with ARCHITECTURE_KIT_W04_PERIODIC=1 for the real >=30s content-polling scenario.');
         }
         // This case intentionally has no installed native observer. Other tests prove native events.
-        unlink($this->home.'/runtimes/0.1.0/'.RuntimePlatform::current().'/architecture-kit-runtime');
+        unlink($this->home.'/runtimes/0.2.0/'.RuntimePlatform::current().'/architecture-kit-runtime');
         $a = $this->runtime->map('prepare');
         $this->assertSame('ready', $a['availability'], json_encode($a));
         $this->assertSame('polling', $a['confirmation']['watch_health']);
@@ -808,7 +808,9 @@ final class ObservedGraphRuntimeTest extends TestCase
     public function test_prehydrate_transition_admission_uses_transition_ceiling_while_old_query_is_pinned(): void
     {
         $source = '<?php namespace App; class Bulk {';
-        for ($i = 0; $i < 300; $i++) {
+        // Make the transient decode reservation dominate platform RSS jitter,
+        // while the two retained generations still fit the resident ceiling.
+        for ($i = 0; $i < 1000; $i++) {
             $source .= ' function m'.$i.'_'.str_repeat('a', 512).'() {}';
         }
         file_put_contents($this->root.'/app/Bulk.php', $source.'}');

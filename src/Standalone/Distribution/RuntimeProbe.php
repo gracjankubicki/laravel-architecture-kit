@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Standalone\Distribution;
 
+use GracjanKubicki\ArchitectureKit\Standalone\NativeGraph\NativeBasic;
+use GracjanKubicki\ArchitectureKit\Standalone\NativeGraph\NativeGraphClient;
 use GracjanKubicki\ArchitectureKit\Standalone\Watch\WatchProtocol;
 use GracjanKubicki\ArchitectureKit\Standalone\Watch\WatchSession;
 use RuntimeException;
@@ -35,6 +37,10 @@ final class RuntimeProbe
                         throw new RuntimeException('Runtime handshake stop failed.');
                     }
 
+                    if ($binary->manifest->value['runtime_version'] === WatchProtocol::VERSION) {
+                        self::basic($binary);
+                    }
+
                     return;
                 }
                 usleep(1000);
@@ -45,6 +51,30 @@ final class RuntimeProbe
             if ($process->isRunning()) {
                 $process->stop(0.1);
             }
+        }
+    }
+
+    /** Root-free capability smoke. No project inputs, cache paths or parser are supplied. */
+    private static function basic(RuntimeBinary $binary): void
+    {
+        $client = new NativeGraphClient($binary->path, 67108864, 100663296, 2.0);
+        try {
+            $basic = new NativeBasic($client);
+            $identity = array_fill_keys(['repository', 'profile', 'product', 'parser', 'tool', 'configuration', 'capture'], 'root-free-install-probe');
+            $ingest = $client->request(['op' => 'begin', 'identity' => $identity, 'options' => ['impact' => true, 'catalog' => true,
+                'preserve_occurrences' => true, 'classification_fingerprint' => str_repeat('0', 64)], 'scope' => []])['ingest'];
+            $generation = $client->request(['op' => 'commit', 'ingest' => $ingest])['generation'];
+            $generation = $basic->compose($generation, $identity);
+            $lease = $client->request(['op' => 'pin', 'generation' => $generation, 'identity' => $identity])['lease'];
+            $result = $client->request(['op' => 'query_page', 'generation' => $generation, 'identity' => $identity, 'lease' => $lease,
+                'query' => ['type' => 'search', 'query' => 'install-probe'], 'start' => 0, 'limit' => 1]);
+            if (($result['generation'] ?? null) !== $generation || ($result['total'] ?? null) !== 0) {
+                throw new RuntimeException('native_basic_install_probe');
+            }
+            $client->request(['op' => 'release', 'lease' => $lease]);
+            $client->request(['op' => 'stop']);
+        } finally {
+            $client->close();
         }
     }
 }

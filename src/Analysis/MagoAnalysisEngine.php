@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Analysis;
 
 use GracjanKubicki\ArchitectureKit\Analysis\Syntax\Codec;
+use GracjanKubicki\ArchitectureKit\Standalone\Measurement\GraphStageMeasurement;
 use RuntimeException;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\InputStream;
@@ -109,6 +110,13 @@ final class MagoAnalysisEngine implements BasicFactsEngine
             throw new RuntimeException('Basic extraction requires a nonempty batch of at most 32 sources.');
         }
         $requests = array_map(static fn (BasicSource $source): array => $source->request($descriptor, $options), $sources);
+        $measurement = GraphStageMeasurement::current();
+        if ($measurement !== null) {
+            foreach ($requests as $ordinal => &$request) {
+                $request['measurement'] = ['batch' => $measurement->batch, 'request' => $ordinal];
+            }
+            unset($request);
+        }
         $input = json_encode(['schema' => EngineDescriptor::SCHEMA, 'product' => 'basic-file-facts-batch-v1', 'requests' => $requests], JSON_THROW_ON_ERROR)."\n";
         $single = false;
         if (strlen($input) > self::BASIC_BATCH_BYTES) {
@@ -132,7 +140,14 @@ final class MagoAnalysisEngine implements BasicFactsEngine
             $results = [];
             $strings = new BasicRecordStrings;
             foreach ($sources as $index => $source) {
-                $results[] = BasicFileFacts::fromNative($data['results'][$index], $source, $descriptor, $options, $strings);
+                if ($measurement !== null) {
+                    $measurement->event('engine.timeline', ['request' => $index, 'events' => $data['results'][$index]['trace']['measurement'] ?? null]);
+                    if (! isset($data['results'][$index]['trace']['measurement'])) {
+                        $measurement->unavailable('engine.phases', 'binary_does_not_emit_phase_boundaries');
+                    }
+                }
+                $materialize = static fn () => BasicFileFacts::fromNative($data['results'][$index], $source, $descriptor, $options, $strings);
+                $results[] = $measurement === null ? $materialize() : $measurement->measure('ipc.materialize', $materialize);
                 unset($data['results'][$index]);
             }
 
@@ -188,17 +203,27 @@ final class MagoAnalysisEngine implements BasicFactsEngine
             if ($this->responseOutput !== '') {
                 throw new RuntimeException('Mago engine returned extra protocol output.');
             }
+            $measurement = GraphStageMeasurement::current();
+            $span = $measurement?->begin('ipc.roundtrip');
+            $measurement?->event('ipc.send', ['bytes' => strlen($input)]);
             $this->responseBytes = 0;
             $this->input?->write($input);
             $deadline = hrtime(true) + (int) ($this->timeout * 1000000000);
             do {
                 $receivedBytes = $this->responseBytes;
                 $running = $this->pollProcess($this->process);
+                if ($receivedBytes === 0 && $this->responseBytes > 0) {
+                    $measurement?->event('ipc.first_byte');
+                }
                 $this->process->clearOutput();
                 $this->process->clearErrorOutput();
                 if (str_contains($this->responseOutput, "\n")) {
                     if (! str_ends_with($this->responseOutput, "\n") || substr_count($this->responseOutput, "\n") !== 1) {
                         throw new RuntimeException('Mago engine returned extra protocol output.');
+                    }
+                    $measurement?->event('ipc.last_byte', ['bytes' => $this->responseBytes]);
+                    if ($span !== null) {
+                        $measurement->end($span);
                     }
                     $data = $this->decode($this->responseOutput);
                     $this->responseOutput = '';
@@ -298,7 +323,9 @@ final class MagoAnalysisEngine implements BasicFactsEngine
     private function decode(string $output): array
     {
         try {
-            $data = json_decode(trim($output), true, 32768, JSON_THROW_ON_ERROR);
+            $measurement = GraphStageMeasurement::current();
+            $data = $measurement === null ? json_decode(trim($output), true, 32768, JSON_THROW_ON_ERROR)
+                : $measurement->measure('ipc.decode', static fn () => json_decode(trim($output), true, 32768, JSON_THROW_ON_ERROR));
         } catch (\JsonException $error) {
             throw new RuntimeException('Mago engine returned invalid JSON.', previous: $error);
         }

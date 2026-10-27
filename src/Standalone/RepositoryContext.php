@@ -60,6 +60,7 @@ final class RepositoryContext
         $this->configSource = $this->selection->source;
         $this->sourceHash = $this->selection->sourceHash;
         $this->settings = $this->selection->settings;
+        $this->representation();
         $this->storage = $home.'/repositories/'.$this->id;
         new StateStore($this->storage, $home);
         $effective = $this->effectiveSettings();
@@ -112,6 +113,16 @@ final class RepositoryContext
         }
 
         return $mode;
+    }
+
+    public function representation(): string
+    {
+        $value = $this->settings['graph_runtime']['representation'] ?? 'php';
+        if (! is_string($value) || ! in_array($value, ['php', 'rust'], true)) {
+            throw new RuntimeException('graph_runtime.representation must be php or rust.');
+        }
+
+        return $value;
     }
 
     public function controlPolicy(): ControlPolicy
@@ -242,7 +253,7 @@ final class RepositoryContext
 
         $metadata['Modules'] = is_dir($this->rootPath.'/Modules') && ! is_link($this->rootPath.'/Modules');
 
-        return hash('sha256', serialize([$this->id, $this->selection->identity(), $engine->fingerprint(), $metadata,
+        return hash('sha256', serialize([$this->id, $this->selection->identity(), $this->representation(), $engine->fingerprint(), $metadata,
             hash('sha256', json_encode($composer, JSON_THROW_ON_ERROR)),
             $this->execute, $this->runtimeRoutes, $this->advisoryOnly, dirname(__DIR__, 2), GraphProtocol::VERSION]));
     }

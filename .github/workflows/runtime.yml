@@ -1,4 +1,4 @@
-name: watch runtime
+name: graph and watch runtime
 
 on:
   workflow_dispatch:
@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - 'runtime/**'
+      - 'engine/**'
       - 'src/**'
       - 'tests/**'
       - 'config/**'
@@ -50,9 +51,12 @@ jobs:
         run: |
           cargo test --manifest-path runtime/Cargo.toml --locked --target '${{ matrix.target }}'
           cargo build --manifest-path runtime/Cargo.toml --locked --release --target '${{ matrix.target }}'
+          # Private parser fixture for integration only; not a runtime release artifact.
+          cargo build --manifest-path engine/Cargo.toml --locked --release --target '${{ matrix.target }}'
           mkdir -p build/runtime-artifacts
           cp 'runtime/target/${{ matrix.target }}/release/architecture-kit-runtime' 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}'
           'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}' --version > 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}.json'
+          'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}' --licenses > 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}.licenses.txt'
       - name: Record macOS deployment target from the actual binary
         if: runner.os == 'macOS'
         run: otool -l 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}' > 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}.load-commands.txt'
@@ -67,8 +71,16 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
+          # Keep the process-memory fixture independent of unrelated runner extensions.
+          extensions: none, ctype, curl, dom, fileinfo, filter, iconv, mbstring, openssl, pcntl, pdo, pdo_sqlite, phar, posix, session, simplexml, sodium, tokenizer, xml, xmlreader, xmlwriter
           coverage: none
           ini-values: memory_limit=512M
+      - name: Record native integration PHP baseline
+        run: |
+          php --ini
+          php -m
+          php -r 'exit(function_exists("posix_kill") && defined("SIGKILL") && defined("SIGTERM") ? 0 : 1);'
+          php -r 'passthru("ps -o pid=,ppid=,rss= -p ".getmypid());'
       - run: composer install --prefer-dist --no-interaction --no-progress
       - name: Verify PHP adapter, installer and real native filesystem observation
         env:
@@ -76,6 +88,51 @@ jobs:
         run: |
           composer test -- tests/Unit/Standalone/Watch tests/Integration/Runtime
           COMPOSER_PROCESS_TIMEOUT=0 composer test -- -d memory_limit=512M tests/Feature/Standalone/GraphRuntimeProcessTest.php tests/Feature/Standalone/ObservedGraphRuntimeTest.php tests/Feature/Standalone/GraphPerformanceSmokeTest.php
+      - name: Verify native Basic composition, queries, patch and restore through CLI and MCP
+        env:
+          ARCHITECTURE_KIT_TEST_RUNTIME: ${{ github.workspace }}/build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}
+          ARCHITECTURE_KIT_TEST_GRAPH_RUNTIME: ${{ github.workspace }}/build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}
+          ARCHITECTURE_KIT_SUITE_ENGINE: php
+          COMPOSER_PROCESS_TIMEOUT: 0
+        run: |
+          set +e
+          composer test -- --do-not-cache-result --log-junit 'build/runtime-artifacts/native-graph-${{ matrix.platform }}.xml' \
+            tests/Unit/Standalone/NativeMapConsumersTest.php \
+            tests/Unit/Standalone/NativeGraph/NativeQueryParityTest.php \
+            tests/Unit/Standalone/NativeGraph/NativeQueryParitySnapshotTest.php \
+            tests/Unit/Standalone/NativeGraph/NativeDependencyParityTest.php \
+            tests/Unit/Standalone/NativeGraph/NativeClientDecodeAdmissionTest.php \
+            tests/Unit/Standalone/NativeGraph/NativePublicPageBudgetTest.php \
+            tests/Unit/Standalone/NativeGraph/NativeAuditProjectionContractTest.php \
+            tests/Unit/Standalone/NativeGraph/NativeSnapshotStorageTest.php \
+            tests/Feature/Standalone/NativeGraphRuntimeTest.php \
+            > 'build/runtime-artifacts/native-graph-${{ matrix.platform }}.log' 2>&1
+          result=$?
+          cat 'build/runtime-artifacts/native-graph-${{ matrix.platform }}.log'
+          exit "$result"
+      - name: Verify native Basic CLI and MCP with the Mago parser
+        env:
+          ARCHITECTURE_KIT_TEST_RUNTIME: ${{ github.workspace }}/build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}
+          ARCHITECTURE_KIT_TEST_ENGINE: ${{ github.workspace }}/engine/target/${{ matrix.target }}/release/architecture-kit-engine
+          ARCHITECTURE_KIT_SUITE_ENGINE: mago
+          COMPOSER_PROCESS_TIMEOUT: 0
+        run: |
+          set +e
+          composer test -- --do-not-cache-result --log-junit 'build/runtime-artifacts/native-graph-mago-${{ matrix.platform }}.xml' \
+            tests/Feature/Standalone/NativeGraphRuntimeTest.php \
+            > 'build/runtime-artifacts/native-graph-mago-${{ matrix.platform }}.log' 2>&1
+          result=$?
+          cat 'build/runtime-artifacts/native-graph-mago-${{ matrix.platform }}.log'
+          exit "$result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-graph-evidence-${{ matrix.platform }}
+          path: |
+            build/runtime-artifacts/native-graph-*.log
+            build/runtime-artifacts/native-graph-*.xml
+            build/graph-performance-rust/R04/feature-runs/**
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: runtime-${{ matrix.platform }}

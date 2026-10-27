@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache;
 
+use GracjanKubicki\ArchitectureKit\Standalone\NativeGraph\NativeSnapshotStorage;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Standalone\StateStore;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
@@ -280,7 +281,7 @@ final readonly class ProjectGraphCache
     {
         $context = RepositoryContext::forRoot($this->basePath);
 
-        return $context === null ? $this->clearFiles() : (new GraphEpoch($context))->clear(fn (): int => $this->clearFiles());
+        return $context === null ? $this->clearFiles() : (new GraphEpoch($context))->clear(fn (): int => $this->clearFiles() + NativeSnapshotStorage::clear($context));
     }
 
     private function clearFiles(): int

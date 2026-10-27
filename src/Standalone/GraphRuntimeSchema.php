@@ -61,7 +61,16 @@ final class GraphRuntimeSchema
                 'properties' => ['before' => $snapshot, 'after' => $snapshot, 'collected_cycles' => $integer, 'freed_allocator_bytes' => $integer], 'additionalProperties' => false],
             'failed_conditions' => ['type' => 'array', 'items' => ['enum' => ['negative_candidate', 'global_budget', 'php_budget']]], 'admitted' => ['type' => 'boolean']];
 
-        return ['type' => 'object', 'required' => array_keys($properties), 'properties' => $properties, 'additionalProperties' => false];
+        $native = ['basis' => ['const' => 'unique_pid_rss_plus_reserved_owned_capacity_and_headroom'],
+            'retained_rss_bytes' => $integer, 'headroom_bytes' => $integer, 'other_native_grants_bytes' => $integer,
+            'available_bytes' => $integer, 'replaced_rss_bytes' => $integer, 'resident_available_bytes' => $integer, 'transition_available_bytes' => $integer, 'requested_capacity_bytes' => $nullableInteger, 'limit_bytes' => $integer, 'admitted' => ['type' => 'boolean'],
+            'failed_conditions' => ['type' => 'array', 'items' => ['enum' => ['unknown_rss', 'global_budget']]],
+            'unknown_rss' => ['type' => 'boolean'], 'sample' => ['type' => 'object'], 'phase' => ['enum' => ['fresh', 'transition']]];
+
+        return ['oneOf' => [
+            ['type' => 'object', 'required' => array_keys($properties), 'properties' => $properties, 'additionalProperties' => false],
+            ['type' => 'object', 'required' => array_keys($native), 'properties' => $native, 'additionalProperties' => false],
+        ]];
     }
 
     /** @return array<string, mixed> */

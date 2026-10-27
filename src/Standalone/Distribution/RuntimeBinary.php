@@ -42,7 +42,7 @@ final readonly class RuntimeBinary
             throw new RuntimeException('Runtime version probe failed.');
         }
         $value = WatchProtocol::frame($process->getOutput());
-        WatchProtocol::version($value, $this->platform);
+        WatchProtocol::version($value, $this->platform, $this->manifest->value['runtime_version']);
 
         return $value;
     }

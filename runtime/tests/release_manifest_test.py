@@ -17,10 +17,10 @@ class ReleaseManifestTest(unittest.TestCase):
         for platform, target in TARGETS.items():
             name = "architecture-kit-runtime-" + platform
             (directory / name).write_bytes(b"SYNTHETIC MANIFEST TEST ONLY")
-            descriptor = {"runtime_version": "0.1.0", "protocol": "architecture-kit-watch-v1",
+            descriptor = {"runtime_version": "0.2.0", "protocol": "architecture-kit-watch-v1",
                           "notify_version": "8.2.1", "platform": platform, "target": target,
                           "linkage": "static-musl" if platform.startswith("linux-") else "system",
-                          "capabilities": ["events-v1", "continuity-loss-v1"]}
+                          "capabilities": ["events-v1", "continuity-loss-v1", "graph-store-v1", "basic-graph-v1"]}
             (directory / (name + ".json")).write_text(json.dumps(descriptor))
 
     def test_complete_four_platform_manifest_has_exact_bytes_hash_target_and_linkage(self):

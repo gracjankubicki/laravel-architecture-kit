@@ -78,7 +78,7 @@ final class GraphProtocol
     {
         $bytes = self::encode($message, $limit);
         for ($offset = 0; $offset < strlen($bytes);) {
-            $written = fwrite($stream, substr($bytes, $offset));
+            $written = @fwrite($stream, substr($bytes, $offset));
             if ($written === false || $written === 0) {
                 throw new RuntimeException('runtime_disconnected');
             }

@@ -12,6 +12,14 @@ final class GraphProcessMemory
     /** @return array{rss_bytes: ?int, processes: list<array{pid: int, ppid: int, rss_bytes: int}>, reason: ?string} */
     public static function tree(int $root): array
     {
+        return self::forest([$root]);
+    }
+
+    /** One OS sample for all owned trees, deduplicated by PID.
+     * @param list<int> $roots
+     * @return array{rss_bytes: ?int, processes: list<array{pid: int, ppid: int, rss_bytes: int}>, reason: ?string} */
+    public static function forest(array $roots): array
+    {
         try {
             $process = new Process(['ps', '-axo', 'pid=,ppid=,rss='], timeout: 1);
             $process->run();
@@ -24,10 +32,12 @@ final class GraphProcessMemory
                     $rows[(int) $match[1]] = ['pid' => (int) $match[1], 'ppid' => (int) $match[2], 'rss_bytes' => (int) $match[3] * 1024];
                 }
             }
-            if (! isset($rows[$root]) || $rows[$root]['rss_bytes'] <= 0) {
-                throw new \RuntimeException('process_root_rss_unavailable');
+            foreach ($roots as $root) {
+                if (! isset($rows[$root]) || $rows[$root]['rss_bytes'] <= 0) {
+                    throw new \RuntimeException('process_root_rss_unavailable');
+                }
             }
-            $owned = [$root => true];
+            $owned = array_fill_keys($roots, true);
             for ($depth = 0; $depth < 8; $depth++) {
                 foreach ($rows as $pid => $row) {
                     if (isset($owned[$row['ppid']])) {

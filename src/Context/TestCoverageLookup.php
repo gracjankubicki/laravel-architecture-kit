@@ -8,6 +8,7 @@ use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FileContext;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphBuilder;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphProducts;
 use GracjanKubicki\ArchitectureKit\Support\ProjectPath;
 use Illuminate\Filesystem\Filesystem;
 use SplFileInfo;
@@ -45,6 +46,9 @@ final readonly class TestCoverageLookup
      */
     public function for(string $symbol): array
     {
+        if (($graph = GraphProducts::assessmentGraph()) !== null) {
+            return self::fromGraph($graph, $symbol);
+        }
         $testSources = $this->sources(AuditScope::TESTS);
 
         if ($testSources === []) {
@@ -72,6 +76,32 @@ final readonly class TestCoverageLookup
             $covered[$path] = ['path' => $path, 'coverage' => self::INDIRECT, 'via' => $via, 'basis' => 'indirect_source_reference', 'test_candidate' => true, 'proves_coverage' => false, 'test_executed' => false];
         }
 
+        ksort($covered);
+
+        return array_values($covered);
+    }
+
+    /** Already-parsed source witnesses, used by the temporary native audit projection.
+     * @return array<int, array{path: string, coverage: string, via: string|null}> */
+    public static function fromGraph(ProjectGraphSnapshot $graph, string $symbol): array
+    {
+        $users = [];
+        foreach ($graph->edges as $edge) {
+            if (str_starts_with($edge->path, 'app/') && strcasecmp($edge->to, $symbol) === 0 && strcasecmp($edge->from, $symbol) !== 0) {
+                $users[strtolower($edge->from)] = $edge->from;
+            }
+        }
+        $covered = [];
+        foreach ($graph->edges as $edge) {
+            if (str_starts_with($edge->path, 'tests/') && strcasecmp($edge->to, $symbol) === 0) {
+                $covered[$edge->path] = ['path' => $edge->path, 'coverage' => self::DIRECT, 'via' => null, 'basis' => 'direct_source_reference', 'test_candidate' => true, 'proves_coverage' => false, 'test_executed' => false];
+            }
+        }
+        foreach ($graph->edges as $edge) {
+            if (str_starts_with($edge->path, 'tests/') && isset($users[strtolower($edge->to)]) && ! isset($covered[$edge->path])) {
+                $covered[$edge->path] = ['path' => $edge->path, 'coverage' => self::INDIRECT, 'via' => $users[strtolower($edge->to)], 'basis' => 'indirect_source_reference', 'test_candidate' => true, 'proves_coverage' => false, 'test_executed' => false];
+            }
+        }
         ksort($covered);
 
         return array_values($covered);

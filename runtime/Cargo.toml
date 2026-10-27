@@ -1,6 +1,6 @@
 [package]
 name = "architecture-kit-runtime"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
@@ -8,7 +8,9 @@ description = "Parser-independent bounded filesystem observation for Architectur
 
 [dependencies]
 notify = "=8.2.1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["unbounded_depth"] }
 base64 = "0.22"
 getrandom = "0.3"
+sha2 = "=0.10.9"
+libc = "=0.2.191"
