@@ -12,6 +12,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphLoader;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectGraphSnapshot;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphProducts;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphProductSpec;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
@@ -61,7 +62,7 @@ final readonly class ArchitectureImpact
             }
             $mapScope = AuditScope::package(array_values(array_unique([...$this->scope->directories, ...ProjectLayout::read($this->basePath)->graphSources()])));
             $loader = new ProjectGraphLoader($this->files, $this->basePath, $mapScope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true, mode: $this->mode);
-            $plan = $loader->plan($exclude);
+            $plan = GraphProducts::plan($loader, $exclude) ?? $loader->plan($exclude);
             $graph = $loader->build($plan);
             $report = (new TableImpact)->inspect($this->files, $this->basePath, $graph, $exclude, $table, $tableMatch ?? 'exact', $connection, $operation, $limit, $depth);
             if ($loader->currentSignature($exclude)->files !== $plan->signature->files) {
@@ -94,7 +95,7 @@ final readonly class ArchitectureImpact
         }
         $mapScope = AuditScope::package(array_values(array_unique([...$this->scope->directories, ...ProjectLayout::read($this->basePath)->graphSources()])));
         $loader = new ProjectGraphLoader($this->files, $this->basePath, $mapScope, $this->cache, $this->cacheConfiguration, impact: true, sourceOnly: true, mode: $this->mode);
-        $plan = $loader->plan($exclude);
+        $plan = GraphProducts::plan($loader, $exclude) ?? $loader->plan($exclude);
         $graph = $loader->build($plan);
         [$selector, $method] = array_pad(explode('::', trim($subject), 2), 2, null);
         $matches = $this->matches($graph, $selector);
@@ -245,7 +246,7 @@ final readonly class ArchitectureImpact
         $context = $method !== null ? ['dependents' => $this->classContext($classEdges, $resolved['name'], false, $limit), 'dependencies' => $this->classContext($classEdges, $resolved['name'], true, $limit)] : ['dependents' => [], 'dependencies' => []];
         // Stat-based freshness is the same contract as the shared graph cache. A
         // concurrent edit makes this report incomplete and requires a fresh query.
-        $current = $loader->currentSignature($exclude);
+        $current = GraphRuntime::inWorker() ? $plan->signature : $loader->currentSignature($exclude);
         if ($current->files !== $plan->signature->files) {
             $notices[] = ['path' => $resolved['path'], 'line' => $resolved['line'], 'reason' => 'Project files changed during analysis. Rerun impact.'];
         }

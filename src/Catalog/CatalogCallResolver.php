@@ -68,6 +68,22 @@ final class CatalogCallResolver
         }
     }
 
+    /** @return list<string>|null */
+    public function cachedMember(string $key): ?array
+    {
+        return $this->memberCache[$key] ?? null;
+    }
+
+    /** Restore only writes made by the skipped operation, preserving cache-hit diagnostics.
+     * @param  array<string, list<string>>  $writes
+     */
+    public function replayMembers(array $writes): void
+    {
+        foreach ($writes as $key => $value) {
+            $this->memberCache[$key] = $value;
+        }
+    }
+
     /** @param list<array<string, mixed>> $calls */
     public function resolve(array $calls): void
     {
@@ -98,56 +114,65 @@ final class CatalogCallResolver
             }
         }
         foreach ($expanded as $call) {
-            $this->limited = false;
-            $this->argumentVisits = 0;
-            $receiver = $call['metadata']['receiver'];
-            $targets = $this->callables($receiver, $call['metadata']['method'], $call['metadata']['exact_receiver']);
-            $targets = array_values(array_unique($targets));
-            if ($targets !== [] && $call['kind'] === 'calls') {
-                $reachable = $this->invocationTargets($call, $targets);
-                if ($reachable !== $targets) {
-                    $this->diagnostic($call, 'inaccessible_dispatch', 'Source method selection is inaccessible, abstract, incompatible with the invocation form, or unresolved.');
-                    foreach (array_diff($targets, $reachable) as $target) {
-                        $this->index->addRelation([...$call, 'to' => $target, 'kind' => 'references-call', 'resolution' => 'structural']);
-                    }
-                }
-                $targets = $reachable;
-            }
-            if (count($targets) > 1000 || $this->limited) {
-                if (count($targets) > 1000) {
-                    GraphBuildEligibility::report(AnalysisLimitReason::Structure);
-                }
-                $this->diagnostic($call, 'dispatch_limit', 'Dispatch exceeded its candidate, type-expression or inheritance budget.');
-                $targets = array_slice($targets, 0, 1000);
-            }
-            if (count($targets) > 1 && str_starts_with($receiver, '@function:')) {
-                $this->diagnostic($call, 'ambiguous_function', 'Several source declarations match this function call.');
-            }
-            if ($targets === []) {
-                $call['metadata']['external'] = $this->external($receiver);
-                if (! $call['metadata']['external']) {
-                    $this->diagnostic($call, 'unresolved_dispatch', 'Known source types do not resolve this call to a unique implementation.');
-                }
-                $this->index->addRelation($call);
+            $this->resolveOperation($call);
+        }
+    }
 
-                continue;
-            }
-            foreach ($targets as $target) {
-                $row = [...$call, 'to' => $target, 'resolution' => count($targets) === 1 && $call['metadata']['exact_receiver'] ? 'resolved' : 'conditional'];
-                $row['metadata']['candidate_count'] = count($targets);
-                $row['metadata']['execution_proven'] = false;
-                if ($call['metadata']['method'] === '__construct' && in_array($this->index->elements[$target]['kind'], ['class', 'enum'], true)) {
-                    $row['kind'] = 'constructs';
-                    $unknownConstructor = $this->unknownConstructor($target);
-                    $row['metadata']['implicit_constructor'] = ! $unknownConstructor;
-                    if ($unknownConstructor) {
-                        $row['resolution'] = 'conditional';
-                        $row['metadata']['constructor_unresolved'] = true;
-                        $this->diagnostic($call, 'unresolved_constructor', 'Object construction is known, but an external ancestor or trait may supply its constructor.');
-                    }
+    /** One ordered dispatch operation; full and incremental Basic use the same code.
+     * @param  array<string, mixed>  $call
+     */
+    public function resolveOperation(array $call): void
+    {
+        AnalysisRuntime::stage($this->index->mode === AnalysisMode::Basic ? 'basic.calls.operation' : 'deep.calls.operation');
+        $this->limited = false;
+        $this->argumentVisits = 0;
+        $receiver = $call['metadata']['receiver'];
+        $targets = $this->callables($receiver, $call['metadata']['method'], $call['metadata']['exact_receiver']);
+        $targets = array_values(array_unique($targets));
+        if ($targets !== [] && $call['kind'] === 'calls') {
+            $reachable = $this->invocationTargets($call, $targets);
+            if ($reachable !== $targets) {
+                $this->diagnostic($call, 'inaccessible_dispatch', 'Source method selection is inaccessible, abstract, incompatible with the invocation form, or unresolved.');
+                foreach (array_diff($targets, $reachable) as $target) {
+                    $this->index->addRelation([...$call, 'to' => $target, 'kind' => 'references-call', 'resolution' => 'structural']);
                 }
-                $this->index->addRelation($row);
             }
+            $targets = $reachable;
+        }
+        if (count($targets) > 1000 || $this->limited) {
+            if (count($targets) > 1000) {
+                GraphBuildEligibility::report(AnalysisLimitReason::Structure);
+            }
+            $this->diagnostic($call, 'dispatch_limit', 'Dispatch exceeded its candidate, type-expression or inheritance budget.');
+            $targets = array_slice($targets, 0, 1000);
+        }
+        if (count($targets) > 1 && str_starts_with($receiver, '@function:')) {
+            $this->diagnostic($call, 'ambiguous_function', 'Several source declarations match this function call.');
+        }
+        if ($targets === []) {
+            $call['metadata']['external'] = $this->external($receiver);
+            if (! $call['metadata']['external']) {
+                $this->diagnostic($call, 'unresolved_dispatch', 'Known source types do not resolve this call to a unique implementation.');
+            }
+            $this->index->addRelation($call);
+
+            return;
+        }
+        foreach ($targets as $target) {
+            $row = [...$call, 'to' => $target, 'resolution' => count($targets) === 1 && $call['metadata']['exact_receiver'] ? 'resolved' : 'conditional'];
+            $row['metadata']['candidate_count'] = count($targets);
+            $row['metadata']['execution_proven'] = false;
+            if ($call['metadata']['method'] === '__construct' && in_array($this->index->elements[$target]['kind'], ['class', 'enum'], true)) {
+                $row['kind'] = 'constructs';
+                $unknownConstructor = $this->unknownConstructor($target);
+                $row['metadata']['implicit_constructor'] = ! $unknownConstructor;
+                if ($unknownConstructor) {
+                    $row['resolution'] = 'conditional';
+                    $row['metadata']['constructor_unresolved'] = true;
+                    $this->diagnostic($call, 'unresolved_constructor', 'Object construction is known, but an external ancestor or trait may supply its constructor.');
+                }
+            }
+            $this->index->addRelation($row);
         }
     }
 
@@ -614,7 +639,7 @@ final class CatalogCallResolver
         }
         if (str_starts_with($receiver, '@function:')) {
             foreach ($this->strings(substr($receiver, 10)) as $name) {
-                $ids = array_values(array_filter($this->index->names[strtolower($name)] ?? [], fn ($id) => $this->index->elements[$id]['kind'] === 'function'));
+                $ids = array_values(array_filter($this->index->namedElements($name), fn ($id) => $this->index->elements[$id]['kind'] === 'function'));
                 if ($ids !== []) {
                     return $ids;
                 }
@@ -623,7 +648,7 @@ final class CatalogCallResolver
             return [];
         }
         if (str_starts_with($receiver, '@closure:')) {
-            return array_values(array_filter($this->index->names[strtolower(substr($receiver, 9))] ?? [], fn ($id) => $this->index->elements[$id]['kind'] === 'closure'));
+            return array_values(array_filter($this->index->namedElements(substr($receiver, 9)), fn ($id) => $this->index->elements[$id]['kind'] === 'closure'));
         }
         if (str_starts_with($receiver, '@method-callable:')) {
             $descriptor = $this->descriptor(substr($receiver, 17));
@@ -1025,6 +1050,7 @@ final class CatalogCallResolver
     private function member(string $class, string $name, array $seen = []): array
     {
         $key = $class.'#'.$name;
+        $this->index->semanticReads?->cacheRead($key, $this->memberCache[$key] ?? null);
         if (isset($this->memberCache[$key])) {
             return $this->memberCache[$key];
         }
@@ -1067,6 +1093,7 @@ final class CatalogCallResolver
         $result = array_values(array_unique($traitMembers !== [] ? $traitMembers : $parents));
         if (count($seen) === 1) {
             $this->memberCache[$key] = $result;
+            $this->index->semanticReads?->cacheWrite($key, $result);
         }
 
         return $result;

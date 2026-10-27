@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature;
 
 use GracjanKubicki\ArchitectureKit\Tests\Support\EngineFixture;
+use GracjanKubicki\ArchitectureKit\Tests\Support\GraphRuntimeCleanup;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
@@ -34,6 +35,7 @@ final class AdvisoryEntryPointsTest extends TestCase
 
     protected function tearDown(): void
     {
+        GraphRuntimeCleanup::stop($this->home);
         (new Filesystem)->deleteDirectory($this->directory);
     }
 
@@ -49,7 +51,8 @@ final class AdvisoryEntryPointsTest extends TestCase
         foreach ([1, 2] as $attempt) {
             $search = $this->cli(['search', 'Modules\\Example', '--agent']);
             self::assertSame('found', $search['status']);
-            self::assertTrue($search['fresh']);
+            self::assertNull($search['fresh']);
+            self::assertSame('last_confirmed', $search['freshness']);
             self::assertTrue($search['analysis']['checks_complete']);
             self::assertNotEmpty($search['candidates']);
         }
@@ -67,6 +70,13 @@ final class AdvisoryEntryPointsTest extends TestCase
         self::assertTrue($search['analysis']['checks_complete']);
         self::assertTrue($search['analysis_complete']);
         self::assertArrayNotHasKey('changed_inputs', $search['diagnostics']['summary']);
+        $shutdown = GraphRuntimeCleanup::stop($this->home);
+        self::assertNotEmpty($shutdown);
+        self::assertTrue($shutdown[0]['response']['ok']);
+        self::assertSame($shutdown[0]['request']['instance_token'], $shutdown[0]['response']['instance_token']);
+        $proofs = dirname(__DIR__, 2).'/build/graph-performance-implementation/W04/cleanup-proofs';
+        (new Filesystem)->ensureDirectoryExists($proofs, 0700);
+        file_put_contents($proofs.'/'.hash('sha256', $this->home).'.json', json_encode($shutdown, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     }
 
     public function test_public_target_and_revision_assessments_require_consent_before_source_capture(): void

@@ -8,11 +8,14 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\SourceManifest;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogSettings;
 use GracjanKubicki\ArchitectureKit\Classification\DeclaredConfiguration;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
+use GracjanKubicki\ArchitectureKit\Standalone\Distribution\RuntimePlatform;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphProtocol;
 use GracjanKubicki\ArchitectureKit\Standalone\Host;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Standalone\Runner;
+use GracjanKubicki\ArchitectureKit\Standalone\StateStore;
 use GracjanKubicki\ArchitectureKit\Tests\Support\EngineFixture;
+use GracjanKubicki\ArchitectureKit\Tests\Unit\Standalone\Watch\RuntimeFixture;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
@@ -97,7 +100,7 @@ final class GraphPerformanceSmoke
             $threshold = match ($this->case) {
                 'warm' => 2, 'edit', 'add', 'delete', 'move' => 3, default => 20
             };
-            $current = ($ready['availability'] ?? '') === 'ready' && ($ready['freshness'] ?? '') === 'current';
+            $current = ($ready['availability'] ?? '') === 'ready' && ($ready['freshness'] ?? '') === 'last_confirmed';
             $this->summary['threshold_s'] = $threshold;
             $this->summary['time_within_threshold'] = $current && $elapsed <= $threshold && ! ($this->summary['initial_prepare']['request_deadline_exceeded'] ?? false);
             if (! $current) {
@@ -106,7 +109,7 @@ final class GraphPerformanceSmoke
             $offset = count($this->events());
             $query = $this->client('query', 'query');
             $this->summary['public_query'] = $query;
-            if (! ($query['ok'] ?? false) || ($query['candidates'] ?? $query['result']['candidates'] ?? []) === [] || ($query['runtime']['freshness'] ?? '') !== 'current') {
+            if (! ($query['ok'] ?? false) || ($query['candidates'] ?? $query['result']['candidates'] ?? []) === [] || ($query['runtime']['freshness'] ?? '') !== 'last_confirmed') {
                 throw new RuntimeException('Expected a nonempty current public query result');
             }
             $markers = array_slice($this->events(), $offset);
@@ -126,9 +129,14 @@ final class GraphPerformanceSmoke
             $this->summary['resident_query_within_threshold'] = ($this->summary['resident_request_response_s'] ?? INF) <= 0.1;
             // All full-state comparisons and oracle work happen outside product timing.
             $actual = $this->state('actual', 'inspect', $this->home);
-            if (($actual['snapshot_id'] ?? null) !== ($ready['snapshot_id'] ?? null)) {
+            $reusedSegments = ($ready['execution_mode'] ?? null) === 'restore'
+                && ($ready['cache']['write']['reason'] ?? null) === 'unchanged_product_set'
+                && isset($actual['storage_generation'], $ready['cache']['write']['generation'])
+                && $actual['storage_generation'] === $ready['cache']['write']['generation'];
+            if (($actual['snapshot_id'] ?? null) !== ($ready['snapshot_id'] ?? null) && ! $reusedSegments) {
                 throw new RuntimeException('Stored state is not the measured generation');
             }
+            $this->summary['stored_generation_reused'] = $reusedSegments;
             if (isset($this->scenario['oracle_file'])) {
                 $oracle = self::json($this->scenario['oracle_file']);
                 if (($oracle['provenance']['input_digest'] ?? null) !== $this->inputDigest($this->inputs($settings))
@@ -150,9 +158,8 @@ final class GraphPerformanceSmoke
             }
             $this->save('oracle.json', $oracle);
             $semantic = $actual['full_record_digests'] === $oracle['full_record_digests'] && $actual['counts'] === $oracle['counts'];
-            unset($query['runtime']);
-            unset($resident['runtime']);
-            $semantic = $semantic && $query === $oracle['queries'][$this->scenario['transport']] && $resident === $oracle['queries']['mcp'];
+            $semantic = $semantic && self::domainAnswer($query) === self::domainAnswer($oracle['queries'][$this->scenario['transport']])
+                && self::domainAnswer($resident) === self::domainAnswer($oracle['queries']['mcp']);
             $this->summary['full_state_and_query_equal'] = $semantic;
             $this->summary['negative_comparator_controls'] = self::negativeControls($actual, $oracle);
             $after = $this->inputs($settings);
@@ -178,6 +185,36 @@ final class GraphPerformanceSmoke
             $this->save('source-manifest.json', $this->sources());
             echo json_encode($this->summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
         }
+    }
+
+    /** Normalize lifecycle only; records, positions, counts, diagnostics and selectors remain exact.
+     * @param array<string, mixed> $answer
+     * @return array<string, mixed> */
+    private static function domainAnswer(array $answer): array
+    {
+        foreach (['runtime', 'runtime_semantics', 'confirmation', 'freshness', 'fresh'] as $key) {
+            unset($answer[$key]);
+        }
+        if (isset($answer['snapshot'])) {
+            $answer['snapshot'] = 'lifecycle-generation';
+        }
+        if (isset($answer['next']['arguments']['snapshot'])) {
+            $answer['next']['arguments']['snapshot'] = 'lifecycle-generation';
+        }
+        foreach (['analysis', 'result'] as $container) {
+            if (isset($answer[$container]) && is_array($answer[$container])) {
+                foreach ($container === 'analysis' ? ['runtime_semantics', 'freshness', 'source_signature'] : ['execution'] as $key) {
+                    unset($answer[$container][$key]);
+                }
+                if (isset($answer[$container]['analysis'])) {
+                    foreach (['runtime_semantics', 'freshness', 'source_signature'] as $key) {
+                        unset($answer[$container]['analysis'][$key]);
+                    }
+                }
+            }
+        }
+
+        return $answer;
     }
 
     private function setupHome(string $home): void
@@ -207,6 +244,14 @@ final class GraphPerformanceSmoke
             $this->summary['configuration_origin'] = 'explicit scenario settings for an unconfigured static copy';
         } else {
             throw new RuntimeException('Unconfigured static copy requires explicit scenario settings, without implicit defaults');
+        }
+        if (is_string($native = getenv('ARCHITECTURE_KIT_TEST_RUNTIME')) && is_file($native)) {
+            $platform = RuntimePlatform::current();
+            $store = new StateStore($home.'/runtimes/0.1.0/'.$platform, $home);
+            copy($native, $store->directory.'/architecture-kit-runtime');
+            chmod($store->directory.'/architecture-kit-runtime', 0700);
+            $store->update('installation', static fn () => ['platform' => $platform,
+                'manifest' => RuntimeFixture::manifest(file_get_contents($native))]);
         }
         $settings['analysis']['engine'] = $this->backend;
         $directory = $home.'/profiles/'.hash('sha256', $this->project);
@@ -313,7 +358,8 @@ final class GraphPerformanceSmoke
             $send(['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call', 'params' => ['name' => 'architecture-map', 'arguments' => ['action' => 'prepare']]]);
             $prepared = $receive(2);
             $prepared = json_decode($prepared['result']['content'][0]['text'], true, flags: JSON_THROW_ON_ERROR);
-            if (($prepared['job_id'] ?? null) !== $ready['job_id'] || ($prepared['freshness'] ?? null) !== 'current') {
+            $this->summary['resident_prepared'] = $prepared;
+            if (($prepared['job_id'] ?? null) !== $ready['job_id'] || ($prepared['freshness'] ?? null) !== 'last_confirmed') {
                 throw new RuntimeException('Resident session is not pinned to the already prepared current generation');
             }
             $this->summary['resident_preparation_completed_ns'] = hrtime(true);
@@ -325,7 +371,7 @@ final class GraphPerformanceSmoke
             $this->summary['resident_timing_scope'] = 'Initialized live MCP client: request write to full response, including IPC, freshness and decoding; no costs subtracted. Process startup, initialization and explicit preparation are separate.';
             $result = json_decode($response['result']['content'][0]['text'], true, flags: JSON_THROW_ON_ERROR);
             if (! ($result['ok'] ?? false) || ($result['result']['candidates'] ?? []) === []
-                || ($result['runtime']['freshness'] ?? '') !== 'current' || ($result['runtime']['job_id'] ?? '') !== $ready['job_id']) {
+                || ($result['runtime']['freshness'] ?? '') !== 'last_confirmed' || ($result['runtime']['job_id'] ?? '') !== $ready['job_id']) {
                 throw new RuntimeException('Resident request did not return nonempty current facts for the existing generation');
             }
             $this->save('resident-query-markers.json', array_slice($this->events(), $offset));
@@ -373,7 +419,7 @@ final class GraphPerformanceSmoke
     private function state(string $name, string $mode, string $home): array
     {
         return json_decode($this->execute($name, [PHP_BINARY, '-d', 'memory_limit='.$this->summary['memory_limit'], __DIR__.'/graph-performance-state.php',
-            $mode, $this->project, $home, $this->profile, $this->scenario['query'], $this->output.'/'.$name.'-diagnostics.jsonl']), true, flags: JSON_THROW_ON_ERROR);
+            $mode, $this->project, $home, $this->profile, $this->scenario['query'], $this->output.'/'.$name.'-diagnostics.jsonl', $this->summary['ready']['snapshot_id']]), true, flags: JSON_THROW_ON_ERROR);
     }
 
     private function sample(): void
@@ -455,9 +501,9 @@ final class GraphPerformanceSmoke
 
     private function mutate(): void
     {
-        $ownedRoot = dirname(__DIR__, 2).'/build/graph-performance-implementation/T04/';
+        $ownedRoot = dirname(__DIR__, 2).'/build/graph-performance-implementation/W04/legacy-smoke/';
         if (! str_starts_with($this->project, $ownedRoot)) {
-            throw new RuntimeException('Mutations are restricted to NEW isolated T04 copies, never graph-baseline');
+            throw new RuntimeException('Mutations are restricted to new isolated W04 legacy-smoke copies, never graph-baseline');
         }
         $changes = $this->scenario['changes'] ?? [];
         if ($changes === []) {

@@ -66,7 +66,10 @@ final class StandaloneServer extends ArchitectureKitServer
             return parent::runMethodHandle($request, $context);
         }
         try {
-            $scope = RepositoryRequestScope::begin();
+            $observed = $request->method === 'tools/call'
+                && in_array($request->params['name'] ?? '', ['architecture-map', 'architecture-search', 'architecture-graph', 'search', 'path', 'impact', 'reach', 'architecture-context'], true)
+                && ($request->params['arguments']['analysis_mode'] ?? 'basic') === 'basic';
+            $scope = RepositoryRequestScope::begin($observed);
         } catch (Throwable $error) {
             return $this->contextFailure($request, $error->getMessage());
         }

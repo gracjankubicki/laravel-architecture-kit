@@ -18,6 +18,7 @@ use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\ProjectSymbol;
 use GracjanKubicki\ArchitectureKit\Classification\ClassificationReport;
 use GracjanKubicki\ArchitectureKit\Composer\ProjectLayout;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphPending;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphProducts;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphProductSpec;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use Illuminate\Filesystem\Filesystem;
@@ -61,7 +62,7 @@ final readonly class ArchitectureContext
         // Map own sources even when their files are outside rule enforcement scope.
         $mapScope = AuditScope::package(array_values(array_unique([...$this->scope->directories, ...ProjectLayout::read($this->basePath)->graphSources()])));
         $loader = new ProjectGraphLoader($this->files, $this->basePath, $mapScope, $this->cache, $this->cacheConfiguration, sourceOnly: true, catalog: true, mode: $this->mode);
-        $plan = $loader->plan($exclude);
+        $plan = GraphProducts::plan($loader, $exclude) ?? $loader->plan($exclude);
         $graph = $loader->build($plan);
         $resolved = $this->resolve($graph, trim($subject));
         $limit = max(0, $limit);
@@ -108,7 +109,7 @@ final readonly class ArchitectureContext
                 $notices[] = [...$diagnostic->toArray(), 'path' => $facts->path];
             }
         }
-        $fresh = $loader->currentSignature($exclude)->toArray() === $plan->signature->toArray();
+        $fresh = GraphRuntime::inWorker() || $loader->currentSignature($exclude)->toArray() === $plan->signature->toArray();
         if (! $fresh) {
             $notices[] = ['code' => 'changed_inputs', 'path' => '(project)', 'line' => 1, 'message' => 'Sources changed during analysis. Restart the query.'];
         }

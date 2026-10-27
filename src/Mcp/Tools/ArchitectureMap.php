@@ -38,7 +38,7 @@ final class ArchitectureMap extends Tool
 
             return Response::structured((new GraphRuntime(RepositoryContext::current() ?? throw new \RuntimeException('Map runtime requires an explicit repository context and tool home.')))->map($action, $job));
         } catch (Throwable $error) {
-            return Response::structured(['ok' => false, 'availability' => 'unavailable', 'freshness' => 'unverified',
+            return Response::structured(['runtime_semantics' => 2, 'ok' => false, 'availability' => 'unavailable', 'freshness' => 'unverified',
                 'checks_complete' => false, 'reason' => $error->getMessage()]);
         }
     }

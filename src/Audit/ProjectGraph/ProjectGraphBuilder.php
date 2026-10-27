@@ -54,6 +54,11 @@ final class ProjectGraphBuilder
 
     public function __construct(private readonly RoleClassifier $roles = new RoleClassifier, private readonly bool $impact = false, private readonly bool $preserveOccurrences = false, private readonly bool $catalog = false, private readonly ?string $basePath = null, private readonly AnalysisMode $mode = AnalysisMode::Basic) {}
 
+    public function analysisMode(): AnalysisMode
+    {
+        return $this->mode;
+    }
+
     /**
      * @param  array<int, FileContext>  $files
      */

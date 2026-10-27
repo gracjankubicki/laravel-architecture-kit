@@ -46,17 +46,17 @@ final readonly class GraphSource
     }
 
     /** @return array{index: CatalogIndex, snapshot: string, scope: list<string>, changed: bool, analysis: array{mode: string, deep_run: bool, checks_complete: bool}, cache: array<string, mixed>} */
-    public function load(?string $rejectedGeneration = null): array
+    public function load(?string $rejectedGeneration = null, bool $fullComposition = false): array
     {
         if (GraphRuntime::inWorker()
             && ($this->mode ?? AnalysisRuntime::session()->mode) === AnalysisMode::Basic
-            && ($resident = GraphRuntime::resident()) !== null) {
+            && ! $fullComposition && ($resident = GraphRuntime::resident()) !== null) {
             return $resident;
         }
         $eligibility = GraphBuildEligibility::begin();
         $complete = false;
         try {
-            $result = $this->loadGeneration($rejectedGeneration);
+            $result = $this->loadGeneration($rejectedGeneration, $fullComposition);
             $complete = true;
 
             return $result;
@@ -66,7 +66,7 @@ final readonly class GraphSource
     }
 
     /** @return array{index: CatalogIndex, snapshot: string, scope: list<string>, changed: bool, analysis: array{mode: string, deep_run: bool, checks_complete: bool}, cache: array<string, mixed>} */
-    private function loadGeneration(?string $rejectedGeneration): array
+    private function loadGeneration(?string $rejectedGeneration, bool $fullComposition): array
     {
         $mode = $this->mode ?? AnalysisRuntime::session()->mode;
         $identity = SourceManifest::identity($this->basePath, $mode);
@@ -101,8 +101,9 @@ final readonly class GraphSource
                 && SourceManifest::identity($this->basePath, $mode) === $identity;
         };
         $store = $directory === null ? null : new GraphSegmentStore($this->files, $directory);
-        $read = $store?->read($identity, CatalogState::FIELDS, acceptMetadata: $acceptMetadata, skipGeneration: $rejectedGeneration)
-            ?? ['status' => 'miss', 'reason' => 'locator_missing'];
+        $read = $fullComposition ? ['status' => 'skip', 'reason' => 'explicit_full_composition']
+            : ($store?->read($identity, CatalogState::FIELDS, acceptMetadata: $acceptMetadata, skipGeneration: $rejectedGeneration)
+                ?? ['status' => 'miss', 'reason' => 'locator_missing']);
         if ($read['status'] !== 'hit' && ($read['decoded'] ?? false)) {
             throw new FreshGraphProcessRequired($read['reason'] ?? 'corrupt', $read['generation'] ?? null, $store->directory, 'ready');
         }
@@ -136,7 +137,7 @@ final readonly class GraphSource
         $configuredCache = $settings->discovery->cache;
         $directory = ($configuredCache ?? $defaultCache)->canonicalDirectory().'/catalog-ready-v1';
         $store = new GraphSegmentStore($this->files, $directory);
-        $contributions = $enabled ? new GraphContributionStore(new GraphSegmentStore($this->files, $directory.'/contributions'), $rejectedGeneration) : null;
+        $contributions = $enabled && ! $fullComposition ? new GraphContributionStore(new GraphSegmentStore($this->files, $directory.'/contributions'), $rejectedGeneration) : null;
         $loader = new ProjectGraphLoader($this->files, $this->basePath, $settings->scope,
             null, $settings->fingerprint, sourceOnly: true, catalog: true, onParse: $this->onParse, mode: $mode, contributions: $contributions);
         $plan = $loader->plan($settings->exclude);
@@ -170,10 +171,10 @@ final readonly class GraphSource
         $snapshot = GraphSegmentStore::digest([$identity, $inputDigest]);
         $eligibility = GraphBuildEligibility::current();
         $rejection = GraphBuildEligibility::rejection($eligibility);
-        $write = ['status' => 'skip', 'reason' => ! $enabled ? 'disabled' : ($changed ? 'changed_inputs' : ($rejection ?? 'unchanged'))];
+        $write = ['status' => 'skip', 'reason' => $fullComposition ? 'explicit_full_composition' : (! $enabled ? 'disabled' : ($changed ? 'changed_inputs' : ($rejection ?? 'unchanged')))];
         $locatorWrite = ['status' => 'skip', 'reason' => 'unchanged'];
         $readyWrite = $write;
-        if ($enabled && ! $changed && $rejection === null) {
+        if ($enabled && ! $fullComposition && ! $changed && $rejection === null) {
             $write = $store->write($identity, $index->exportState(), ['repository_id' => hash('sha256', (string) realpath($this->basePath)),
                 'analysis_fingerprint' => $identity, 'input_manifest_digest' => $inputDigest,
                 'snapshot_id' => $snapshot, 'scope' => $scope, 'exclude' => $exclude, 'eligibility' => $eligibility, 'input_files' => $signatures], $current);

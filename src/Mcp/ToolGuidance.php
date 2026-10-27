@@ -11,7 +11,7 @@ This process serves one Git family and starts without a selected code root. Firs
 MARKDOWN;
 
     public const GRAPH_WORKFLOW = <<<'MARKDOWN'
-Prepare Basic via architecture-map prepare; while building, keep job_id, search sources, then call architecture-map result. Status is nonblocking; pending never proves timing. Find unknown elements with architecture-search by name/path/route/table/kind, then use its evidence-backed ID in architecture-graph. mode=context is one hop, mode=path needs target, mode=impact follows dependents and candidate tests. Read freshness, checks_complete, diagnostics, relation kinds and limits. Links, registration and candidate tests prove no execution, coverage or PASS. limit=0 gives summaries. Follow next arguments/snapshot; after stale_snapshot restart at offset=0. Omit target outside path. Keep legacy search/path/reach selectors and impact delete/move/signature proposals. no_path_in_analyzed_graph covers source only. Inspect unresolved sources.
+Basic: architecture-map prepare; keep job_id while building, search sources, collect with result. Status/pending never proves timing. runtime_semantics=2 confirms product/scope/epoch/snapshot/session. last_confirmed confirms an observed prefix, not content now; stale has pending changes; unverified gives a reason; current requires full content pre/post. Legacy fresh is null for last_confirmed/unverified. Read checks_complete, diagnostics/limits, cache read/write, execution and deadlines separately. On restart_required restart MCP. No daemon/autostart. User/code renews idle 900 s; global pressure permits earlier LRU. Find name/path/route/table/kind via architecture-search; use its ID in architecture-graph. context: one hop; path: target; impact: dependents/test candidates. Links/tests prove no execution, coverage or PASS. posting_budget uses exact dictionary fallback. limit=0 summarizes; follow next/snapshot; stale_snapshot restarts offset=0; cursor is no lease. Target only for path. Legacy search/path/reach and impact delete/move/signature remain. no_path_in_analyzed_graph is source-only; inspect unresolved sources.
 MARKDOWN;
 
     public const RESULT_INTERPRETATION = <<<'MARKDOWN'
@@ -39,15 +39,15 @@ Before upgrading a direct Composer package, call MCP `plan-upgrade` or run `php 
 If MCP is unavailable, read `.ai/guidelines/architecture-kit.md` or run `php artisan architecture-kit:guidelines --agent` before coding.
 MARKDOWN."\n".self::GRAPH_WORKFLOW."\n".self::RESULT_INTERPRETATION;
 
-    public const COMPACT_INSTRUCTIONS = 'This file is a compact index of enabled Architecture Kit rules.'."\n".
-        'Before coding, the first Architecture Kit MCP call MUST be `enabled-architectures`. If MCP is unavailable, read this file or run `php artisan architecture-kit:guidelines --agent` before coding.'."\n".
-        'Expand rules with architecture-rules or architecture-kit://guideline.'."\n".
-        'Respect declared roles, kinds and modules from file-rules. Follow classification guidance in the expanded rules for organization proposals.'."\n".
-        'Before changing a known PHP symbol, use architecture-context or `php artisan architecture-kit:context {FQCN-or-path} --agent` and inspect its source locations and dependencies.'."\n".
+    public const COMPACT_INSTRUCTIONS = 'Enabled Architecture Kit rules.'."\n".
+        'Before coding call `enabled-architectures`; without MCP read this file or run `php artisan architecture-kit:guidelines --agent`.'."\n".
+        'Expand via architecture-rules or architecture-kit://guideline.'."\n".
+        'Respect declared roles, kinds and modules from file-rules; expanded classification rules govern organization proposals.'."\n".
+        'For a known symbol inspect source/dependencies with architecture-context or `php artisan architecture-kit:context {FQCN-or-path} --agent`.'."\n".
         self::GRAPH_WORKFLOW."\n".
-        'Before delete/move/signature, call impact with the concrete proposal. Inspect breaking/check rows and uncertainty. Continue immutable pages with pagination.next; changed sources require a new report. No breaking rows does not prove safety. Include fixes within authorized scope; ask before expanding it.'."\n".
-        'Before upgrading a direct Composer package, call plan-upgrade or `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`. Load only its active atomic guide, verify the step, then rerun the planner.'."\n".
-        'Load the relevant architecture-kit skill or expanded guideline before changing that pattern.';
+        'Before delete/move/signature call impact with the proposal; inspect breaking/check rows and uncertainty. Follow pagination.next; changed sources need a new report. No breaking rows does not prove safety. Fix within authorized scope; ask before expanding.'."\n".
+        'For a direct Composer upgrade use plan-upgrade or `php artisan architecture-kit:upgrade-plan {package} --to={major.minor} --agent`; load its active guide, verify, rerun.'."\n".
+        'Before edits load its architecture-kit skill or expanded rules.';
 
     public const BOOST_INSTRUCTIONS = <<<'MARKDOWN'
 ## Architecture Kit

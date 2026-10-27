@@ -86,6 +86,51 @@ final class CatalogIndex
     /** @var array<string, bool> */
     private array $hierarchyLimits = [];
 
+    public ?Incremental\SemanticReads $semanticReads = null;
+
+    private ?Search\SearchState $searchState = null;
+
+    /** Copy-on-write guard for ordinary arrays, with explicit handling of PHP aliases.
+     * @var array<string, array<string, mixed>>|null
+     */
+    private ?array $searchElements = null;
+
+    private bool $searchReferences = false;
+
+    public function searchState(): Search\SearchState
+    {
+        // Ordinary immutable readers compare the same COW handles in O(1).
+        // Pre-existing aliases can mutate both handles, requiring a digest check.
+        if ($this->searchState === null || $this->searchElements !== $this->elements
+            || $this->searchReferences && ! $this->searchState->matches($this->elements)) {
+            $this->searchState = Search\SearchState::build($this->elements);
+            $this->captureSearchElements();
+        } elseif ($this->searchReferences && ! Search\SearchReferences::contains($this->elements)) {
+            // A detached plain copy can be value-equal to the old aliased guard.
+            $this->captureSearchElements();
+        }
+
+        return $this->searchState;
+    }
+
+    /** W04 binds once when publishing a prepared/restored immutable generation.
+     * Reference-free resident readers do not repeat admission hashing. Aliased arrays use the query guard above.
+     */
+    public function attachSearchState(Search\SearchState $state): void
+    {
+        if (! $state->matches($this->elements)) {
+            throw new \InvalidArgumentException('search_state_catalog_mismatch');
+        }
+        $this->searchState = $state;
+        $this->captureSearchElements();
+    }
+
+    private function captureSearchElements(): void
+    {
+        $this->searchReferences = Search\SearchReferences::contains($this->elements);
+        $this->searchElements = $this->elements;
+    }
+
     /** @param list<CatalogFacts> $files
      * @param  array<string, array<mixed>>|null  $restoredState
      * @param  (\Closure(string): ?string)|null  $sourceContents
@@ -100,6 +145,84 @@ final class CatalogIndex
 
             return;
         }
+        $pending = $this->composeFoundation($files);
+        ['calls' => $pendingCalls, 'bindings' => $pendingBindings, 'http' => $pendingHttp, 'execution' => $pendingExecution] = $pending;
+        if ($this->mode === AnalysisMode::Basic) {
+            AnalysisRuntime::stage('basic.catalog.resolvers');
+            (new CatalogCallResolver($this))->resolve($pendingCalls);
+            foreach ([...$pendingBindings, ...$pendingHttp, ...$pendingExecution] as $registration) {
+                $this->addRelation($registration);
+            }
+
+            return;
+        }
+        AnalysisRuntime::stage('deep.catalog.resolvers');
+        (new CatalogResourceResolver($this))->resolve();
+        $calls = new CatalogCallResolver($this);
+        (new CatalogDataResolver($this, $calls))->resolve();
+        (new CatalogContainerResolver($this))->resolve($pendingBindings);
+        foreach ($pendingCalls as &$call) {
+            $receiver = $call['metadata']['receiver'];
+            for ($depth = 0; str_starts_with($receiver, '@after-argument:'); $depth++) {
+                $receiver = $calls->argumentReceiver($receiver, $depth);
+                if ($receiver === null) {
+                    unset($call['metadata']['receiver_origin'], $call['metadata']['receiver_instance_origin']);
+                    $call['metadata']['this_receiver'] = false;
+                    $call['metadata']['bound_callable'] = null;
+                    break;
+                }
+            }
+        }
+        unset($call);
+        $calls->resolve($pendingCalls);
+        (new CatalogModelResolver($this, $calls))->resolve();
+        (new CatalogAttributeResolver($this, $calls))->resolve();
+        (new CatalogAttributeAccessResolver($this, $calls))->resolve();
+        (new CatalogDatabaseLifecycleResolver($this, $calls))->resolve($pendingCalls);
+        (new CatalogSaloonResolver($this, $calls))->resolve();
+        (new CatalogSaloonPoolResolver($this, $calls))->resolve();
+        (new CatalogCommunicationResolver($this, $calls))->resolve();
+        (new CatalogPresentationResolver($this, $calls))->resolve();
+        $http = new CatalogHttpResolver($this);
+        $http->resolve($pendingHttp);
+        (new CatalogModelSerializationResolver($this, $calls))->resolve();
+        (new CatalogExecutionResolver($this, $calls))->resolve($pendingExecution, $http->routes);
+        (new CatalogBroadcastResolver($this, $calls))->resolve();
+        (new CatalogChannelAuthorizationResolver($this, $calls))->resolve();
+        (new CatalogTestResolver($this))->resolve();
+        (new CatalogMcpResolver($this, $calls))->resolve();
+        (new CatalogInertiaResolver($this, $calls))->resolve();
+        (new CatalogFortifyResolver($this, $calls))->resolve();
+        (new CatalogAiResolver($this, $calls))->resolve();
+        (new CatalogAiProviderResolver($this))->resolve();
+        (new CatalogAiGatewayResolver($this))->resolve();
+        (new CatalogPennantResolver($this, $calls))->resolve();
+        (new CatalogScoutResolver($this, $calls))->resolve();
+        (new CatalogSocialiteResolver($this, $calls))->resolve();
+        (new CatalogCashierResolver($this, $calls))->resolve($http->routes);
+        (new CatalogHorizonResolver($this))->resolve();
+        (new CatalogReverbResolver($this, $calls))->resolve();
+        (new CatalogLivewireResolver($this, $calls))->resolve();
+    }
+
+    /** Shared structural composition, without executing any call operation.
+     * @param  list<CatalogFacts>  $files
+     * @return array{index: self, calls: list<array<string, mixed>>, registrations: list<array<string, mixed>>}
+     */
+    public static function basicFoundation(array $files): array
+    {
+        $index = self::fromState(array_fill_keys(CatalogState::FIELDS, []));
+        $pending = $index->composeFoundation($files);
+
+        return ['index' => $index, 'calls' => $pending['calls'],
+            'registrations' => [...$pending['bindings'], ...$pending['http'], ...$pending['execution']]];
+    }
+
+    /** @param list<CatalogFacts> $files
+     * @return array{calls: list<array<string, mixed>>, bindings: list<array<string, mixed>>, http: list<array<string, mixed>>, execution: list<array<string, mixed>>}
+     */
+    private function composeFoundation(array $files): array
+    {
         AnalysisRuntime::stage('catalog.compose');
         $pendingCalls = [];
         $pendingBindings = [];
@@ -197,62 +320,18 @@ final class CatalogIndex
         }
         $this->composerStates();
         $this->classify();
-        if ($this->mode === AnalysisMode::Basic) {
-            AnalysisRuntime::stage('basic.catalog.resolvers');
-            (new CatalogCallResolver($this))->resolve($pendingCalls);
-            foreach ([...$pendingBindings, ...$pendingHttp, ...$pendingExecution] as $registration) {
-                $this->addRelation($registration);
-            }
 
-            return;
-        }
-        AnalysisRuntime::stage('deep.catalog.resolvers');
-        (new CatalogResourceResolver($this))->resolve();
-        $calls = new CatalogCallResolver($this);
-        (new CatalogDataResolver($this, $calls))->resolve();
-        (new CatalogContainerResolver($this))->resolve($pendingBindings);
-        foreach ($pendingCalls as &$call) {
-            $receiver = $call['metadata']['receiver'];
-            for ($depth = 0; str_starts_with($receiver, '@after-argument:'); $depth++) {
-                $receiver = $calls->argumentReceiver($receiver, $depth);
-                if ($receiver === null) {
-                    unset($call['metadata']['receiver_origin'], $call['metadata']['receiver_instance_origin']);
-                    $call['metadata']['this_receiver'] = false;
-                    $call['metadata']['bound_callable'] = null;
-                    break;
-                }
-            }
-        }
-        unset($call);
-        $calls->resolve($pendingCalls);
-        (new CatalogModelResolver($this, $calls))->resolve();
-        (new CatalogAttributeResolver($this, $calls))->resolve();
-        (new CatalogAttributeAccessResolver($this, $calls))->resolve();
-        (new CatalogDatabaseLifecycleResolver($this, $calls))->resolve($pendingCalls);
-        (new CatalogSaloonResolver($this, $calls))->resolve();
-        (new CatalogSaloonPoolResolver($this, $calls))->resolve();
-        (new CatalogCommunicationResolver($this, $calls))->resolve();
-        (new CatalogPresentationResolver($this, $calls))->resolve();
-        $http = new CatalogHttpResolver($this);
-        $http->resolve($pendingHttp);
-        (new CatalogModelSerializationResolver($this, $calls))->resolve();
-        (new CatalogExecutionResolver($this, $calls))->resolve($pendingExecution, $http->routes);
-        (new CatalogBroadcastResolver($this, $calls))->resolve();
-        (new CatalogChannelAuthorizationResolver($this, $calls))->resolve();
-        (new CatalogTestResolver($this))->resolve();
-        (new CatalogMcpResolver($this, $calls))->resolve();
-        (new CatalogInertiaResolver($this, $calls))->resolve();
-        (new CatalogFortifyResolver($this, $calls))->resolve();
-        (new CatalogAiResolver($this, $calls))->resolve();
-        (new CatalogAiProviderResolver($this))->resolve();
-        (new CatalogAiGatewayResolver($this))->resolve();
-        (new CatalogPennantResolver($this, $calls))->resolve();
-        (new CatalogScoutResolver($this, $calls))->resolve();
-        (new CatalogSocialiteResolver($this, $calls))->resolve();
-        (new CatalogCashierResolver($this, $calls))->resolve($http->routes);
-        (new CatalogHorizonResolver($this))->resolve();
-        (new CatalogReverbResolver($this, $calls))->resolve();
-        (new CatalogLivewireResolver($this, $calls))->resolve();
+        return ['calls' => $pendingCalls, 'bindings' => $pendingBindings, 'http' => $pendingHttp, 'execution' => $pendingExecution];
+    }
+
+    /** Ordered lookup, including absence and candidates of other declaration kinds.
+     * @return list<string>
+     */
+    public function namedElements(string $name): array
+    {
+        $this->semanticReads?->read('name:'.strtolower($name));
+
+        return $this->names[strtolower($name)] ?? [];
     }
 
     /** Computational completeness is independent of dynamic source uncertainty. */
@@ -334,7 +413,7 @@ final class CatalogIndex
     /** @return list<string> */
     public function namedTypes(string $name): array
     {
-        return array_values(array_filter($this->names[strtolower($name)] ?? [], fn ($id) => in_array($this->elements[$id]['kind'], ['class', 'interface', 'trait', 'enum'], true)));
+        return array_values(array_filter($this->namedElements($name), fn ($id) => in_array($this->elements[$id]['kind'], ['class', 'interface', 'trait', 'enum'], true)));
     }
 
     public function hasContract(string $id, string $contract): bool

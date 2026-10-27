@@ -23,9 +23,9 @@ final class WorktreeMcpClient
     public array $transcript = [];
 
     /** @param list<string> $arguments */
-    public function __construct(array $arguments, ?string $cwd = null)
+    public function __construct(array $arguments, ?string $cwd = null, ?string $binary = null)
     {
-        $process = proc_open([PHP_BINARY, dirname(__DIR__, 2).'/bin/architecture-kit', ...$arguments],
+        $process = proc_open([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), $binary ?? dirname(__DIR__, 2).'/bin/architecture-kit', ...$arguments],
             [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes, $cwd);
         if (! is_resource($process)) {
             throw new RuntimeException('Cannot start product STDIO.');

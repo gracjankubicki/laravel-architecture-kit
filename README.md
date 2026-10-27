@@ -236,6 +236,8 @@ architecture-kit --project /absolute/path/project map result JOB_ID
 
 MCP exposes the same lifecycle through `architecture-map`. If prepare returns `building`, retain its `job_id`, continue source inspection, and collect it with `result`. Status does not recheck source freshness. A ready map can still contain incomplete analysis or an unsuccessful disk-cache write. Workers expire after idle periods; later requests can restore verified disk facts or build a new generation.
 
+The daily runtime uses `graph-runtime-v2` and `runtime_semantics=2`. Resident answers identify their last confirmed generation and observed notification prefix. `last_confirmed` is distinct from a complete content check at query time. Stale and unverified answers remain advisory, with a reason and background reconciliation. Maps have 900 seconds of idle retention, a shared user/tool-home FIFO/LRU resource registry, and one atomic disk manifest for graph, dependencies and search. The first configuration seeds global memory ceilings. Explicit `runtime global-limits status|set` administration controls them for that tool home; later larger clients do not raise them automatically. No system daemon or autostart is required. Configuration and details are in [the standalone map lifecycle](STANDALONE.md#prepare-and-collect-a-basic-map).
+
 This release does not guarantee cold builds within 20 seconds, restores within 2 seconds, single-file updates within 3 seconds, or ready queries within 100 ms. These performance targets remain open. See [the standalone map lifecycle](STANDALONE.md#prepare-and-collect-a-basic-map) for state fields, invalidation and platform requirements.
 
 ## Installation

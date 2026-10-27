@@ -26,6 +26,7 @@ use GracjanKubicki\ArchitectureKit\Revision\ArchitectureRevisionDiff;
 use GracjanKubicki\ArchitectureKit\Revision\RevisionDiffSchema;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldFile;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldPlan;
+use GracjanKubicki\ArchitectureKit\Standalone\ConfirmationState;
 use GracjanKubicki\ArchitectureKit\Target\ArchitectureTarget;
 use GracjanKubicki\ArchitectureKit\Target\TargetSchema;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradeGuide;
@@ -353,8 +354,13 @@ class AgentOutputSchemaTest extends TestCase
 
     public function test_runtime_states_are_discriminated_and_missing_job_never_matches_building(): void
     {
-        $pending = ['availability' => 'building', 'freshness' => 'unverified', 'checks_complete' => false,
+        $pending = ['runtime_semantics' => 2, 'availability' => 'building', 'freshness' => 'unverified', 'checks_complete' => false,
             'job_id' => str_repeat('a', 32), 'next' => ['tool' => 'architecture-map', 'arguments' => ['action' => 'result']]];
+        $pending['confirmation'] = ConfirmationState::make(
+            ['product_key' => 'fixture'],
+            ['configuration_epoch' => 1, 'watch_session' => null, 'observed_sequence' => '0', 'watch_health' => 'unverified', 'reason' => 'bootstrap_required'],
+            'unverified',
+        );
         foreach ([(new AgentOutput)->schema('architecture-context'),
             SearchSchema::get(),
             ImpactSchema::get(),
@@ -365,7 +371,11 @@ class AgentOutputSchemaTest extends TestCase
             unset($missingJob['job_id']);
             $this->assertFalse($this->matchesSchema($missingJob, $schema));
             $this->assertFalse($this->matchesSchema([...$pending, 'freshness' => 'currentish'], $schema));
-            $this->assertTrue($this->matchesSchema(['availability' => 'failed', 'freshness' => 'unverified', 'checks_complete' => false], $schema));
+            $missingConfirmation = $pending;
+            unset($missingConfirmation['confirmation']);
+            $this->assertFalse($this->matchesSchema($missingConfirmation, $schema));
+            $this->assertTrue($this->matchesSchema(['runtime_semantics' => 2, 'availability' => 'failed', 'freshness' => 'unverified', 'checks_complete' => false,
+                'confirmation' => $pending['confirmation']], $schema));
         }
     }
 

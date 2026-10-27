@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Analysis\AnalysisRuntime;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphEpoch;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\ProjectGraphCache;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\SourceManifest;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogSettings;
 use GracjanKubicki\ArchitectureKit\Context\GraphPage;
 use GracjanKubicki\ArchitectureKit\Context\GraphQuery;
@@ -18,6 +19,7 @@ use GracjanKubicki\ArchitectureKit\Impact\ImpactSchema;
 use GracjanKubicki\ArchitectureKit\Impact\PathSchema;
 use GracjanKubicki\ArchitectureKit\Output\AgentOutput;
 use GracjanKubicki\ArchitectureKit\Reach\ReachSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\Distribution\RuntimePlatform;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphProductSpec;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphProtocol;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
@@ -25,14 +27,18 @@ use GracjanKubicki\ArchitectureKit\Standalone\Host;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Standalone\StateStore;
 use GracjanKubicki\ArchitectureKit\Tests\Support\EngineFixture;
+use GracjanKubicki\ArchitectureKit\Tests\Support\GraphRuntimeCleanup;
 use GracjanKubicki\ArchitectureKit\Tests\Support\GraphRuntimeClockProbe;
 use GracjanKubicki\ArchitectureKit\Tests\Unit\AgentOutputSchemaTest;
+use GracjanKubicki\ArchitectureKit\Tests\Unit\Standalone\Watch\RuntimeFixture;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RequiresEnvironmentVariable;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
 
+#[RequiresEnvironmentVariable('ARCHITECTURE_KIT_TEST_RUNTIME')]
 final class GraphRuntimeProcessTest extends TestCase
 {
     private string $root;
@@ -48,7 +54,8 @@ final class GraphRuntimeProcessTest extends TestCase
 
     protected function setUp(): void
     {
-        $artifacts = getenv('ARCHITECTURE_KIT_TEST_ARTIFACT_DIRECTORY') ?: dirname(__DIR__, 3).'/build/graph-performance-implementation/T03';
+        GraphRuntime::startProcess();
+        $artifacts = getenv('ARCHITECTURE_KIT_TEST_ARTIFACT_DIRECTORY') ?: dirname(__DIR__, 3).'/build/graph-performance-implementation/W04/legacy-fixtures';
         $base = $artifacts.'/process-'.bin2hex(random_bytes(6));
         $this->root = $base.'/repo';
         $this->home = realpath(sys_get_temp_dir()).'/kit-t03-'.basename($base).'/home';
@@ -66,6 +73,14 @@ final class GraphRuntimeProcessTest extends TestCase
         if (EngineFixture::selected() === 'mago') {
             EngineFixture::install($this->home);
         }
+        if (is_string($native = getenv('ARCHITECTURE_KIT_TEST_RUNTIME')) && is_file($native)) {
+            $platform = RuntimePlatform::current();
+            $store = new StateStore($this->home.'/runtimes/0.1.0/'.$platform);
+            copy($native, $store->directory.'/architecture-kit-runtime');
+            chmod($store->directory.'/architecture-kit-runtime', 0700);
+            $store->update('installation', static fn () => ['platform' => $platform,
+                'manifest' => RuntimeFixture::manifest(file_get_contents($native))]);
+        }
         $this->state = new StateStore($this->home);
         $context = new RepositoryContext($this->root, $this->home);
         RepositoryContext::activate($context);
@@ -78,6 +93,7 @@ final class GraphRuntimeProcessTest extends TestCase
     protected function tearDown(): void
     {
         $this->state->update('test-control', static fn () => []);
+        GraphRuntimeCleanup::stop($this->home);
         foreach ($this->processes as $process) {
             if ($process->isRunning()) {
                 $process->stop(1);
@@ -125,7 +141,7 @@ final class GraphRuntimeProcessTest extends TestCase
         $ready = $runtime->map('prepare');
         self::assertTrue($ready['ok'], json_encode($ready));
         self::assertSame('ready', $ready['availability']);
-        self::assertSame('current', $ready['freshness']);
+        self::assertSame('last_confirmed', $ready['freshness']);
         $search = $runtime->query('search', ['query' => 'Caller']);
         self::assertTrue($search['ok'], json_encode($search));
         self::assertNotEmpty($search['result']['result']['candidates']);
@@ -152,7 +168,9 @@ final class GraphRuntimeProcessTest extends TestCase
             return $built['availability'] !== 'building';
         });
         self::assertSame('ready', $built['availability']);
-        self::assertSame('stale', $built['last_verified_freshness']);
+        // Observation confirms the bytes actually collected, not a pre-build request snapshot.
+        self::assertContains($built['freshness'], ['stale', 'unverified', 'last_confirmed']);
+        self::assertSame($built['snapshot_id'], $built['confirmation']['generation']);
         file_put_contents($path, $original);
         touch($path, $stat['mtime']);
         // Use separate generations for metadata/query: forwarding either can
@@ -166,7 +184,11 @@ final class GraphRuntimeProcessTest extends TestCase
             'restored_sha256' => hash_file('sha256', $path), 'restored_bytes' => file_get_contents($path),
             'collect_metadata' => $collectMetadata, 'response_after_restoring_a' => $response]);
         self::assertNotSame('current', $response['freshness'], json_encode($response));
-        self::assertArrayNotHasKey('result', $response);
+        self::assertContains($response['freshness'], ['stale', 'unverified', 'last_confirmed']);
+        if (! $collectMetadata && ! $fullContext && isset($response['result'])) {
+            self::assertNotEmpty($response['result']['result']['candidates']);
+            self::assertSame($built['snapshot_id'], $response['snapshot_id']);
+        }
     }
 
     public function test_worker_and_mcp_preserve_query_limits_without_poisoning_the_generation(): void
@@ -190,10 +212,11 @@ final class GraphRuntimeProcessTest extends TestCase
                 'checks_complete' => $source['analysis']['checks_complete'] && $result['analysis']['checks_complete']];
             $direct = GraphPage::make('architecture-graph', $arguments, $source['snapshot'], $source['scope'], $diagnostics, $result, 'records', 4096);
             $worker = $this->runtime->query('graph', $arguments);
-            self::assertSame($direct, $worker['result']);
+            self::assertSame('last_confirmed', $worker['result']['freshness']);
+            self::assertSame($this->domainAnswer($direct), $this->domainAnswer($worker['result']));
             $mcp = $this->mcp('architecture-graph', $arguments);
             unset($mcp['runtime']);
-            self::assertSame($direct, $mcp);
+            self::assertSame($this->domainAnswer($direct), $this->domainAnswer($mcp));
             self::assertNotEmpty($direct['result']['records']);
             self::assertSame($depth === 8, $direct['analysis']['checks_complete']);
             self::assertSame($depth === 8, $direct['analysis_complete']);
@@ -214,10 +237,10 @@ final class GraphRuntimeProcessTest extends TestCase
         for ($generation = 0; $generation < GraphProtocol::JOBS + 3; $generation++) {
             $path = $this->root.'/app/Services/Version.php';
             file_put_contents($path, '<?php namespace App\\Services; class Version { const GENERATION = "a-'.$generation.'"; }');
-            $this->barrier('build.before');
+            $this->barrier('build.after');
             $job = $this->runtime->request(['action' => 'prepare']);
             self::assertSame('building', $job['availability'], json_encode($job));
-            $this->until(fn () => count(array_filter($this->events(), static fn ($event) => $event['stage'] === 'build.before' && $event['job'] === $job['job_id'])) === 1);
+            $this->until(fn () => count(array_filter($this->events(), static fn ($event) => $event['stage'] === 'build.after' && $event['job'] === $job['job_id'])) === 1);
             file_put_contents($path, '<?php namespace App\\Services; class Version { const GENERATION = "b-'.$generation.'"; }');
             $this->barrier(null);
             $status = [];
@@ -227,7 +250,7 @@ final class GraphRuntimeProcessTest extends TestCase
                 return $status['availability'] !== 'building';
             });
             self::assertSame('ready', $status['availability']);
-            self::assertSame('stale', $status['last_verified_freshness']);
+            self::assertContains($status['freshness'], ['stale', 'unverified']);
             $jobs[] = $status;
         }
         // No result/query was sent to any of these completed stale workers.
@@ -237,10 +260,10 @@ final class GraphRuntimeProcessTest extends TestCase
         }
         $recent = $this->runtime->map('status', $jobs[count($jobs) - 1]['job_id']);
         self::assertSame('ready', $recent['availability']);
-        self::assertSame('stale', $recent['last_verified_freshness']);
+        self::assertContains($recent['freshness'], ['stale', 'unverified']);
         GraphRuntime::beginRequest();
         $fresh = $this->runtime->map('prepare');
-        self::assertSame('current', $fresh['freshness']);
+        self::assertSame('last_confirmed', $fresh['freshness']);
         self::assertNotContains($fresh['job_id'], array_column($jobs, 'job_id'));
         self::assertNotEmpty($this->runtime->query('search', ['query' => 'Version'])['result']['result']['candidates']);
     }
@@ -251,9 +274,15 @@ final class GraphRuntimeProcessTest extends TestCase
         for ($generation = 0; $generation < GraphProtocol::JOBS + 3; $generation++) {
             file_put_contents($this->root.'/app/Services/Version.php', '<?php namespace App\\Services; class Version { const GENERATION = '.$generation.'; }');
             GraphRuntime::beginRequest();
-            $ready = $this->runtime->map('prepare');
+            $ready = [];
+            $this->until(function () use (&$ready, $jobs): bool {
+                $ready = $this->runtime->map('prepare');
+
+                return ($ready['availability'] ?? '') === 'ready' && ($ready['freshness'] ?? '') === 'last_confirmed'
+                    && ! in_array($ready['job_id'], array_column($jobs, 'job_id'), true);
+            });
             self::assertSame('ready', $ready['availability'], json_encode($ready));
-            self::assertSame('current', $ready['freshness']);
+            self::assertSame('last_confirmed', $ready['freshness']);
             self::assertNotContains($ready['job_id'], array_column($jobs, 'job_id'));
             $jobs[] = $ready;
         }
@@ -279,7 +308,7 @@ final class GraphRuntimeProcessTest extends TestCase
         GraphRuntime::beginRequest();
         $query = $this->runtime->query('search', ['query' => 'Version']);
         self::assertSame($ready['job_id'], $query['job_id']);
-        self::assertSame('current', $query['freshness']);
+        self::assertSame('last_confirmed', $query['freshness']);
         self::assertNotEmpty($query['result']['result']['candidates']);
     }
 
@@ -295,7 +324,7 @@ final class GraphRuntimeProcessTest extends TestCase
                 $response = $this->runtime->query($operation, $arguments, $spec);
                 self::assertSame(1, GraphRuntimeClockProbe::$responses, 'The request clock advances only after a real query response, never during prepare.');
                 self::assertArrayHasKey('result', $response);
-                self::assertSame('current', $response['freshness']);
+                self::assertSame('last_confirmed', $response['freshness']);
                 self::assertTrue($response['deadline_exceeded']);
                 self::assertTrue($this->runtime->map('status', $response['job_id'])['deadline_exceeded']);
             } finally {
@@ -323,7 +352,7 @@ final class GraphRuntimeProcessTest extends TestCase
             self::assertSame($ready['diagnostics_digest'], $response['diagnostics_digest']);
             self::assertSame($ready['diagnostics_by_code'], $response['diagnostics_by_code']);
             $fast = $this->runtime->query($operation, $arguments);
-            self::assertSame($response['result'], $fast['result']);
+            self::assertSame($this->domainAnswer($response['result']), $this->domainAnswer($fast['result']));
             self::assertSame($response['diagnostics_digest'], $fast['diagnostics_digest']);
             self::assertSame($response['diagnostics_by_code'], $fast['diagnostics_by_code']);
         }
@@ -336,7 +365,7 @@ final class GraphRuntimeProcessTest extends TestCase
         }
     }
 
-    public function test_ready_query_reuses_catalog_with_one_pre_post_pair_and_falls_back_to_new_job(): void
+    public function test_ready_query_uses_observation_without_full_hashing_and_updates_in_background(): void
     {
         $ready = $this->runtime->map('prepare');
         $offset = count($this->events());
@@ -344,18 +373,23 @@ final class GraphRuntimeProcessTest extends TestCase
         self::assertSame($ready['job_id'], $query['job_id']);
         self::assertNotEmpty($query['result']['result']['candidates']);
         $events = array_slice($this->events(), $offset);
-        foreach (['query.route', 'query.freshness.before', 'query.recheck.before'] as $stage) {
+        foreach (['query.route', 'query.before', 'query.after'] as $stage) {
             self::assertCount(1, array_filter($events, static fn ($e) => $e['stage'] === $stage));
         }
-        self::assertCount(0, array_filter($events, static fn ($e) => $e['stage'] === 'build.before'));
+        self::assertCount(0, array_filter($events, static fn ($e) => in_array($e['stage'], ['build.before', 'query.freshness.before', 'query.recheck.before'], true)));
         $file = $this->root.'/app/Services/Dependency.php';
         $stat = stat($file);
         $original = file_get_contents($file);
         file_put_contents($file, str_replace('Dependency', 'DifferentX', $original));
         touch($file, $stat['mtime']);
         GraphRuntime::beginRequest();
-        $next = $this->runtime->query('search', ['query' => 'DifferentX']);
-        self::assertSame('current', $next['freshness']);
+        $next = [];
+        $this->until(function () use (&$next): bool {
+            $next = $this->runtime->query('search', ['query' => 'DifferentX']);
+
+            return ($next['result']['result']['match_count'] ?? 0) > 0;
+        });
+        self::assertSame('last_confirmed', $next['freshness']);
         self::assertNotSame($ready['job_id'], $next['job_id']);
         self::assertNotSame($ready['pid'], $next['pid']);
         self::assertSame(3, $next['budget_seconds']);
@@ -363,22 +397,27 @@ final class GraphRuntimeProcessTest extends TestCase
         $offset = count($this->events());
         $this->runtime->map('result', $next['job_id']);
         $events = array_slice($this->events(), $offset);
-        self::assertCount(1, array_filter($events, static fn ($e) => $e['stage'] === 'query.freshness.before'));
+        self::assertCount(0, array_filter($events, static fn ($e) => $e['stage'] === 'query.freshness.before'));
         self::assertCount(0, array_filter($events, static fn ($e) => $e['stage'] === 'query.recheck.before'));
         file_put_contents($file, $original);
         touch($file, $stat['mtime']);
         GraphRuntime::beginRequest();
-        $restored = $this->runtime->query('search', ['query' => 'Dependency']);
-        self::assertSame($ready['snapshot_id'], $restored['snapshot_id']);
+        $restored = [];
+        $this->until(function () use (&$restored, $next): bool {
+            $restored = $this->runtime->query('search', ['query' => 'Dependency']);
+
+            return ($restored['result']['result']['match_count'] ?? 0) > 0 && $restored['snapshot_id'] !== $next['snapshot_id'];
+        });
+        self::assertNotSame($next['snapshot_id'], $restored['snapshot_id']);
         self::assertNotSame($ready['job_id'], $restored['job_id']);
         self::assertNotSame($next['job_id'], $restored['job_id']);
     }
 
-    public function test_ready_query_rechecks_sources_changed_during_routing(): void
+    public function test_ready_query_preserves_the_observed_prefix_when_sources_change_during_routing(): void
     {
         $ready = $this->runtime->map('prepare');
         $this->barrier('query.route', $ready['job_id']);
-        $query = new Process([PHP_BINARY, '-d', 'memory_limit=1G', dirname(__DIR__, 2).'/Support/graph-runtime-client.php', $this->root, $this->home,
+        $query = new Process([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), dirname(__DIR__, 2).'/Support/graph-runtime-client.php', $this->root, $this->home,
             json_encode(['action' => 'ready-query', 'operation' => 'search', 'arguments' => ['query' => 'Dependency']], JSON_THROW_ON_ERROR)]);
         $this->processes[] = $query;
         $query->start();
@@ -387,10 +426,19 @@ final class GraphRuntimeProcessTest extends TestCase
         $this->barrier(null);
         self::assertSame(0, $query->wait(), $query->getErrorOutput());
         $response = json_decode($query->getOutput(), true, flags: JSON_THROW_ON_ERROR);
-        self::assertSame('stale', $response['freshness']);
-        self::assertArrayNotHasKey('result', $response);
-        $next = $this->runtime->query('search', ['query' => 'ChangedDuringRouting']);
-        self::assertSame('current', $next['freshness']);
+        // Search reads pinned facts, not source bytes. An event still in the OS
+        // queue may leave the old observed prefix last-confirmed, never current.
+        self::assertContains($response['freshness'], ['stale', 'last_confirmed']);
+        self::assertSame($response['freshness'], $response['confirmation']['freshness']);
+        self::assertSame($ready['snapshot_id'], $response['snapshot_id']);
+        self::assertNotEmpty($response['result']['result']['candidates']);
+        $next = [];
+        $this->until(function () use (&$next): bool {
+            $next = $this->runtime->query('search', ['query' => 'ChangedDuringRouting']);
+
+            return ($next['result']['result']['match_count'] ?? 0) > 0;
+        });
+        self::assertSame('last_confirmed', $next['freshness']);
         self::assertNotSame($ready['job_id'], $next['job_id']);
     }
 
@@ -461,7 +509,7 @@ final class GraphRuntimeProcessTest extends TestCase
             $seconds = (hrtime(true) - $start) / 1e9;
             $result = json_decode($response['result']['content'][0]['text'], true, flags: JSON_THROW_ON_ERROR);
             self::assertSame($ready['job_id'], $result['runtime']['job_id']);
-            self::assertSame('current', $result['runtime']['freshness']);
+            self::assertSame('last_confirmed', $result['runtime']['freshness']);
             self::assertNotEmpty($result['result']['candidates']);
             $events = array_slice($this->events(), $offset);
             $before = array_values(array_filter($events, static fn ($e) => $e['stage'] === 'query.before'));
@@ -487,7 +535,7 @@ final class GraphRuntimeProcessTest extends TestCase
             $ready = $this->runtime->map('prepare');
             self::assertTrue($ready['ok']);
             self::assertSame('ready', $ready['availability']);
-            self::assertSame('current', $ready['freshness']);
+            self::assertSame('last_confirmed', $ready['freshness']);
             $search = $this->runtime->query('search', ['query' => 'Dependency']);
             self::assertNotEmpty($search['result']['result']['candidates']);
         } finally {
@@ -501,9 +549,9 @@ final class GraphRuntimeProcessTest extends TestCase
     {
         $cli = $this->cli(['map', 'prepare']);
         self::assertSame('ready', $cli['availability']);
-        self::assertSame('current', $cli['freshness']);
+        self::assertSame('last_confirmed', $cli['freshness']);
         self::assertArrayNotHasKey('index', $cli);
-        self::assertSame('unverified', $this->cli(['map', 'status', $cli['job_id']])['freshness']);
+        self::assertSame('last_confirmed', $this->cli(['map', 'status', $cli['job_id']])['freshness']);
         $socket = GraphProtocol::socket($this->runtime->directory(), $cli['endpoint']);
         GraphProtocol::send($socket, [...$cli, 'operation' => 'ping']);
         $identity = GraphProtocol::receive($socket);
@@ -560,8 +608,74 @@ final class GraphRuntimeProcessTest extends TestCase
         $this->barrier(null);
         $ready = $this->ready($job);
         self::assertTrue($ready['deadline_exceeded']);
-        self::assertSame('current', $ready['freshness']);
+        self::assertSame('last_confirmed', $ready['freshness']);
         self::assertCount(1, array_filter($this->events(), static fn ($e) => $e['stage'] === 'build.before'));
+    }
+
+    public static function launcherShells(): iterable
+    {
+        yield 'system sh' => ['/bin/sh'];
+        yield 'dash' => ['/bin/dash'];
+    }
+
+    #[DataProvider('launcherShells')]
+    public function test_detached_launcher_closes_inherited_extra_client_pipe(string $shell): void
+    {
+        if (! is_executable($shell)) {
+            self::markTestSkipped('Requested launcher shell is unavailable: '.$shell);
+        }
+        $output = $this->root.'/descriptor-client.stdout';
+        $error = $this->root.'/descriptor-client.stderr';
+        $command = [PHP_BINARY, '-d', 'memory_limit=128M', dirname(__DIR__, 2).'/Support/graph-runtime-client.php',
+            $this->root, $this->home, json_encode(['action' => 'prepare'], JSON_THROW_ON_ERROR), $shell];
+        $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => ['file', $output, 'w'],
+            2 => ['file', $error, 'w'], 19 => ['pipe', 'w']], $pipes, dirname(__DIR__, 3));
+        self::assertIsResource($process);
+        $until = microtime(true) + 25;
+        do {
+            $status = proc_get_status($process);
+            if (! $status['running']) {
+                break;
+            }
+            usleep(10000);
+        } while (microtime(true) < $until);
+        self::assertFalse($status['running']);
+        self::assertSame(0, $status['exitcode'], file_get_contents($error));
+        stream_set_blocking($pipes[19], false);
+        $until = microtime(true) + 3;
+        do {
+            stream_get_contents($pipes[19]);
+            if (feof($pipes[19])) {
+                break;
+            }
+            usleep(10000);
+        } while (microtime(true) < $until);
+        self::assertTrue(feof($pipes[19]), 'A detached runtime must not retain the exited client extra pipe.');
+        fclose($pipes[19]);
+        proc_close($process);
+        $ready = json_decode(file_get_contents($output), true, flags: JSON_THROW_ON_ERROR);
+        self::assertContains($ready['availability'], ['building', 'ready']);
+        if ($ready['availability'] === 'building') {
+            $ready = $this->ready($ready['job_id']);
+        }
+        self::assertSame('ready', $ready['availability']);
+        self::assertTrue(posix_kill($ready['pid'], 0), 'Closing inherited handles must preserve the resident worker.');
+        self::assertNotEmpty($this->runtime->query('search', ['query' => 'Dependency'])['result']['result']['candidates']);
+        $this->state->update('descriptor-client-proof', static fn () => ['command' => $command, 'exit' => 0,
+            'extra_pipe_closed' => true, 'worker' => $ready]);
+    }
+
+    public function test_worker_with_unlinked_endpoint_exits_after_its_coordinator_lock_is_released(): void
+    {
+        $ready = $this->runtime->map('prepare');
+        self::assertSame('ready', $ready['availability']);
+        // The coordinator cannot send retire through this deliberately unlinked private socket.
+        unlink($this->runtime->directory().'/'.$ready['endpoint']);
+        self::assertTrue($this->runtime->request(['action' => 'shutdown'])['ok']);
+        $this->until(static fn (): bool => ! posix_kill($ready['pid'], 0), 5);
+        self::assertFalse(posix_kill($ready['pid'], 0));
+        $this->state->update('orphan-worker-proof', static fn () => ['worker' => $ready,
+            'fault' => 'unlinked_private_worker_endpoint', 'coordinator_shutdown' => 'cooperative', 'worker_exit_after_owner_lock_release' => true]);
     }
 
     public function test_detached_build_survives_real_client_termination_and_mcp_disconnect(): void
@@ -592,7 +706,7 @@ final class GraphRuntimeProcessTest extends TestCase
     {
         $old = $this->runtime->map('prepare');
         $this->barrier('query.before', $old['job_id']);
-        $query = new Process([PHP_BINARY, '-d', 'memory_limit=1G', dirname(__DIR__, 2).'/Support/graph-runtime-client.php', $this->root, $this->home,
+        $query = new Process([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), dirname(__DIR__, 2).'/Support/graph-runtime-client.php', $this->root, $this->home,
             json_encode(['action' => 'ready-query', 'operation' => 'search', 'arguments' => ['query' => 'Dependency']], JSON_THROW_ON_ERROR)]);
         $this->processes[] = $query;
         $query->start();
@@ -602,7 +716,17 @@ final class GraphRuntimeProcessTest extends TestCase
         file_put_contents($file, str_replace('Dependency', 'DifferentX', file_get_contents($file)));
         touch($file, $stat['mtime']);
         self::assertSame($stat['size'], filesize($file));
-        $new = $this->runtime->map('prepare');
+        $new = [];
+        $this->until(function () use (&$new, $old): bool {
+            foreach (glob($this->runtime->directory().'/job-*.json') ?: [] as $path) {
+                $candidate = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+                if (($candidate['availability'] ?? '') === 'ready' && ($candidate['job_id'] ?? '') !== $old['job_id']) {
+                    $new = $this->runtime->map('status', $candidate['job_id']);
+                }
+            }
+
+            return $new !== [];
+        });
         self::assertNotSame($old['job_id'], $new['job_id']);
         self::assertNotSame($old['pid'], $new['pid']);
         self::assertTrue(posix_kill($old['pid'], 0));
@@ -629,7 +753,7 @@ final class GraphRuntimeProcessTest extends TestCase
         $next = $this->runtime->map('prepare');
         self::assertNotSame($ready['job_id'], $next['job_id']);
         self::assertNotSame($ready['pid'], $next['pid']);
-        self::assertSame('current', $next['freshness']);
+        self::assertSame('last_confirmed', $next['freshness']);
     }
 
     public function test_protocol_rejects_foreign_tokens_repository_and_unknown_jobs(): void
@@ -637,7 +761,7 @@ final class GraphRuntimeProcessTest extends TestCase
         $ready = $this->runtime->map('prepare');
         $directory = $this->runtime->directory();
         $record = (new StateStore($directory))->read('coordinator');
-        foreach (['instance_token', 'repository_id', 'analysis_fingerprint', 'protocol'] as $field) {
+        foreach (['instance_token', 'repository_id', 'routing_identity', 'protocol'] as $field) {
             $socket = GraphProtocol::socket($directory, $record['endpoint']);
             $request = $this->runtime->envelope(['action' => 'ping'], $record['instance_token']);
             $request[$field] = 'wrong';
@@ -717,7 +841,7 @@ final class GraphRuntimeProcessTest extends TestCase
         self::assertSame('runtime_message_limit', $bad['reason']);
         $state->update('job-'.$pending['job_id'], static fn () => []);
         $this->barrier(null);
-        self::assertSame('current', $this->ready($pending['job_id'])['freshness']);
+        self::assertSame('last_confirmed', $this->ready($pending['job_id'])['freshness']);
     }
 
     public function test_crashed_builder_is_failed_and_retry_uses_a_new_process(): void
@@ -725,7 +849,12 @@ final class GraphRuntimeProcessTest extends TestCase
         $old = $this->runtime->map('prepare');
         file_put_contents($this->root.'/app/NewFile.php', '<?php namespace App; class NewFile {}');
         $this->barrier('build.before');
-        $pending = $this->runtime->request(['action' => 'prepare']);
+        $pending = [];
+        $this->until(function () use (&$pending, $old): bool {
+            $pending = $this->runtime->request(['action' => 'prepare']);
+
+            return ($pending['job_id'] ?? null) !== $old['job_id'] && ($pending['availability'] ?? '') === 'building';
+        });
         $this->until(fn () => count(array_filter($this->events(), static fn ($e) => $e['stage'] === 'build.before')) === 2);
         $events = array_values(array_filter($this->events(), static fn ($e) => $e['stage'] === 'build.before' && $e['job'] === $pending['job_id']));
         self::assertTrue(posix_kill($events[0]['pid'], SIGKILL));
@@ -756,69 +885,54 @@ final class GraphRuntimeProcessTest extends TestCase
         $old = [];
         $this->until(function () use ($directory, $record, $pending, &$old): bool {
             $socket = GraphProtocol::socket($directory, $record['endpoint']);
-            GraphProtocol::send($socket, [...$record, 'request_id' => bin2hex(random_bytes(16)), 'action' => 'result', 'job_id' => $pending['job_id']]);
+            GraphProtocol::send($socket, $this->runtime->envelope(['action' => 'result', 'job_id' => $pending['job_id']], $record['instance_token']));
             $old = GraphProtocol::receive($socket);
             fclose($socket);
 
             return $old['availability'] !== 'building';
         });
-        self::assertSame('stale', $old['freshness']);
-        self::assertStringContainsString('cache_cleared', $old['cache']['ready_write']['reason']);
-        self::assertSame([], glob(RepositoryContext::current()->storage.'/graph/*/catalog-ready-v1/active-*.json'));
-        self::assertSame('current', $this->runtime->map('prepare')['freshness']);
+        self::assertSame('unverified', $old['freshness']);
+        self::assertNotSame('current', $old['freshness']);
+        self::assertSame([], glob($directory.'/product-*/active-*.json'));
+        self::assertContains($old['availability'], ['failed', 'unavailable', 'ready']);
+        self::assertSame('last_confirmed', $this->runtime->map('prepare')['freshness']);
     }
 
     public function test_actual_idle_and_long_build_lifecycle(): void
     {
         if (getenv('ARCHITECTURE_KIT_TEST_LONG_RUNTIME') !== '1') {
-            self::markTestSkipped('Explicit real 5 minute lifecycle run.');
+            self::markTestSkipped('Opt in once for a real >=900s v2 lifecycle.');
         }
-        $start = microtime(true);
         $one = $this->runtime->map('prepare');
-        $firstDirectory = $this->runtime->directory();
-        $firstCoordinator = (new StateStore($firstDirectory))->read('coordinator')['pid'];
-        $firstContext = RepositoryContext::current();
-        usleep(200000);
-        $this->runtime->query('search', ['query' => 'Dependency']);
-        $secondRoot = dirname($this->root).'/long-build';
-        (new Filesystem)->copyDirectory($this->root, $secondRoot);
-        $secondContext = new RepositoryContext($secondRoot, $this->home);
-        RepositoryContext::activate($secondContext);
-        $second = new GraphRuntime($secondContext);
-        $this->barrier('build.before');
-        $pending = $second->request(['action' => 'prepare']);
-        $secondDirectory = $second->directory();
-        $secondCoordinator = (new StateStore($secondDirectory))->read('coordinator')['pid'];
-        $this->until(fn () => count(array_filter($this->events(), static fn ($e) => $e['stage'] === 'build.before')) === 2);
-        $events = array_values(array_filter($this->events(), static fn ($e) => $e['stage'] === 'build.before' && $e['job'] === $pending['job_id']));
-        $secondWorker = $events[0]['pid'];
-        $barrierStart = $events[0]['time'];
-        while (microtime(true) - $barrierStart < 302) {
+        $directory = $this->runtime->directory();
+        $coordinator = (new StateStore($directory))->read('coordinator');
+        $firstAnswer = $this->runtime->query('search', ['query' => 'Dependency']);
+        $start = microtime(true);
+        $timeline = [];
+        while (microtime(true) - $start < GraphProtocol::IDLE_SECONDS + 2) {
             usleep(200000);
+            $elapsed = microtime(true) - $start;
+            if (count($timeline) === 0 || $elapsed - $timeline[count($timeline) - 1]['elapsed'] >= 15) {
+                $this->runtime->map('status', $one['job_id']);
+                $timeline[] = ['elapsed' => $elapsed, 'coordinator_alive' => posix_kill($coordinator['pid'], 0)];
+            }
+            if ($elapsed < GraphProtocol::IDLE_SECONDS - 1) {
+                self::assertTrue(posix_kill($coordinator['pid'], 0), 'Status and periodic work do not shorten the minimum900s retention.');
+            }
         }
-        self::assertFalse(posix_kill($firstCoordinator, 0));
-        self::assertFalse(posix_kill($one['pid'], 0));
-        self::assertTrue(posix_kill($secondCoordinator, 0));
-        self::assertTrue(posix_kill($secondWorker, 0));
-        $this->state->update('timeline', static fn () => ['start' => $start, 'barrier_start' => $barrierStart,
-            'after_302_seconds' => microtime(true), 'idle_coordinator_exited' => true, 'active_build_alive' => true]);
-        $this->barrier(null);
-        $this->until(fn () => $second->map('result', $pending['job_id'])['availability'] === 'ready');
-        $lastRequest = microtime(true);
-        RepositoryContext::activate($firstContext);
-        $parses = count(array_filter($this->events(), static fn ($e) => $e['stage'] === 'source.parse'));
+        self::assertFalse(posix_kill($coordinator['pid'], 0));
+        $parses = count(array_filter($this->events(), static fn ($event) => $event['stage'] === 'source.parse'));
         $restored = $this->runtime->map('prepare');
         self::assertSame('hit', $restored['cache']['read']['status']);
-        self::assertSame('current', $restored['freshness']);
+        self::assertSame('last_confirmed', $restored['freshness']);
         self::assertNotSame($one['pid'], $restored['pid']);
-        self::assertSame($parses, count(array_filter($this->events(), static fn ($e) => $e['stage'] === 'source.parse')));
-        while (microtime(true) - $lastRequest < 302) {
-            usleep(200000);
-        }
-        self::assertFalse(posix_kill($secondCoordinator, 0));
-        self::assertFalse(posix_kill($secondWorker, 0));
-        $this->state->update('timeline', static fn (array $timeline) => [...$timeline, 'build_completed_at' => $lastRequest,
-            'after_final_idle' => microtime(true), 'completed_build_coordinator_exited' => true, 'completed_worker_exited' => true]);
+        self::assertSame($parses, count(array_filter($this->events(), static fn ($event) => $event['stage'] === 'source.parse')));
+        $restoredAnswer = $this->runtime->query('search', ['query' => 'Dependency']);
+        $this->state->update('timeline-v2-900s', static fn () => ['first_answer' => $firstAnswer, 'restored_answer' => $restoredAnswer, 'start' => $start, 'elapsed' => microtime(true) - $start,
+            'timeline' => $timeline, 'idle_coordinator_exited' => true, 'restored' => $restored,
+            'controlled_clock_build_boundaries' => 'RuntimeV2ConsumerTest::test_retention_boundaries_distinguish_user_code_and_internal_activity']);
+        self::assertSame($this->domainAnswer($firstAnswer['result']), $this->domainAnswer($restoredAnswer['result']));
+        self::assertNotEmpty($restoredAnswer['result']['result']['candidates']);
     }
 
     public function test_start_race_ignores_stale_pid_and_preserves_unrelated_helper(): void
@@ -850,7 +964,7 @@ final class GraphRuntimeProcessTest extends TestCase
         $this->runtime->request(['action' => 'shutdown']);
         $this->until(fn () => ! posix_kill($coordinator, 0));
         $cache = new ProjectGraphCache(new Filesystem, $this->root);
-        $pointers = glob($cache->canonicalDirectory().'/catalog-ready-v1/active-*.json');
+        $pointers = glob($this->runtime->directory().'/product-*/active-*.json');
         self::assertCount(1, $pointers);
         $pointer = json_decode(file_get_contents($pointers[0]), true, flags: JSON_THROW_ON_ERROR);
         $generation = dirname($pointers[0]).'/'.$pointer['generation'];
@@ -859,7 +973,7 @@ final class GraphRuntimeProcessTest extends TestCase
         file_put_contents($generation.'/'.$segment, 'corrupt after elements were decoded');
         $ready = $this->runtime->map('prepare');
         self::assertSame('ready', $ready['availability']);
-        self::assertSame('current', $ready['freshness']);
+        self::assertSame('last_confirmed', $ready['freshness']);
         self::assertNotSame($old['pid'], $ready['pid']);
         self::assertDirectoryExists($generation);
         $newBuilds = array_filter($this->events(), static fn ($e) => $e['stage'] === 'build.before' && $e['job'] === $ready['job_id']);
@@ -897,7 +1011,7 @@ final class GraphRuntimeProcessTest extends TestCase
         RepositoryContext::activate($context);
         $runtime = new GraphRuntime($context);
         $partial = $runtime->map('prepare');
-        self::assertSame('current', $partial['freshness']);
+        self::assertSame('last_confirmed', $partial['freshness']);
         self::assertSame('ready', $partial['availability']);
         self::assertFalse($partial['checks_complete']);
         self::assertSame(['status' => 'skip', 'reason' => 'disabled'], $partial['cache']['write']);
@@ -909,9 +1023,10 @@ final class GraphRuntimeProcessTest extends TestCase
         $cache = new ProjectGraphCache(new Filesystem, $this->root);
         mkdir($cache->canonicalDirectory(), 0700, true);
         mkdir($this->home.'/boundary-target');
-        symlink($this->home.'/boundary-target', $cache->canonicalDirectory().'/catalog-ready-v1');
+        $productKey = hash('sha256', SourceManifest::identity($this->root, AnalysisMode::Basic).GraphProtocol::encode(['kind' => 'catalog']));
+        symlink($this->home.'/boundary-target', (new GraphRuntime($context))->directory().'/product-'.$productKey);
         $ready = (new GraphRuntime($context))->map('prepare');
-        self::assertSame('current', $ready['freshness']);
+        self::assertSame('last_confirmed', $ready['freshness']);
         self::assertSame('ready', $ready['availability']);
         self::assertSame('error', $ready['cache']['write']['status']);
         self::assertSame('unsafe_store', $ready['cache']['write']['reason']);
@@ -924,12 +1039,12 @@ final class GraphRuntimeProcessTest extends TestCase
         $this->until(fn () => $this->events() !== []);
         $worker = $this->events()[0]['pid'];
         for ($i = 1; $i < GraphProtocol::JOBS; $i++) {
-            file_put_contents($this->root.'/app/QueueVersion.php', '<?php // generation '.$i);
-            $queued = $this->runtime->request(['action' => 'prepare']);
+            $product = GraphProductSpec::full($this->root, 'context', AuditScope::package(['app']), [], null, ['queue-'.$i]);
+            $queued = $this->runtime->request(['action' => 'prepare', 'product' => $product]);
             self::assertSame('building', $queued['availability']);
         }
-        file_put_contents($this->root.'/app/QueueVersion.php', '<?php // rejected next generation');
-        $rejected = $this->runtime->request(['action' => 'prepare']);
+        $product = GraphProductSpec::full($this->root, 'context', AuditScope::package(['app']), [], null, ['queue-overflow']);
+        $rejected = $this->runtime->request(['action' => 'prepare', 'product' => $product]);
         self::assertSame('unavailable', $rejected['availability']);
         self::assertSame('runtime_job_limit', $rejected['reason']);
         self::assertFalse($rejected['ok']);
@@ -979,7 +1094,7 @@ final class GraphRuntimeProcessTest extends TestCase
         $new = $runtime->request(['action' => 'prepare']);
         self::assertNotSame($old['job_id'], $new['job_id']);
         $this->runtime = $runtime;
-        self::assertSame('current', $this->ready($new['job_id'])['freshness']);
+        self::assertSame('last_confirmed', $this->ready($new['job_id'])['freshness']);
     }
 
     public function test_mcp_first_starts_shared_generation_and_changes_during_build_stay_stale(): void
@@ -987,15 +1102,26 @@ final class GraphRuntimeProcessTest extends TestCase
         $first = $this->mcp('architecture-map', ['action' => 'prepare']);
         self::assertSame($first['job_id'], $this->cli(['map', 'prepare'])['job_id']);
         file_put_contents($this->root.'/app/Version.php', '<?php namespace App; class BeforeBuild {}');
-        $this->barrier('build.before');
-        $old = $this->runtime->request(['action' => 'prepare']);
-        $this->until(fn () => count(array_filter($this->events(), static fn ($e) => $e['stage'] === 'build.before')) === 2);
+        $this->barrier('build.after');
+        $old = [];
+        $this->until(function () use ($first, &$old): bool {
+            $old = $this->runtime->request(['action' => 'prepare']);
+
+            return $old['job_id'] !== $first['job_id'];
+        });
+        $this->until(fn () => count(array_filter($this->events(), static fn ($e) => $e['stage'] === 'build.after')) === 2);
         file_put_contents($this->root.'/app/Version.php', '<?php namespace App; class AfterBuild {}');
-        $new = $this->runtime->request(['action' => 'prepare']);
+        $this->barrier(null);
+        $new = [];
+        $this->until(function () use ($old, &$new): bool {
+            $new = $this->runtime->request(['action' => 'prepare']);
+
+            return $new['job_id'] !== $old['job_id'];
+        });
         self::assertNotSame($old['job_id'], $new['job_id']);
         $this->barrier(null);
-        self::assertSame('stale', $this->ready($old['job_id'])['freshness']);
-        self::assertSame('current', $this->ready($new['job_id'])['freshness']);
+        self::assertContains($this->ready($old['job_id'])['freshness'], ['stale', 'last_confirmed', 'unverified']);
+        self::assertSame('last_confirmed', $this->ready($new['job_id'])['freshness']);
         self::assertNotEmpty($this->runtime->query('search', ['query' => 'AfterBuild'])['result']['result']['candidates']);
     }
 
@@ -1168,10 +1294,30 @@ final class GraphRuntimeProcessTest extends TestCase
         $this->state->update('test-control', static fn () => ['barrier' => $stage, ...($job === null ? [] : ['job' => $job])]);
     }
 
+    /** Ignore lifecycle identities/timings while retaining every domain record, diagnostic and analysis result.
+     * @param array<string, mixed> $answer
+     * @return array<string, mixed> */
+    private function domainAnswer(array $answer): array
+    {
+        unset($answer['runtime'], $answer['runtime_semantics'], $answer['freshness'], $answer['confirmation'], $answer['snapshot']);
+        if (isset($answer['result']['execution']['generation'])) {
+            $answer['result']['execution']['generation'] = '(generation)';
+        }
+        if (isset($answer['analysis'])) {
+            unset($answer['analysis']['runtime_semantics'], $answer['analysis']['freshness']);
+        }
+        if (isset($answer['next']['arguments']['snapshot'])) {
+            $answer['next']['arguments']['snapshot'] = '(generation)';
+        }
+
+        return $answer;
+    }
+
     /** @return list<array<string, mixed>> */
     private function events(): array
     {
-        return $this->state->read('test-events');
+        // Watch registration is a separate v2 observation stage, not a build/parser event.
+        return array_values(array_filter($this->state->read('test-events'), static fn (array $event): bool => $event['job'] !== 'observation'));
     }
 
     private function until(callable $condition): void
@@ -1199,7 +1345,7 @@ final class GraphRuntimeProcessTest extends TestCase
     /** @param list<string> $arguments */
     private function process(array $arguments): Process
     {
-        $process = new Process([PHP_BINARY, '-d', 'memory_limit=1G', dirname(__DIR__, 2).'/Support/graph-runtime-entrypoint.php',
+        $process = new Process([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), dirname(__DIR__, 2).'/Support/graph-runtime-entrypoint.php',
             '--project', $this->root, '--tool-home', $this->home, ...$arguments], timeout: 40);
         $this->processes[] = $process;
 

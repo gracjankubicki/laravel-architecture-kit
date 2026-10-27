@@ -17,7 +17,7 @@ final class GraphProductSpec
     {
         return ['kind' => $kind, 'audit_scope' => $scope->directories,
             'scope' => array_values(array_unique([...$scope->directories, ...ProjectLayout::read($base)->graphSources()])),
-            'freshness_scope' => array_values(array_unique([...$scope->directories, ...ProjectLayout::read($base)->graphSources(), ...($kind === 'context' ? ['tests', 'app'] : [])])),
+            'freshness_scope' => array_values(array_unique([...$scope->directories, ...ProjectLayout::read($base)->graphSources(), ...['tests', 'app']])),
             'exclude' => $exclude, 'cache' => $cache?->configuredDirectory(), 'configuration' => $configuration];
     }
 }

@@ -24,6 +24,7 @@ use GracjanKubicki\ArchitectureKit\Planning\ArchitecturePlan;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldFile;
 use GracjanKubicki\ArchitectureKit\Scaffolding\ScaffoldPlan;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntimeSchema;
+use GracjanKubicki\ArchitectureKit\Standalone\RuntimeResult;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlan;
 use GracjanKubicki\ArchitectureKit\Upgrades\UpgradePlanStep;
 
@@ -273,7 +274,7 @@ final readonly class AgentOutput
     /** @return array<string, mixed> */
     public function architectureContext(ArchitectureContextResult $context): array
     {
-        return [
+        $result = [
             'v' => 1,
             'ok' => true,
             'cmd' => 'architecture-context',
@@ -295,6 +296,11 @@ final readonly class AgentOutput
             'trunc' => $context->truncated,
             'next' => $context->next,
         ];
+        $runtime = $context->analysis['runtime'] ?? null;
+
+        return is_array($runtime) && isset($runtime['confirmation'])
+            ? RuntimeResult::adapt('context', $result, $runtime) : $result;
+
     }
 
     /** @return array<string, mixed> */

@@ -22,7 +22,8 @@ final class CatalogState
         self::check(array_is_list($state['relations']) && array_is_list($state['diagnostics']), 'lists');
         $elements = $state['elements'];
         foreach ($elements as $id => $element) {
-            self::check(is_string($id) && is_array($element) && ($element['id'] ?? null) === $id
+            // Normalize only the PHP map key, never the stored textual identity.
+            self::check(is_array($element) && ($element['id'] ?? null) === (string) $id
                 && is_string($element['name'] ?? null) && is_string($element['kind'] ?? null)
                 && is_string($element['path'] ?? null) && is_int($element['line'] ?? null) && $element['line'] > 0
                 && is_int($element['end_line'] ?? null) && $element['end_line'] >= $element['line']
@@ -31,7 +32,7 @@ final class CatalogState
                 && count(array_filter($element['roles'], 'is_string')) === count($element['roles'])
                 && is_array($element['metadata'] ?? null) && is_array($element['sources'] ?? null)
                 && is_array($element['role_evidence'] ?? null) && ($element['knowledge'] ?? null) === 'static', 'element');
-            self::check($element['parent'] === null || is_string($element['parent']) && $element['parent'] !== $id && isset($elements[$element['parent']]), 'parent');
+            self::check($element['parent'] === null || is_string($element['parent']) && $element['parent'] !== $element['id'] && isset($elements[$element['parent']]), 'parent');
             // The field container is depth 0, so every complete record starts at depth 1.
             self::values($element, $state['descriptorReceivers'], 1);
         }
@@ -48,25 +49,15 @@ final class CatalogState
         foreach ($state['hierarchyLimits'] as $id => $limited) {
             self::check(isset($elements[$id]) && $limited === true, 'hierarchy_reference');
         }
-        foreach ($state['relations'] as $relation) {
-            self::check(is_array($relation) && is_string($relation['from'] ?? null) && is_string($relation['to'] ?? null)
-                && is_string($relation['kind'] ?? null) && is_string($relation['path'] ?? null)
-                && is_int($relation['line'] ?? null) && $relation['line'] > 0
-                && is_int($relation['end_line'] ?? null) && $relation['end_line'] >= $relation['line']
-                && in_array($relation['resolution'] ?? null, ['resolved', 'conditional', 'structural'], true)
-                && is_array($relation['metadata'] ?? null) && (! array_key_exists('knowledge', $relation) || $relation['knowledge'] === 'static'), 'relation');
-            self::check(isset($elements[$relation['from']]), 'relation_owner');
-            self::check(isset($elements[$relation['to']]) || preg_match('/^(php|value|file|dispatch|container|http|execution|include):/', $relation['to']) === 1, 'relation_target');
-            self::values($relation, $state['descriptorReceivers'], 1);
-        }
+        self::validateFragment($state['relations'], $state['diagnostics'], $elements, $state['descriptorReceivers']);
         // addRelation appends the current ordinal to each list, so each is strictly increasing.
         foreach (['out' => 'from', 'in' => 'to'] as $direction => $endpoint) {
             $total = 0;
             foreach ($state[$direction] as $id => $indices) {
-                self::check(is_string($id) && is_array($indices) && array_is_list($indices) && $indices !== [], 'adjacency');
+                self::check(is_array($indices) && array_is_list($indices) && $indices !== [], 'adjacency');
                 $previous = -1;
                 foreach ($indices as $ordinal) {
-                    self::check(is_int($ordinal) && $ordinal > $previous && ($state['relations'][$ordinal][$endpoint] ?? null) === $id, 'adjacency_reference');
+                    self::check(is_int($ordinal) && $ordinal > $previous && ($state['relations'][$ordinal][$endpoint] ?? null) === (string) $id, 'adjacency_reference');
                     $previous = $ordinal;
                 }
                 $total += count($indices);
@@ -79,12 +70,34 @@ final class CatalogState
                 && preg_match('/^@(return|method-callable|after-argument|property):/', $receiver) === 1, 'descriptor');
             self::values($receiver, $state['descriptorReceivers'], 1);
         }
-        foreach ($state['diagnostics'] as $diagnostic) {
+    }
+
+    /** Validate operation fragments without rescanning the complete element/name tables.
+     * @param  list<array<string, mixed>>  $relations
+     * @param  list<array<string, mixed>>  $diagnostics
+     * @param  array<string, array<string, mixed>>  $elements
+     * @param  array<string, string>  $receivers
+     */
+    public static function validateFragment(array $relations, array $diagnostics, array $elements, array $receivers): void
+    {
+        self::check(array_is_list($relations) && array_is_list($diagnostics), 'fragment_lists');
+        foreach ($relations as $relation) {
+            self::check(is_array($relation) && is_string($relation['from'] ?? null) && is_string($relation['to'] ?? null)
+                && is_string($relation['kind'] ?? null) && is_string($relation['path'] ?? null)
+                && is_int($relation['line'] ?? null) && $relation['line'] > 0
+                && is_int($relation['end_line'] ?? null) && $relation['end_line'] >= $relation['line']
+                && in_array($relation['resolution'] ?? null, ['resolved', 'conditional', 'structural'], true)
+                && is_array($relation['metadata'] ?? null) && (! array_key_exists('knowledge', $relation) || $relation['knowledge'] === 'static'), 'relation');
+            self::check(isset($elements[$relation['from']]), 'relation_owner');
+            self::check(isset($elements[$relation['to']]) || preg_match('/^(php|value|file|dispatch|container|http|execution|include):/', $relation['to']) === 1, 'relation_target');
+            self::values($relation, $receivers, 1);
+        }
+        foreach ($diagnostics as $diagnostic) {
             self::check(is_array($diagnostic) && is_string($diagnostic['code'] ?? null) && is_string($diagnostic['message'] ?? null), 'diagnostic');
             if (is_string($diagnostic['subject'] ?? null) && str_starts_with($diagnostic['subject'], 'element:')) {
                 self::check(isset($elements[$diagnostic['subject']]), 'diagnostic_subject');
             }
-            self::values($diagnostic, $state['descriptorReceivers'], 1);
+            self::values($diagnostic, $receivers, 1);
         }
     }
 

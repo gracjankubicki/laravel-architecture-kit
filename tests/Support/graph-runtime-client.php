@@ -8,6 +8,10 @@ use GracjanKubicki\ArchitectureKit\Standalone\GraphRuntime;
 use GracjanKubicki\ArchitectureKit\Standalone\Host;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 
+GraphRuntime::startProcess();
+if (isset($argv[4])) {
+    GraphRuntime::instrument(null, null, $argv[4]);
+}
 $context = new RepositoryContext($argv[1], $argv[2]);
 RepositoryContext::activate($context);
 Host::create($argv[2]);

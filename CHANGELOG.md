@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.13.0 - 2026-10-27
+
+### Added
+
+- Integrate the versioned daily graph runtime with native observation, selective catalog updates, matching search deltas and explicit last-confirmed metadata.
+- Preserve complete runtime-v2 confirmation on worker error responses and validate it for known jobs.
+- Expose admission counters and separate pre/post GC memory observations without changing memory limits or reservation multipliers; report unknown RSS and allocator fallback explicitly.
+- Add explicit `runtime global-limits status|set` administration for shared tool-home memory ceilings, with live admission and lease-safe LRU retirement.
+- Retain active maps for 900 seconds of user/code inactivity with a shared tool-home queue and LRU registry. Restore graph, dependencies and search from one atomically published segmented manifest.
+- Expose search execution mode separately from cache outcomes, preserve snapshot pagination, and guard pinned source reads against changed bytes.
+
+### Fixed
+
+- Refresh map controllers after Composer metadata changes, enforce global admission before cache hydration, reuse unchanged product segments and guard large cache records before serialization. Run native process regressions for dependent PHP changes on all supported platforms.
+
+### Changed
+
+- Use `graph-runtime-v2` and `runtime_semantics=2`. Legacy whole-map freshness booleans are nullable for last-confirmed or unverified observations. Completeness remains independent.
+- Pin implementation identity once at standalone process startup and require restart for old loaded MCP code after an upgrade. Locate endpoints without starting the parser or hashing the repository on every query.
+
+Performance acceptance remains open pending the complete CLI/MCP measurements and independent QA. Cold and major-change 20 second targets are separate open requirements.
+
 ## v0.12.0 - 2026-10-26
 
 ### Added

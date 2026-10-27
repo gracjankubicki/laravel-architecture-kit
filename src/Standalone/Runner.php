@@ -7,6 +7,7 @@ namespace GracjanKubicki\ArchitectureKit\Standalone;
 use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Analysis\Distribution\EngineInstallation;
 use GracjanKubicki\ArchitectureKit\Analysis\MagoAnalysisEngine;
+use GracjanKubicki\ArchitectureKit\Standalone\Distribution\RuntimeInstallation;
 use Illuminate\Console\Application;
 use RuntimeException;
 use Symfony\Component\Console\Input\ArgvInput;
@@ -17,6 +18,7 @@ final class Runner
     /** @param list<string> $argv */
     public static function run(array $argv): int
     {
+        GraphRuntime::startProcess();
         GraphRuntime::beginRequest();
         try {
             [$args, $options] = self::options($argv);
@@ -27,6 +29,36 @@ final class Runner
             $command = $args[1] ?? 'help';
             if (isset($options['family']) && (isset($options['project']) || ! in_array($command, ['mcp', 'integration'], true))) {
                 throw new RuntimeException('--family is only available for mcp or integration and cannot be combined with --project.');
+            }
+            if ($command === 'runtime') {
+                if (isset($options['project'])) {
+                    self::externalHome($home, Projects::discover($options['project']));
+                }
+                $installation = new RuntimeInstallation($home);
+                if (($args[2] ?? '') === 'global-limits') {
+                    $operation = $args[3] ?? 'status';
+                    if ($operation === 'status' && count($args) <= 4) {
+                        self::output(GraphResources::globalStatus($home));
+                    } elseif ($operation === 'set' && count($args) === 6) {
+                        $resident = filter_var($args[4], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                        $transition = filter_var($args[5], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                        if ($resident === false || $transition === false) {
+                            throw new RuntimeException('Use positive integer byte counts for both global ceilings.');
+                        }
+                        self::output(GraphResources::setGlobal($home, $resident, $transition));
+                    } else {
+                        throw new RuntimeException('Use runtime global-limits status or runtime global-limits set RESIDENT_BYTES TRANSITION_BYTES. This affects every repository in this tool home.');
+                    }
+                } elseif (($args[2] ?? '') === 'install') {
+                    self::output($installation->install());
+                } elseif (($args[2] ?? '') === 'status') {
+                    $binary = $installation->binary();
+                    self::output(['ok' => true, ...$binary->descriptor(), 'binary' => $binary->path]);
+                } else {
+                    throw new RuntimeException('Use architecture-kit runtime install or runtime status.');
+                }
+
+                return 0;
             }
             if ($command === 'engine' && ($args[2] ?? '') !== 'describe') {
                 if (isset($options['project'])) {
@@ -61,7 +93,7 @@ final class Runner
                 return 0;
             }
             if ($command === 'help') {
-                fwrite(STDOUT, "architecture-kit [--project PATH | --family PATH (mcp/integration)] [--tool-home PATH] [--profile NAME] COMMAND\nengine install|status|describe\nmap prepare|status JOB_ID|result JOB_ID\ninit [architecture ...] [--shared --allow-write]\nanalysis-consent grant-deep TASK [--confirm]\ntask begin|check|status|skip|bind TASK [--confirm] [--client codex|claude --session ID]\nintegration export|status codex|claude\nmcp | audit | guard | doctor | search | impact | path | reach | file-rules | guidelines | make | sync\nDefault: source-only, external state. --runtime-routes explicitly boots the application to read routes. --allow-write authorizes repository mutations. --allow-execution enables broader application/custom-rule execution.\n");
+                fwrite(STDOUT, "architecture-kit [--project PATH | --family PATH (mcp/integration)] [--tool-home PATH] [--profile NAME] COMMAND\nengine install|status|describe\nruntime install|status\nmap prepare|status JOB_ID|result JOB_ID\ninit [architecture ...] [--shared --allow-write]\nanalysis-consent grant-deep TASK [--confirm]\ntask begin|check|status|skip|bind TASK [--confirm] [--client codex|claude --session ID]\nintegration export|status codex|claude\nmcp | audit | guard | doctor | search | impact | path | reach | file-rules | guidelines | make | sync\nDefault: source-only, external state. --runtime-routes explicitly boots the application to read routes. --allow-write authorizes repository mutations. --allow-execution enables broader application/custom-rule execution.\n");
 
                 return 0;
             }
@@ -114,7 +146,7 @@ final class Runner
                     $context = new RepositoryContext($root, $home, $context->profile, $context->execute, $context->write, $context->runtimeRoutes, advisoryOnly: true);
                     Host::refresh($context);
                 }
-                if (isset($spec['configuration_fingerprint']) && $spec['configuration_fingerprint'] !== $context->fingerprint()) {
+                if (isset($spec['routing_identity']) && $spec['routing_identity'] !== $context->routingIdentity()) {
                     throw new RuntimeException('stale_snapshot: graph launch configuration changed.');
                 }
                 if (($args[2] ?? '') === 'coordinator') {

@@ -4,15 +4,38 @@ declare(strict_types=1);
 
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
-use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
-use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\GraphEpoch;
-use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\SourceManifest;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
 use RuntimeException;
 use Throwable;
 
 /** Client and detached launcher. It never loads or hydrates a graph. */
 final class GraphRuntime
 {
+    private static ?string $implementationStamp = null;
+
+    private static ?string $sourceMismatch = null;
+
+    public static function markSourceMismatch(string $path): void
+    {
+        self::$sourceMismatch = $path;
+    }
+
+    public static function sourceMismatch(): ?string
+    {
+        return self::$sourceMismatch;
+    }
+
+    public static function clearSourceMismatch(): void
+    {
+        self::$sourceMismatch = null;
+    }
+
+    /** Pin once before serving a standalone session. Endpoint lookup never refreshes it. */
+    public static function startProcess(): void
+    {
+        self::$implementationStamp ??= PackageFingerprint::current();
+    }
+
     private static bool $worker = false;
 
     private static bool $enabled = false;
@@ -38,12 +61,15 @@ final class GraphRuntime
 
     private static ?string $entrypoint = null;
 
+    private static string $launchShell = '/bin/sh';
+
     private static ?\Closure $observer = null;
 
     /** Internal process instrumentation; never accepted from a CLI/MCP request. */
-    public static function instrument(?string $entrypoint, ?\Closure $observer): void
+    public static function instrument(?string $entrypoint, ?\Closure $observer, ?string $launchShell = null): void
     {
         self::$entrypoint = $entrypoint;
+        self::$launchShell = $launchShell ?? '/bin/sh';
         self::$observer = $observer;
     }
 
@@ -75,6 +101,11 @@ final class GraphRuntime
         return self::$resident;
     }
 
+    public static function releaseResident(): void
+    {
+        self::$resident = null;
+    }
+
     public static function inWorker(): bool
     {
         return self::$worker;
@@ -94,7 +125,7 @@ final class GraphRuntime
 
     public function directory(): string
     {
-        $identity = $this->context->fingerprint().':'.(new GraphEpoch($this->context))->token;
+        $identity = serialize([$this->context->id, $this->context->profile, $this->context->execute, $this->context->runtimeRoutes, $this->context->advisoryOnly]);
         $directory = $this->context->storage.'/runtime/'.substr(hash('sha256', $identity), 0, 32);
         new StateStore($directory, $this->context->home);
 
@@ -116,6 +147,7 @@ final class GraphRuntime
         while (($response['availability'] ?? null) === 'building' && (hrtime(true) - $start) / 1e9 < $budget) {
             usleep(10000);
             $response = $this->request(['action' => 'result', 'job_id' => $response['job_id']]);
+            $budget = min($budget, $response['budget_seconds'] ?? $budget);
         }
         $exceeded = (hrtime(true) - $start) / 1e9 > $budget;
         if ($exceeded && isset($response['job_id'])) {
@@ -143,7 +175,7 @@ final class GraphRuntime
             }
         }
         $ready = $product === null ? $this->map('prepare') : $this->prepareProduct($product);
-        if (($ready['availability'] ?? '') !== 'ready' || ($ready['freshness'] ?? '') !== 'current') {
+        if (($ready['availability'] ?? '') !== 'ready') {
             return $this->finalizeQuery($ready, $start);
         }
 
@@ -172,6 +204,7 @@ final class GraphRuntime
         while (($response['availability'] ?? '') === 'building' && (hrtime(true) - $start) / 1e9 < $budget) {
             usleep(10000);
             $response = $this->request(['action' => 'result', 'job_id' => $response['job_id']]);
+            $budget = min($budget, $response['budget_seconds'] ?? $budget);
         }
         if ((hrtime(true) - $start) / 1e9 > $budget && isset($response['job_id'])) {
             $response = $this->request(['action' => 'deadline', 'job_id' => $response['job_id']]);
@@ -182,7 +215,7 @@ final class GraphRuntime
 
     /** @param array<string, mixed> $payload
      * @return array<string, mixed> */
-    public function request(array $payload): array
+    public function request(array $payload, bool $retryRestart = true): array
     {
         $directory = $this->directory();
         $state = new StateStore($directory, $this->context->home);
@@ -225,6 +258,21 @@ final class GraphRuntime
                 || ($response['coordinator_token'] ?? null) !== $instance['instance_token']) {
                 throw new RuntimeException('runtime_response_identity');
             }
+            if ($retryRestart && ($response['reason'] ?? '') === 'restart_required'
+                && ($response['coordinator_restart_required'] ?? false)
+                && self::$implementationStamp !== null && ($response['installed_implementation'] ?? null) === self::$implementationStamp) {
+                $stop = GraphProtocol::socket($directory, $instance['endpoint']);
+                GraphProtocol::send($stop, $this->envelope(['action' => 'shutdown'], $instance['instance_token']));
+                GraphProtocol::receive($stop);
+                fclose($stop);
+                $until = microtime(true) + 2;
+                do {
+                    usleep(10000);
+                    clearstatcache(true, $directory.'/'.$instance['endpoint']);
+                } while (file_exists($directory.'/'.$instance['endpoint']) && microtime(true) < $until);
+
+                return $this->request($payload, false);
+            }
 
             return $response;
         } finally {
@@ -237,7 +285,8 @@ final class GraphRuntime
     public function envelope(array $payload, string $token): array
     {
         return [...$payload, 'protocol' => GraphProtocol::VERSION, 'repository_id' => $this->context->id,
-            'analysis_fingerprint' => SourceManifest::identity($this->context->rootPath, AnalysisMode::Basic),
+            'routing_identity' => $this->context->routingIdentity(),
+            'loaded_implementation' => self::$implementationStamp,
             'instance_token' => $token, 'request_id' => bin2hex(random_bytes(16))];
     }
 
@@ -253,9 +302,27 @@ final class GraphRuntime
             GraphProtocol::send($socket, $this->envelope(['action' => 'ping'], $instance['instance_token']));
             $response = GraphProtocol::receive($socket);
             fclose($socket);
+            if (($response['reason'] ?? null) === 'runtime_identity:routing_identity') {
+                // The locator belongs to the previous configuration/Composer state.
+                // Stop that authenticated instance cooperatively before replacing it.
+                $stop = GraphProtocol::socket($directory, $instance['endpoint']);
+                try {
+                    stream_set_timeout($stop, 2);
+                    GraphProtocol::send($stop, $this->envelope(['action' => 'shutdown'], $instance['instance_token']));
+                    $stopped = GraphProtocol::receive($stop);
+                    if (($stopped['ok'] ?? false) !== true || ($stopped['instance_token'] ?? null) !== $instance['instance_token']
+                        || ($stopped['repository_id'] ?? null) !== $this->context->id) {
+                        throw new RuntimeException('runtime_replacement_shutdown');
+                    }
+                } finally {
+                    fclose($stop);
+                }
+
+                return false;
+            }
 
             return ($response['protocol'] ?? null) === GraphProtocol::VERSION && ($response['instance_token'] ?? null) === $instance['instance_token']
-                && ($response['repository_id'] ?? null) === $this->context->id && ($response['ok'] ?? false);
+                && ($response['repository_id'] ?? null) === $this->context->id && (($response['ok'] ?? false) || ($response['reason'] ?? '') === 'restart_required');
         } catch (Throwable) {
             return false;
         }
@@ -264,7 +331,7 @@ final class GraphRuntime
     /** @param array<string, mixed> $spec */
     public function launch(string $role, string $directory, array $spec): int
     {
-        $spec['configuration_fingerprint'] = $this->context->fingerprint();
+        $spec['routing_identity'] = $this->context->routingIdentity();
         $spec['advisory_only'] = $this->context->advisoryOnly;
         $name = 'launch-'.bin2hex(random_bytes(16));
         (new StateStore($directory, $this->context->home))->update($name, static fn () => $spec);
@@ -281,14 +348,32 @@ final class GraphRuntime
         array_push($args, '__graph-runtime', $role, $directory, $name);
         // A short-lived shell re-parents a nohup child. All stdio is redirected;
         // process ownership does not depend on leaking a proc_open handle.
+        // Replace inherited parent handles before exec, including client pipes and locks.
+        // PHP maps arbitrary descriptor numbers; the shell only redirects standard I/O.
+        $descriptors = is_dir('/dev/fd') ? scandir('/dev/fd') : (is_dir('/proc/self/fd') ? scandir('/proc/self/fd') : []);
+        if ($descriptors === false || $descriptors === []) {
+            throw new RuntimeException('runtime_descriptor_inventory');
+        }
+        $descriptorSpec = [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']];
+        foreach ($descriptors as $descriptor) {
+            if (ctype_digit($descriptor) && (int) $descriptor > 2) {
+                $descriptorSpec[(int) $descriptor] = ['file', '/dev/null', 'w'];
+            }
+        }
         $command = 'nohup '.implode(' ', array_map(escapeshellarg(...), $args)).' >'.escapeshellarg($directory.'/'.$name.'.stdout')
             .' 2>'.escapeshellarg($directory.'/'.$name.'.stderr').' </dev/null & echo $!';
-        exec($command, $output, $exit);
-        if ($exit !== 0 || ! ctype_digit($output[0] ?? '')) {
+        $process = proc_open([self::$launchShell, '-c', $command], $descriptorSpec, $pipes);
+        if (! is_resource($process)) {
+            throw new RuntimeException('runtime_spawn_failed');
+        }
+        $output = trim(stream_get_contents($pipes[1]));
+        fclose($pipes[1]);
+        $exit = proc_close($process);
+        if ($exit !== 0 || ! ctype_digit($output)) {
             throw new RuntimeException('runtime_spawn_failed');
         }
 
-        return (int) $output[0];
+        return (int) $output;
     }
 
     private static function defaultEntrypoint(): string

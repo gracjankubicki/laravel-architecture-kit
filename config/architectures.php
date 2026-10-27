@@ -17,6 +17,19 @@ return [
         'php' => 'php',
         'command' => null,
     ],
+    'graph_runtime' => [
+        // Finite PHP memory_limit supplies each ceiling unless configured explicitly.
+        // These are global user/tool-home budgets, not evidence of OS free memory.
+        // Seed global ceilings only on the first registry creation; later requests can only reduce them.
+        // Explicit tool-home administration: runtime global-limits status|set RESIDENT_BYTES TRANSITION_BYTES.
+        'resident_budget_bytes' => null,
+        'transition_budget_bytes' => null,
+        'queue_paths' => 64,
+        'queue_bytes' => 1048576,
+        'posting_budget' => 32768,
+        'debounce_ms' => 50,
+        'max_window_ms' => 250,
+    ],
     'control' => [
         // Reaction is independent of the analysis result and Basic/Deep scope.
         'policy' => 'advisory',

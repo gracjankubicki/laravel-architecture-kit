@@ -8,13 +8,25 @@ use GracjanKubicki\ArchitectureKit\Catalog\CatalogIndex;
 use GracjanKubicki\ArchitectureKit\Catalog\CatalogKinds;
 
 /** Literal search over the composed source snapshot, independent of legacy discovery. */
-final readonly class GraphSearch
+final class GraphSearch
 {
-    public function __construct(private CatalogIndex $index) {}
+    /** @var array<string, mixed> */
+    private array $execution = ['mode' => 'not_run', 'reason' => null];
+
+    /** Metadata is separate to preserve the complete legacy find() response.
+     * @return array<string, mixed>
+     */
+    public function execution(): array
+    {
+        return $this->execution;
+    }
+
+    public function __construct(private readonly CatalogIndex $index) {}
 
     /** @return array<string, mixed> */
     public function find(string $query, ?string $kind = null, ?string $path = null): array
     {
+        $this->execution = ['mode' => 'invalid_input', 'reason' => null];
         $supported = CatalogKinds::all();
         sort($supported, SORT_STRING);
         $query = trim($query);
@@ -23,8 +35,12 @@ final readonly class GraphSearch
             return ['status' => 'invalid_input', 'candidates' => [], 'match_count' => 0, 'supported_kinds' => $supported];
         }
         $needle = strtolower($query);
+        $state = $this->index->searchState();
+        $elements = $this->index->elements;
+        $this->execution = $state->execution($query);
         $matches = [];
-        foreach ($this->index->elements as $element) {
+        foreach ($state->ranks($needle) as $id => $rank) {
+            $element = $elements[$id];
             if ($kind !== null && $element['kind'] !== $kind && ! in_array($kind, $element['roles'], true)) {
                 continue;
             }
@@ -38,20 +54,7 @@ final readonly class GraphSearch
             if (! $pathMatches) {
                 continue;
             }
-            $fields = [$element['id'], $element['name'], ...$locations, $element['kind'], ...$element['roles']];
-            foreach (['name', 'uri', 'table', 'route_name'] as $key) {
-                if (is_string($element['metadata'][$key] ?? null)) {
-                    $fields[] = $element['metadata'][$key];
-                }
-            }
-            $rank = 3;
-            foreach ($fields as $field) {
-                $field = strtolower($field);
-                $rank = min($rank, $field === $needle ? 0 : (str_starts_with($field, $needle) ? 1 : (str_contains($field, $needle) ? 2 : 3)));
-            }
-            if ($rank < 3) {
-                $matches[] = [...$element, 'match' => ['exact', 'prefix', 'substring'][$rank], '_rank' => $rank];
-            }
+            $matches[] = [...$element, 'match' => ['exact', 'prefix', 'substring'][$rank], '_rank' => $rank];
         }
         usort($matches, static fn (array $a, array $b): int => [$a['_rank'], $a['kind'], $a['name'], $a['path'], $a['line'], $a['id']]
             <=> [$b['_rank'], $b['kind'], $b['name'], $b['path'], $b['line'], $b['id']]);

@@ -6,9 +6,12 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature\Standalone;
 
 use GracjanKubicki\ArchitectureKit\Standalone\GraphProtocol;
 use GracjanKubicki\ArchitectureKit\Tests\Support\EngineFixture;
+use GracjanKubicki\ArchitectureKit\Tests\Support\GraphRuntimeCleanup;
+use PHPUnit\Framework\Attributes\RequiresEnvironmentVariable;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
 
+#[RequiresEnvironmentVariable('ARCHITECTURE_KIT_TEST_RUNTIME')]
 final class GraphPerformanceSmokeTest extends TestCase
 {
     private string $base;
@@ -19,7 +22,7 @@ final class GraphPerformanceSmokeTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->base = dirname(__DIR__, 3).'/build/graph-performance-implementation/T04/smoke-'.bin2hex(random_bytes(6));
+        $this->base = dirname(__DIR__, 3).'/build/graph-performance-implementation/W04/legacy-smoke/smoke-'.bin2hex(random_bytes(6));
         $this->root = $this->base.'/repo';
         mkdir($this->root.'/app/Sub', 0700, true);
         mkdir($this->root.'/.architecture-kit', 0700, true);
@@ -35,6 +38,7 @@ final class GraphPerformanceSmokeTest extends TestCase
 
     protected function tearDown(): void
     {
+        GraphRuntimeCleanup::stop($this->home);
         foreach (glob($this->home.'/repositories/*/runtime/*/coordinator.json') ?: [] as $path) {
             $record = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
             try {
@@ -56,7 +60,9 @@ final class GraphPerformanceSmokeTest extends TestCase
         $this->assertSame('new_process_after_controlled_shutdown', $warm['warm_start']);
         $this->assertNotSame($cold['ready']['pid'], $warm['ready']['pid']);
         $this->assertSame('hit', $warm['ready']['cache']['read']['status']);
-        $this->assertSame($cold['ready']['snapshot_id'], $warm['ready']['snapshot_id']);
+        $this->assertNotSame($cold['ready']['snapshot_id'], $warm['ready']['snapshot_id']);
+        $this->assertSame(json_decode(file_get_contents($this->base.'/cold/actual.stdout'), true, flags: JSON_THROW_ON_ERROR)['full_record_digests'],
+            json_decode(file_get_contents($this->base.'/warm/actual.stdout'), true, flags: JSON_THROW_ON_ERROR)['full_record_digests']);
         $changed = $this->measure('edit', ['transport' => 'cli', 'changes' => [['path' => 'app/Service.php',
             'before_sha256' => hash_file('sha256', $this->root.'/app/Service.php'),
             'contents' => '<?php namespace App; class Service { public function run(): void {} public function added(): void {} }']]]);
@@ -67,7 +73,9 @@ final class GraphPerformanceSmokeTest extends TestCase
         $this->assertNotSame($added['ready']['snapshot_id'], $moved['ready']['snapshot_id']);
         $deleted = $this->measure('delete', ['transport' => 'mcp', 'changes' => [['path' => 'app/Sub/Added.php',
             'before_sha256' => hash_file('sha256', $this->root.'/app/Sub/Added.php')]]]);
-        $this->assertSame($changed['ready']['snapshot_id'], $deleted['ready']['snapshot_id']);
+        $this->assertNotSame($changed['ready']['snapshot_id'], $deleted['ready']['snapshot_id']);
+        $this->assertSame(json_decode(file_get_contents($this->base.'/edit/actual.stdout'), true, flags: JSON_THROW_ON_ERROR)['full_record_digests'],
+            json_decode(file_get_contents($this->base.'/delete/actual.stdout'), true, flags: JSON_THROW_ON_ERROR)['full_record_digests']);
         $this->assertNotSame($changed['ready']['job_id'], $deleted['ready']['job_id']);
         $this->assertNotSame($changed['ready']['pid'], $deleted['ready']['pid']);
         // Late files belong to the retired job, never to the new worker for the same content.
@@ -104,9 +112,13 @@ final class GraphPerformanceSmokeTest extends TestCase
         $this->assertStringContainsString('including IPC, freshness', $query['resident_timing_scope']);
         $this->assertFileExists($this->base.'/query/resident-session.stdout');
         $events = json_decode(file_get_contents($this->base.'/query/query-markers.json'), true, flags: JSON_THROW_ON_ERROR);
-        foreach (['query.freshness.before', 'query.freshness.after', 'query.before', 'query.after', 'query.recheck.before', 'query.recheck.after'] as $stage) {
+        foreach (['query.route', 'query.before', 'query.after'] as $stage) {
             $this->assertContains($stage, array_column($events, 'stage'));
         }
+        $this->assertNotContains('query.freshness.before', array_column($events, 'stage'));
+        $this->assertNotContains('query.recheck.before', array_column($events, 'stage'));
+        $this->assertSame(2, $query['public_query']['runtime_semantics']);
+        $this->assertSame('last_confirmed', $query['public_query']['freshness']);
         $this->assertGreaterThan(0, $query['max_simultaneous_rss_kib']);
     }
 

@@ -9,6 +9,35 @@ final class GraphPage
 {
     public const MAX_BYTES = 65536;
 
+    /** Final serialized page budget includes the actual lifecycle metadata, not an estimate.
+     * @param array<string, mixed> $page
+     * @param array<string, mixed> $runtime
+     * @param array<string, mixed> $arguments
+     * @return array<string, mixed> */
+    public static function withRuntime(array $page, array $runtime, array $arguments = []): array
+    {
+        $page['runtime'] = $runtime;
+        $key = isset($page['result']['candidates']) ? 'candidates' : 'records';
+        $originalCount = count($page['result'][$key] ?? []);
+        while (self::bytes($page) > self::MAX_BYTES && ($page['result'][$key] ?? []) !== []) {
+            array_pop($page['result'][$key]);
+            $page['truncated'] = true;
+            $offset = ($page['limits']['offset'] ?? 0) + count($page['result'][$key]);
+            $nextArguments = $page['next']['arguments'] ?? $arguments;
+            $page['next'] = ['tool' => $page['cmd'], 'arguments' => [...$nextArguments, 'snapshot' => $page['snapshot'], 'offset' => $offset]];
+        }
+        if (self::bytes($page) > self::MAX_BYTES || $originalCount > 0 && $page['result'][$key] === []) {
+            $failure = [...self::limitFailure($page['cmd'], $page['snapshot'], $key), 'runtime_semantics' => 2,
+                'freshness' => $runtime['freshness'], 'confirmation' => $runtime['confirmation'], 'runtime' => $runtime];
+
+            return self::bytes($failure) <= self::MAX_BYTES ? $failure
+                : [...self::limitFailure($page['cmd'], $page['snapshot'], $key), 'runtime_semantics' => 2, 'freshness' => 'unverified',
+                    'reason' => 'runtime_metadata_limit'];
+        }
+
+        return $page;
+    }
+
     /** @param array<string, mixed> $arguments
      * @param  array<string, mixed>  $result
      * @param  list<array<string, mixed>>  $diagnostics
@@ -111,7 +140,7 @@ final class GraphPage
         }
         $envelope['diagnostics']['details_truncated'] = count($envelope['diagnostics']['details']) < count($relevant);
 
-        return self::bytes($envelope) <= self::MAX_BYTES ? $envelope : self::limitFailure($command, $snapshot, $recordsKey);
+        return self::bytes($envelope) <= self::MAX_BYTES - $reservedBytes ? $envelope : self::limitFailure($command, $snapshot, $recordsKey);
     }
 
     /** @return array<string, mixed> */

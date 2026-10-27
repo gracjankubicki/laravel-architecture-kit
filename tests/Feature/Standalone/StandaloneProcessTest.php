@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Tests\Feature\Standalone;
 
 use GracjanKubicki\ArchitectureKit\Tests\Support\EngineFixture;
+use GracjanKubicki\ArchitectureKit\Tests\Support\GraphRuntimeCleanup;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
@@ -36,6 +37,7 @@ final class StandaloneProcessTest extends TestCase
 
     protected function tearDown(): void
     {
+        GraphRuntimeCleanup::stop($this->home);
         (new Filesystem)->deleteDirectory($this->temp);
     }
 
@@ -109,7 +111,8 @@ final class StandaloneProcessTest extends TestCase
         self::assertTrue($audit['ok']);
         $search = $this->cli(['search', 'SendInvoice', '--agent'], cwd: $this->root.'/app');
         self::assertSame('App\\Actions\\SendInvoice', $search['candidates'][0]['name']);
-        self::assertTrue($search['fresh']);
+        self::assertNull($search['fresh']);
+        self::assertSame('last_confirmed', $search['freshness']);
         $messages = [
             ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-03-26', 'capabilities' => [], 'clientInfo' => ['name' => 'test', 'version' => '1']]],
             ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list'],
@@ -235,14 +238,16 @@ final class StandaloneProcessTest extends TestCase
         self::assertSame(0, $process->getExitCode(), $process->getErrorOutput());
         $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
         self::assertSame('App\\Actions\\SendInvoice', $result['candidates'][0]['name']);
-        self::assertTrue($result['fresh']);
+        self::assertNull($result['fresh']);
+        self::assertSame('last_confirmed', $result['freshness']);
     }
 
     public function test_saved_reach_pages_and_cache_stay_outside_the_repository(): void
     {
         $before = $this->files();
         $report = $this->cli(['reach', 'App\\Actions\\SendInvoice', '--agent']);
-        self::assertTrue($report['reach']['fresh']);
+        self::assertNull($report['reach']['fresh']);
+        self::assertSame('last_confirmed', $report['freshness']);
         $id = $report['reach']['pagination']['report_id'];
         self::assertNotEmpty($id);
         $page = $this->cli(['reach', '--report', $id, '--agent']);

@@ -1,0 +1,111 @@
+name: watch runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'runtime/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'config/**'
+      - 'composer.json'
+      - 'phpunit.xml'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: macos-arm64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            platform: macos-x64
+            target: x86_64-apple-darwin
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+            target: aarch64-unknown-linux-musl
+          - runner: ubuntu-24.04
+            platform: linux-x64
+            target: x86_64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install native musl linker
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Test and build native executable
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C target-feature=+crt-static -C linker=musl-gcc' || '' }}
+        run: |
+          cargo test --manifest-path runtime/Cargo.toml --locked --target '${{ matrix.target }}'
+          cargo build --manifest-path runtime/Cargo.toml --locked --release --target '${{ matrix.target }}'
+          mkdir -p build/runtime-artifacts
+          cp 'runtime/target/${{ matrix.target }}/release/architecture-kit-runtime' 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}'
+          'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}' --version > 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}.json'
+      - name: Record macOS deployment target from the actual binary
+        if: runner.os == 'macOS'
+        run: otool -l 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}' > 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}.load-commands.txt'
+      - name: Verify static Linux executable
+        if: runner.os == 'Linux'
+        run: |
+          readelf -l 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}' > 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}.program-headers.txt'
+          if grep -q INTERP 'build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}.program-headers.txt'; then
+            echo 'Linux runtime must not require a dynamic libc loader.' >&2
+            exit 1
+          fi
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Verify PHP adapter, installer and real native filesystem observation
+        env:
+          ARCHITECTURE_KIT_TEST_RUNTIME: ${{ github.workspace }}/build/runtime-artifacts/architecture-kit-runtime-${{ matrix.platform }}
+        run: |
+          composer test -- tests/Unit/Standalone/Watch tests/Integration/Runtime
+          COMPOSER_PROCESS_TIMEOUT=0 composer test -- -d memory_limit=512M tests/Feature/Standalone/GraphRuntimeProcessTest.php tests/Feature/Standalone/ObservedGraphRuntimeTest.php tests/Feature/Standalone/GraphPerformanceSmokeTest.php
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.platform }}
+          path: build/runtime-artifacts/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: watch-evidence-${{ matrix.platform }}
+          path: runtime/evidence/*
+          if-no-files-found: warn
+
+  manifest:
+    needs: native
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          path: build/runtime-artifacts
+          merge-multiple: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - run: python3 runtime/tests/release_manifest_test.py
+      - run: python3 runtime/release-manifest.py build/runtime-artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-release-candidate
+          path: build/runtime-artifacts/*
+          if-no-files-found: error
+      # This workflow prepares artifacts. Publishing runtime-v* and the Composer
+      # release remains a separately authorized operation after all targets pass.

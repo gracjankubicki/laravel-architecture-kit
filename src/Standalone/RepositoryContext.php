@@ -9,6 +9,7 @@ use GracjanKubicki\ArchitectureKit\Analysis\AnalysisSession;
 use GracjanKubicki\ArchitectureKit\Analysis\ControlPolicy;
 use GracjanKubicki\ArchitectureKit\Analysis\EngineSettings;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
+use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\SourceManifest;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
 
@@ -31,7 +32,7 @@ final class RepositoryContext
 
     private readonly string $sourceHash;
 
-    private readonly string $packageHash;
+    private ?string $packageHash = null;
 
     /** @var array<string, mixed> */
     public readonly array $settings;
@@ -48,7 +49,6 @@ final class RepositoryContext
         if (realpath($rootPath) !== $rootPath || ! is_file($rootPath.'/composer.json')) {
             throw new RuntimeException('Select a canonical project directory containing composer.json.');
         }
-        $this->packageHash = PackageFingerprint::current();
         Runner::externalHome($home, $rootPath);
         $this->id = hash('sha256', $rootPath);
         $homePath = realpath($home);
@@ -217,6 +217,7 @@ final class RepositoryContext
 
     public function fingerprint(): string
     {
+        $this->packageHash ??= PackageFingerprint::current();
         // A running MCP retains loaded PHP classes. New files on disk cannot be
         // treated as the version it is executing, even if a new cache key exists.
         if ($this->packageHash !== PackageFingerprint::of(dirname(__DIR__))) {
@@ -225,6 +226,25 @@ final class RepositoryContext
 
         return hash('sha256', serialize([$this->effectiveSettings(), $this->currentConfigurationHash(), $this->profile, $this->execute, $this->runtimeRoutes,
             $this->packageHash, $this->analysis()->fingerprint(), hash_file('sha256', $this->rootPath.'/composer.json')]));
+    }
+
+    /** Endpoint routing must not start an analysis engine or hash package/source trees. */
+    public function routingIdentity(): string
+    {
+        $composer = json_decode((string) file_get_contents($this->rootPath.'/composer.json'), true, 64, JSON_THROW_ON_ERROR);
+        $engine = EngineSettings::from($this->settings, $composer, $this->configSource);
+
+        $metadata = [];
+        foreach (['composer.lock', 'vendor/composer/installed.json'] as $path) {
+            $metadata[$path] = SourceManifest::safe($this->rootPath, $path, true)
+                ? (is_file($this->rootPath.'/'.$path) ? hash_file('sha256', $this->rootPath.'/'.$path) : null) : 'unsafe';
+        }
+
+        $metadata['Modules'] = is_dir($this->rootPath.'/Modules') && ! is_link($this->rootPath.'/Modules');
+
+        return hash('sha256', serialize([$this->id, $this->selection->identity(), $engine->fingerprint(), $metadata,
+            hash('sha256', json_encode($composer, JSON_THROW_ON_ERROR)),
+            $this->execute, $this->runtimeRoutes, $this->advisoryOnly, dirname(__DIR__, 2), GraphProtocol::VERSION]));
     }
 
     private function currentConfigurationHash(): string

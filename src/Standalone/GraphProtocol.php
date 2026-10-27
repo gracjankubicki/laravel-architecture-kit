@@ -9,13 +9,13 @@ use RuntimeException;
 /** Bounded JSON lines on private Unix sockets. No PHP objects cross this boundary. */
 final class GraphProtocol
 {
-    public const VERSION = 'graph-runtime-v1';
+    public const VERSION = 'graph-runtime-v2';
 
     public const REQUEST_BYTES = 65536;
 
     public const RESPONSE_BYTES = 4194304;
 
-    public const IDLE_SECONDS = 300;
+    public const IDLE_SECONDS = 900;
 
     public const JOBS = 64;
 

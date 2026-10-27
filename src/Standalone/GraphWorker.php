@@ -21,7 +21,6 @@ use GracjanKubicki\ArchitectureKit\Context\ArchitectureContextException;
 use GracjanKubicki\ArchitectureKit\Context\GraphPage;
 use GracjanKubicki\ArchitectureKit\Context\GraphQuery;
 use GracjanKubicki\ArchitectureKit\Context\GraphSearch;
-use GracjanKubicki\ArchitectureKit\Context\GraphSource;
 use GracjanKubicki\ArchitectureKit\Discovery\ArchitectureDiscovery;
 use GracjanKubicki\ArchitectureKit\Discovery\DiscoverySettings;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
@@ -46,6 +45,11 @@ final class GraphWorker
 
     /** @var array{diagnostics_digest: string, diagnostics_by_code: array<string, int>} */
     private array $diagnosticMetadata;
+
+    /** @var array<string, mixed> */
+    private array $processMemory = [];
+
+    private float $lastMemorySample = 0;
 
     /** @param array<string, mixed> $job */
     public function __construct(private readonly RepositoryContext $context, private readonly string $directory, private readonly array $job)
@@ -81,12 +85,14 @@ final class GraphWorker
         try {
             GraphRuntime::stage('build.before', $this->job);
             if ($this->job['product'] === null) {
-                $this->source = (new GraphSource(new Filesystem, $this->context->rootPath, onParse: fn (string $path) => GraphRuntime::stage('source.parse', $this->job), mode: AnalysisMode::Basic))->load($this->job['rejected_generation'] ?? null);
+                $this->source = (new ObservedCatalog($this->context, $this->directory, $this->job))->load();
                 GraphRuntime::resident($this->source);
             } else {
                 $this->prepareFullProduct();
             }
-            GraphRuntime::stage('build.after', $this->job);
+            GraphRuntime::stage('build.after', [...$this->job, 'snapshot_id' => $this->source['snapshot'],
+                'applied_sequence' => $this->source['applied_sequence'] ?? $this->job['through_sequence'],
+                'execution_mode' => $this->source['execution_mode'] ?? 'full_recompose']);
             $diagnostics = $this->source['index']->diagnostics ?? $this->source['diagnostics'] ?? [];
             $this->diagnosticMetadata = [
                 'diagnostics_digest' => hash('sha256', json_encode($diagnostics, JSON_THROW_ON_ERROR)),
@@ -102,7 +108,9 @@ final class GraphWorker
             return;
         } catch (Throwable $error) {
             $state->update('job-'.$this->job['job_id'], fn () => [...$this->job, 'files' => [], 'protocol' => GraphProtocol::VERSION,
-                'availability' => 'failed', 'freshness' => 'unverified', 'reason' => $error->getMessage()]);
+                'availability' => 'failed', 'freshness' => 'unverified', 'reason' => $error->getMessage(),
+                'transition_refused' => str_contains($error->getMessage(), 'catalog_transition_budget'),
+                ...($error instanceof GraphAdmissionRefused ? ['measurements' => ['admission' => $error->measurements]] : [])]);
 
             return;
         } finally {
@@ -111,22 +119,28 @@ final class GraphWorker
         }
         $last = microtime(true);
         try {
-            while (microtime(true) - $last < GraphProtocol::IDLE_SECONDS) {
+            while (microtime(true) - $last < GraphProtocol::IDLE_SECONDS && $this->coordinatorAlive()) {
                 $client = @stream_socket_accept($server, 1);
                 if ($client === false) {
                     continue;
                 }
-                $last = microtime(true);
                 stream_set_timeout($client, 2);
                 try {
                     $line = fgets($client, GraphProtocol::REQUEST_BYTES + 1);
                     $request = GraphProtocol::decode($line ?: '');
                     foreach (['protocol' => GraphProtocol::VERSION, 'job_id' => $this->job['job_id'], 'repository_id' => $this->context->id,
                         'instance_token' => $this->job['instance_token'], 'analysis_fingerprint' => $this->job['analysis_fingerprint'],
-                        'input_manifest_digest' => $this->job['input_manifest_digest']] as $key => $value) {
+                        'input_manifest_digest' => $this->source['metadata']['input_manifest_digest'] ?? $this->job['input_manifest_digest']] as $key => $value) {
                         if (($request[$key] ?? null) !== $value) {
                             throw new RuntimeException('worker_identity:'.$key);
                         }
+                    }
+                    if (($request['operation'] ?? '') === 'heartbeat') {
+                        if (is_float($request['last_user_activity'] ?? null) || is_int($request['last_user_activity'] ?? null)) {
+                            $last = max($last, min(microtime(true), $request['last_user_activity']));
+                        }
+
+                        continue;
                     }
                     if (($request['operation'] ?? '') === 'ping') {
                         GraphProtocol::send($client, $this->metadata('unverified'));
@@ -137,37 +151,36 @@ final class GraphWorker
                         fclose($client);
                         break;
                     }
-                    GraphRuntime::stage('query.freshness.before', $this->job);
-                    $before = $this->freshness();
-                    GraphRuntime::stage('query.freshness.after', $this->job);
-                    if (($request['operation'] ?? '') === 'fresh') {
-                        GraphProtocol::send($client, $this->metadata($before));
+                    $operation = $request['operation'] ?? '';
+                    if (! in_array($operation, ['fresh', 'ping'], true)) {
+                        $last = microtime(true);
+                    }
+                    $confirmation = $request['confirmation'] ?? null;
+                    $before = is_array($confirmation) ? ($confirmation['freshness'] ?? 'unverified') : 'unverified';
+                    if (! $this->epoch->unchanged()) {
+                        $before = 'unverified';
+                    }
+                    if ($operation === 'fresh') {
+                        GraphProtocol::send($client, [...$this->metadata($before), 'confirmation' => $confirmation]);
 
                         continue;
                     }
                     GraphRuntime::stage('query.before', $this->job);
-                    $result = $before === 'current' ? $this->dispatch($request['operation'] ?? '', $request['arguments'] ?? []) : null;
-                    GraphRuntime::stage('query.after', [...$this->job, 'operation' => $request['operation'] ?? '']);
-                    GraphRuntime::stage('query.recheck.before', $this->job);
-                    $freshness = $before === 'current' ? $this->freshness() : $before;
-                    GraphRuntime::stage('query.recheck.after', $this->job);
-                    $response = $this->metadata($freshness);
+                    GraphRuntime::clearSourceMismatch();
+                    $result = $this->dispatch($operation, $request['arguments'] ?? []);
+                    GraphRuntime::stage('query.after', [...$this->job, 'operation' => $operation]);
+                    $response = [...$this->metadata($before), 'operation' => $operation, 'confirmation' => $confirmation];
+                    if (GraphRuntime::sourceMismatch() !== null) {
+                        $response['freshness'] = 'stale';
+                        $response['reason'] = 'changed_inputs:'.GraphRuntime::sourceMismatch();
+                    }
                     if ($result !== null) {
-                        if ($freshness !== 'current') {
-                            $result['freshness'] = $freshness;
-                            if (isset($result['fresh'])) {
-                                $result['fresh'] = false;
-                            }
-                            if (isset($result['analysis']['checks_complete'])) {
-                                $result['analysis']['checks_complete'] = false;
-                            }
-                        }
                         $response['result'] = $result;
                     }
                     GraphProtocol::send($client, $response);
                 } catch (Throwable $error) {
                     try {
-                        GraphProtocol::send($client, [...$this->metadata('unverified'), 'ok' => false, 'reason' => $error->getMessage(),
+                        GraphProtocol::send($client, [...$this->metadata('unverified'), 'ok' => false, 'freshness' => str_starts_with($error->getMessage(), 'changed_inputs:') ? 'stale' : 'unverified', 'reason' => $error->getMessage(),
                             'error_code' => $error instanceof ArchitectureContextException ? $error->errorCode : null]);
                     } catch (Throwable) {
                     }
@@ -175,7 +188,6 @@ final class GraphWorker
                     if (is_resource($client)) {
                         fclose($client);
                     }
-                    $last = microtime(true);
                 }
             }
         } finally {
@@ -184,10 +196,33 @@ final class GraphWorker
         }
     }
 
+    /** A dead owner cannot renew or retire its map. Drain the current request before checking again. */
+    private function coordinatorAlive(): bool
+    {
+        $token = $this->job['coordinator_instance'];
+        $path = $this->directory.'/controller-'.$token.'.lock';
+        if (is_link($path) || ! is_file($path)) {
+            return false;
+        }
+        $lock = @fopen($path, 'r');
+        if ($lock === false) {
+            return false;
+        }
+        $released = flock($lock, LOCK_SH | LOCK_NB);
+        if ($released) {
+            flock($lock, LOCK_UN);
+        }
+        fclose($lock);
+
+        return ! $released;
+    }
+
     private function prepareFullProduct(): void
     {
         $product = $this->job['product'];
         $files = new Filesystem;
+        $scanStarted = hrtime(true);
+        $inputFiles = SourceManifest::scan($files, $this->context->rootPath, $this->job['scope'], $product['exclude'], true);
         $scope = AuditScope::package($product['scope']);
         $cache = ($product['cache'] ?? null) === null ? null
             : new ProjectGraphCache($files, $this->context->rootPath, $product['cache']);
@@ -214,8 +249,16 @@ final class GraphWorker
                     $diagnostics[] = ['code' => 'impact_notice', 'path' => $facts->path, ...$notice];
                 }
             }
+            if ($inputFiles !== SourceManifest::scan($files, $this->context->rootPath, $this->job['scope'], $product['exclude'], true)
+                || ! $this->epoch->unchanged()
+                || SourceManifest::identity($this->context->rootPath, AnalysisMode::Basic) !== $this->job['analysis_fingerprint']) {
+                throw new RuntimeException('changed_inputs_during_full_product');
+            }
             $this->source = ['snapshot' => hash('sha256', $loader->productKey($plan)), 'scope' => $scope->directories,
-                'changed' => false, 'diagnostics' => $diagnostics, 'metadata' => ['scope' => $this->job['scope'], 'exclude' => $product['exclude']],
+                'changed' => false, 'diagnostics' => $diagnostics, 'metadata' => ['scope' => $this->job['scope'], 'exclude' => $product['exclude'], 'input_files' => $inputFiles,
+                    'input_manifest_digest' => SourceManifest::inputDigest($inputFiles, SourceManifest::scopeState($this->context->rootPath, $this->job['scope']))],
+                'basis' => 'full_content_pre_post', 'confirmed_at' => gmdate('c'), 'last_full_scan_at' => gmdate('c'),
+                'scan_seconds' => (hrtime(true) - $scanStarted) / 1e9,
                 'analysis' => ['mode' => 'basic', 'deep_run' => false, 'checks_complete' => $graph->checksComplete()],
                 'cache' => ['read' => $contributions->lastRead ?? ['status' => 'skip', 'reason' => 'disabled'],
                     'write' => $contributions->lastWrite ?? ['status' => 'skip', 'reason' => 'disabled']]];
@@ -250,19 +293,32 @@ final class GraphWorker
     /** @return array<string, mixed> */
     private function metadata(?string $freshness = null): array
     {
-        $freshness ??= $this->freshness();
+        if (microtime(true) - $this->lastMemorySample >= 1) {
+            $this->processMemory = GraphProcessMemory::tree(getmypid());
+            $this->lastMemorySample = microtime(true);
+        }
+        $freshness ??= ($this->source['basis'] ?? null) === 'full_content_pre_post' ? 'current' : ($this->job['product'] === null ? 'last_confirmed' : $this->freshness());
 
         return ['protocol' => GraphProtocol::VERSION, 'repository_id' => $this->context->id,
-            'analysis_fingerprint' => $this->job['analysis_fingerprint'], 'input_manifest_digest' => $this->job['input_manifest_digest'],
-            'budget_seconds' => $this->job['budget_seconds'], 'request_id' => $this->job['request_id'], 'job_id' => $this->job['job_id'], 'instance_token' => $this->job['instance_token'],
-            'manifest_digest' => hash('sha256', serialize([$this->source['snapshot'], $this->job['product_key'], $this->job['input_manifest_digest']])),
+            'analysis_fingerprint' => $this->job['analysis_fingerprint'], 'input_manifest_digest' => $this->source['metadata']['input_manifest_digest'] ?? $this->job['input_manifest_digest'],
+            'budget_seconds' => $this->source['budget_seconds'] ?? $this->job['budget_seconds'], 'request_id' => $this->job['request_id'], 'job_id' => $this->job['job_id'], 'instance_token' => $this->job['instance_token'],
+            'manifest_digest' => hash('sha256', serialize([$this->source['snapshot'], $this->job['product_key'], $this->source['metadata']['input_manifest_digest'] ?? $this->job['input_manifest_digest']])),
             ...$this->diagnosticMetadata,
             'endpoint' => $this->job['endpoint'], 'pid' => getmypid(), 'snapshot_id' => $this->source['snapshot'],
             'snapshot_ref' => ['job_id' => $this->job['job_id'], 'snapshot_id' => $this->source['snapshot']],
-            'availability' => 'ready', 'freshness' => $freshness, 'verified_at' => gmdate('c'),
-            'ok' => $freshness === 'current', 'checks_complete' => $this->source['analysis']['checks_complete'], 'analysis' => $this->source['analysis'],
+            'availability' => 'ready', 'runtime_semantics' => 2, 'freshness' => $freshness, 'verified_at' => $this->source['confirmed_at'] ?? gmdate('c'),
+            'applied_sequence' => $this->source['applied_sequence'] ?? $this->job['through_sequence'],
+            'watch_session' => $this->source['watch_session'] ?? $this->job['watch_session'],
+            'basis' => $this->source['basis'] ?? 'full_content_pre_post', 'confirmed_at' => $this->source['confirmed_at'] ?? gmdate('c'),
+            'last_full_scan_at' => $this->source['last_full_scan_at'] ?? gmdate('c'),
+            'execution_mode' => $this->source['execution_mode'] ?? 'full_recompose', 'execution_reason' => $this->source['execution_reason'] ?? null,
+            'restore_reason' => $this->job['restore_reason'] ?? null,
+            'scan_seconds' => $this->source['scan_seconds'] ?? 0, 'full_scan_seconds' => $this->source['full_scan_seconds'] ?? 0,
+            'ok' => in_array($freshness, ['current', 'last_confirmed'], true), 'checks_complete' => $this->source['analysis']['checks_complete'], 'analysis' => $this->source['analysis'],
             'cache' => $this->source['cache'], 'deadline_exceeded' => false,
-            'measurements' => ['php_used' => memory_get_usage(), 'php_allocated' => memory_get_usage(true), 'php_peak' => memory_get_peak_usage(true)]];
+            'resource_policy' => [...(new GraphPolicy($this->context->settings['graph_runtime'] ?? []))->describe(),
+                ...(new GraphResources($this->context))->effective()],
+            'measurements' => ['process_tree' => $this->processMemory, 'rss_peak_bytes' => (getrusage()['ru_maxrss'] ?? 0) * (PHP_OS_FAMILY === 'Darwin' ? 1 : 1024), 'memory_limit' => ini_get('memory_limit'), 'php_used' => memory_get_usage(), 'php_allocated' => memory_get_usage(true), 'php_peak' => memory_get_peak_usage(true), 'build' => array_intersect_key($this->source['build_measurements'] ?? [], array_fill_keys(['executed_calls', 'reused_calls', 'transition_working_bytes', 'foundation_ns', 'total_ns', 'generation_digest_ns', 'set_read_ns', 'admission'], true))]];
     }
 
     /** @param array<string, mixed> $args
@@ -285,7 +341,7 @@ final class GraphWorker
         }
         if (in_array($operation, ['context', 'impact', 'reach', 'impact-pages'], true)) {
             $product = $this->job['product'];
-            $files = new Filesystem;
+            $files = new PinnedSourceFilesystem($this->context->rootPath, $this->source['metadata']['input_files']);
             $scope = AuditScope::package($product['audit_scope']);
             $cache = ($product['cache'] ?? null) === null ? null
                 : new ProjectGraphCache($files, $this->context->rootPath, $product['cache']);
@@ -329,7 +385,9 @@ final class GraphWorker
             return (new ArchitectureDiscovery(new Filesystem, $this->context->rootPath))->search($args['query'] ?? '', $args['kind'] ?? null, $args['limit'] ?? 20);
         }
         if ($operation === 'search') {
-            $result = (new GraphSearch($this->source['index']))->find($args['query'] ?? '', $args['kind'] ?? null, $args['path'] ?? null);
+            $search = new GraphSearch($this->source['index']);
+            $result = $search->find($args['query'] ?? '', $args['kind'] ?? null, $args['path'] ?? null);
+            $result['execution'] = $search->execution();
 
             return GraphPage::make('architecture-search', $args, $this->source['snapshot'], $this->source['scope'], $this->source['index']->diagnostics,
                 [...$result, 'analysis' => $this->source['analysis']], 'candidates', 4096);

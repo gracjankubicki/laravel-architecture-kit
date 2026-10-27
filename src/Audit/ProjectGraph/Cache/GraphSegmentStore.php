@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache;
 
 use Closure;
+use GracjanKubicki\ArchitectureKit\Standalone\GraphAdmissionRefused;
 use GracjanKubicki\ArchitectureKit\Standalone\RepositoryContext;
 use GracjanKubicki\ArchitectureKit\Support\MemoryLimit;
 use Illuminate\Filesystem\Filesystem;
@@ -61,9 +62,11 @@ final readonly class GraphSegmentStore
     }
 
     /** @param list<string> $fields
+     * @param  list<string>|null  $manifestFields
+     * @param  array<string, Closure>  $collectors
      * @return array{status: string, reason: ?string, state?: array<string, array<mixed>>, metadata?: array<string, mixed>, generation?: string|null, decoded?: bool}
      */
-    public function read(string $identity, array $fields, ?Closure $decode = null, ?Closure $acceptMetadata = null, ?string $skipGeneration = null): array
+    public function read(string $identity, array $fields, ?Closure $decode = null, ?Closure $acceptMetadata = null, ?string $skipGeneration = null, ?array $manifestFields = null, ?Closure $transform = null, array $collectors = [], ?Closure $fieldReady = null, ?Closure $beforeDecode = null): array
     {
         $decoded = false;
         $generation = null;
@@ -89,7 +92,7 @@ final readonly class GraphSegmentStore
             }
             $manifest = json_decode($manifestRaw, true, 32, JSON_THROW_ON_ERROR);
             if (! is_array($manifest) || ($manifest['schema'] ?? null) !== self::SCHEMA || ($manifest['identity'] ?? null) !== $identity
-                || ($manifest['generation_id'] ?? null) !== $generation || array_keys($manifest['fields'] ?? []) !== $fields
+                || ($manifest['generation_id'] ?? null) !== $generation || array_keys($manifest['fields'] ?? []) !== ($manifestFields ?? $fields)
                 || ! is_array($manifest['metadata'] ?? null)) {
                 throw new RuntimeException('manifest_shape');
             }
@@ -98,6 +101,20 @@ final readonly class GraphSegmentStore
             }
             if ($acceptMetadata !== null && ! $acceptMetadata($manifest['metadata'])) {
                 throw new RuntimeException('changed_inputs');
+            }
+            if ($beforeDecode !== null) {
+                $reservation = 3 * 1024 * 1024;
+                foreach ($fields as $field) {
+                    foreach ($manifest['fields'][$field]['segments'] ?? [] as $segment) {
+                        if (! is_array($segment) || ! is_int($segment['decoded_bytes'] ?? null) || ! is_int($segment['bytes'] ?? null)
+                            || $segment['decoded_bytes'] < 0 || $segment['decoded_bytes'] > self::SEGMENT_BYTES
+                            || $segment['bytes'] < 0 || $segment['bytes'] > self::SEGMENT_BYTES) {
+                            throw new RuntimeException('segment_shape:'.$field);
+                        }
+                        $reservation += $segment['decoded_bytes'] * 14 + $segment['bytes'];
+                    }
+                }
+                $beforeDecode($reservation);
             }
             $state = [];
             $seenFiles = [];
@@ -113,6 +130,7 @@ final readonly class GraphSegmentStore
                     throw new RuntimeException('codec_unavailable');
                 }
                 $values = [];
+                $consumed = 0;
                 foreach ($description['segments'] as $ordinal => $segment) {
                     if (! is_array($segment) || array_keys($segment) !== ['ordinal', 'file', 'bytes', 'decoded_bytes', 'records', 'digest']
                         || $segment['ordinal'] !== $ordinal || ! is_string($segment['file'])
@@ -160,20 +178,40 @@ final readonly class GraphSegmentStore
                         }
                         unset($record);
                     }
-                    $values += $pairs;
-                    if (count($values) !== $before + count($pairs)) {
-                        throw new RuntimeException('duplicate_key:'.$field);
+                    if ($transform !== null) {
+                        foreach ($pairs as $key => &$record) {
+                            $record = $transform($field, $key, $record);
+                        }
+                        unset($record);
+                    }
+                    if (isset($collectors[$field])) {
+                        foreach ($pairs as $key => $record) {
+                            if ($collectors[$field]($key, $record) !== true) {
+                                throw new RuntimeException('collector_record:'.$field);
+                            }
+                            $consumed++;
+                        }
+                    } else {
+                        $values += $pairs;
+                        if (count($values) !== $before + count($pairs)) {
+                            throw new RuntimeException('duplicate_key:'.$field);
+                        }
                     }
                     unset($pairs);
                     $this->measure('append', $time);
                 }
-                if (count($values) !== $description['records']) {
+                if ((isset($collectors[$field]) ? $consumed : count($values)) !== $description['records']) {
                     throw new RuntimeException('field_records:'.$field);
                 }
                 $state[$field] = $values;
+                if ($fieldReady !== null) {
+                    $fieldReady($field, $values);
+                }
             }
 
             return ['status' => 'hit', 'reason' => null, 'state' => $state, 'metadata' => $manifest['metadata'], 'generation' => $generation, 'decoded' => $decoded];
+        } catch (GraphAdmissionRefused $error) {
+            throw $error;
         } catch (Throwable $error) {
             return ['decoded' => $decoded, 'generation' => is_string($generation) ? $generation : null, 'status' => in_array($error->getMessage(), ['budget', 'codec_unavailable'], true) ? 'skip' : 'error', 'reason' => $error->getMessage()];
         }
@@ -187,7 +225,7 @@ final readonly class GraphSegmentStore
     {
         try {
             $this->identity($identity);
-            $this->budget(self::SEGMENT_BYTES * 3);
+            $this->budget(4 * self::SEGMENT_BYTES + self::MANIFEST_BYTES);
             $generation = bin2hex(random_bytes(16));
             $root = $this->directory.'/'.$generation;
             $this->boundary($root);
@@ -205,6 +243,7 @@ final readonly class GraphSegmentStore
                 $rows = [];
                 $bytes = 2;
                 foreach ($records as $key => $record) {
+                    $this->budget(4 * self::SEGMENT_BYTES + self::MANIFEST_BYTES);
                     $count++;
                     $row = self::json((string) $key).':'.self::json($record);
                     if (strlen($row) + 2 > self::SEGMENT_BYTES) {
@@ -272,6 +311,7 @@ final readonly class GraphSegmentStore
      */
     private function segment(string $root, string $field, int $ordinal, array $rows, string $encoding): array
     {
+        $this->budget(4 * self::SEGMENT_BYTES + self::MANIFEST_BYTES);
         $raw = '{'.implode(',', $rows).'}';
         $decodedBytes = strlen($raw);
         if ($decodedBytes > self::SEGMENT_BYTES) {
@@ -286,7 +326,7 @@ final readonly class GraphSegmentStore
         }
         $file = $field.'-'.$ordinal.'.json';
         $this->put($root.'/'.$file, $raw);
-        ($this->barrier ?? static function (): void {})('segment');
+        ($this->barrier ?? static function (): void {})('segment', $field);
 
         return ['ordinal' => $ordinal, 'file' => $file, 'bytes' => strlen($raw), 'decoded_bytes' => $decodedBytes, 'records' => count($rows), 'digest' => hash('sha256', $raw)];
     }
