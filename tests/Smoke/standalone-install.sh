@@ -58,7 +58,7 @@ if ($argv[1] === 'cleanup') {
 }
 if ($argv[1] === 'json') {
     $map = json_decode(file_get_contents($argv[2]), true, flags: JSON_THROW_ON_ERROR);
-    check(($map['ok'] ?? false) && ($map['availability'] ?? '') === 'ready' && ($map['freshness'] ?? '') === 'current', 'map prepare must be ready/current');
+    check(($map['ok'] ?? false) && ($map['availability'] ?? '') === 'ready' && ($map['freshness'] ?? '') === 'last_confirmed', 'map prepare must be ready/last_confirmed');
     $search = json_decode(file_get_contents($argv[3]), true, flags: JSON_THROW_ON_ERROR);
     check(($search['ok'] ?? false) && ! empty($search['candidates']), 'CLI search must return candidates');
     check(str_contains(json_encode($search), 'InstallWitness'), 'CLI search must find fixture class');
@@ -91,7 +91,7 @@ try {
     send(['jsonrpc' => '2.0', 'method' => 'notifications/initialized']);
     send(['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call', 'params' => ['name' => 'architecture-map', 'arguments' => ['action' => 'prepare']]]);
     $map = json_decode(receive(2)['content'][0]['text'], true, flags: JSON_THROW_ON_ERROR);
-    check(($map['availability'] ?? '') === 'ready' && ($map['freshness'] ?? '') === 'current', 'MCP map must be ready/current');
+    check(($map['availability'] ?? '') === 'ready' && ($map['freshness'] ?? '') === 'last_confirmed', 'MCP map must be ready/last_confirmed');
     send(['jsonrpc' => '2.0', 'id' => 3, 'method' => 'tools/call', 'params' => ['name' => 'architecture-search', 'arguments' => ['query' => 'InstallWitness']]]);
     $search = json_decode(receive(3)['content'][0]['text'], true, flags: JSON_THROW_ON_ERROR);
     check(! empty($search['result']['candidates']), 'MCP search must return candidates');
@@ -132,5 +132,5 @@ for variant in default custom; do
     php "${WORK_ROOT}/check.php" json "${WORK_ROOT}/${variant}-map.json" "${WORK_ROOT}/${variant}-search.json"
     php "${WORK_ROOT}/check.php" mcp "${BIN_PATH}" "${TOOL_HOME}" "${WORK_ROOT}/repo" "${WORK_ROOT}/${variant}-mcp.stderr"
     test ! -e "${WORK_ROOT}/repo/vendor/SOURCE_AUTOLOAD_EXECUTED"
-    printf 'PASS standalone Composer install: %s, ready/current, CLI/MCP nonempty, source-only\n' "${variant}"
+    printf 'PASS standalone Composer install: %s, ready/last_confirmed, CLI/MCP nonempty, source-only\n' "${variant}"
 done
