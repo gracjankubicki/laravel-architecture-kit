@@ -128,8 +128,8 @@ final class RuntimeDistributionTest extends TestCase
         $result = $installer->install();
         self::assertTrue($result['ok']);
         self::assertCount(2, $calls);
-        self::assertStringContainsString('/runtime-v0.1.0/', $calls[0]);
-        self::assertSame('0.1.0', $installer->binary()->descriptor()['runtime_version']);
+        self::assertStringContainsString('/runtime-v0.2.0/', $calls[0]);
+        self::assertSame('0.2.0', $installer->binary()->descriptor()['runtime_version']);
         self::assertDirectoryDoesNotExist($this->home.'/engines');
         file_put_contents($installer->binary()->path, 'corrupt');
         $this->expectException(RuntimeException::class);
@@ -167,12 +167,59 @@ final class RuntimeDistributionTest extends TestCase
                 self::assertStringContainsString('runtime is not installed', $error->getMessage());
             }
             self::assertTrue($installer->install()['ok']);
-            self::assertSame('0.1.0', $installer->binary()->descriptor()['runtime_version']);
+            self::assertSame('0.2.0', $installer->binary()->descriptor()['runtime_version']);
         } finally {
             if ($process->isRunning()) {
                 $process->stop(0, 9);
             }
         }
+    }
+
+    public function test_notice_bytes_are_shipped_in_the_actual_runtime(): void
+    {
+        $process = new Process([RuntimeFixture::native(), '--licenses'], '/', timeout: 2);
+        $process->run();
+        self::assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        self::assertSame(file_get_contents(dirname(__DIR__, 4).'/runtime/src/graph/compose/SORT-NOTICE.txt'), $process->getOutput());
+    }
+
+    public function test_current_installation_coexists_with_legacy_and_failed_upgrade_preserves_both(): void
+    {
+        $legacyPath = getenv('ARCHITECTURE_KIT_TEST_LEGACY_RUNTIME');
+        if (! is_string($legacyPath) || ! is_file($legacyPath)) {
+            self::markTestSkipped('OPEN: explicit native runtime 0.1.0 binary required for coexistence.');
+        }
+        $legacy = file_get_contents($legacyPath);
+        $manifest = RuntimeFixture::manifest($legacy);
+        $manifest['runtime_version'] = '0.1.0';
+        $old = new RuntimeInstallation($this->home, static fn (string $url): string => str_ends_with($url, 'manifest.json') ? json_encode($manifest, JSON_THROW_ON_ERROR) : $legacy, version: '0.1.0');
+        self::assertTrue($old->install()['ok']);
+        $oldPath = $old->binary()->path;
+        $oldHash = hash_file('sha256', $oldPath);
+        $oldMetadata = file_get_contents(dirname($oldPath).'/installation.json');
+        $reader = new RuntimeInstallation($this->home, static function (): string {
+            self::fail('Version selection must not download.');
+        });
+        self::assertSame($oldPath, $reader->watchBinary()->path);
+        $current = file_get_contents(RuntimeFixture::native());
+        $currentManifest = RuntimeFixture::manifest($current);
+        $installer = new RuntimeInstallation($this->home, static fn (string $url): string => str_ends_with($url, 'manifest.json') ? json_encode($currentManifest, JSON_THROW_ON_ERROR) : $current);
+        self::assertTrue($installer->install()['ok']);
+        $newPath = $installer->binary()->path;
+        $newMetadata = file_get_contents(dirname($newPath).'/installation.json');
+        self::assertNotSame($oldPath, $newPath);
+        self::assertSame($newPath, $reader->watchBinary()->path);
+        self::assertSame('0.2.0', $reader->binary()->descriptor()['runtime_version']);
+        try {
+            (new RuntimeInstallation($this->home, static fn (string $url): string => str_ends_with($url, 'manifest.json') ? json_encode($currentManifest, JSON_THROW_ON_ERROR) : 'corrupt'))->install();
+            self::fail('Corrupt upgrade accepted.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('SHA-256 or size', $error->getMessage());
+        }
+        self::assertSame($oldHash, hash_file('sha256', $oldPath));
+        self::assertSame($oldMetadata, file_get_contents(dirname($oldPath).'/installation.json'));
+        self::assertSame(hash('sha256', $current), hash_file('sha256', $newPath));
+        self::assertSame($newMetadata, file_get_contents(dirname($newPath).'/installation.json'));
     }
 
     public function test_wrong_version_and_handshake_run_without_roots_and_leave_no_ready_installation(): void
@@ -195,7 +242,7 @@ final class RuntimeDistributionTest extends TestCase
                 self::fail('Bad probe accepted.');
             } catch (RuntimeException) {
                 self::assertStringNotContainsString('"kind":"watch"', (string) file_get_contents($log));
-                self::assertFileDoesNotExist($this->home.'/runtimes/0.1.0/'.RuntimePlatform::current().'/architecture-kit-runtime');
+                self::assertFileDoesNotExist($this->home.'/runtimes/0.2.0/'.RuntimePlatform::current().'/architecture-kit-runtime');
             }
         }
     }

@@ -247,7 +247,7 @@ final class GraphPerformanceSmoke
         }
         if (is_string($native = getenv('ARCHITECTURE_KIT_TEST_RUNTIME')) && is_file($native)) {
             $platform = RuntimePlatform::current();
-            $store = new StateStore($home.'/runtimes/0.1.0/'.$platform, $home);
+            $store = new StateStore($home.'/runtimes/0.2.0/'.$platform, $home);
             copy($native, $store->directory.'/architecture-kit-runtime');
             chmod($store->directory.'/architecture-kit-runtime', 0700);
             $store->update('installation', static fn () => ['platform' => $platform,

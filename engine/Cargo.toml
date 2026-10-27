@@ -6,6 +6,7 @@ publish = false
 license = "MIT"
 
 [dependencies]
+libc = "=0.2.190"
 mago-syntax = "=1.57.0"
 mago-syntax-core = "=1.57.0"
 mago-span = "=1.57.0"

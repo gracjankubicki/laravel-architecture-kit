@@ -15,7 +15,7 @@ final readonly class RuntimeManifest
     public function __construct(public array $value)
     {
         WatchProtocol::fields($value, ['schema', 'runtime_version', 'protocol', 'notify_version', 'platforms']);
-        if (($value['schema'] ?? null) !== 1 || ($value['runtime_version'] ?? null) !== WatchProtocol::VERSION
+        if (($value['schema'] ?? null) !== 1 || ! in_array($value['runtime_version'] ?? null, [WatchProtocol::VERSION, WatchProtocol::LEGACY_VERSION], true)
             || ($value['protocol'] ?? null) !== WatchProtocol::PROTOCOL || ($value['notify_version'] ?? null) !== '8.2.1'
             || ! is_array($value['platforms'] ?? null)) {
             throw new RuntimeException('Runtime release manifest is incompatible.');

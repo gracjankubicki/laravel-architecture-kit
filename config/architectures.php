@@ -18,6 +18,9 @@ return [
         'command' => null,
     ],
     'graph_runtime' => [
+        // Standalone Basic map storage; independent of analysis.engine (php or mago).
+        // Rust is explicit opt-in until large-project parity and performance are verified.
+        'representation' => 'php',
         // Finite PHP memory_limit supplies each ceiling unless configured explicitly.
         // These are global user/tool-home budgets, not evidence of OS free memory.
         // Seed global ceilings only on the first registry creation; later requests can only reduce them.

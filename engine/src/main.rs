@@ -6,6 +6,7 @@ mod basic_impact;
 mod basic_product;
 mod basic_structure;
 mod basic_tests;
+mod measurement;
 mod syntax;
 use mago_allocator::LocalArena;
 use mago_database::file::{File, FileId};
@@ -161,13 +162,17 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
     if request.get("product").is_some() && !basic && request["product"] != "syntax-tree-v1" {
         return Err("Unsupported analysis product".into());
     }
+    let mut measurement = measurement::Recorder::new(request);
     if basic {
-        if let Some(result) = basic_product::limited(request)? {
+        if let Some(mut result) = basic_product::limited(request)? {
+            measurement.attach(&mut result);
             return Ok(result);
         }
     }
+    measurement.point("parse", "begin");
     let arena = LocalArena::new();
     let program = parse_file_content(&arena, FileId::new(path.as_bytes()), source);
+    measurement.point("parse", "end");
     let target_version = php_version.parse::<PHPVersion>()?;
     let mut diagnostics: Vec<Value> = program
         .errors
@@ -182,7 +187,10 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
     let mut syntax = json!({"nodes":[],"roots":[]});
     let mut ir_built = false;
     if diagnostics.is_empty() {
+        measurement.point("names", "begin");
         let names = NameResolver::new(&arena).resolve(program);
+        measurement.point("names", "end");
+        measurement.point("semantics", "begin");
         let file = File::ephemeral(
             Cow::Owned(path.as_bytes().to_vec()),
             Cow::Owned(source.to_vec()),
@@ -204,7 +212,9 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
                     "start":span.map(|s| s.start.offset), "end":span.map(|s| s.end.offset)}));
             }
         }
+        measurement.point("semantics", "end");
         if diagnostics.is_empty() {
+            measurement.point("ir", "begin");
             match syntax::document(program, &names) {
                 Ok(tree) => {
                     syntax = tree;
@@ -218,10 +228,15 @@ fn analyze(request: &Value) -> Result<Value, Box<dyn std::error::Error>> {
                     "start":error.span.start.offset, "end":error.span.end.offset}),
                 ),
             }
+            measurement.point("ir", "end");
         }
     }
     if basic {
-        return basic_product::response(request, syntax, diagnostics, ir_built, None);
+        measurement.point("facts", "begin");
+        let mut result = basic_product::response(request, syntax, diagnostics, ir_built, None)?;
+        measurement.point("facts", "end");
+        measurement.attach(&mut result);
+        return Ok(result);
     }
     Ok(
         json!({"schema":SCHEMA, "path":path, "source_hash":source_hash,

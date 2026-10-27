@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add explicit `graph_runtime.representation=rust` for standalone Basic maps, independently of the PHP or Mago parser. Keep PHP as the default until large-project parity is verified.
+- Store, compose, patch, restore and query Basic graph data in runtime 0.2.0 with bounded PHP responses, generation leases and explicit memory admission. Retain PHP audit rules and proposed-change assessments over temporary bounded projections.
+- Prepare four-platform CI for native composition, queries, dependent updates and restore through CLI and MCP. Ship the sort implementation's license notice in the runtime binary.
+
+### Fixed
+
+- Preserve the active native owner's memory registry entry when retiring an older generation in the same process.
+- Apply audit product exclusions before native-backed context rules and legacy assessments, independently of graph exclusions.
+- Resolve context selectors before looking up tests, retaining full temporary test witnesses for paths and FQCNs.
+- Remove native snapshots and pointers during explicit epoch-protected cache clear while allowing pinned RAM queries to finish.
+
+- Drain active responses before updating a reused native worker or checking its readiness, preventing large socket responses from producing false runtime-disconnection failures.
+- Compare native cache scope metadata by field values rather than JSON key order, preserving valid restore and patch reuse.
+
+Runtime 0.2.0 is installed separately beside watcher-only 0.1.0. It is not downloaded by normal map queries, and an unavailable Rust map does not fall back to PHP. Large-application parity, four-platform execution and public latency acceptance remain open; these changes do not enable global hooks or automatic audits.
+
 ## v0.13.0 - 2026-10-27
 
 ### Added

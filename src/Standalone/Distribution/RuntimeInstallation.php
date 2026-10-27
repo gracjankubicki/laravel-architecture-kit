@@ -16,8 +16,11 @@ final readonly class RuntimeInstallation
     public const RELEASE_URL = 'https://github.com/gracjankubicki/laravel-architecture-kit/releases/download/runtime-v';
 
     /** @param (Closure(string, int): string)|null $download */
-    public function __construct(private string $home, private ?Closure $download = null)
+    public function __construct(private string $home, private ?Closure $download = null, private string $version = WatchProtocol::VERSION)
     {
+        if (! in_array($version, [WatchProtocol::VERSION, WatchProtocol::LEGACY_VERSION], true)) {
+            throw new RuntimeException('Unsupported runtime installation version.');
+        }
         if (! str_starts_with($home, '/') || preg_match('~/\.\.?(/|$)~', $home)) {
             throw new RuntimeException('Runtime home must be an absolute external directory without traversal.');
         }
@@ -51,10 +54,23 @@ final readonly class RuntimeInstallation
         if (($metadata['platform'] ?? null) !== $platform || ! is_array($metadata['manifest'] ?? null)) {
             throw new RuntimeException('Runtime installation metadata is incompatible.');
         }
+        if (($metadata['manifest']['runtime_version'] ?? null) !== $this->version) {
+            throw new RuntimeException('Runtime installation version mismatch.');
+        }
         $binary = new RuntimeBinary($directory.'/architecture-kit-runtime', $this->home, new RuntimeManifest($metadata['manifest']), $platform);
         $binary->verify();
 
         return $binary;
+    }
+
+    /** Watcher consumers can use the published legacy installation when the candidate is absent. */
+    public function watchBinary(): RuntimeBinary
+    {
+        if ($this->version === WatchProtocol::VERSION && ! is_dir($this->directory(RuntimePlatform::current()))) {
+            return (new self($this->home, version: WatchProtocol::LEGACY_VERSION))->binary();
+        }
+
+        return $this->binary();
     }
 
     /** @return array<string, mixed> */
@@ -62,12 +78,15 @@ final readonly class RuntimeInstallation
     {
         $platform ??= RuntimePlatform::current();
         $directory = $this->directory($platform);
-        $url = self::RELEASE_URL.WatchProtocol::VERSION.'/';
+        $url = self::RELEASE_URL.$this->version.'/';
         $value = json_decode($this->fetch($url.'manifest.json', 65536), true, 32, JSON_THROW_ON_ERROR);
         if (! is_array($value)) {
             throw new RuntimeException('Runtime manifest must be an object.');
         }
         $manifest = new RuntimeManifest($value);
+        if ($manifest->value['runtime_version'] !== $this->version) {
+            throw new RuntimeException('Runtime manifest version does not match the selected installation.');
+        }
         $artifact = $manifest->artifact($platform);
         $body = $this->fetch($url.$artifact['file'], $artifact['bytes']);
         if (strlen($body) !== $artifact['bytes'] || ! hash_equals($artifact['sha256'], hash('sha256', $body))) {
@@ -100,14 +119,14 @@ final readonly class RuntimeInstallation
             return ['platform' => $platform, 'manifest' => $manifest->value];
         });
 
-        return ['ok' => true, 'runtime_version' => WatchProtocol::VERSION, 'platform' => $platform, 'binary' => $this->binary($platform)->path];
+        return ['ok' => true, 'runtime_version' => $this->version, 'platform' => $platform, 'binary' => $this->binary($platform)->path];
     }
 
     private function directory(string $platform): string
     {
         RuntimePlatform::linkage($platform);
 
-        return rtrim($this->home, '/').'/runtimes/'.WatchProtocol::VERSION.'/'.$platform;
+        return rtrim($this->home, '/').'/runtimes/'.$this->version.'/'.$platform;
     }
 
     private function fetch(string $url, int $limit): string

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Standalone;
 
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
+use GracjanKubicki\ArchitectureKit\Standalone\NativeGraph\NativeClientRegistration;
+use Illuminate\Container\Container;
 use RuntimeException;
 use Throwable;
 
@@ -118,14 +120,38 @@ final class GraphRuntime
 
     public static function context(string $root): ?RepositoryContext
     {
-        return self::$worker || ! self::$enabled ? null : RepositoryContext::forRoot($root);
+        if (self::$worker) {
+            return null;
+        }
+        $context = RepositoryContext::forRoot($root);
+        if ($context !== null) {
+            return self::$enabled || $context->representation() === 'rust' ? $context : null;
+        }
+        if (self::representation($root) === 'rust') {
+            throw new RuntimeException('native_basic_context_required: select an explicit repository and tool home.');
+        }
+
+        return null;
+    }
+
+    public static function representation(string $root): string
+    {
+        if (($context = RepositoryContext::forRoot($root)) !== null) {
+            return $context->representation();
+        }
+        $value = Container::getInstance()->bound('config') ? config('architectures.graph_runtime.representation', 'php') : 'php';
+        if (! is_string($value) || ! in_array($value, ['php', 'rust'], true)) {
+            throw new RuntimeException('graph_runtime.representation must be php or rust.');
+        }
+
+        return $value;
     }
 
     public function __construct(private readonly RepositoryContext $context) {}
 
     public function directory(): string
     {
-        $identity = serialize([$this->context->id, $this->context->profile, $this->context->execute, $this->context->runtimeRoutes, $this->context->advisoryOnly]);
+        $identity = serialize([$this->context->id, $this->context->profile, $this->context->execute, $this->context->runtimeRoutes, $this->context->advisoryOnly, $this->context->representation()]);
         $directory = $this->context->storage.'/runtime/'.substr(hash('sha256', $identity), 0, 32);
         new StateStore($directory, $this->context->home);
 
@@ -137,6 +163,9 @@ final class GraphRuntime
     {
         if (! in_array($action, ['prepare', 'status', 'result'], true) || $action !== 'prepare' && ! is_string($job)) {
             throw new RuntimeException('Use prepare, status JOB_ID or result JOB_ID.');
+        }
+        if (! self::inWorker() && $this->context->representation() === 'rust') {
+            NativeClientRegistration::register($this->context);
         }
         $start = self::$requestStarted ?? hrtime(true);
         $response = $this->request(['action' => $action, 'job_id' => $job]);
@@ -165,6 +194,9 @@ final class GraphRuntime
      * @return array<string, mixed> */
     public function query(string $operation, array $arguments, ?array $product = null): array
     {
+        if (! self::inWorker() && $this->context->representation() === 'rust') {
+            NativeClientRegistration::register($this->context);
+        }
         $start = self::$requestStarted ?? hrtime(true);
         if ($product === null) {
             $response = $this->request(['action' => 'ready-query', 'operation' => $operation, 'arguments' => $arguments]);
@@ -198,6 +230,9 @@ final class GraphRuntime
      * @return array<string, mixed> */
     private function prepareProduct(array $product): array
     {
+        if (! self::inWorker() && $this->context->representation() === 'rust') {
+            NativeClientRegistration::register($this->context);
+        }
         $start = self::$requestStarted ?? hrtime(true);
         $response = $this->request(['action' => 'prepare', 'product' => $product]);
         $budget = $response['budget_seconds'] ?? 20;

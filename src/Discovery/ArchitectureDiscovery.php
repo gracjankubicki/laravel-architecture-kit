@@ -43,7 +43,7 @@ final class ArchitectureDiscovery
                     $response = (new GraphRuntime($context))->query('discovery', compact('query', 'kind', 'limit'));
 
                     return isset($response['result']) ? [...$response['result'], 'runtime' => array_diff_key($response, ['result' => true])]
-                        : [...$response, 'cmd' => 'search', 'status' => $response['availability'], 'msg' => 'Map preparation is still running; use architecture-map result.'];
+                        : [...$response, 'cmd' => 'search', 'status' => $response['availability'], 'msg' => ($response['availability'] ?? null) === 'building' ? 'Map preparation is still running; use architecture-map result.' : 'Source map is unavailable: '.($response['reason'] ?? 'unknown')];
                 }
 
                 return $this->basicSearch($query, $kind, $limit);

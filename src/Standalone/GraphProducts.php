@@ -12,6 +12,33 @@ use RuntimeException;
 /** Exactly one prepared full product per fresh worker, separate from CatalogIndex. */
 final class GraphProducts
 {
+    private static ?ProjectGraphSnapshot $assessment = null;
+
+    private static ?ProjectGraphSnapshot $assessmentTests = null;
+
+    public static function assessmentGraph(): ?ProjectGraphSnapshot
+    {
+        return self::$assessmentTests ?? self::$assessment;
+    }
+
+    /** @template T
+     * @param \Closure(): T $run
+     * @return T */
+    public static function withNativeAssessment(ProjectGraphSnapshot $graph, \Closure $run, ?ProjectGraphSnapshot $testGraph = null): mixed
+    {
+        if (self::$assessment !== null || self::$snapshot !== null) {
+            throw new RuntimeException('Nested or resident PHP assessment is unavailable.');
+        }
+        self::$assessment = $graph;
+        self::$assessmentTests = $testGraph;
+        try {
+            return $run();
+        } finally {
+            self::$assessment = null;
+            self::$assessmentTests = null;
+        }
+    }
+
     private static ?string $key = null;
 
     private static ?ProjectGraphSnapshot $snapshot = null;
@@ -37,6 +64,9 @@ final class GraphProducts
      * @param list<string> $exclude */
     public static function plan(ProjectGraphLoader $loader, array $exclude): ?GraphBuildPlan
     {
+        if (self::$assessment !== null) {
+            return $loader->plan($exclude);
+        }
         if (! self::$sealed || self::$plan === null) {
             return null;
         }
@@ -49,6 +79,9 @@ final class GraphProducts
 
     public static function get(string $key): ?ProjectGraphSnapshot
     {
+        if (self::$assessment !== null) {
+            return self::$assessment;
+        }
         if (! self::$sealed) {
             return null;
         }

@@ -29,7 +29,7 @@ final readonly class ArchitecturePath
             $response = (new GraphRuntime($context))->query('path', [...compact('from', 'to', 'exclude', 'limit', 'depth'), 'audit_scope' => $this->scope->directories]);
 
             return isset($response['result']) ? [...$response['result'], 'runtime' => array_diff_key($response, ['result' => true])]
-                : [...$response, 'cmd' => 'path', 'm' => 'E_MAP_PENDING', 'msg' => 'Collect architecture-map result using job_id.'];
+                : [...$response, 'cmd' => 'path', 'm' => 'E_MAP_PENDING', 'msg' => ($response['availability'] ?? null) === 'building' ? 'Collect architecture-map result using job_id.' : 'Source map is unavailable: '.($response['reason'] ?? 'unknown')];
         }
         if (trim($from) === '' || trim($to) === '') {
             return self::error('E_PATH_ENDPOINT_REQUIRED', 'Provide both from and to as a class, method or PHP file.');

@@ -12,6 +12,10 @@ final readonly class GraphResources
 {
     private StateStore $store;
 
+    private string $home;
+
+    private bool $native;
+
     public int $residentBudget;
 
     public int $transitionBudget;
@@ -22,6 +26,8 @@ final readonly class GraphResources
 
     public function __construct(RepositoryContext $context)
     {
+        $this->home = $context->home;
+        $this->native = $context->representation() === 'rust';
         $this->store = new StateStore($context->home);
         $policy = new GraphPolicy($context->settings['graph_runtime'] ?? []);
         $this->requestedResident = $context->settings['graph_runtime']['resident_budget_bytes'] ?? null;
@@ -134,7 +140,7 @@ final readonly class GraphResources
         $this->store->update('graph-resources-v2', static function (array $registry) use ($ticket, $token, &$claimed): array {
             if (($registry['builder'] ?? null) === null && array_key_first($registry['queue'] ?? []) === $ticket) {
                 $registry['builder'] = [...$registry['queue'][$ticket], 'ticket' => $ticket, 'token' => $token, 'started_at' => microtime(true)];
-                unset($registry['queue'][$ticket]);
+                unset($registry['queue'][$ticket], $registry['native_grants'][$ticket]);
                 $claimed = true;
             }
 
@@ -176,6 +182,7 @@ final readonly class GraphResources
                 $dead[$ticket] = $entry;
             }
         }
+        $this->recoverNativeGrants();
         if ($dead === []) {
             return;
         }
@@ -188,7 +195,7 @@ final readonly class GraphResources
                     unset($registry['residents'][substr($ticket, 9)]);
                 }
                 if (($registry['queue'][$ticket] ?? null) === $entry) {
-                    unset($registry['queue'][$ticket]);
+                    unset($registry['queue'][$ticket], $registry['native_grants'][$ticket]);
                 }
                 if (($registry['builder'] ?? null) === $entry) {
                     $registry['builder'] = null;
@@ -199,10 +206,46 @@ final readonly class GraphResources
         });
     }
 
+    private function recoverNativeGrants(): void
+    {
+        $snapshot = $this->store->read('graph-resources-v2');
+        $entries = [];
+        foreach (['native_grants', 'native_clients'] as $kind) {
+            foreach ($snapshot[$kind] ?? [] as $ticket => $grant) {
+                $entries[] = [$kind, $ticket, $grant];
+            }
+        }
+        foreach ($entries as [$kind, $ticket, $grant]) {
+            $name = $grant['lock'] ?? '';
+            if (! is_string($name) || ! preg_match('/^native-(?:grant|client)-[a-f0-9]{64}\.lock$/D', $name)) {
+                continue;
+            }
+            $path = $this->home.'/'.$name;
+            StateStore::assertBoundary($path, $this->home);
+            if (is_link($path)) {
+                continue;
+            }
+            $lock = @fopen($path, 'r');
+            if ($lock !== false && flock($lock, LOCK_SH | LOCK_NB)) {
+                $this->store->update('graph-resources-v2', static function (array $registry) use ($kind, $ticket, $grant): array {
+                    if (($registry[$kind][$ticket] ?? null) === $grant) {
+                        unset($registry[$kind][$ticket]);
+                    }
+
+                    return $registry;
+                });
+                flock($lock, LOCK_UN);
+            }
+            if (is_resource($lock)) {
+                fclose($lock);
+            }
+        }
+    }
+
     public function release(string $ticket): void
     {
         $this->store->update('graph-resources-v2', static function (array $registry) use ($ticket): array {
-            unset($registry['queue'][$ticket]);
+            unset($registry['queue'][$ticket], $registry['native_grants'][$ticket]);
             if (($registry['builder']['ticket'] ?? null) === $ticket) {
                 $registry['builder'] = null;
             }
@@ -217,6 +260,17 @@ final readonly class GraphResources
         $this->store->update('graph-resources-v2', function (array $registry) use ($token, $entry): array {
             $registry['residents'][$token] = [...($registry['residents'][$token] ?? []), ...$entry];
             $total = array_sum(array_column($registry['residents'], 'bytes')) + array_sum(array_column($registry['controllers'] ?? [], 'bytes'));
+            $nativeRows = null;
+            $nativeRoots = [];
+            if ($this->native) {
+                $entries = [...array_values($registry['residents']), ...array_values($registry['controllers'] ?? []), ...array_values($registry['native_clients'] ?? [])];
+                $roots = array_column($entries, 'pid');
+                $sample = count($roots) === count($entries) ? GraphProcessMemory::forest(array_values(array_unique($roots))) : ['rss_bytes' => null, 'processes' => [], 'reason' => 'process_root_rss_unavailable'];
+                $total = $sample['rss_bytes'] ?? PHP_INT_MAX;
+                $registry['resident_accounting'] = ['basis' => 'unique_pid_forest_rss', 'rss_bytes' => $sample['rss_bytes'], 'reason' => $sample['reason'], 'process_count' => count($sample['processes'])];
+                $nativeRows = $sample['processes'];
+                $nativeRoots = $roots;
+            }
             $ceiling = min($registry['limits']['resident_bytes'], $this->requestedResident ?? $registry['limits']['resident_bytes']);
             if ($total > $ceiling) {
                 $eligible = array_filter($registry['residents'], static fn (array $resident): bool => ! ($resident['retiring'] ?? false));
@@ -227,7 +281,25 @@ final readonly class GraphResources
                     }
                     $registry['residents'][$victim]['retiring'] = true;
                     $registry['residents'][$victim]['reason'] = 'resident_budget_lru';
-                    $total -= $resident['bytes'];
+                    if ($nativeRows === null) {
+                        $total -= $resident['bytes'];
+                    } elseif ($nativeRows !== []) {
+                        // Project the remaining trees from this same OS sample.
+                        // A shared PID remains counted while another root retains it.
+                        $nativeRoots = [];
+                        foreach ([...array_values(array_filter($registry['residents'], static fn (array $entry): bool => ! ($entry['retiring'] ?? false))), ...array_values($registry['controllers'] ?? []), ...array_values($registry['native_clients'] ?? [])] as $retained) {
+                            $nativeRoots[] = $retained['pid'];
+                        }
+                        $selected = array_fill_keys($nativeRoots, true);
+                        for ($depth = 0; $depth < 8; $depth++) {
+                            foreach ($nativeRows as $row) {
+                                if (isset($selected[$row['ppid']])) {
+                                    $selected[$row['pid']] = true;
+                                }
+                            }
+                        }
+                        $total = array_sum(array_column(array_filter($nativeRows, static fn (array $row): bool => isset($selected[$row['pid']])), 'rss_bytes'));
+                    }
                 }
             }
 

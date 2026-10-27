@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace GracjanKubicki\ArchitectureKit\Context;
 
 use GracjanKubicki\ArchitectureKit\Analysis\AnalysisMode;
+use GracjanKubicki\ArchitectureKit\Architecture\RoleClassifier;
 use GracjanKubicki\ArchitectureKit\Audit\AuditScope;
 use GracjanKubicki\ArchitectureKit\Audit\FindingCodeRegistry;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\CacheStatus;
@@ -64,6 +65,29 @@ final readonly class ArchitectureContext
         $loader = new ProjectGraphLoader($this->files, $this->basePath, $mapScope, $this->cache, $this->cacheConfiguration, sourceOnly: true, catalog: true, mode: $this->mode);
         $plan = GraphProducts::plan($loader, $exclude) ?? $loader->plan($exclude);
         $graph = $loader->build($plan);
+
+        return $this->summarize($graph, $subject, $enabled, $limit, $plan->cacheStatus, $loader->classification, $mapScope->directories,
+            GraphRuntime::inWorker() || $loader->currentSignature($exclude)->toArray() === $plan->signature->toArray(), $graph->checksComplete());
+    }
+
+    /** Temporary native structural projection is for audit rules only. No second resident map.
+     * @param array<int, mixed> $enabled
+     * @param list<string> $mapPaths
+     * @param list<array<string, mixed>> $notices
+     * @param ProjectGraphSnapshot|null $testGraph Full temporary witnesses for test lookup. */
+    public function inspectNative(ProjectGraphSnapshot $graph, string $subject, array $enabled, int $limit, array $mapPaths, bool $complete, array $notices = [], ?ProjectGraphSnapshot $testGraph = null): ArchitectureContextResult
+    {
+        return $this->summarize($graph, $subject, $enabled, $limit, CacheStatus::Disabled,
+            RoleClassifier::forProject($this->files, $this->basePath), $mapPaths, true, $complete, true, $notices, $testGraph);
+    }
+
+    /** @param array<int, mixed> $enabled
+     * @param list<string> $mapPaths
+     * @param list<array<string, mixed>> $notices
+     * @param ProjectGraphSnapshot|null $testGraph Full temporary witnesses for test lookup. */
+    private function summarize(ProjectGraphSnapshot $graph, string $subject, array $enabled, int $limit, CacheStatus $cacheStatus,
+        RoleClassifier $roles, array $mapPaths, bool $fresh, bool $complete, bool $native = false, array $notices = [], ?ProjectGraphSnapshot $testGraph = null): ArchitectureContextResult
+    {
         $resolved = $this->resolve($graph, trim($subject));
         $limit = max(0, $limit);
         $dependencies = array_map(
@@ -83,7 +107,7 @@ final readonly class ArchitectureContext
         $violations = $limit === 0 ? [] : array_slice($allViolations, 0, $limit);
         // Which tests exercise the symbol, so the agent can run a narrow relevant set
         // before the full suite instead of learning the effect from a red run.
-        $allTests = (new TestCoverageLookup($this->files, $this->basePath))->for($resolved->name);
+        $allTests = $native ? TestCoverageLookup::fromGraph($testGraph ?? $graph, $resolved->name) : (new TestCoverageLookup($this->files, $this->basePath))->for($resolved->name);
         $tests = $limit === 0 ? [] : array_slice($allTests, 0, $limit);
         $allInspect = $this->inspectPaths($resolved, $dependencies, $dependents);
         $inspect = $limit === 0 ? [] : array_slice($allInspect, 0, $limit);
@@ -103,13 +127,11 @@ final readonly class ArchitectureContext
 
         $next[] = 'run:architecture-kit:guard --changed --agent';
 
-        $notices = [];
         foreach ($graph->catalogFacts as $facts) {
             foreach ($facts->diagnostics as $diagnostic) {
                 $notices[] = [...$diagnostic->toArray(), 'path' => $facts->path];
             }
         }
-        $fresh = GraphRuntime::inWorker() || $loader->currentSignature($exclude)->toArray() === $plan->signature->toArray();
         if (! $fresh) {
             $notices[] = ['code' => 'changed_inputs', 'path' => '(project)', 'line' => 1, 'message' => 'Sources changed during analysis. Restart the query.'];
         }
@@ -126,10 +148,10 @@ final readonly class ArchitectureContext
                 || count($violations) < count($allViolations)
                 || count($tests) < count($allTests)
                 || count($inspect) < count($allInspect),
-            cacheStatus: $plan->cacheStatus,
-            classification: ClassificationReport::graph($loader->classification, $graph, $limit, [$resolved->name]),
+            cacheStatus: $cacheStatus,
+            classification: ClassificationReport::graph($roles, $graph, $limit, [$resolved->name]),
             analysis: ['mode' => $this->mode->value, 'deep_run' => $this->mode === AnalysisMode::Deep,
-                'checks_complete' => $graph->checksComplete() && $fresh, 'map_paths' => $mapScope->directories, 'configured_audit_paths' => $this->scope->directories, 'notices' => array_slice($notices, 0, $limit),
+                'checks_complete' => $complete && $fresh, 'map_paths' => $mapPaths, 'configured_audit_paths' => $this->scope->directories, 'notices' => array_slice($notices, 0, $limit),
                 'total' => count($notices), 'truncated' => count($notices) > $limit],
         );
     }

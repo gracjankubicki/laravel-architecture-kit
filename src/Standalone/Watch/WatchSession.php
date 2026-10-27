@@ -32,7 +32,7 @@ final class WatchSession
     public static function handshake(array $value, string $platform): string
     {
         WatchProtocol::fields($value, ['protocol', 'runtime_version', 'platform', 'target', 'capabilities', 'session', 'sequence', 'health', 'reason']);
-        if (($value['protocol'] ?? null) !== WatchProtocol::PROTOCOL || ($value['runtime_version'] ?? null) !== WatchProtocol::VERSION
+        if (($value['protocol'] ?? null) !== WatchProtocol::PROTOCOL || ! in_array($value['runtime_version'] ?? null, [WatchProtocol::VERSION, WatchProtocol::LEGACY_VERSION], true)
             || ($value['platform'] ?? null) !== $platform || ($value['target'] ?? null) !== (RuntimePlatform::TARGETS[$platform] ?? null)
             || ($value['capabilities'] ?? null) !== WatchProtocol::CAPABILITIES || ! is_string($value['session'] ?? null)
             || ! preg_match('/^[a-f0-9]{64}$/D', $value['session']) || ($value['sequence'] ?? null) !== '1'

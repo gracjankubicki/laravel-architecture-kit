@@ -82,6 +82,10 @@ abstract class IncrementalFixture extends TestCase
                 $responses[$selector][$operation] = ['oracle' => (new GraphQuery($oracle))->query($selector, $operation), 'actual' => (new GraphQuery($index))->query($selector, $operation)];
                 $this->assertSame($responses[$selector][$operation]['oracle'], $responses[$selector][$operation]['actual']);
             }
+            foreach ($selectors as $target) {
+                $responses[$selector]['path'][$target] = ['oracle' => (new GraphQuery($oracle))->query($selector, 'path', $target), 'actual' => (new GraphQuery($index))->query($selector, 'path', $target)];
+                $this->assertSame($responses[$selector]['path'][$target]['oracle'], $responses[$selector]['path'][$target]['actual']);
+            }
             $responses[$selector]['search'] = ['oracle' => (new GraphSearch($oracle))->find($selector), 'actual' => (new GraphSearch($index))->find($selector)];
             $this->assertSame($responses[$selector]['search']['oracle'], $responses[$selector]['search']['actual']);
         }

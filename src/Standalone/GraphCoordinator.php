@@ -366,6 +366,7 @@ final class GraphCoordinator
             'watch_session' => $observation['watch_session'], 'through_sequence' => $observation['observed_sequence'],
             'changed_paths' => $this->observation->paths(), 'full_reconcile' => $full || $base === null || $observation['full_required'],
             'base_snapshot_id' => $base['snapshot_id'] ?? null, 'base_sequence' => $base['applied_sequence'] ?? '0',
+            'update_observed_at' => $base === null ? null : ($this->observation->firstEvent ?? microtime(true)),
             'base_job_id' => $base['job_id'] ?? null, 'next_reconcile_at' => $base['next_reconcile_at'] ?? null, 'last_full_scan_at' => $base['last_full_scan_at'] ?? null,
             'restore_reason' => $this->state->read('retired-'.$productKey)['reason'] ?? null,
             'coordinator_endpoint' => $this->endpoint, 'coordinator_instance' => $this->token,
@@ -468,12 +469,12 @@ final class GraphCoordinator
         }
         $this->lastRegistry = microtime(true);
         $memory = GraphProcessMemory::tree(getmypid());
-        $this->resources->controller($this->token, ['bytes' => $memory['rss_bytes'] ?? memory_get_usage(true), 'measurement' => $memory, 'owner' => $this->resourceOwner()]);
+        $this->resources->controller($this->token, ['bytes' => $memory['rss_bytes'] ?? memory_get_usage(true), 'measurement' => $memory, 'pid' => getmypid(), 'owner' => $this->resourceOwner()]);
         foreach ($this->active as $key => $id) {
             $job = $this->jobs[$id];
             $this->heartbeat($job);
             $this->resources->resident($job['instance_token'], ['bytes' => $job['measurements']['process_tree']['rss_bytes'] ?? $job['measurements']['rss_peak_bytes'] ?? $job['measurements']['php_allocated'] ?? 0,
-                'last_activity' => $this->retention->lastActivity,
+                'measurement' => $job['measurements']['process_tree'] ?? null, 'pid' => $job['pid'], 'last_activity' => $this->retention->lastActivity,
                 'repository' => $this->context->id, 'product' => $key, 'owner' => $this->resourceOwner(), 'leases' => count(array_filter($this->forwards, static fn ($f) => $f['job'] === $id))]);
             if (($reason = $this->resources->retirement($job['instance_token'])) !== null) {
                 $this->state->update('retired-'.$key, static fn () => ['reason' => $reason, 'snapshot_id' => $job['snapshot_id'], 'at' => gmdate('c')]);
@@ -537,6 +538,13 @@ final class GraphCoordinator
             if (($job['waiting_for_pressure'] ?? false) && ! $this->resources->pressureDrained()) {
                 continue;
             }
+            $base = $this->jobs[$job['base_job_id'] ?? ''] ?? null;
+            if ($this->context->representation() === 'rust' && $base !== null && ! ($base['native_reusable_snapshot'] ?? false)) {
+                $busy = array_filter($this->forwards, fn (array $forward): bool => ($this->jobs[$forward['job']]['endpoint'] ?? null) === $base['endpoint']);
+                if ($busy !== []) {
+                    continue;
+                }
+            }
             if (! $this->resources->claim($id, $job['instance_token'])) {
                 continue;
             }
@@ -548,7 +556,21 @@ final class GraphCoordinator
             $job['started_at'] = microtime(true);
             $job['attempts']++;
             $this->state->update('job-'.$id, static fn () => []);
-            $job['spawn_pid'] = $this->runtime->launch('worker', $this->directory, $job);
+            $base = $this->jobs[$job['base_job_id'] ?? ''] ?? null;
+            if ($this->context->representation() === 'rust' && $job['product'] === null && $base !== null && ($base['availability'] ?? null) === 'ready'
+                && ! ($job['force_recompose'] ?? false) && ! ($base['native_reusable_snapshot'] ?? false) && $base['epoch'] === $job['epoch']) {
+                $job['endpoint'] = $base['endpoint'];
+                $job['instance_token'] = $base['instance_token'];
+                $job['spawn_pid'] = $base['pid'];
+                $socket = GraphProtocol::socket($this->directory, $base['endpoint']);
+                GraphProtocol::send($socket, [...$base, 'protocol' => GraphProtocol::VERSION, 'files' => [], 'operation' => 'native-update', 'next_job' => $job]);
+                fclose($socket);
+            } else {
+                if ($this->context->representation() === 'rust' && $base !== null) {
+                    $job['replaces_pid'] = $base['pid'];
+                }
+                $job['spawn_pid'] = $this->runtime->launch('worker', $this->directory, $job);
+            }
             $this->building = $id;
             break;
         }
@@ -576,6 +598,8 @@ final class GraphCoordinator
         $job = &$this->jobs[$id];
         foreach (['job_id', 'request_id', 'repository_id', 'analysis_fingerprint', 'instance_token', 'endpoint'] as $key) {
             if (($ready[$key] ?? null) !== $job[$key]) {
+                GraphRuntime::stage('native.collect.rejected', [...$job, 'rejection' => 'identity:'.$key]);
+
                 return;
             }
         }
@@ -630,9 +654,24 @@ final class GraphCoordinator
 
             return;
         }
+        if (($ready['availability'] ?? null) === 'ready' && (new GraphEpoch($this->context))->token !== $job['epoch']) {
+            $ready['availability'] = 'failed';
+            $ready['freshness'] = 'unverified';
+            $ready['reason'] = 'cache_cleared';
+        }
         if (($ready['availability'] ?? null) === 'ready') {
+            // A reused native owner serves serially. Drain its existing response
+            // before the blocking readiness ping, otherwise a full socket buffer
+            // can block the worker while the controller waits for that same worker.
+            foreach ($this->forwards as $forward) {
+                if (($this->jobs[$forward['job']]['endpoint'] ?? null) === $job['endpoint']) {
+                    return;
+                }
+            }
             if (! is_string($ready['snapshot_id'] ?? null) || ! preg_match('/^[a-f0-9]{64}$/D', $ready['snapshot_id'])
                 || ($ready['manifest_digest'] ?? null) !== hash('sha256', serialize([$ready['snapshot_id'], $job['product_key'], $ready['input_manifest_digest']]))) {
+                GraphRuntime::stage('native.collect.rejected', [...$job, 'rejection' => 'manifest']);
+
                 return;
             }
             try {
@@ -647,6 +686,7 @@ final class GraphCoordinator
                     }
                 }
             } catch (Throwable $error) {
+                GraphRuntime::stage('native.collect.rejected', [...$job, 'rejection' => 'handshake:'.$error->getMessage()]);
                 $ready['availability'] = 'failed';
                 $ready['freshness'] = 'unverified';
                 $ready['reason'] = $error->getMessage();
@@ -658,8 +698,12 @@ final class GraphCoordinator
         if ($job['freshness'] === 'current') {
             $this->observation->confirm($job['watch_session'] ?? '', $job['applied_sequence'] ?? '0');
         }
-        $job['deadline_exceeded'] = $deadlineExceeded || ($ready['deadline_exceeded'] ?? false);
+        $job['deadline_exceeded'] = $deadlineExceeded || ($ready['deadline_exceeded'] ?? false)
+            || ($job['update_observed_at'] !== null && microtime(true) - $job['update_observed_at'] > $job['budget_seconds']);
         if ($job['availability'] === 'ready') {
+            $this->resources->resident($job['instance_token'], ['bytes' => $job['measurements']['process_tree']['rss_bytes'] ?? $job['measurements']['php_allocated'] ?? 0,
+                'measurement' => $job['measurements']['process_tree'] ?? null, 'pid' => $job['pid'], 'last_activity' => $this->retention->lastActivity,
+                'repository' => $this->context->id, 'product' => $job['product_key'], 'owner' => $this->resourceOwner(), 'leases' => 0]);
             $old = $this->active[$job['product_key']] ?? null;
             $this->active[$job['product_key']] = $id;
             GraphRuntime::stage('generation.publish', $job);
@@ -776,6 +820,14 @@ final class GraphCoordinator
         if (in_array($response['freshness'] ?? '', ['stale', 'unverified'], true)) {
             $this->jobs[$jobId]['freshness'] = $response['freshness'];
         }
+        if (($response['availability'] ?? null) === 'unavailable' && $this->context->representation() === 'rust') {
+            $this->jobs[$jobId]['availability'] = 'unavailable';
+            foreach ($this->active as $key => $activeId) {
+                if ($activeId === $jobId) {
+                    unset($this->active[$key]);
+                }
+            }
+        }
         $this->answer($forward['client'], $response);
         fclose($forward['stream']);
         unset($this->forwards[$id]);
@@ -792,12 +844,17 @@ final class GraphCoordinator
         $this->jobs[$id]['availability'] = 'unavailable';
         $this->jobs[$id]['freshness'] = 'unverified';
         $this->jobs[$id]['reason'] = 'generation_retired';
+        GraphRuntime::stage('native.generation.retired', $this->jobs[$id]);
     }
 
     /** @param array<string, mixed> $job */
     private function retire(array $job): void
     {
-        $this->resources->forget($job['instance_token']);
+        $sharedActiveOwner = array_filter($this->active, fn (string $id): bool => $id !== $job['job_id']
+            && $this->jobs[$id]['instance_token'] === $job['instance_token']);
+        if ($sharedActiveOwner === []) {
+            $this->resources->forget($job['instance_token']);
+        }
         // Cooperative retirement authenticates the endpoint, never kills by stale PID.
         try {
             $socket = GraphProtocol::socket($this->directory, $job['endpoint']);

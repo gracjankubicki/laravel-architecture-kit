@@ -27,6 +27,7 @@ use GracjanKubicki\ArchitectureKit\Impact\ArchitectureImpact;
 use GracjanKubicki\ArchitectureKit\Impact\ArchitecturePath;
 use GracjanKubicki\ArchitectureKit\Impact\ImpactPages;
 use GracjanKubicki\ArchitectureKit\Reach\ArchitectureReach;
+use GracjanKubicki\ArchitectureKit\Standalone\NativeGraph\NativeObservedCatalog;
 use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
 use Throwable;
@@ -39,11 +40,16 @@ final class GraphWorker
 
     private readonly GraphEpoch $epoch;
 
+    /** @var array<string, array<string, mixed>> */
+    private array $nativeGenerations = [];
+
+    private ?NativeObservedCatalog $native = null;
+
     private ?ProjectGraphLoader $productLoader = null;
 
     private ?GraphCacheSignature $builtProductSignature = null;
 
-    /** @var array{diagnostics_digest: string, diagnostics_by_code: array<string, int>} */
+    /** @var array{diagnostics_digest: string, diagnostics_by_code: array<string, int>, diagnostics_digest_basis?: string} */
     private array $diagnosticMetadata;
 
     /** @var array<string, mixed> */
@@ -52,7 +58,7 @@ final class GraphWorker
     private float $lastMemorySample = 0;
 
     /** @param array<string, mixed> $job */
-    public function __construct(private readonly RepositoryContext $context, private readonly string $directory, private readonly array $job)
+    public function __construct(private readonly RepositoryContext $context, private readonly string $directory, private array $job)
     {
         GraphRuntime::pinEpoch($this->job['epoch']);
         $this->epoch = new GraphEpoch($context);
@@ -84,7 +90,10 @@ final class GraphWorker
         chmod($lockPath, 0600);
         try {
             GraphRuntime::stage('build.before', $this->job);
-            if ($this->job['product'] === null) {
+            if ($this->context->representation() === 'rust' && ($this->job['product'] === null || in_array($this->job['product']['kind'], ['context', 'impact'], true))) {
+                $this->native = new NativeObservedCatalog($this->context, $this->directory, $this->job);
+                $this->source = $this->native->load();
+            } elseif ($this->job['product'] === null) {
                 $this->source = (new ObservedCatalog($this->context, $this->directory, $this->job))->load();
                 GraphRuntime::resident($this->source);
             } else {
@@ -92,13 +101,11 @@ final class GraphWorker
             }
             GraphRuntime::stage('build.after', [...$this->job, 'snapshot_id' => $this->source['snapshot'],
                 'applied_sequence' => $this->source['applied_sequence'] ?? $this->job['through_sequence'],
+                'native_reusable_snapshot' => $this->native !== null && (($this->source['cache']['write']['status'] ?? null) === 'success' || (($this->source['cache']['read']['status'] ?? null) === 'hit' && ($this->source['execution_mode'] ?? null) === 'restore')),
                 'execution_mode' => $this->source['execution_mode'] ?? 'full_recompose']);
-            $diagnostics = $this->source['index']->diagnostics ?? $this->source['diagnostics'] ?? [];
-            $this->diagnosticMetadata = [
-                'diagnostics_digest' => hash('sha256', json_encode($diagnostics, JSON_THROW_ON_ERROR)),
-                'diagnostics_by_code' => array_count_values(array_column($diagnostics, 'code')),
-            ];
+            $this->diagnosticMetadata = $this->diagnosticsMetadata();
             $ready = $this->metadata();
+            $this->rememberNative();
             $server = GraphProtocol::socket($this->directory, $this->job['endpoint'], true);
             $state->update('job-'.$this->job['job_id'], static fn () => $ready);
         } catch (FreshGraphProcessRequired $error) {
@@ -128,12 +135,20 @@ final class GraphWorker
                 try {
                     $line = fgets($client, GraphProtocol::REQUEST_BYTES + 1);
                     $request = GraphProtocol::decode($line ?: '');
+                    if ($this->native !== null && isset($this->nativeGenerations[$request['job_id'] ?? ''])) {
+                        $this->selectNative($request['job_id']);
+                    }
                     foreach (['protocol' => GraphProtocol::VERSION, 'job_id' => $this->job['job_id'], 'repository_id' => $this->context->id,
                         'instance_token' => $this->job['instance_token'], 'analysis_fingerprint' => $this->job['analysis_fingerprint'],
                         'input_manifest_digest' => $this->source['metadata']['input_manifest_digest'] ?? $this->job['input_manifest_digest']] as $key => $value) {
                         if (($request[$key] ?? null) !== $value) {
                             throw new RuntimeException('worker_identity:'.$key);
                         }
+                    }
+                    if (($request['operation'] ?? '') === 'native-update') {
+                        $this->updateNative($request['next_job'] ?? [], $state);
+
+                        continue;
                     }
                     if (($request['operation'] ?? '') === 'heartbeat') {
                         if (is_float($request['last_user_activity'] ?? null) || is_int($request['last_user_activity'] ?? null)) {
@@ -143,11 +158,21 @@ final class GraphWorker
                         continue;
                     }
                     if (($request['operation'] ?? '') === 'ping') {
+                        GraphRuntime::stage('native.ping.before', $this->job);
                         GraphProtocol::send($client, $this->metadata('unverified'));
 
                         continue;
                     }
                     if (($request['operation'] ?? '') === 'retire') {
+                        if ($this->native !== null) {
+                            $this->native->retire();
+                            unset($this->nativeGenerations[$this->job['job_id']]);
+                            if ($this->nativeGenerations !== []) {
+                                $this->selectNative(array_key_last($this->nativeGenerations));
+
+                                continue;
+                            }
+                        }
                         fclose($client);
                         break;
                     }
@@ -179,6 +204,7 @@ final class GraphWorker
                     }
                     GraphProtocol::send($client, $response);
                 } catch (Throwable $error) {
+                    GraphRuntime::stage('native.worker.rejected', [...$this->job, 'rejection' => $error->getMessage()]);
                     try {
                         GraphProtocol::send($client, [...$this->metadata('unverified'), 'ok' => false, 'freshness' => str_starts_with($error->getMessage(), 'changed_inputs:') ? 'stale' : 'unverified', 'reason' => $error->getMessage(),
                             'error_code' => $error instanceof ArchitectureContextException ? $error->errorCode : null]);
@@ -193,6 +219,66 @@ final class GraphWorker
         } finally {
             fclose($server);
             @unlink($this->directory.'/'.$this->job['endpoint']);
+        }
+    }
+
+    /** @return array{diagnostics_digest: string, diagnostics_by_code: array<string, int>, diagnostics_digest_basis?: string} */
+    private function diagnosticsMetadata(): array
+    {
+        $diagnostics = $this->source['index']->diagnostics ?? $this->source['diagnostics'] ?? [];
+        $digest = hash('sha256', json_encode($diagnostics, JSON_THROW_ON_ERROR));
+        $codes = array_count_values(array_column($diagnostics, 'code'));
+        if (isset($this->source['native_summary'])) {
+            foreach ($this->source['native_summary']['diagnostics_by_code'] as $code => $count) {
+                $codes[$code] = ($codes[$code] ?? 0) + $count;
+            }
+
+            return ['diagnostics_digest' => hash('sha256', $this->source['native_summary']['diagnostics_digest'].':'.$digest),
+                'diagnostics_by_code' => $codes, 'diagnostics_digest_basis' => 'typed_native_and_php_json_settings_v1'];
+        }
+
+        return ['diagnostics_digest' => $digest, 'diagnostics_by_code' => $codes];
+    }
+
+    private function rememberNative(): void
+    {
+        if ($this->native !== null) {
+            $this->nativeGenerations[$this->job['job_id']] = ['job' => $this->job, 'source' => $this->source, 'native' => $this->native, 'diagnostics' => $this->diagnosticMetadata];
+        }
+    }
+
+    private function selectNative(string $id): void
+    {
+        $entry = $this->nativeGenerations[$id];
+        $this->job = $entry['job'];
+        $this->source = $entry['source'];
+        $this->native = $entry['native'];
+        $this->diagnosticMetadata = $entry['diagnostics'];
+    }
+
+    /** Small updates keep the Rust owner alive, including with disk cache disabled.
+     * @param array<string, mixed> $next */
+    private function updateNative(array $next, StateStore $state): void
+    {
+        foreach (['repository_id', 'analysis_fingerprint', 'coordinator_instance', 'endpoint', 'instance_token', 'epoch', 'product_key'] as $key) {
+            if (($next[$key] ?? null) !== $this->job[$key]) {
+                throw new RuntimeException('native_update_identity:'.$key);
+            }
+        }
+        $oldId = $this->job['job_id'];
+        try {
+            $native = new NativeObservedCatalog($this->context, $this->directory, $next, $this->native);
+            $source = $native->load();
+            $this->native = $native;
+            $this->source = $source;
+            $this->job = $next;
+            $this->diagnosticMetadata = $this->diagnosticsMetadata();
+            $this->rememberNative();
+            $state->update('job-'.$next['job_id'], fn () => $this->metadata());
+        } catch (Throwable $error) {
+            $this->selectNative($oldId);
+            $state->update('job-'.$next['job_id'], static fn () => [...$next, 'files' => [], 'protocol' => GraphProtocol::VERSION,
+                'availability' => 'failed', 'freshness' => 'unverified', 'reason' => $error->getMessage()]);
         }
     }
 
@@ -297,6 +383,9 @@ final class GraphWorker
             $this->processMemory = GraphProcessMemory::tree(getmypid());
             $this->lastMemorySample = microtime(true);
         }
+        if ($this->native !== null && ! $this->native->client->healthy()) {
+            $freshness = 'unverified';
+        }
         $freshness ??= ($this->source['basis'] ?? null) === 'full_content_pre_post' ? 'current' : ($this->job['product'] === null ? 'last_confirmed' : $this->freshness());
 
         return ['protocol' => GraphProtocol::VERSION, 'repository_id' => $this->context->id,
@@ -306,11 +395,12 @@ final class GraphWorker
             ...$this->diagnosticMetadata,
             'endpoint' => $this->job['endpoint'], 'pid' => getmypid(), 'snapshot_id' => $this->source['snapshot'],
             'snapshot_ref' => ['job_id' => $this->job['job_id'], 'snapshot_id' => $this->source['snapshot']],
-            'availability' => 'ready', 'runtime_semantics' => 2, 'freshness' => $freshness, 'verified_at' => $this->source['confirmed_at'] ?? gmdate('c'),
+            'availability' => $this->native !== null && ! $this->native->client->healthy() ? 'unavailable' : 'ready', 'runtime_semantics' => 2, 'freshness' => $freshness, 'verified_at' => $this->source['confirmed_at'] ?? gmdate('c'),
             'applied_sequence' => $this->source['applied_sequence'] ?? $this->job['through_sequence'],
             'watch_session' => $this->source['watch_session'] ?? $this->job['watch_session'],
             'basis' => $this->source['basis'] ?? 'full_content_pre_post', 'confirmed_at' => $this->source['confirmed_at'] ?? gmdate('c'),
             'last_full_scan_at' => $this->source['last_full_scan_at'] ?? gmdate('c'),
+            'native_reusable_snapshot' => $this->native !== null && (($this->source['cache']['write']['status'] ?? null) === 'success' || (($this->source['cache']['read']['status'] ?? null) === 'hit' && ($this->source['execution_mode'] ?? null) === 'restore')),
             'execution_mode' => $this->source['execution_mode'] ?? 'full_recompose', 'execution_reason' => $this->source['execution_reason'] ?? null,
             'restore_reason' => $this->job['restore_reason'] ?? null,
             'scan_seconds' => $this->source['scan_seconds'] ?? 0, 'full_scan_seconds' => $this->source['full_scan_seconds'] ?? 0,
@@ -318,12 +408,23 @@ final class GraphWorker
             'cache' => $this->source['cache'], 'deadline_exceeded' => false,
             'resource_policy' => [...(new GraphPolicy($this->context->settings['graph_runtime'] ?? []))->describe(),
                 ...(new GraphResources($this->context))->effective()],
-            'measurements' => ['process_tree' => $this->processMemory, 'rss_peak_bytes' => (getrusage()['ru_maxrss'] ?? 0) * (PHP_OS_FAMILY === 'Darwin' ? 1 : 1024), 'memory_limit' => ini_get('memory_limit'), 'php_used' => memory_get_usage(), 'php_allocated' => memory_get_usage(true), 'php_peak' => memory_get_peak_usage(true), 'build' => array_intersect_key($this->source['build_measurements'] ?? [], array_fill_keys(['executed_calls', 'reused_calls', 'transition_working_bytes', 'foundation_ns', 'total_ns', 'generation_digest_ns', 'set_read_ns', 'admission'], true))]];
+            'measurements' => [...($this->native?->measurements() ?? []), 'process_tree' => $this->processMemory, 'rss_peak_bytes' => (getrusage()['ru_maxrss'] ?? 0) * (PHP_OS_FAMILY === 'Darwin' ? 1 : 1024), 'memory_limit' => ini_get('memory_limit'), 'php_used' => memory_get_usage(), 'php_allocated' => memory_get_usage(true), 'php_peak' => memory_get_peak_usage(true), 'build' => array_intersect_key($this->source['build_measurements'] ?? [], array_fill_keys(['executed_calls', 'reused_calls', 'transition_working_bytes', 'foundation_ns', 'total_ns', 'generation_digest_ns', 'set_read_ns', 'admission'], true))]];
     }
 
     /** @param array<string, mixed> $args
      * @return array<string, mixed>|null */
     private function dispatch(string $operation, array $args): ?array
+    {
+        if ($this->native !== null && in_array($operation, ['impact', 'reach', 'impact-pages'], true)) {
+            return $this->native->assessment(fn () => $this->dispatchProduct($operation, $args));
+        }
+
+        return $this->dispatchProduct($operation, $args);
+    }
+
+    /** @param array<string, mixed> $args
+     * @return array<string, mixed>|null */
+    private function dispatchProduct(string $operation, array $args): ?array
     {
         if ($operation === 'fresh') {
             return null;
@@ -338,6 +439,9 @@ final class GraphWorker
         if ($operation === 'occurrence') {
             return (new FindingOccurrenceResolver(new Filesystem,
                 dirname(__DIR__, 2), $this->context->rootPath))->resolve(...$args)->toArray();
+        }
+        if ($this->native !== null && $operation === 'context') {
+            return $this->native->context($args, $this->job['product']);
         }
         if (in_array($operation, ['context', 'impact', 'reach', 'impact-pages'], true)) {
             $product = $this->job['product'];
@@ -361,6 +465,12 @@ final class GraphWorker
             return (new ArchitectureImpact($files, $this->context->rootPath,
                 scope: $scope, cache: $cache, cacheConfiguration: $product['configuration']))->inspect(...$args);
         }
+        if ($this->native !== null && in_array($operation, ['search', 'graph'], true)) {
+            return $this->native->queryGrant(fn () => $this->native->page($operation, $args));
+        }
+        if ($this->native !== null && $operation === 'discovery') {
+            return $this->native->queryGrant(fn () => $this->native->legacy($operation, $args));
+        }
         if ($operation === 'path') {
             $requestedScope = $args['audit_scope'] ?? null;
             if (! is_array($requestedScope) || ! array_is_list($requestedScope)) {
@@ -376,6 +486,9 @@ final class GraphWorker
             $scope = AuditScope::package($directories);
             if ($scope->directories !== $directories) {
                 throw new RuntimeException('runtime_path_scope');
+            }
+            if ($this->native !== null) {
+                return $this->native->queryGrant(fn () => $this->native->legacy('path', $args));
             }
             unset($args['audit_scope']);
 

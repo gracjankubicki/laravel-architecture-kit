@@ -1,3 +1,4 @@
+pub mod graph;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 #[cfg(unix)]
@@ -10,7 +11,7 @@ use std::{
 };
 
 pub const PROTOCOL: &str = "architecture-kit-watch-v1";
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.0";
 pub const MAX_FRAME: usize = 65_536;
 pub const MAX_PATH: usize = 16_384;
 pub const MAX_SEQUENCE: u64 = i64::MAX as u64;

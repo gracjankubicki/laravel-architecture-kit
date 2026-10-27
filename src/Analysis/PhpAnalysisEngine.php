@@ -6,6 +6,7 @@ namespace GracjanKubicki\ArchitectureKit\Analysis;
 
 use Composer\InstalledVersions;
 use GracjanKubicki\ArchitectureKit\Audit\ProjectGraph\Cache\PackageFingerprint;
+use GracjanKubicki\ArchitectureKit\Standalone\Measurement\GraphStageMeasurement;
 use PhpParser\ErrorHandler\Collecting;
 use PhpParser\Node;
 use PhpParser\NodeTraverser;
@@ -27,7 +28,9 @@ final class PhpAnalysisEngine implements AnalysisEngine
     {
         $parser = (new ParserFactory)->createForVersion(PhpVersion::fromString($source->phpVersion));
         $errors = new Collecting;
-        $nodes = $parser->parse($source->contents, $errors);
+        $measurement = GraphStageMeasurement::current();
+        $nodes = $measurement === null ? $parser->parse($source->contents, $errors)
+            : $measurement->measure('php.parse', static fn () => $parser->parse($source->contents, $errors));
         if ($errors->hasErrors()) {
             $diagnostics = [];
             foreach ($errors->getErrors() as $error) {
@@ -42,7 +45,8 @@ final class PhpAnalysisEngine implements AnalysisEngine
             return new AnalysisDocument($source, $this->descriptor(), [], $diagnostics);
         }
         $facts = [];
-        $versionDiagnostics = [...PhpSyntaxVersion::diagnostics($nodes ?? [], $source), ...PhpConstantSyntax::diagnostics($nodes ?? [], $source)];
+        $check = static fn () => [...PhpSyntaxVersion::diagnostics($nodes ?? [], $source), ...PhpConstantSyntax::diagnostics($nodes ?? [], $source)];
+        $versionDiagnostics = $measurement === null ? $check() : $measurement->measure('php.version_semantics', $check);
         if ($versionDiagnostics !== []) {
             return new AnalysisDocument($source, $this->descriptor(), [], $versionDiagnostics);
         }
@@ -52,7 +56,8 @@ final class PhpAnalysisEngine implements AnalysisEngine
         }
 
         $resolutionErrors = new Collecting;
-        $nodes = (new NodeTraverser(new NameResolver($resolutionErrors, ['replaceNodes' => false])))->traverse($nodes ?? []);
+        $resolve = static fn () => (new NodeTraverser(new NameResolver($resolutionErrors, ['replaceNodes' => false])))->traverse($nodes ?? []);
+        $nodes = $measurement === null ? $resolve() : $measurement->measure('php.names', $resolve);
         if ($resolutionErrors->hasErrors()) {
             $diagnostics = [];
             foreach ($resolutionErrors->getErrors() as $error) {
@@ -68,7 +73,10 @@ final class PhpAnalysisEngine implements AnalysisEngine
         }
         $adapter = new PhpSyntaxAdapter($source);
 
-        return new AnalysisDocument($source, $this->descriptor(), $facts, syntax: array_map($adapter->node(...), $nodes));
+        $adapt = static fn () => array_map($adapter->node(...), $nodes);
+        $syntax = $measurement === null ? $adapt() : $measurement->measure('php.syntax_adapter', $adapt);
+
+        return new AnalysisDocument($source, $this->descriptor(), $facts, syntax: $syntax);
     }
 
     /** @param list<Token> $tokens
