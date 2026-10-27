@@ -29,6 +29,9 @@ final class Runner
                 throw new RuntimeException('Tool home must be an absolute external directory.');
             }
             $command = $args[1] ?? 'help';
+            if ($command === '__graph-runtime') {
+                GraphRuntime::detachProcess();
+            }
             if (isset($options['family']) && (isset($options['project']) || ! in_array($command, ['mcp', 'integration'], true))) {
                 throw new RuntimeException('--family is only available for mcp or integration and cannot be combined with --project.');
             }

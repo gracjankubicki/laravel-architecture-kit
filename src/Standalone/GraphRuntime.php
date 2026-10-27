@@ -363,9 +363,32 @@ final class GraphRuntime
         }
     }
 
+    /** Detach before initializing a child, including its observer or parser. */
+    public static function detachProcess(): void
+    {
+        self::assertSessionSupport();
+        $pid = getmypid();
+        if (posix_getsid(0) === $pid && posix_getpgrp() === $pid) {
+            return;
+        }
+        if (@posix_setsid() !== $pid || posix_getsid(0) !== $pid || posix_getpgrp() !== $pid) {
+            throw new RuntimeException('runtime_session_detach_failed: Cannot isolate the graph process session.');
+        }
+    }
+
+    private static function assertSessionSupport(): void
+    {
+        foreach (['posix_setsid', 'posix_getsid', 'posix_getpgrp'] as $function) {
+            if (! function_exists($function)) {
+                throw new RuntimeException('runtime_session_unavailable: Enable PHP POSIX session functions for background maps.');
+            }
+        }
+    }
+
     /** @param array<string, mixed> $spec */
     public function launch(string $role, string $directory, array $spec): int
     {
+        self::assertSessionSupport();
         $spec['routing_identity'] = $this->context->routingIdentity();
         $spec['advisory_only'] = $this->context->advisoryOnly;
         $name = 'launch-'.bin2hex(random_bytes(16));
@@ -381,8 +404,8 @@ final class GraphRuntime
             }
         }
         array_push($args, '__graph-runtime', $role, $directory, $name);
-        // A short-lived shell re-parents a nohup child. All stdio is redirected;
-        // process ownership does not depend on leaking a proc_open handle.
+        // The shell re-parents the child; Runner also gives it its own session.
+        // nohup alone would leave it in the exited client's process group.
         // Replace inherited parent handles before exec, including client pipes and locks.
         // PHP maps arbitrary descriptor numbers; the shell only redirects standard I/O.
         $descriptors = is_dir('/dev/fd') ? scandir('/dev/fd') : (is_dir('/proc/self/fd') ? scandir('/proc/self/fd') : []);

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.14.1 - 2026-10-27
+
+### Fixed
+
+- Isolate background map coordinators and workers from the CLI/MCP client's process group so terminal group cleanup does not cancel builds or lose ready maps. Report missing POSIX session support explicitly without changing memory budgets or idle retention.
+
 ## v0.14.0 - 2026-10-27
 
 ### Added

@@ -34,6 +34,7 @@ use GracjanKubicki\ArchitectureKit\Tests\Unit\Standalone\Watch\RuntimeFixture;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Process\Exception\ProcessSignaledException;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
 
@@ -683,6 +684,57 @@ final class GraphRuntimeProcessTest extends TestCase
         self::assertFalse(posix_kill($ready['pid'], 0));
         $this->state->update('orphan-worker-proof', static fn () => ['worker' => $ready,
             'fault' => 'unlinked_private_worker_endpoint', 'coordinator_shutdown' => 'cooperative', 'worker_exit_after_owner_lock_release' => true]);
+    }
+
+    public function test_build_survives_cleanup_of_the_entire_client_process_group(): void
+    {
+        $this->barrier('build.before');
+        $sessionPath = $this->home.'/client-session.json';
+        $client = new Process([PHP_BINARY, '-d', 'memory_limit=256M', dirname(__DIR__, 2).'/Support/graph-runtime-session-client.php',
+            $sessionPath, dirname(__DIR__, 2).'/Support/graph-runtime-entrypoint.php',
+            '--project', $this->root, '--tool-home', $this->home, 'map', 'prepare']);
+        $this->processes[] = $client;
+        $client->start();
+        $pid = $client->getPid();
+        try {
+            $this->until(fn () => is_file($sessionPath) && $this->events() !== []);
+            $session = json_decode(file_get_contents($sessionPath), true, flags: JSON_THROW_ON_ERROR);
+            self::assertSame($pid, $session['pid']);
+            self::assertSame($pid, $session['pgid']);
+            self::assertSame($pid, $session['sid']);
+            self::assertNotSame(posix_getpgrp(), $pid, 'Never signal the test runner process group.');
+            self::assertSame($pid, posix_getpgid($pid));
+            self::assertSame($pid, posix_getsid($pid));
+            $event = $this->events()[0];
+            $coordinator = (new StateStore($this->runtime->directory()))->read('coordinator');
+            self::assertTrue(posix_kill(-$pid, SIGKILL));
+            try {
+                $client->wait();
+            } catch (ProcessSignaledException) {
+                // Killing this owned session is the trigger, not a test error.
+            }
+            self::assertTrue($client->hasBeenSignaled());
+            self::assertSame(SIGKILL, $client->getTermSignal());
+            $this->barrier(null);
+            $ready = $this->ready($event['job']);
+            self::assertSame('ready', $ready['availability'], json_encode($ready));
+            self::assertSame($event['pid'], $ready['pid']);
+            self::assertSame($coordinator['instance_token'], $ready['coordinator_token']);
+            foreach ([$coordinator['pid'], $ready['pid']] as $owner) {
+                self::assertSame($owner, posix_getpgid($owner));
+                self::assertSame($owner, posix_getsid($owner));
+            }
+            self::assertNotEmpty($this->runtime->query('search', ['query' => 'Dependency'])['result']['result']['candidates']);
+        } finally {
+            $this->barrier(null);
+            if ($client->isRunning() && posix_getpgid($pid) === $pid && posix_getsid($pid) === $pid) {
+                posix_kill(-$pid, SIGKILL);
+                try {
+                    $client->wait();
+                } catch (ProcessSignaledException) {
+                }
+            }
+        }
     }
 
     public function test_detached_build_survives_real_client_termination_and_mcp_disconnect(): void
