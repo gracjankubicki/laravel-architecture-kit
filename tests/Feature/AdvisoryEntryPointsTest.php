@@ -240,7 +240,7 @@ final class AdvisoryEntryPointsTest extends TestCase
 
     private function process(array $arguments): Process
     {
-        return new Process([PHP_BINARY, dirname(__DIR__, 2).'/bin/architecture-kit', '--project', $this->root, '--tool-home', $this->home, ...$arguments], $this->directory, timeout: 30);
+        return new Process([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), dirname(__DIR__, 2).'/bin/architecture-kit', '--project', $this->root, '--tool-home', $this->home, ...$arguments], $this->directory, timeout: 30);
     }
 
     private function cli(array $arguments, int $exit = 0): array

@@ -55,7 +55,7 @@ GraphRuntime::instrument(__FILE__, static function (string $stage, array $job): 
     $source = GraphRuntime::resident();
     $index = $source['index'] ?? null;
     $state->update('test-events', static function (array $events) use ($stage, $job, $index): array {
-        $events[] = ['stage' => $stage, 'job' => $job['job_id'], 'pid' => getmypid(), 'time' => microtime(true), 'product' => $job['product']['kind'] ?? 'catalog', 'admission' => $job['admission'] ?? null,
+        $events[] = ['stage' => $stage, 'job' => $job['job_id'], 'pid' => getmypid(), 'time' => microtime(true), 'product' => $job['product']['kind'] ?? 'catalog', 'admission' => $job['admission'] ?? null, 'event_kind' => $job['event_kind'] ?? null,
             'index_digest' => $index === null ? null : hash('sha256', serialize($index->exportState())),
             'diagnostics_digest' => $index === null ? null : hash('sha256', json_encode($index->diagnostics, JSON_THROW_ON_ERROR)),
             'diagnostics_by_code' => $index === null ? null : array_count_values(array_column($index->diagnostics, 'code'))];

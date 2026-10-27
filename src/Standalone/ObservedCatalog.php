@@ -45,7 +45,7 @@ final readonly class ObservedCatalog
         $admission = null;
         $beforeDecode = function (int $reservation) use (&$admission): void {
             GraphRuntime::stage('restore.before', $this->job);
-            $admission = $this->admit(0, $reservation, ($this->job['base_snapshot_id'] ?? null) !== null);
+            $admission = $this->admit(0, $reservation, ($this->job['base_snapshot_id'] ?? null) !== null && ! ($this->job['force_recompose'] ?? false));
         };
         $readStarted = hrtime(true);
         $read = ($this->job['no_cache_read'] ?? false) ? ['status' => 'skip', 'reason' => 'rejected_product_set', 'decoded' => false]

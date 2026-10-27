@@ -126,7 +126,7 @@ final class WorktreeIntegrationExportTest extends TestCase
         self::assertNotSame(0, $check->getExitCode());
         self::assertStringContainsString('Metadata allowlist violation', $check->getErrorOutput());
         $request = json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-03-26', 'capabilities' => (object) [], 'clientInfo' => ['name' => 'real-proxy-test', 'version' => '1']]], JSON_THROW_ON_ERROR)."\n";
-        $proxy = new Process(['python3', $script, '--log-dir', $this->home.'/metadata', '--manifest', getenv('ARCHITECTURE_KIT_WORKTREE_MANIFEST'), '--', PHP_BINARY, dirname(__DIR__, 3).'/bin/architecture-kit', '--family', $this->lab['roots']['main']['crm-backend'], '--tool-home', $this->home, 'mcp']);
+        $proxy = new Process(['python3', $script, '--log-dir', $this->home.'/metadata', '--manifest', getenv('ARCHITECTURE_KIT_WORKTREE_MANIFEST'), '--', PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), dirname(__DIR__, 3).'/bin/architecture-kit', '--family', $this->lab['roots']['main']['crm-backend'], '--tool-home', $this->home, 'mcp']);
         $proxy->setInput($request)->mustRun();
         self::assertSame(1, json_decode(trim($proxy->getOutput()), true, flags: JSON_THROW_ON_ERROR)['id']);
         foreach (glob($this->home.'/metadata/*.jsonl') as $path) {
@@ -157,7 +157,7 @@ final class WorktreeIntegrationExportTest extends TestCase
         }
         $base = dirname(__DIR__, 3);
         $proxy = new Process(['python3', $base.'/tests/Support/worktree-client-metadata.py', '--log-dir', $this->home.'/metadata',
-            '--manifest', getenv('ARCHITECTURE_KIT_WORKTREE_MANIFEST'), '--', PHP_BINARY, $base.'/bin/architecture-kit',
+            '--manifest', getenv('ARCHITECTURE_KIT_WORKTREE_MANIFEST'), '--', PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), $base.'/bin/architecture-kit',
             '--family', $main, '--tool-home', $this->home, 'mcp']);
         $proxy->setInput($input)->mustRun();
         $responses = [];

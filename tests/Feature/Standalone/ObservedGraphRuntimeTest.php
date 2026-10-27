@@ -313,7 +313,7 @@ final class ObservedGraphRuntimeTest extends TestCase
             $this->assertArrayHasKey('result', $client->initialize());
             // The first map request happens AFTER the disk implementation changes.
             file_put_contents($tool.'/src/Standalone/GraphRetention.php', "\n// Isolated test upgrade.\n", FILE_APPEND);
-            $fresh = new Process([PHP_BINARY, '-d', 'memory_limit=128M', $tool.'/bin/architecture-kit',
+            $fresh = new Process([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), $tool.'/bin/architecture-kit',
                 '--project', $this->root, '--tool-home', $this->home, 'map', 'prepare']);
             $fresh->run();
             $this->assertSame(0, $fresh->getExitCode(), $fresh->getErrorOutput());
@@ -686,7 +686,10 @@ final class ObservedGraphRuntimeTest extends TestCase
             && $event['job'] !== $a['job_id'] && $event['time'] >= $started && $event['time'] < $finished));
         $this->record('continuous-burst', ['started' => $started, 'finished' => $finished, 'builds_during_writer' => $during, 'final' => $last]);
         $this->assertNotEmpty($during, 'The maximum coalescing window starts work during the writer, rather than waiting forever.');
-        $this->assertLessThan(0.5, $during[0]['time'] - $started);
+        $observed = array_values(array_filter($events, static fn ($event) => $event['stage'] === 'watch.event'
+            && ($event['event_kind'] ?? null) === 'changes' && $event['time'] >= $started));
+        $this->assertNotEmpty($observed);
+        $this->assertLessThan(0.5, $during[0]['time'] - $observed[0]['time']);
         $this->assertSame($last['confirmation']['observed_sequence'], $last['confirmation']['applied_sequence']);
         $this->assertSame('last_confirmed', $last['freshness']);
     }

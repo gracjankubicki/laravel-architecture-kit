@@ -33,12 +33,10 @@ use GracjanKubicki\ArchitectureKit\Tests\Unit\AgentOutputSchemaTest;
 use GracjanKubicki\ArchitectureKit\Tests\Unit\Standalone\Watch\RuntimeFixture;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\RequiresEnvironmentVariable;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
 
-#[RequiresEnvironmentVariable('ARCHITECTURE_KIT_TEST_RUNTIME')]
 final class GraphRuntimeProcessTest extends TestCase
 {
     private string $root;
@@ -54,6 +52,7 @@ final class GraphRuntimeProcessTest extends TestCase
 
     protected function setUp(): void
     {
+        RuntimeFixture::native();
         GraphRuntime::startProcess();
         $artifacts = getenv('ARCHITECTURE_KIT_TEST_ARTIFACT_DIRECTORY') ?: dirname(__DIR__, 3).'/build/graph-performance-implementation/W04/legacy-fixtures';
         $base = $artifacts.'/process-'.bin2hex(random_bytes(6));
@@ -92,6 +91,9 @@ final class GraphRuntimeProcessTest extends TestCase
 
     protected function tearDown(): void
     {
+        if (! isset($this->state)) {
+            return;
+        }
         $this->state->update('test-control', static fn () => []);
         GraphRuntimeCleanup::stop($this->home);
         foreach ($this->processes as $process) {

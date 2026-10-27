@@ -7,11 +7,10 @@ namespace GracjanKubicki\ArchitectureKit\Tests\Feature\Standalone;
 use GracjanKubicki\ArchitectureKit\Standalone\GraphProtocol;
 use GracjanKubicki\ArchitectureKit\Tests\Support\EngineFixture;
 use GracjanKubicki\ArchitectureKit\Tests\Support\GraphRuntimeCleanup;
-use PHPUnit\Framework\Attributes\RequiresEnvironmentVariable;
+use GracjanKubicki\ArchitectureKit\Tests\Unit\Standalone\Watch\RuntimeFixture;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
 
-#[RequiresEnvironmentVariable('ARCHITECTURE_KIT_TEST_RUNTIME')]
 final class GraphPerformanceSmokeTest extends TestCase
 {
     private string $base;
@@ -22,6 +21,7 @@ final class GraphPerformanceSmokeTest extends TestCase
 
     protected function setUp(): void
     {
+        RuntimeFixture::native();
         $this->base = dirname(__DIR__, 3).'/build/graph-performance-implementation/W04/legacy-smoke/smoke-'.bin2hex(random_bytes(6));
         $this->root = $this->base.'/repo';
         mkdir($this->root.'/app/Sub', 0700, true);
@@ -38,6 +38,9 @@ final class GraphPerformanceSmokeTest extends TestCase
 
     protected function tearDown(): void
     {
+        if (! isset($this->home)) {
+            return;
+        }
         GraphRuntimeCleanup::stop($this->home);
         foreach (glob($this->home.'/repositories/*/runtime/*/coordinator.json') ?: [] as $path) {
             $record = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);

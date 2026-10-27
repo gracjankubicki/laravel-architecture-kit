@@ -233,7 +233,7 @@ final class StandaloneProcessTest extends TestCase
         mkdir($this->root.'/.git');
         file_put_contents($this->root.'/app/composer.json', '{"name":"fixture/nested-package"}');
         $binary = getenv('ARCHITECTURE_KIT_TEST_BIN') ?: dirname(__DIR__, 3).'/bin/architecture-kit';
-        $process = new Process([PHP_BINARY, $binary, '--tool-home', $this->home, 'search', 'SendInvoice', '--agent'], $this->root.'/app', timeout: 30);
+        $process = new Process([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), $binary, '--tool-home', $this->home, 'search', 'SendInvoice', '--agent'], $this->root.'/app', timeout: 30);
         $process->run();
         self::assertSame(0, $process->getExitCode(), $process->getErrorOutput());
         $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
@@ -349,7 +349,7 @@ final class StandaloneProcessTest extends TestCase
         $autoload = dirname(__DIR__, 3).'/vendor/autoload.php';
         $binary = dirname(__DIR__, 3).'/bin/architecture-kit';
         file_put_contents($proxy, '<?php $_composer_autoload_path = '.var_export($autoload, true).'; require '.var_export($binary, true).';');
-        $process = new Process([PHP_BINARY, $proxy, '--tool-home', $this->home, '--project', $this->root, 'integration', 'export', 'codex']);
+        $process = new Process([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), $proxy, '--tool-home', $this->home, '--project', $this->root, 'integration', 'export', 'codex']);
         $process->mustRun();
         $export = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
         self::assertSame(realpath($proxy), $export['mcp']['args'][0]);
@@ -606,7 +606,7 @@ final class StandaloneProcessTest extends TestCase
 
     private function process(array $args, ?string $cwd = null): Process
     {
-        return new Process([PHP_BINARY, getenv('ARCHITECTURE_KIT_TEST_BIN') ?: dirname(__DIR__, 3).'/bin/architecture-kit', '--tool-home', $this->home, '--project', $this->root, ...$args], $cwd ?? dirname(__DIR__, 3), timeout: 30);
+        return new Process([PHP_BINARY, '-d', 'memory_limit='.ini_get('memory_limit'), getenv('ARCHITECTURE_KIT_TEST_BIN') ?: dirname(__DIR__, 3).'/bin/architecture-kit', '--tool-home', $this->home, '--project', $this->root, ...$args], $cwd ?? dirname(__DIR__, 3), timeout: 30);
     }
 
     private function cli(array $args, int $exit = 0, ?string $cwd = null): array
